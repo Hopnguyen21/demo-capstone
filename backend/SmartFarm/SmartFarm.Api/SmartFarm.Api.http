@@ -1,0 +1,6 @@
+@SmartFarm.Api_HostAddress = http://localhost:5144
+
+GET {{SmartFarm.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
