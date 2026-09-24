@@ -11,6 +11,14 @@ using SmartFarm.Infrastructure.CropGrowth;
 using SmartFarm.Infrastructure.IoTDeployment;
 using SmartFarm.Infrastructure.TelemetryAlerts;
 using SmartFarm.Infrastructure.Control;
+using SmartFarm.Infrastructure.Ai;
+using SmartFarm.Application.Features.Ai;
+using SmartFarm.Application.Features.Inventory;
+using SmartFarm.Infrastructure.Inventory;
+using SmartFarm.Application.Features.Finance;
+using SmartFarm.Infrastructure.Finance;
+using SmartFarm.Application.Features.Reports;
+using SmartFarm.Infrastructure.Reports;
 
 namespace SmartFarm.Infrastructure;
 
@@ -60,6 +68,21 @@ public static class DependencyInjection
         services.AddScoped<IActuatorFeedbackAdapter, MqttActuatorFeedbackAdapter>();
         services.AddScoped<IActuatorCommandTransport, MqttActuatorCommandTransport>();
         services.AddScoped<IRainForecastProvider, UnavailableRainForecastProvider>();
+        services.AddOptions<AiOptions>()
+            .Bind(configuration.GetSection(AiOptions.SectionName))
+            .Validate(x => x.MinimumConfidence is >= 0 and <= 1, "Ai:MinimumConfidence must be between 0 and 1.")
+            .Validate(x => x.MaxRequestsPerWindow > 0, "Ai:MaxRequestsPerWindow must be positive.")
+            .Validate(x => x.RateLimitWindowMinutes > 0, "Ai:RateLimitWindowMinutes must be positive.")
+            .Validate(x => x.RecommendationValidityMinutes > 0, "Ai:RecommendationValidityMinutes must be positive.")
+            .Validate(x => x.TelemetryFreshnessMinutes > 0, "Ai:TelemetryFreshnessMinutes must be positive.")
+            .ValidateOnStart();
+        services.AddScoped<IAiAdvisoryService, AiAdvisoryService>();
+        services.AddScoped<IAiAdvisoryProvider, UnavailableAiAdvisoryProvider>();
+        services.AddScoped<IAiWeatherProvider, UnavailableAiWeatherProvider>();
+        services.AddScoped<IInventoryTaskService, InventoryTaskService>();
+        services.AddScoped<IFinanceService, FinanceService>();
+        services.AddScoped<IServiceRequestService, ServiceRequestService>();
+        services.AddScoped<IReportService, ReportService>();
 
         return services;
     }

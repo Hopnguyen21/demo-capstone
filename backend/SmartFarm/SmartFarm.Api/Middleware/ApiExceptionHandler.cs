@@ -18,10 +18,15 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsSer
             AuthorizationException => (StatusCodes.Status403Forbidden, "Access forbidden"),
             ResourceNotFoundException => (StatusCodes.Status404NotFound, "Resource not found"),
             ResourceConflictException => (StatusCodes.Status409Conflict, "Resource conflict"),
+            RateLimitExceededException => (StatusCodes.Status429TooManyRequests, "Rate limit exceeded"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred")
         };
 
         httpContext.Response.StatusCode = status;
+        if (exception is RateLimitExceededException rateLimit)
+        {
+            httpContext.Response.Headers.RetryAfter = rateLimit.RetryAfterSeconds.ToString();
+        }
         ProblemDetails problem;
         if (exception is RequestValidationException validationException)
         {

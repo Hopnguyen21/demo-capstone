@@ -41,4 +41,4 @@ Rules are evaluated after accepted telemetry. Rule CRUD never reports `syncedToG
 
 FarmOwner can control every Zone in the JWT Tenant. Farmer must belong to that Farm, be assigned to the Zone and have `can_control = true` for command/cancel operations; read-only status and history require Zone assignment. Cross-Tenant resources are returned as not found.
 
-`GET .../actuators/{actuatorId}/status` derives state only from acknowledged device feedback and its cutoff. `GET .../actuators/history` returns command source (`Manual`, `Schedule`, `AutoRule`, `AiApproved`), actor, state transitions and failure details. AI-created commands remain out of scope until an Owner approval supplies the recommendation ID.
+`GET .../actuators/{actuatorId}/status` derives state only from acknowledged device feedback and its cutoff. `GET .../actuators/history` returns command source (`Manual`, `Schedule`, `AutoRule`, `AI_APPROVED`), actor, state transitions and failure details. AI-created commands require an Owner approval and retain the recommendation ID.

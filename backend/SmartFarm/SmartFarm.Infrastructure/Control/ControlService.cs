@@ -75,6 +75,52 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
         await DispatchAsync(command, ct); return ToView(command);
     }
 
+    public async Task<ActuatorCommandView> CreateAiApprovedCommandAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid recommendationId, Guid actuatorId, ActuatorCommandAction action, int durationSeconds, CancellationToken ct)
+    {
+        await EnsureOwnerZoneAsync(ownerId, tenantId, zoneId, ct);
+        var recommendation = await db.AiRecommendations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == recommendationId && x.TenantId == tenantId && x.ZoneId == zoneId, ct)
+            ?? throw new ResourceNotFoundException("AI recommendation was not found in this Zone.");
+        if (!recommendation.IsActionable || recommendation.Status != AiRecommendationStatus.Ready || recommendation.ProposedActuatorId != actuatorId || recommendation.ProposedAction != action || recommendation.ProposedDurationSeconds != durationSeconds)
+            throw new ResourceConflictException("AI recommendation is not valid for this control action.");
+
+        var key = $"ai:{recommendationId:N}";
+        var existing = await db.ActuatorCommands.Include(x => x.Events).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == key, ct);
+        if (existing is not null) return ToView(existing);
+
+        var actuator = await ActuatorAsync(zoneId, actuatorId, ct);
+        ValidateDuration(durationSeconds, actuator);
+        await EnsureReadyAsync(actuator.DeviceId, ct);
+        await EnsureRainAsync(actuator, true, 70, action, ct);
+        var now = clock.GetUtcNow().UtcDateTime;
+        if ((await ActiveCommandsAsync(actuator, now, ct)).Count > 0)
+            throw new ResourceConflictException("An active command conflicts with this AI-approved action.");
+
+        var command = BuildCommand(actuator, tenantId, ownerId, CommandTriggerSource.AI_APPROVED, action, durationSeconds, key, "Owner-approved AI recommendation.", now);
+        command.RecommendationId = recommendationId;
+        db.ActuatorCommands.Add(command);
+        await db.SaveChangesAsync(ct);
+        return ToView(command);
+    }
+
+    public async Task<ActuatorCommandView> DispatchPendingCommandAsync(Guid commandId, CancellationToken ct)
+    {
+        var command = await db.ActuatorCommands.Include(x => x.Events).SingleOrDefaultAsync(x => x.Id == commandId, ct)
+            ?? throw new ResourceNotFoundException("Command was not found.");
+        if (command.Status != ActuatorCommandStatus.Pending)
+            return ToView(command);
+        await DispatchAsync(command, ct);
+        return ToView(command);
+    }
+
+    public async Task<int> DispatchPendingAiCommandsAsync(CancellationToken ct)
+    {
+        var pending = await db.ActuatorCommands.Include(x => x.Events)
+            .Where(x => x.Status == ActuatorCommandStatus.Pending && x.TriggerSource == CommandTriggerSource.AI_APPROVED && x.RecommendationId != null)
+            .OrderBy(x => x.QueuedAtUtc).Take(50).ToListAsync(ct);
+        foreach (var command in pending) await DispatchAsync(command, ct);
+        return pending.Count;
+    }
+
     public async Task<ActuatorStatusView> GetStatusAsync(Guid userId, Guid tenantId, Guid zoneId, Guid actuatorId, CancellationToken ct)
     {
         await EnsureZoneReadAsync(userId, tenantId, zoneId, ct); var actuator = await ActuatorAsync(zoneId, actuatorId, ct); var command = await db.ActuatorCommands.AsNoTracking().Where(x => x.ActuatorId == actuatorId).OrderByDescending(x => x.QueuedAtUtc).FirstOrDefaultAsync(ct); var now = clock.GetUtcNow().UtcDateTime;

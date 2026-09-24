@@ -12,6 +12,7 @@ using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Persistence;
 using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Control;
+using SmartFarm.Application.Features.Ai;
 
 namespace SmartFarm.Api.Tests;
 
@@ -21,6 +22,8 @@ internal sealed class TestApplicationFactory : WebApplicationFactory<Program>
     private readonly string _databaseName = $"smartfarm-tests-{Guid.NewGuid():N}";
     internal FakeControlTransport ControlTransport { get; } = new();
     internal FakeRainProvider RainProvider { get; } = new();
+    internal FakeAiProvider AiProvider { get; } = new();
+    internal FakeAiWeatherProvider AiWeatherProvider { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -39,7 +42,8 @@ internal sealed class TestApplicationFactory : WebApplicationFactory<Program>
         });
         builder.ConfigureServices(services =>
         {
-            services.AddDataProtection().UseEphemeralDataProtectionProvider();
+            services.AddDataProtection().PersistKeysToFileSystem(
+                new DirectoryInfo(Path.Combine(AppContext.BaseDirectory, "DataProtectionKeys")));
             services.RemoveAll<DbContextOptions<SmartFarmDbContext>>();
             services.RemoveAll<SmartFarmDbContext>();
             services.AddDbContext<SmartFarmDbContext>(options =>
@@ -47,8 +51,12 @@ internal sealed class TestApplicationFactory : WebApplicationFactory<Program>
                     .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
             services.RemoveAll<IActuatorCommandTransport>();
             services.RemoveAll<IRainForecastProvider>();
+            services.RemoveAll<IAiAdvisoryProvider>();
+            services.RemoveAll<IAiWeatherProvider>();
             services.AddSingleton<IActuatorCommandTransport>(ControlTransport);
             services.AddSingleton<IRainForecastProvider>(RainProvider);
+            services.AddSingleton<IAiAdvisoryProvider>(AiProvider);
+            services.AddSingleton<IAiWeatherProvider>(AiWeatherProvider);
         });
     }
 
@@ -112,6 +120,23 @@ internal sealed class FakeRainProvider : IRainForecastProvider
     internal bool Available { get; set; } = true;
     internal decimal Probability { get; set; } = 10;
     public Task<RainForecastResult> GetAsync(Guid farmId, CancellationToken cancellationToken) => Task.FromResult(new RainForecastResult(Available, Available ? Probability : null));
+}
+
+internal sealed class FakeAiProvider : IAiAdvisoryProvider
+{
+    internal int Calls { get; private set; }
+    internal AiProviderResult Result { get; set; } = new("FakeAgronomist", "Review conditions", "No automatic action proposed.", 0.9m, [], null);
+    public Task<AiProviderResult> GenerateAsync(AiProviderRequest request, CancellationToken cancellationToken)
+    {
+        Calls++;
+        return Task.FromResult(Result);
+    }
+}
+
+internal sealed class FakeAiWeatherProvider : IAiWeatherProvider
+{
+    internal AiWeatherResult Result { get; set; } = new(true, "Dry conditions", 10, 27, DateTime.UtcNow, null);
+    public Task<AiWeatherResult> GetAsync(Guid farmId, Guid zoneId, CancellationToken cancellationToken) => Task.FromResult(Result);
 }
 
 internal sealed record SeedData(

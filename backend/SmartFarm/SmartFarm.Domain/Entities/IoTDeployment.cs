@@ -151,6 +151,7 @@ public sealed class DeviceActuator : AuditableEntity
     public string ActuatorType { get; set; } = string.Empty;
     public int RelayChannel { get; set; }
     public decimal? RatedPowerWatt { get; set; }
+    public decimal? FlowRateLitersPerMinute { get; set; }
     public int MaxDurationMinutes { get; set; }
 }
 
@@ -211,4 +212,17 @@ public sealed class ServiceRequest : AuditableEntity
     public string FailureCode { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public ServiceRequestStatus Status { get; set; } = ServiceRequestStatus.Open;
+    public Guid? CreatedByOwnerId { get; set; }
+    public Guid? AssignedTechnicianId { get; set; }
+    public AppUser? AssignedTechnician { get; set; }
+    public string? InspectionNotes { get; set; }
+    public string? Diagnosis { get; set; }
+    public ServiceResolutionAction? ResolutionAction { get; set; }
+    public string? WorkPerformed { get; set; }
+    public Guid? CurrentDeviceId { get; set; }
+    public Device? CurrentDevice { get; set; }
+    public DateTime? AcceptedAtUtc { get; set; }
+    public DateTime? ClosedAtUtc { get; set; }
+    public ICollection<ServiceRequestHistory> History { get; } = new List<ServiceRequestHistory>();
+    public ICollection<DeviceReplacement> Replacements { get; } = new List<DeviceReplacement>();
 }

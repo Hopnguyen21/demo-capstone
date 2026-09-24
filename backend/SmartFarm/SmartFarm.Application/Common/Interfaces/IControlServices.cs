@@ -30,6 +30,9 @@ public interface IControlService
     Task<AutoRuleView> UpdateRuleAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid ruleId, UpdateAutoRuleCommand command, CancellationToken ct);
     Task ArchiveRuleAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid ruleId, CancellationToken ct);
     Task<ActuatorCommandView> CreateManualCommandAsync(Guid userId, Guid tenantId, Guid zoneId, Guid actuatorId, ManualCommandRequest request, CancellationToken ct);
+    Task<ActuatorCommandView> CreateAiApprovedCommandAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid recommendationId, Guid actuatorId, ActuatorCommandAction action, int durationSeconds, CancellationToken ct);
+    Task<ActuatorCommandView> DispatchPendingCommandAsync(Guid commandId, CancellationToken ct);
+    Task<int> DispatchPendingAiCommandsAsync(CancellationToken ct);
     Task<ActuatorStatusView> GetStatusAsync(Guid userId, Guid tenantId, Guid zoneId, Guid actuatorId, CancellationToken ct);
     Task<ActuatorCommandView> CancelAsync(Guid userId, Guid tenantId, Guid zoneId, Guid commandId, string reason, CancellationToken ct);
     Task<CommandHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, DateTime fromUtc, DateTime toUtc, int limit, CancellationToken ct);

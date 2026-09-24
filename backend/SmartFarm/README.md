@@ -1,6 +1,6 @@
 # SmartFarm Backend
 
-Nền tảng backend SmartFarm dùng .NET 8, ASP.NET Core, Clean Architecture và PostgreSQL với EF Core Code First. Phase hiện tại triển khai nền tảng kỹ thuật cùng slice Auth/User/Tenant; chưa triển khai các endpoint nghiệp vụ nông trại khác.
+Nền tảng backend SmartFarm dùng .NET 8, ASP.NET Core, Clean Architecture và PostgreSQL với EF Core Code First. Các slice hiện có bao phủ Auth/Tenant, cấu trúc Farm, mùa vụ, IoT/telemetry/control, AI, kho/công việc, tài chính, bảo trì và báo cáo.
 
 ## Cấu trúc solution
 
@@ -88,6 +88,10 @@ Các migration hiện có:
 - `IoTDiagnosticJobs`: lưu lệnh chẩn đoán bất đồng bộ, chờ phản hồi thực tế từ transport adapter.
 - `TelemetryAlerts`: định danh MQTT Gateway, readings chống trùng, rule/state anti-flap, alerts và lịch sử xác nhận/xử lý.
 - `ControlAutomation`: Schedule, AutoRule, command state machine, MQTT feedback và command-event audit log.
+- `AiAdvisoryRecommendations`: yêu cầu tư vấn, context snapshot, Recommendation, quyết định Owner, rate-limit audit và liên kết lệnh `AI_APPROVED`.
+- `InventoryAndFarmTasks`: kho vật tư, giao dịch nhập/xuất, cảnh báo tồn thấp, Task và lịch sử trạng thái.
+- `FinanceAndDeviceServiceLifecycle`: khoản thu/chi, báo cáo dòng tiền, vòng đời Service Request, chẩn đoán, thay thế và liên kết thiết bị cũ–mới.
+- `ReportingActuatorFlowRate`: bổ sung lưu lượng định mức của actuator làm nguồn tính lượng nước từ lệnh đã ACK.
 
 ## Chạy API
 
@@ -167,6 +171,46 @@ Hợp đồng chuẩn hóa Flow 3 và API #50–#53, #76–#83 nằm tại `docs
 - Control: `POST /api/v1/zones/{zoneId}/actuators/{actuatorId}/command`, `GET .../status`, `DELETE /api/v1/zones/{zoneId}/commands/{commandId}`, `GET /api/v1/zones/{zoneId}/actuators/history`
 
 HTTP 202 chỉ xác nhận lệnh đã được lưu/gửi. Trạng thái thành công chỉ xuất hiện sau feedback xác thực từ Gateway qua `IActuatorFeedbackAdapter`. `IActuatorCommandTransport` và `IRainForecastProvider` mặc định từ chối an toàn khi chưa cấu hình tích hợp thật; integration test thay chúng bằng fake. Worker mỗi phút xử lý schedule đến hạn và command quá hạn ACK.
+
+## AI Advisory API
+
+Hợp đồng chuẩn hóa Flow 4 và API #84-#88 nằm tại `docs/AI_RECOMMENDATION_CONTRACT_V1.md`.
+
+- `GET /api/v1/zones/{zoneId}/ai/context`
+- `POST /api/v1/zones/{zoneId}/ai/ask`
+- `POST /api/v1/zones/{zoneId}/ai/apply-recommendation`
+- `GET|DELETE /api/v1/zones/{zoneId}/ai/history`
+
+Context Farm/Zone, mùa vụ, Crop, Growth Stage, telemetry và thời tiết được dựng phía server trong Tenant từ JWT. `IAiAdvisoryProvider` và `IAiWeatherProvider` mặc định trả trạng thái không khả dụng thay vì bịa dữ liệu; môi trường triển khai phải đăng ký adapter thật. Chỉ FarmOwner có thể chấp nhận Recommendation còn hiệu lực và đủ confidence. Khi đó hệ thống mới tạo lệnh Control bất đồng bộ với `recommendation_id` và nguồn `AI_APPROVED`; thiết bị vẫn phải gửi ACK xác thực trước khi hiển thị thành công.
+
+## Inventory và Farm Task API
+
+Hợp đồng chuẩn hóa Flow 5–6 và API #96–#101 nằm tại `docs/INVENTORY_TASK_CONTRACT_V1.md`.
+
+- Inventory: `GET|POST /api/v1/farms/{farmId}/inventory`, `POST .../inventory/{itemId}/receipts`, `PUT .../inventory/{itemId}/requirements`, `POST .../inventory/issues`, `GET .../inventory/low-stock-alerts`
+- Task: `GET|POST /api/v1/farms/{farmId}/tasks`, `PUT /api/v1/farms/{farmId}/tasks/{taskId}`
+
+Vật tư là duy nhất theo tên chuẩn hóa trong từng Farm; mọi nhập/xuất đều có sổ giao dịch và xuất kho không thể làm âm tồn. Nhu cầu vật tư liên kết đúng một Crop, Variety hoặc Growth Stage. Task dùng state machine có audit history; chỉ Farmer được giao mới có thể tiếp nhận/thực hiện/báo kết quả, còn Owner duyệt hoặc phân công lại Task thất bại/quá hạn. Flow `Manager`/`Employee` không tạo role mới mà ánh xạ sang `FarmOwner`/`Farmer`.
+
+## Finance và Device Service API
+
+Hợp đồng bổ sung Flow 7–8 nằm tại `docs/FINANCE_SERVICE_CONTRACT_V1.md`.
+
+- Finance: CRUD khoản thu/chi tại `/api/v1/farms/{farmId}/finance/...`; `GET /api/v1/farms/{farmId}/cash-flow-report` trả `revenue - expense` theo khoảng UTC.
+- Service Request: Owner tạo yêu cầu; PlatformAdmin phân công; đúng PlatformTechnician được giao mới có thể tiếp nhận, chẩn đoán, ghi công việc, thay thiết bị, ghi connection test và đóng yêu cầu.
+- Hot-swap #95 giữ liên kết thiết bị cũ–mới và hai bản ghi lịch sử Zone. Chỉ được đóng sau test đạt của thiết bị hiện hành.
+
+Nhóm chi phí chuẩn là `Material`, `Farmer`, `IoT`, `Maintenance`, `Other`; không thêm role Employee.
+
+## Reporting API
+
+Hợp đồng, công thức và bảng nguồn nằm tại `docs/REPORTING_CONTRACT_V1.md`; trạng thái đối chiếu đủ 103 endpoint nằm tại `docs/ENDPOINT_STATUS.md`.
+
+- Catalog #91–#94: tổng quan Farm, tổng kết mùa vụ, nước và điện.
+- `REPORT-V1-01..03`: tồn kho, công việc và lịch sử bảo trì.
+- Catalog #102: dòng tiền ròng bằng tổng doanh thu trừ tổng chi phí.
+
+Mọi báo cáo lấy Tenant từ JWT và kiểm Farm/Zone thuộc Tenant trước khi đọc. Nước và điện chỉ tính lệnh `TurnOn` đã nhận ACK; actuator thiếu lưu lượng/công suất bị loại khỏi tổng và được đếm riêng trong `unmeasuredCommandCount`, không được điền bằng hằng số giả định.
 
 ## Tài liệu nguồn
 

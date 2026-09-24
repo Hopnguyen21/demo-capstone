@@ -45,6 +45,18 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<AutoControlRule> AutoControlRules => Set<AutoControlRule>();
     public DbSet<ActuatorCommand> ActuatorCommands => Set<ActuatorCommand>();
     public DbSet<ActuatorCommandEvent> ActuatorCommandEvents => Set<ActuatorCommandEvent>();
+    public DbSet<AiConsultationRequest> AiConsultationRequests => Set<AiConsultationRequest>();
+    public DbSet<AiRecommendation> AiRecommendations => Set<AiRecommendation>();
+    public DbSet<AiRecommendationDecision> AiRecommendationDecisions => Set<AiRecommendationDecision>();
+    public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+    public DbSet<MaterialRequirementLink> MaterialRequirementLinks => Set<MaterialRequirementLink>();
+    public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
+    public DbSet<LowStockAlert> LowStockAlerts => Set<LowStockAlert>();
+    public DbSet<FarmTask> FarmTasks => Set<FarmTask>();
+    public DbSet<FarmTaskHistory> FarmTaskHistory => Set<FarmTaskHistory>();
+    public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
+    public DbSet<ServiceRequestHistory> ServiceRequestHistories => Set<ServiceRequestHistory>();
+    public DbSet<DeviceReplacement> DeviceReplacements => Set<DeviceReplacement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

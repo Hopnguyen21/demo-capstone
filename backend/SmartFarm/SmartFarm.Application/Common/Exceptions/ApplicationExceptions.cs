@@ -15,3 +15,7 @@ public sealed class AuthenticationException(string message = "Authentication fai
 public sealed class AuthorizationException(string message = "Access is forbidden.") : Exception(message);
 public sealed class ResourceNotFoundException(string message = "The requested resource was not found.") : Exception(message);
 public sealed class ResourceConflictException(string message) : Exception(message);
+public sealed class RateLimitExceededException(string message, int retryAfterSeconds) : Exception(message)
+{
+    public int RetryAfterSeconds { get; } = retryAfterSeconds;
+}

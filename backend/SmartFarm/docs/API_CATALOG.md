@@ -2,6 +2,8 @@
 
 Copied from the numbered index in `reference/API .docx`. Detailed request, response, validation and business rules remain in that document. Intentional Auth/User/Tenant v1 differences are normative in `AUTH_CONTRACT_V1.md`. The headings elsewhere say 102; the numbered index has 103.
 
+The code audit and status of every numbered endpoint is maintained in [`ENDPOINT_STATUS.md`](ENDPOINT_STATUS.md). Status is based on a concrete controller action plus non-placeholder application/infrastructure behavior, not route presence alone.
+
 | # | Method | Path | Group | Actor |
 | ---: | --- | --- | --- | --- |
 | 1 | POST | `/api/v1/auth/login` | Auth | All registered roles |
@@ -114,9 +116,19 @@ Copied from the numbered index in `reference/API .docx`. Detailed request, respo
 | --- | --- | --- | --- | --- |
 | AUTH-V1-01 | POST | `/api/v1/auth/register` | Anonymous | Self-register an unassigned FarmOwner or Farmer account |
 | USER-V1-01 | PUT | `/api/v1/users/{userId}/zone-access` | FarmOwner | Replace a Farmer's Zone access inside their assigned Farm |
+| INVENTORY-V1-01 | POST | `/api/v1/farms/{farmId}/inventory/{itemId}/receipts` | FarmOwner | Receive stock with an audited movement |
+| INVENTORY-V1-02 | PUT | `/api/v1/farms/{farmId}/inventory/{itemId}/requirements` | FarmOwner | Link material need to Crop, Variety, or Growth Stage |
+| INVENTORY-V1-03 | GET | `/api/v1/farms/{farmId}/inventory/low-stock-alerts` | FarmOwner | List low-stock alert lifecycle |
+| FINANCE-V1-01..05 | GET/POST/PUT/DELETE | `/api/v1/farms/{farmId}/finance/...` | FarmOwner | Auditable income and expense CRUD |
+| SERVICE-V1-01 | POST | `/api/v1/farms/{farmId}/service-requests` | FarmOwner | Open a Device service request |
+| SERVICE-V1-02..09 | GET/POST | `/api/v1/service-requests/...` | FarmOwner / PlatformAdmin / PlatformTechnician | Assignment, diagnosis, work, replacement, verification and closure |
+| REPORT-V1-01 | GET | `/api/v1/farms/{farmId}/report/inventory` | FarmOwner | Inventory balance and movement report |
+| REPORT-V1-02 | GET | `/api/v1/farms/{farmId}/report/tasks` | FarmOwner | Task outcome and workload report |
+| REPORT-V1-03 | GET | `/api/v1/farms/{farmId}/report/maintenance` | FarmOwner | Service lifecycle and replacement history report |
 
 Farm/Field/Zone implementation details, GeoJSON boundary storage and intentional differences for endpoints #16-#32 are defined in `FARM_STRUCTURE_CONTRACT_V1.md`. Endpoint #22 remains deferred until the planting-season and IoT provisioning slices exist.
 Crop/Growth/Season implementation details and the system-profile clone contract for endpoints #33-#45 are defined in `CROP_GROWTH_CONTRACT_V1.md`.
+Inventory and Task state transitions for endpoints #96-#101 and the three v1 additions are defined in `INVENTORY_TASK_CONTRACT_V1.md`.
 
 ## IoT deployment v1 additions without source-index renumbering
 
@@ -133,6 +145,11 @@ Telemetry ingestion, current-stage anti-flap semantics, Farmer Zone access and f
 ## Control v1 normalization
 
 Asynchronous status, feedback authentication, schedule cron semantics, rule evaluation, Farmer Zone control and command history for endpoints #50–#53 and #76–#83 are defined in `CONTROL_CONTRACT_V1.md`.
+
+## AI recommendation v1 normalization
+
+Server-built context, explicit uncertainty, persisted Owner decisions, rate limiting and the Owner-approved handoff to Phase 7 for endpoints #84-#88 are defined in `AI_RECOMMENDATION_CONTRACT_V1.md`. Endpoint #86 does not directly prove or perform irrigation; it creates an asynchronous `AI_APPROVED` control command only after valid Owner acceptance. Knowledge-base endpoints #89-#90 remain deferred pending pgvector and ingestion-security decisions.
+
 | PLATFORM-V1-01 | GET | `/api/v1/platform/technicians` | PlatformAdmin | List PlatformTechnician accounts |
 | PLATFORM-V1-02 | POST | `/api/v1/platform/technicians` | PlatformAdmin | Create a PlatformTechnician account without returning password material |
 | PLATFORM-V1-03 | PUT | `/api/v1/platform/technicians/{userId}` | PlatformAdmin | Update or disable a PlatformTechnician account |

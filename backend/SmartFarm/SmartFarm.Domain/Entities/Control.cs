@@ -65,6 +65,7 @@ public sealed class ActuatorCommand : AuditableEntity
     public Guid? AutoRuleId { get; set; }
     public AutoControlRule? AutoRule { get; set; }
     public Guid? RecommendationId { get; set; }
+    public AiRecommendation? Recommendation { get; set; }
     public string IdempotencyKey { get; set; } = string.Empty;
     public CommandTriggerSource TriggerSource { get; set; }
     public ActuatorCommandAction Action { get; set; }

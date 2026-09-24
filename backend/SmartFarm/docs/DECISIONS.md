@@ -22,3 +22,26 @@ Avoid guessing these contracts within endpoint implementations. Record each sett
 16. **IoT planning and deployment — settled for IoT v1.** Flow 1 steps 14–30 are modeled as a stateful Deployment Request with immutable decision history. Device requirements come from the active season's applied stage thresholds; recommendation quantity uses model coverage and Zone area. PlatformTechnician operations require an accepted request rather than trusting a client-supplied Farm ID. Connection checks store observed results and do not fabricate MQTT success. A failed deployment creates an explicit `MaintenanceRequired` state and open service-request handoff. See `docs/IOT_DEPLOYMENT_CONTRACT_V1.md`.
 17. **Telemetry trust and alert anti-flap — settled for Telemetry v1.** MQTT transport identity selects the Gateway; payload data cannot select Tenant or Gateway. Ingestion is idempotent by Device/message/parameter and Device/timestamp/parameter. Current season applied requirements drive stage-aware evaluation. Two consecutive violations are required, normal readings reset state, open alerts and cooldown suppress repeats. Alert acknowledgement and resolution are separate append-only history events. Historical data does not imply a Device is currently online. See `docs/TELEMETRY_ALERT_CONTRACT_V1.md`.
 18. **Asynchronous actuator control — settled for Control v1.** HTTP acceptance, broker publication and physical execution are distinct. Commands use `Pending → Sent → Acknowledged/Failed/TimedOut/Cancelled`; only authenticated device feedback proves execution or cancellation. Manual commands preempt automation through an acknowledged emergency-stop handshake, all irrigation is capped at 30 minutes, and server-side interlock/rain/freshness checks run before dispatch. Five-field cron expressions are interpreted in the Farm timezone because the source examples conflict with its Quartz label. See `docs/CONTROL_CONTRACT_V1.md`.
+19. **AI advice and Owner approval — settled for AI v1.** AI is isolated behind `IAiAdvisoryProvider` and cannot actuate or mutate automation. Server-built Farm/Zone/season/stage/telemetry/weather context is mandatory for actionable advice. Missing data, provider failure or confidence below the configured threshold produces an explicit limited, non-actionable recommendation. Only a FarmOwner may accept a current valid recommendation; acceptance invokes Phase 7 control and records both `recommendation_id` and source `AI_APPROVED`. Reject, ignore and request-more-analysis are retained as append-only decisions. History deletion is a UI hide, not audit deletion. See `docs/AI_RECOMMENDATION_CONTRACT_V1.md`.
+# 20. Inventory movements and task transitions are explicit (2026-09-25)
+
+API #97 and #101 were broader than Flow 5–6. The v1 contract in
+`INVENTORY_TASK_CONTRACT_V1.md` makes stock receipts separate from material creation
+and makes task updates explicit state-machine actions. Material names are unique per
+Farm after normalization. Stock changes and task transitions are append-only audit
+records. Flow roles `Manager`/`Employee` are interpreted as `FarmOwner`/`Farmer`.
+
+# 21. Finance and device service lifecycle are explicit (2026-09-25)
+
+The source exposes only hot-swap #95 and cash-flow report #102. The v1 contract in
+`FINANCE_SERVICE_CONTRACT_V1.md` adds auditable finance CRUD and a Service Request state machine.
+Flow 7 expense `Employee` is named `Farmer`; no role is added. PlatformAdmin assigns an active
+PlatformTechnician, and only that Technician may inspect, diagnose, work, replace, test, and close.
+A request cannot close until the latest connection test for the current Device succeeds.
+
+# 22. Reports expose sourced values and measurement gaps (2026-09-25)
+
+Reporting v1 reads only implemented transactional tables and authenticated Tenant/Farm scope.
+Water and electricity include only acknowledged TurnOn commands. Water uses actuator flow rate;
+electricity uses rated power. Missing ratings are counted as unmeasured rather than replaced by
+assumed constants. Formulas and source tables are normative in `REPORTING_CONTRACT_V1.md`.

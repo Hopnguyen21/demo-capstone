@@ -21,7 +21,7 @@ public sealed record FirmwareJobView(Guid OtaJobId, Guid GatewayId, string Targe
 public sealed record ProvisionNodeInput(string HardwareAddress, DeviceType DeviceType, Guid? DeviceModelId);
 public sealed record ProvisionDevicesCommand(Guid DeploymentRequestId, Guid GatewayId, Guid FarmId, IReadOnlyList<ProvisionNodeInput> Nodes);
 public sealed record SensorInput(string SensorType, string? Pin, string? Model, string? Interface, string Unit, decimal? MinValue, decimal? MaxValue, int SamplingIntervalSec);
-public sealed record ActuatorInput(string ActuatorType, int RelayChannel, decimal? RatedPowerWatt, int MaxDurationMinutes);
+public sealed record ActuatorInput(string ActuatorType, int RelayChannel, decimal? RatedPowerWatt, int MaxDurationMinutes, decimal? FlowRateLitersPerMinute = null);
 public sealed record AssignDeviceCommand(string? InstallationNotes, decimal? GpsLatitude, decimal? GpsLongitude);
 public sealed record UnassignDeviceCommand(string Reason);
 public sealed record DeviceConnectionTestView(Guid TestId, bool Succeeded, decimal? Rssi, decimal? Snr, int? RoundTripLatencyMs, DateTime ObservedAtUtc, string? ErrorCode, string? ErrorMessage);
