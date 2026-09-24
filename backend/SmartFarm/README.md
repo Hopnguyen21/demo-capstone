@@ -1,29 +1,173 @@
-# Codex instructions for SmartFarm
+# SmartFarm Backend
 
-Read `README.md`, `docs/DECISIONS.md`, `docs/API_CATALOG.md` and the relevant numbered section of `docs/reference/API.docx` before implementing an endpoint. Review `docs/reference/SmartFarm_Flow.docx` for all eight business flows. The DOCX API has 103 indexed endpoints; introductory counts of 102 are stale. Treat detailed endpoint contracts as proposed requirements, and report inconsistencies rather than silently inventing a policy.
+Nền tảng backend SmartFarm dùng .NET 8, ASP.NET Core, Clean Architecture và PostgreSQL với EF Core Code First. Phase hiện tại triển khai nền tảng kỹ thuật cùng slice Auth/User/Tenant; chưa triển khai các endpoint nghiệp vụ nông trại khác.
 
-## Implementation order
+## Cấu trúc solution
 
-Work as vertical slices: auth/tenant first; then farm/field/zone; then crop/growth/season; device estimation, deployment request, technician survey and onboarding; telemetry/alerts; control; AI; inventory, tasks, finance, service/maintenance and reporting. Deliver one coherent slice at a time, with migration and tests. Preserve existing files and conventions.
+- `SmartFarm.Domain`: entity, enum và mô hình miền; không tham chiếu framework hoặc project khác.
+- `SmartFarm.Application`: contract/use-case abstraction cho Auth, User, Tenant và Technician; chỉ tham chiếu Domain.
+- `SmartFarm.Infrastructure`: dịch vụ xác thực, PostgreSQL, EF Core DbContext, Fluent API configuration và migrations; tham chiếu Application và Domain.
+- `SmartFarm.Api`: controller mỏng, JWT Bearer, composition root, Problem Details, CORS, correlation ID, Swagger ở Development và health endpoint.
+- `tests/SmartFarm.Domain.Tests`: kiểm tra mô hình miền và bốn vai trò chuẩn.
+- `tests/SmartFarm.Infrastructure.Tests`: kiểm tra EF Core model, unique index và composite key.
+- `tests/SmartFarm.Architecture.Tests`: kiểm tra chiều phụ thuộc Clean Architecture.
+- `tests/SmartFarm.Api.Tests`: integration test cho JWT/refresh/logout, role và tenant isolation bằng EF InMemory.
 
-## Non-negotiable invariants
+Schema gồm `Tenant`, `AppUser`, `RefreshToken`, `Farm`, `Field`, `Zone` và `UserZoneAccess`. Refresh token chỉ lưu SHA-256 hash; access token được liên kết bằng `jti` để logout/disable tài khoản có hiệu lực ngay. PostgreSQL lưu khóa chính bằng UUID, thời gian bằng `timestamp with time zone`, enum bằng chuỗi, đồng thời có các khóa ngoại, unique index và check constraint nền tảng. PostGIS, TimescaleDB và pgvector chưa được bật vì tài liệu yêu cầu xác nhận extension trước.
 
-- Four roles: PlatformAdmin, PlatformTechnician, FarmOwner, Farmer. Platform staff are not members of a farm tenant. Farmer belongs to exactly one Farm; zone access may cover multiple zones in that Farm. Owner invites an existing account into their Farm; settle account registration/invitation contract before implementation.
-- Tenant isolation: take tenantId from authenticated server context, never a client supplied field. Check the full resource parent chain on nested routes. Authorization attributes alone do not prove access to a specific farm/zone.
-- Farm → Field → Zone; a zone has at most one InProgress season; system growth profiles must be cloned before tenant edits. Archive rather than delete records that have operational/audit history.
-- Acknowledged alerts and all actuator commands retain audit history. IoT telemetry is idempotent by device/message identity and timestamp; only authenticated gateways may publish trusted data.
-- Commands are asynchronous: Pending → Sent → Acknowledged/Failed/TimedOut/Cancelled. Require device feedback before displaying execution success. Enforce hardware cutoff <= 30 minutes and server checks for interlock, rain delay, role, zone permission, stale telemetry, and duplicate commands.
-- AI recommendations never directly actuate. Only an authorized Owner action may create a command; record its recommendation ID and origin. Missing/uncertain AI context must yield an explicit refusal or fallback, never fabricated guidance.
-- Store UTC timestamps and use farm timezone for presentation/scheduling. Secrets only via configuration/environment, never source control.
+## Yêu cầu
 
-## Code conventions
+- .NET SDK 8.0.x. `global.json` ghim SDK `8.0.100` và cho phép dùng patch mới nhất.
+- PostgreSQL 16 hoặc phiên bản tương thích với Npgsql 8.
+- `dotnet-ef` 8.0.11 để tạo hoặc áp dụng migration.
 
-Backend: .NET 8, Clean Architecture; Domain has no framework references, Application depends on Domain, Infrastructure implements Application interfaces, Api wires dependencies. EF migrations live in Infrastructure. Use cancellation tokens, validation, Problem Details and request correlation. Controllers or route groups should remain thin. Store all write operations involving related records in a transaction. Choose exact NuGet package versions and record them when implementing persistence/auth.
+Các package persistence được ghim ở phiên bản `8.0.11`: `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Design` và `Npgsql.EntityFrameworkCore.PostgreSQL`. JWT Bearer và Identity Core dùng `8.0.18`; `System.IdentityModel.Tokens.Jwt` dùng `7.1.2`.
 
-Frontend: typed API client and features organized by domain. Auth context and route access are user experience guards; backend is the authority. Handle loading, empty, 401/403 and API errors. Do not store refresh tokens in localStorage without agreeing on session design.
+## Cấu hình
 
-For every endpoint: cite its index in `docs/API_CATALOG.md`, implement the source document's input/output/validation/exception cases, test cross-tenant and wrong-zone access, and update docs if an intentional difference is approved. No placeholder 200 response or mock production data.
+Không lưu mật khẩu trong source control. API yêu cầu connection string qua biến môi trường. Ví dụ PowerShell:
 
-Flow 6 in `SmartFarm_Flow.docx` says Manager/Employee. Interpret these as FarmOwner/Farmer per agreed four-role model, and reconcile the source before adding any other role. Distinguish deployment request/survey/plan/installation from device provisioning and zone assignment. Model service request, technician work and maintenance/replacement as explicit operations.
+```powershell
+$env:ConnectionStrings__SmartFarmDb = "Host=localhost;Port=5432;Database=smartfarm;Username=smartfarm;Password=<password>"
+$env:Jwt__SigningKey = "<at-least-32-random-characters>"
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+```
 
-Database strategy: EF Core Code First. Read `docs/CODE_FIRST.md`. Schema migrations are authored in Infrastructure and applied explicitly. Do not reverse engineer entities from an existing database.
+Origin frontend mặc định ở Development là `http://localhost:5173` và `https://localhost:5173`. Có thể ghi đè theo môi trường:
+
+```powershell
+$env:Cors__AllowedOrigins__0 = "https://app.example.com"
+```
+
+## Restore, build và test
+
+Chạy từ thư mục chứa `SmartFarm.sln`:
+
+```powershell
+dotnet restore SmartFarm.sln
+dotnet build SmartFarm.sln --no-restore
+dotnet test SmartFarm.sln --no-build
+```
+
+## Migration và database
+
+Cài đúng major version của EF tool:
+
+```powershell
+dotnet tool install --global dotnet-ef --version 8.0.11
+```
+
+Migration đầu tiên nằm trong `SmartFarm.Infrastructure/Persistence/Migrations`. Áp dụng migration sau khi đã đặt biến môi trường connection string:
+
+```powershell
+dotnet ef database update `
+  --project SmartFarm.Infrastructure `
+  --startup-project SmartFarm.Api
+```
+
+Tạo migration tiếp theo:
+
+```powershell
+dotnet ef migrations add <MigrationName> `
+  --project SmartFarm.Infrastructure `
+  --startup-project SmartFarm.Api `
+  --output-dir Persistence/Migrations
+```
+
+Luôn xem lại SQL migration trước khi áp dụng lên môi trường dùng chung hoặc production.
+
+Các migration hiện có:
+
+- `InitialCreate`: schema nền tảng.
+- `AuthIdentity`: normalized email, trạng thái đăng nhập và refresh-token session.
+- `AllowUnassignedFarmAccounts`: cho phép Owner/Farmer đăng ký trước khi được gắn tenant/farm.
+- `FarmFieldZoneBoundaries`: thêm ranh giới GeoJSON `jsonb` và giới hạn diện tích Farm.
+- `CropGrowthPlantingSeason`: catalog cây/giống, profile/stage/ngưỡng môi trường và vòng đời mùa vụ.
+- `IoTPlanningDeploymentHardware`: đề xuất thiết bị, yêu cầu triển khai, khảo sát, Gateway/Device, lịch sử quyết định, kiểm tra kết nối và handoff bảo trì.
+- `IoTServiceHandoffConstraints`: bổ sung khóa ngoại cho Service Request bàn giao từ triển khai lỗi.
+- `IoTDiagnosticJobs`: lưu lệnh chẩn đoán bất đồng bộ, chờ phản hồi thực tế từ transport adapter.
+- `TelemetryAlerts`: định danh MQTT Gateway, readings chống trùng, rule/state anti-flap, alerts và lịch sử xác nhận/xử lý.
+- `ControlAutomation`: Schedule, AutoRule, command state machine, MQTT feedback và command-event audit log.
+
+## Chạy API
+
+```powershell
+dotnet run --project SmartFarm.Api
+```
+
+Health endpoint:
+
+```http
+GET /health
+```
+
+Phản hồi thành công có HTTP 200 và nội dung tương tự:
+
+```json
+{"status":"Healthy","checks":[]}
+```
+
+Mọi response đều có header `X-Correlation-ID`. Exception và HTTP error được chuyển sang RFC 7807 Problem Details khi client chấp nhận định dạng phù hợp. Swagger chỉ bật trong môi trường Development.
+
+## Auth/User/Tenant API
+
+Hợp đồng chuẩn nằm tại `docs/AUTH_CONTRACT_V1.md`. Các route đã triển khai:
+
+- `POST /api/v1/auth/register`, `/login`, `/refresh`, `/logout`
+- `GET /api/v1/users`, `/api/v1/users/me`, `/api/v1/users/{userId}`
+- `POST /api/v1/users/invite`, `PUT /api/v1/users/{userId}/zone-access`
+- `POST /api/v1/tenants/register`, `GET|PUT /api/v1/tenants/me`
+- `GET|POST /api/v1/platform/technicians`, `PUT /api/v1/platform/technicians/{userId}`
+
+Chỉ có bốn role: `PlatformAdmin`, `PlatformTechnician`, `FarmOwner`, `Farmer`. Đăng ký công khai chỉ chấp nhận Owner hoặc Farmer. Owner tạo Tenant khi thiết lập Farm đầu tiên; lời mời Farmer chỉ gắn một tài khoản Farmer đã tồn tại vào đúng một Farm. API không sinh hoặc trả mật khẩu tạm.
+
+## Farm Field Zone API
+
+Hợp đồng và quyết định lưu polygon nằm tại `docs/FARM_STRUCTURE_CONTRACT_V1.md`. Field và Zone dùng GeoJSON Polygon lưu trong PostgreSQL `jsonb`; hệ thống hiện không giả định PostGIS đã được cài.
+
+- Farm: `GET|POST /api/v1/farms`, `GET|PUT|DELETE /api/v1/farms/{farmId}`, `GET /api/v1/farms/{farmId}/structure`
+- Field: `GET|POST /api/v1/farms/{farmId}/fields`, `GET|PUT|DELETE /api/v1/fields/{fieldId}`
+- Zone: `GET|POST /api/v1/fields/{fieldId}/zones`, `GET|PUT|DELETE /api/v1/zones/{zoneId}`
+
+Mọi route yêu cầu `FarmOwner`, lấy Tenant từ JWT và kiểm tra toàn bộ chuỗi cha. DELETE là archive, không xóa vật lý.
+
+## Crop Growth và Planting Season API
+
+Hợp đồng đã đối chiếu Flow 1 và API #33–#45 nằm tại `docs/CROP_GROWTH_CONTRACT_V1.md`.
+
+- Crop/Variety: `GET|POST /api/v1/crops`, `GET|POST /api/v1/crops/{cropId}/varieties`
+- Growth Profile: `GET /api/v1/crops/{cropId}/growth-profiles`, `POST /api/v1/growth-profiles`, `GET /api/v1/growth-profiles/{profileId}/stages`
+- Requirement: `PUT /api/v1/growth-stages/{stageId}/requirements`
+- Planting Season: `GET|POST /api/v1/zones/{zoneId}/planting-seasons`, `GET /api/v1/zones/{zoneId}/planting-seasons/{seasonId}`, `PUT .../stage`, `PUT .../close`
+
+Migration seed một profile Tomato mặc định của hệ thống. Profile hệ thống chỉ đọc; tùy chỉnh tạo bản clone theo Tenant. PostgreSQL có filtered unique index bảo đảm mỗi Zone chỉ có tối đa một mùa vụ `InProgress`.
+
+## IoT Planning Deployment và Hardware API
+
+Hợp đồng bổ sung Flow 1 nằm tại `docs/IOT_DEPLOYMENT_CONTRACT_V1.md`. Nhóm `IOT-V1-01`–`IOT-V1-15` bao phủ lấy thông số cần đo, đề xuất, Owner điều chỉnh/gửi yêu cầu, Technician tiếp nhận/khảo sát/xác nhận/lắp đặt, lưu connection test, hoàn tất hoặc tạo handoff bảo trì.
+
+Gateway/Device API #54–#68 đã được triển khai. Các thao tác provision, cấu hình và gán phần cứng chỉ được phép cho Technician đã nhận đúng Deployment Request; Farm, Zone, Gateway và Device phải cùng một chuỗi triển khai. `GET /devices/{deviceId}/ping` trả kết quả kiểm tra đã ghi nhận gần nhất, không giả lập MQTT ACK.
+
+## Telemetry và Alert API
+
+Hợp đồng MQTT và phần đối chiếu Flow 2/API #46–#49, #69–#75 nằm tại `docs/TELEMETRY_ALERT_CONTRACT_V1.md`.
+
+- Telemetry: `GET /api/v1/zones/{zoneId}/telemetry/latest|history|stats`
+- Alert Rule: `GET|POST /api/v1/zones/{zoneId}/alert-rules`, `PUT|DELETE /api/v1/zones/{zoneId}/alert-rules/{ruleId}`
+- Alert: `GET /api/v1/farms/{farmId}/alerts`, `GET /api/v1/zones/{zoneId}/alerts`, `GET /api/v1/alerts/{alertId}`, `PUT .../acknowledge`, `PUT .../resolve`
+
+MQTT không đi qua controller người dùng. Broker gọi `IMqttTelemetryAdapter` với topic `smartfarm/gateways/{gatewayId}/telemetry`, MQTT client ID, SHA-256 certificate fingerprint và payload JSON. Adapter chỉ làm xác thực/chuẩn hóa transport; `ITelemetryIngestionService` thực hiện validation, idempotency, persistence và anti-flap nên có thể kiểm thử không cần broker. Latest chỉ đánh dấu fresh trong cửa sổ 5 phút; telemetry cũ không đổi trạng thái Device/Gateway thành Online.
+
+## Schedule AutoRule và Control API
+
+Hợp đồng chuẩn hóa Flow 3 và API #50–#53, #76–#83 nằm tại `docs/CONTROL_CONTRACT_V1.md`.
+
+- Schedule: `GET|POST /api/v1/zones/{zoneId}/schedules`, `PUT|DELETE /api/v1/zones/{zoneId}/schedules/{scheduleId}`
+- AutoRule: `GET|POST /api/v1/zones/{zoneId}/rules`, `PUT|DELETE /api/v1/zones/{zoneId}/rules/{ruleId}`
+- Control: `POST /api/v1/zones/{zoneId}/actuators/{actuatorId}/command`, `GET .../status`, `DELETE /api/v1/zones/{zoneId}/commands/{commandId}`, `GET /api/v1/zones/{zoneId}/actuators/history`
+
+HTTP 202 chỉ xác nhận lệnh đã được lưu/gửi. Trạng thái thành công chỉ xuất hiện sau feedback xác thực từ Gateway qua `IActuatorFeedbackAdapter`. `IActuatorCommandTransport` và `IRainForecastProvider` mặc định từ chối an toàn khi chưa cấu hình tích hợp thật; integration test thay chúng bằng fake. Worker mỗi phút xử lý schedule đến hạn và command quá hạn ACK.
+
+## Tài liệu nguồn
+
+Trước khi triển khai endpoint nghiệp vụ, đọc `AGENTS.md`, `docs/DECISIONS.md`, `docs/API_CATALOG.md`, phần endpoint tương ứng trong `docs/reference/API .docx` và toàn bộ `docs/reference/SmartFarm_Flow.docx`. Thư mục `docs/reference` hiện chỉ có hai DOCX, dù yêu cầu ban đầu nhắc ba tài liệu. Không tự suy đoán tài liệu còn thiếu hoặc các hợp đồng đang mâu thuẫn.

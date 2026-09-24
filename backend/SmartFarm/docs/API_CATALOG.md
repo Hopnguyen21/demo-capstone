@@ -1,10 +1,10 @@
 # API catalog
 
-Copied from the numbered index in `reference/API.docx`. Detailed request, response, validation and business rules remain in that document. These routes are a checklist, not implemented endpoints. The headings elsewhere say 102; the numbered index has 103.
+Copied from the numbered index in `reference/API .docx`. Detailed request, response, validation and business rules remain in that document. Intentional Auth/User/Tenant v1 differences are normative in `AUTH_CONTRACT_V1.md`. The headings elsewhere say 102; the numbered index has 103.
 
 | # | Method | Path | Group | Actor |
 | ---: | --- | --- | --- | --- |
-| 1 | POST | `/api/v1/auth/login` | Auth | FarmOwner / Technician |
+| 1 | POST | `/api/v1/auth/login` | Auth | All registered roles |
 | 2 | POST | `/api/v1/auth/logout` | Auth | All roles |
 | 3 | POST | `/api/v1/auth/refresh` | Auth | All roles |
 | 4 | POST | `/api/v1/auth/forgot-password` | Auth | All roles |
@@ -16,7 +16,7 @@ Copied from the numbered index in `reference/API.docx`. Detailed request, respon
 | 10 | POST | `/api/v1/users/invite` | User | FarmOwner |
 | 11 | GET | `/api/v1/users/me` | User | All roles |
 | 12 | PUT | `/api/v1/users/me/password` | User | All roles |
-| 13 | POST | `/api/v1/tenants/register` | Tenant | PlatformAdmin |
+| 13 | POST | `/api/v1/tenants/register` | Tenant | FarmOwner without Tenant |
 | 14 | GET | `/api/v1/tenants/me` | Tenant | FarmOwner |
 | 15 | PUT | `/api/v1/tenants/me` | Tenant | FarmOwner |
 | 16 | GET | `/api/v1/farms` | Farm | FarmOwner |
@@ -49,11 +49,11 @@ Copied from the numbered index in `reference/API.docx`. Detailed request, respon
 | 43 | GET | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}` | Season | FarmOwner / Farmer |
 | 44 | PUT | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/stage` | Season | FarmOwner |
 | 45 | PUT | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/close` | Season | FarmOwner |
-| 46 | GET | `/api/v1/zones/{zoneId}/alert-rules` | AlertRule | FarmOwner |
+| 46 | GET | `/api/v1/zones/{zoneId}/alert-rules` | AlertRule | FarmOwner / Farmer |
 | 47 | POST | `/api/v1/zones/{zoneId}/alert-rules` | AlertRule | FarmOwner |
 | 48 | PUT | `/api/v1/zones/{zoneId}/alert-rules/{ruleId}` | AlertRule | FarmOwner |
 | 49 | DELETE | `/api/v1/zones/{zoneId}/alert-rules/{ruleId}` | AlertRule | FarmOwner |
-| 50 | GET | `/api/v1/zones/{zoneId}/schedules` | Schedule | FarmOwner |
+| 50 | GET | `/api/v1/zones/{zoneId}/schedules` | Schedule | FarmOwner / Farmer |
 | 51 | POST | `/api/v1/zones/{zoneId}/schedules` | Schedule | FarmOwner |
 | 52 | PUT | `/api/v1/zones/{zoneId}/schedules/{scheduleId}` | Schedule | FarmOwner |
 | 53 | DELETE | `/api/v1/zones/{zoneId}/schedules/{scheduleId}` | Schedule | FarmOwner |
@@ -80,7 +80,7 @@ Copied from the numbered index in `reference/API.docx`. Detailed request, respon
 | 74 | GET | `/api/v1/alerts/{alertId}` | Alert | FarmOwner / Farmer |
 | 75 | PUT | `/api/v1/alerts/{alertId}/acknowledge` | Alert | FarmOwner / Farmer |
 | 76 | POST | `/api/v1/zones/{zoneId}/rules` | AutoRule | FarmOwner |
-| 77 | GET | `/api/v1/zones/{zoneId}/rules` | AutoRule | FarmOwner |
+| 77 | GET | `/api/v1/zones/{zoneId}/rules` | AutoRule | FarmOwner / Farmer |
 | 78 | PUT | `/api/v1/zones/{zoneId}/rules/{ruleId}` | AutoRule | FarmOwner |
 | 79 | DELETE | `/api/v1/zones/{zoneId}/rules/{ruleId}` | AutoRule | FarmOwner |
 | 80 | POST | `/api/v1/zones/{zoneId}/actuators/{actuatorId}/command` | Control | FarmOwner |
@@ -107,3 +107,32 @@ Copied from the numbered index in `reference/API.docx`. Detailed request, respon
 | 101 | PUT | `/api/v1/farms/{farmId}/tasks/{taskId}` | Support | FarmOwner / Farmer |
 | 102 | GET | `/api/v1/farms/{farmId}/cash-flow-report` | Support | FarmOwner |
 | 103 | GET | `/api/v1/farms/{farmId}/weather/forecast` | Weather | FarmOwner / Farmer |
+
+## Auth v1 additions without source-index renumbering
+
+| Contract ID | Method | Path | Actor | Purpose |
+| --- | --- | --- | --- | --- |
+| AUTH-V1-01 | POST | `/api/v1/auth/register` | Anonymous | Self-register an unassigned FarmOwner or Farmer account |
+| USER-V1-01 | PUT | `/api/v1/users/{userId}/zone-access` | FarmOwner | Replace a Farmer's Zone access inside their assigned Farm |
+
+Farm/Field/Zone implementation details, GeoJSON boundary storage and intentional differences for endpoints #16-#32 are defined in `FARM_STRUCTURE_CONTRACT_V1.md`. Endpoint #22 remains deferred until the planting-season and IoT provisioning slices exist.
+Crop/Growth/Season implementation details and the system-profile clone contract for endpoints #33-#45 are defined in `CROP_GROWTH_CONTRACT_V1.md`.
+
+## IoT deployment v1 additions without source-index renumbering
+
+Flow 1 planning, survey, installation and failure handoff endpoints `IOT-V1-01` through `IOT-V1-15` are defined in `IOT_DEPLOYMENT_CONTRACT_V1.md`. Source Gateway/Device endpoints #54–#68 remain indexed and are constrained by that workflow where they mutate hardware.
+
+## Telemetry v1 addition without source-index renumbering
+
+Telemetry ingestion, current-stage anti-flap semantics, Farmer Zone access and freshness are defined in `TELEMETRY_ALERT_CONTRACT_V1.md`. It is normative for endpoints #46–#49 and #69–#75.
+
+| Contract ID | Method | Path | Actor | Purpose |
+| --- | --- | --- | --- | --- |
+| ALERT-V1-01 | PUT | `/api/v1/alerts/{alertId}/resolve` | FarmOwner / assigned Farmer | Record action, resolve the alert and append history |
+
+## Control v1 normalization
+
+Asynchronous status, feedback authentication, schedule cron semantics, rule evaluation, Farmer Zone control and command history for endpoints #50–#53 and #76–#83 are defined in `CONTROL_CONTRACT_V1.md`.
+| PLATFORM-V1-01 | GET | `/api/v1/platform/technicians` | PlatformAdmin | List PlatformTechnician accounts |
+| PLATFORM-V1-02 | POST | `/api/v1/platform/technicians` | PlatformAdmin | Create a PlatformTechnician account without returning password material |
+| PLATFORM-V1-03 | PUT | `/api/v1/platform/technicians/{userId}` | PlatformAdmin | Update or disable a PlatformTechnician account |

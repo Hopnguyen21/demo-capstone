@@ -1,38 +1,14 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-
   <ItemGroup>
-    <Folder Include="Common\Behaviors\" />
-    <Folder Include="Common\Models\" />
-    <Folder Include="Common\Interfaces\" />
-    <Folder Include="Common\Mappings\" />
-    <Folder Include="Features\Fields\" />
-    <Folder Include="Features\Farms\" />
-    <Folder Include="Features\Auth\" />
-    <Folder Include="Features\Inventory\" />
-    <Folder Include="Features\AiAdvisory\" />
-    <Folder Include="Features\Irrigation\" />
-    <Folder Include="Features\Alerts\" />
-    <Folder Include="Features\Devices\" />
-    <Folder Include="Features\Deployments\" />
-    <Folder Include="Features\DevicePlanning\" />
-    <Folder Include="Features\GrowthProfiles\" />
-    <Folder Include="Features\Crops\" />
-    <Folder Include="Features\Maintenance\" />
-    <Folder Include="Features\Finance\" />
-    <Folder Include="Features\Tasks\" />
-    <Folder Include="Features\ServiceRequests\" />
-    <Folder Include="Features\Reports\" />
-    <Folder Include="Features\PlantingSeasons\" />
-    <Folder Include="Features\Telemetry\" />
-    <Folder Include="Features\Users\" />
-    <Folder Include="Features\Tenants\" />
-    <Folder Include="Features\Zones\" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
   </ItemGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="..\SmartFarm.Domain\SmartFarm.Domain.csproj" />
+  </ItemGroup>
 </Project>

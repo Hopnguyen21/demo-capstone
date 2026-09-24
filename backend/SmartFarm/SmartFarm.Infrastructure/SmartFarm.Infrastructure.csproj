@@ -1,19 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-
   <ItemGroup>
-    <Folder Include="Identity\" />
-    <Folder Include="Messaging\" />
-    <Folder Include="Ai\" />
-    <Folder Include="Weather\" />
-    <Folder Include="Notifications\" />
-    <Folder Include="Repositories\" />
-    <Folder Include="Persistence\Migrations\" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="8.0.18" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
   </ItemGroup>
-
+  <ItemGroup>
+    <ProjectReference Include="..\SmartFarm.Application\SmartFarm.Application.csproj" />
+    <ProjectReference Include="..\SmartFarm.Domain\SmartFarm.Domain.csproj" />
+  </ItemGroup>
 </Project>
