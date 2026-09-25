@@ -20,6 +20,7 @@ export const Sidebar: React.FC = () => {
 
   const adminNav: NavItem[] = [
     { title: 'Platform Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
+    { title: 'Tiếp nhận & Phân công', path: '/admin/requests', icon: <ClipboardList size={18} />, badge: 'CF1' },
     { title: 'Quản lý Tenants', path: '/admin/tenants', icon: <Building2 size={18} /> },
     { title: 'Quản lý Người dùng', path: '/admin/users', icon: <Users size={18} /> },
     { title: 'Thư viện Giống Cây', path: '/admin/crops', icon: <Sprout size={18} /> },
@@ -43,9 +44,7 @@ export const Sidebar: React.FC = () => {
 
   const ownerNav: NavItem[] = [
     { title: 'Tổng quan Trang trại', path: '/owner/dashboard', icon: <LayoutDashboard size={18} /> },
-    { title: 'Quản lý Nông trang', path: '/owner/farms', icon: <Building2 size={18} /> },
-    { title: 'Phân khu Đất (Fields)', path: '/owner/fields', icon: <MapPin size={18} /> },
-    { title: 'Nhà màng (Zones)', path: '/owner/zones', icon: <Sprout size={18} /> },
+    { title: 'Quản lý Nông trang', path: '/owner/farms', icon: <Building2 size={18} />, badge: 'CF1' },
     { title: 'Cây trồng & Vụ mùa', path: '/owner/planting-seasons', icon: <Calendar size={18} /> },
     { title: 'Giám sát Vi khí hậu', path: '/owner/monitoring/realtime', icon: <Gauge size={18} /> },
     { title: 'Bản đồ GIS Số', path: '/owner/map', icon: <MapPin size={18} /> },

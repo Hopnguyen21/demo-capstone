@@ -384,7 +384,7 @@ export interface ServiceRequest {
   description: string;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  requestType: 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT';
+  requestType: 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT' | 'INITIAL_SETUP';
   createdAt: string;
   resolution?: string;
 }

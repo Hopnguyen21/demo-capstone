@@ -43,6 +43,8 @@ import { FarmerTasksPage } from '../../pages/farmer/FarmerTasksPage';
 import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
 import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 
+import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
+
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -56,6 +58,7 @@ export const router = createBrowserRouter([
       
       // Admin Routes
       { path: 'admin/dashboard', element: <AdminDashboard /> },
+      { path: 'admin/requests', element: <ServiceRequestsPage /> },
       { path: 'admin/tenants', element: <TenantsPage /> },
       { path: 'admin/users', element: <UsersPage /> },
       { path: 'admin/crops', element: <CropsPage /> },
@@ -79,8 +82,8 @@ export const router = createBrowserRouter([
       { path: 'owner/dashboard', element: <OwnerDashboard /> },
       { path: 'owner/farms', element: <FarmsPage /> },
       { path: 'owner/farms/create', element: <CreateFarmWizard /> },
-      { path: 'owner/fields', element: <FieldsPage /> },
-      { path: 'owner/zones', element: <ZonesPage /> },
+      { path: 'owner/fields', element: <Navigate to="/owner/farms" replace /> },
+      { path: 'owner/zones', element: <Navigate to="/owner/farms" replace /> },
       { path: 'owner/planting-seasons', element: <PlantingSeasonsPage /> },
       { path: 'owner/monitoring/realtime', element: <MonitoringRealtime /> },
       { path: 'owner/monitoring/history', element: <MonitoringHistory /> },
