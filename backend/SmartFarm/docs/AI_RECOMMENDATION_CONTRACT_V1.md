@@ -17,6 +17,8 @@ An active season, current stage, fresh telemetry and available weather are manda
 
 The provider receives a structured context and untrusted user question through `IAiAdvisoryProvider`. The default provider is unavailable and returns an explicit limitation; tests replace it with a fake provider.
 
+Development/production may configure Google Gemini through `Gemini:ApiKey`. The v1 adapter uses the stable `gemini-2.5-flash` model and requests a constrained JSON result; the API key is sent in the `x-goog-api-key` header and must come from environment/User Secrets. Available Zone actuators are included as server-built context, and provider-proposed IDs/durations are still validated against the database. Weather context is supplied independently by Open-Meteo so Gemini is never treated as a weather data source. If either provider fails, the consultation remains a persisted, non-actionable limited result.
+
 ## Consultation and rate limit
 
 `POST /api/v1/zones/{zoneId}/ai/ask` (#85) accepts a Vietnamese natural-language question of 3-2000 characters. Requests are persisted before provider invocation. Each Owner/Zone is limited by `Ai:MaxRequestsPerWindow` over `Ai:RateLimitWindowMinutes`; excess requests return HTTP 429 with a retry interval. Provider failures are stored and returned as a limited result.

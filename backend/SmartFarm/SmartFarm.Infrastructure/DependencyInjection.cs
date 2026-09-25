@@ -35,7 +35,10 @@ public static class DependencyInjection
 
         services.AddDbContext<SmartFarmDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsAssembly(typeof(SmartFarmDbContext).Assembly.FullName)));
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MigrationsAssembly(typeof(SmartFarmDbContext).Assembly.FullName);
+            }));
 
         services.AddOptions<JwtOptions>()
             .Bind(configuration.GetSection(JwtOptions.SectionName))
@@ -76,9 +79,26 @@ public static class DependencyInjection
             .Validate(x => x.RecommendationValidityMinutes > 0, "Ai:RecommendationValidityMinutes must be positive.")
             .Validate(x => x.TelemetryFreshnessMinutes > 0, "Ai:TelemetryFreshnessMinutes must be positive.")
             .ValidateOnStart();
+        services.AddOptions<GeminiOptions>()
+            .Bind(configuration.GetSection(GeminiOptions.SectionName))
+            .Validate(x => string.IsNullOrWhiteSpace(x.ApiKey) || !string.IsNullOrWhiteSpace(x.Model), "Gemini:Model is required when an API key is configured.")
+            .Validate(x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps, "Gemini:BaseUrl must be an absolute HTTPS URL.")
+            .Validate(x => x.TimeoutSeconds is >= 1 and <= 120, "Gemini:TimeoutSeconds must be between 1 and 120.")
+            .ValidateOnStart();
+        services.AddOptions<OpenMeteoOptions>()
+            .Bind(configuration.GetSection(OpenMeteoOptions.SectionName))
+            .Validate(x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps, "OpenMeteo:BaseUrl must be an absolute HTTPS URL.")
+            .Validate(x => x.TimeoutSeconds is >= 1 and <= 60, "OpenMeteo:TimeoutSeconds must be between 1 and 60.")
+            .ValidateOnStart();
+        services.AddSingleton<HttpClient>();
         services.AddScoped<IAiAdvisoryService, AiAdvisoryService>();
-        services.AddScoped<IAiAdvisoryProvider, UnavailableAiAdvisoryProvider>();
-        services.AddScoped<IAiWeatherProvider, UnavailableAiWeatherProvider>();
+        services.AddScoped<GeminiAiAdvisoryProvider>();
+        services.AddScoped<UnavailableAiAdvisoryProvider>();
+        services.AddScoped<IAiAdvisoryProvider>(provider =>
+            string.IsNullOrWhiteSpace(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.ApiKey)
+                ? provider.GetRequiredService<UnavailableAiAdvisoryProvider>()
+                : provider.GetRequiredService<GeminiAiAdvisoryProvider>());
+        services.AddScoped<IAiWeatherProvider, OpenMeteoWeatherProvider>();
         services.AddScoped<IInventoryTaskService, InventoryTaskService>();
         services.AddScoped<IFinanceService, FinanceService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();

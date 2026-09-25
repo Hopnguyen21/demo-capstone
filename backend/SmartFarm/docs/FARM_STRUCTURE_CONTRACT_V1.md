@@ -10,11 +10,11 @@ Every endpoint requires `FarmOwner`. The Tenant ID is read from the authenticate
 
 ## Boundary storage
 
-Flow 1 requires Field boundaries and endpoint #29 requires a Zone Polygon. PostgreSQL `jsonb` is used for both `fields.boundary_geo_json` and `zones.boundary_geo_json`. This works with the currently configured base PostgreSQL image and does not assume PostGIS is installed.
+Flow 1 requires Field boundaries and endpoint #29 requires a Zone Polygon. PostGIS availability has now been confirmed for the target PostgreSQL database. `fields.boundary` and `zones.boundary` are therefore the spatial source of truth and use `geometry(Polygon,4326)`, with GiST indexes and `ST_IsValid` constraints. Npgsql NetTopologySuite performs the EF conversion while the Domain remains free of persistence-framework references.
 
-Field requests use `boundaryGeoJson`; Zone requests preserve the source name `polygonGeoJson`. Both accept a GeoJSON object with `type: "Polygon"`. Each ring must contain at least four longitude/latitude positions, coordinates must be in valid ranges, and the first and last position must match. The service validates JSON shape but does not claim geometric containment, overlap detection, topology repair or geodesic area calculation.
+Field requests use `boundaryGeoJson`; Zone requests preserve the source name `polygonGeoJson`. Both accept and return a GeoJSON object with `type: "Polygon"`, so map clients do not change. Each ring must contain at least four longitude/latitude positions, coordinates must be in valid ranges, the first and last position must match, and the resulting polygon must be topologically valid. Coordinate order is longitude then latitude and SRID is 4326.
 
-When PostGIS availability is confirmed, migrate these columns to `geometry(Polygon, 4326)` using Npgsql NetTopologySuite, backfill only validated polygons, add GiST indexes and introduce database checks such as `ST_IsValid`, `ST_Within` and overlap policy. Keep the API GeoJSON shape stable during that migration.
+Migration `UsePostGisBoundaries` renames the previous JSONB columns to `boundary_geo_json_legacy`, creates the PostGIS columns, and backfills them with `ST_GeomFromGeoJSON`. The legacy columns are deliberately retained for rollback and are no longer read or written by the application. Removing them is a separate, reviewed migration after production verification. Geodesic area reconciliation, containment and overlap policy remain explicit follow-up rules rather than silently changing the existing area contract.
 
 ## Area and archive rules
 

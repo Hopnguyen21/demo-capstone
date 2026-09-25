@@ -11,7 +11,11 @@ public sealed class SmartFarmDbContextFactory : IDesignTimeDbContextFactory<Smar
             ?? "Host=localhost;Port=5432;Database=smartfarm;Username=smartfarm";
 
         var options = new DbContextOptionsBuilder<SmartFarmDbContext>()
-            .UseNpgsql(connectionString, npgsql => npgsql.MigrationsAssembly(typeof(SmartFarmDbContext).Assembly.FullName))
+            .UseNpgsql(connectionString, npgsql =>
+            {
+                npgsql.UseNetTopologySuite();
+                npgsql.MigrationsAssembly(typeof(SmartFarmDbContext).Assembly.FullName);
+            })
             .Options;
 
         return new SmartFarmDbContext(options);

@@ -248,6 +248,10 @@ public sealed class AiAdvisoryService(
             .OrderByDescending(x => x.CapturedAtUtc).ToListAsync(cancellationToken);
         var telemetry = readings.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x =>
             new AiTelemetryContextItem(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc, x.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes))).ToList();
+        var actuators = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
+            .Where(x => x.Device.ZoneId == zone.Id && x.Device.DecommissionedAtUtc == null)
+            .Select(x => new AiActuatorContextItem(x.Id, x.ActuatorType, Math.Min(1800, x.MaxDurationMinutes * 60), x.Device.Status == DeviceStatus.Online))
+            .ToListAsync(cancellationToken);
         AiWeatherResult weather;
         try { weather = await weatherProvider.GetAsync(zone.Field.FarmId, zone.Id, cancellationToken); }
         catch (Exception ex) when (ex is not OperationCanceledException) { weather = new(false, null, null, null, null, SafeProviderFailure(ex)); }
@@ -267,6 +271,7 @@ public sealed class AiAdvisoryService(
             season?.CurrentGrowthStageId, season?.CurrentGrowthStage.Name,
             season?.AppliedRequirements.Select(x => new AiRequirementContextItem(x.ParameterCode, x.MinValue, x.MaxValue, x.TargetValue, x.Unit)).ToList() ?? [],
             telemetry,
+            actuators,
             new AiWeatherContext(weather.Available, weather.Summary, weather.RainProbabilityPercent, weather.TemperatureCelsius, weather.ObservedAtUtc, weather.Limitation),
             missing,
             missing.Count == 0);

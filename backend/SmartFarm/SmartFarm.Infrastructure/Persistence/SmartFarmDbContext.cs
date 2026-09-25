@@ -60,6 +60,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasPostgresExtension("postgis");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmartFarmDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
     }

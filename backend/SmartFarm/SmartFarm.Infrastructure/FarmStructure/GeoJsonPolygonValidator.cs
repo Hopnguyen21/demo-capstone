@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SmartFarm.Application.Common.Exceptions;
+using SmartFarm.Infrastructure.Persistence.Configurations;
 
 namespace SmartFarm.Infrastructure.FarmStructure;
 
@@ -22,7 +23,22 @@ internal static class GeoJsonPolygonValidator
             ValidateRing(ring, fieldName);
         }
 
-        return JsonSerializer.Serialize(polygon);
+        var normalized = JsonSerializer.Serialize(polygon);
+        try
+        {
+            if (!GeoJsonPolygonValueConverter.Parse(normalized).IsValid)
+                throw new RequestValidationException(fieldName, "Polygon geometry is not topologically valid.");
+        }
+        catch (RequestValidationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            throw new RequestValidationException(fieldName, "Polygon geometry is invalid.");
+        }
+
+        return normalized;
     }
 
     private static void ValidateRing(JsonElement ring, string fieldName)

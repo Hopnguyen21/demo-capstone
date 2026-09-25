@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Infrastructure.Persistence;
 using Xunit;
@@ -10,7 +12,7 @@ public sealed class PersistenceModelTests
     private static SmartFarmDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<SmartFarmDbContext>()
-            .UseNpgsql("Host=localhost;Database=smartfarm_model_tests;Username=smartfarm")
+            .UseNpgsql("Host=localhost;Database=smartfarm_model_tests;Username=smartfarm", options => options.UseNetTopologySuite())
             .Options;
 
         return new SmartFarmDbContext(options);
@@ -53,13 +55,21 @@ public sealed class PersistenceModelTests
     }
 
     [Fact]
-    public void Field_and_zone_boundaries_use_postgresql_jsonb()
+    public void Field_and_zone_boundaries_use_postgis_polygon_with_gist_indexes()
     {
         using var context = CreateContext();
 
-        Assert.Equal("jsonb", context.Model.FindEntityType(typeof(Field))!
-            .FindProperty(nameof(Field.BoundaryGeoJson))!.GetColumnType());
-        Assert.Equal("jsonb", context.Model.FindEntityType(typeof(Zone))!
-            .FindProperty(nameof(Zone.BoundaryGeoJson))!.GetColumnType());
+        var designModel = context.GetService<IDesignTimeModel>().Model;
+        var field = designModel.FindEntityType(typeof(Field))!;
+        var zone = designModel.FindEntityType(typeof(Zone))!;
+
+        Assert.Equal("geometry(Polygon,4326)", field.FindProperty(nameof(Field.BoundaryGeoJson))!.GetColumnType());
+        Assert.Equal("geometry(Polygon,4326)", zone.FindProperty(nameof(Zone.BoundaryGeoJson))!.GetColumnType());
+        var fieldBoundaryIndex = field.GetIndexes().Single(index => index.Properties.Count == 1 && index.Properties[0].Name == nameof(Field.BoundaryGeoJson));
+        var zoneBoundaryIndex = zone.GetIndexes().Single(index => index.Properties.Count == 1 && index.Properties[0].Name == nameof(Zone.BoundaryGeoJson));
+        Assert.Equal("ix_fields_boundary_gist", fieldBoundaryIndex.GetDatabaseName());
+        Assert.Equal("gist", fieldBoundaryIndex.GetMethod());
+        Assert.Equal("ix_zones_boundary_gist", zoneBoundaryIndex.GetDatabaseName());
+        Assert.Equal("gist", zoneBoundaryIndex.GetMethod());
     }
 }

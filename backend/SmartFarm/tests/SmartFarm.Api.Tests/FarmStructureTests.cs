@@ -82,6 +82,39 @@ public sealed class FarmStructureTests
     }
 
     [Fact]
+    public async Task Field_rejects_a_self_intersecting_polygon()
+    {
+        using var factory = new TestApplicationFactory();
+        var seed = await factory.SeedAsync();
+        using var client = factory.CreateClient();
+        await AuthenticateAsync(client, "owner-a@example.com");
+
+        var response = await client.PostAsJsonAsync($"/api/v1/farms/{seed.FarmAId}/fields", new
+        {
+            name = "Invalid Polygon Field",
+            areaM2 = 100m,
+            boundaryGeoJson = new
+            {
+                type = "Polygon",
+                coordinates = new[]
+                {
+                    new[]
+                    {
+                        new[] { 108.440m, 11.950m },
+                        new[] { 108.442m, 11.952m },
+                        new[] { 108.440m, 11.952m },
+                        new[] { 108.442m, 11.950m },
+                        new[] { 108.440m, 11.950m }
+                    }
+                }
+            }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task Zone_create_with_non_field_parent_returns_not_found()
     {
         using var factory = new TestApplicationFactory();

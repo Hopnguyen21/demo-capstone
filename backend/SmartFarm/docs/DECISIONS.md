@@ -45,3 +45,19 @@ Reporting v1 reads only implemented transactional tables and authenticated Tenan
 Water and electricity include only acknowledged TurnOn commands. Water uses actuator flow rate;
 electricity uses rated power. Missing ratings are counted as unmeasured rather than replaced by
 assumed constants. Formulas and source tables are normative in `REPORTING_CONTRACT_V1.md`.
+
+# 23. Gemini is advisory and weather remains an independent source (2026-09-25)
+
+The production AI adapter uses Google Gemini `gemini-2.5-flash` through `IAiAdvisoryProvider`
+with structured JSON output. Secrets are loaded from environment/User Secrets and never committed.
+The model sees only server-built Tenant/Zone context and cannot call MQTT or mutate state. Proposed
+actuator IDs and durations are checked again against current database state. Open-Meteo provides
+coordinate-based weather independently; provider failure yields a non-actionable limited result.
+
+# 24. Field and Zone boundaries use PostGIS (2026-09-25)
+
+PostGIS availability was confirmed for the target PostgreSQL database. Field and Zone boundaries
+are stored as `geometry(Polygon,4326)` with GiST indexes and `ST_IsValid` constraints. The HTTP
+contract remains GeoJSON, and an Infrastructure value converter keeps NetTopologySuite out of the
+Domain project. Migration `UsePostGisBoundaries` backfills the new spatial columns from the former
+JSONB values and retains renamed legacy columns for rollback until a later cleanup migration.

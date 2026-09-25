@@ -13,15 +13,15 @@ Nền tảng backend SmartFarm dùng .NET 8, ASP.NET Core, Clean Architecture v�
 - `tests/SmartFarm.Architecture.Tests`: kiểm tra chiều phụ thuộc Clean Architecture.
 - `tests/SmartFarm.Api.Tests`: integration test cho JWT/refresh/logout, role và tenant isolation bằng EF InMemory.
 
-Schema gồm `Tenant`, `AppUser`, `RefreshToken`, `Farm`, `Field`, `Zone` và `UserZoneAccess`. Refresh token chỉ lưu SHA-256 hash; access token được liên kết bằng `jti` để logout/disable tài khoản có hiệu lực ngay. PostgreSQL lưu khóa chính bằng UUID, thời gian bằng `timestamp with time zone`, enum bằng chuỗi, đồng thời có các khóa ngoại, unique index và check constraint nền tảng. PostGIS, TimescaleDB và pgvector chưa được bật vì tài liệu yêu cầu xác nhận extension trước.
+Schema gồm `Tenant`, `AppUser`, `RefreshToken`, `Farm`, `Field`, `Zone` và `UserZoneAccess`. Refresh token chỉ lưu SHA-256 hash; access token được liên kết bằng `jti` để logout/disable tài khoản có hiệu lực ngay. PostgreSQL lưu khóa chính bằng UUID, thời gian bằng `timestamp with time zone`, enum bằng chuỗi, đồng thời có các khóa ngoại, unique index và check constraint nền tảng. PostGIS được bật cho polygon Field/Zone; TimescaleDB và pgvector vẫn chưa được bật.
 
 ## Yêu cầu
 
 - .NET SDK 8.0.x. `global.json` ghim SDK `8.0.100` và cho phép dùng patch mới nhất.
-- PostgreSQL 16 hoặc phiên bản tương thích với Npgsql 8.
+- PostgreSQL 16 hoặc phiên bản tương thích với Npgsql 8, có PostGIS.
 - `dotnet-ef` 8.0.11 để tạo hoặc áp dụng migration.
 
-Các package persistence được ghim ở phiên bản `8.0.11`: `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Design` và `Npgsql.EntityFrameworkCore.PostgreSQL`. JWT Bearer và Identity Core dùng `8.0.18`; `System.IdentityModel.Tokens.Jwt` dùng `7.1.2`.
+Các package persistence được ghim ở phiên bản `8.0.11`: `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Design`, `Npgsql.EntityFrameworkCore.PostgreSQL` và `Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite`. JWT Bearer và Identity Core dùng `8.0.18`; `System.IdentityModel.Tokens.Jwt` dùng `7.1.2`.
 
 ## Cấu hình
 
@@ -92,12 +92,25 @@ Các migration hiện có:
 - `InventoryAndFarmTasks`: kho vật tư, giao dịch nhập/xuất, cảnh báo tồn thấp, Task và lịch sử trạng thái.
 - `FinanceAndDeviceServiceLifecycle`: khoản thu/chi, báo cáo dòng tiền, vòng đời Service Request, chẩn đoán, thay thế và liên kết thiết bị cũ–mới.
 - `ReportingActuatorFlowRate`: bổ sung lưu lượng định mức của actuator làm nguồn tính lượng nước từ lệnh đã ACK.
+- `UsePostGisBoundaries`: chuyển nguồn polygon Field/Zone sang `geometry(Polygon,4326)`, backfill JSONB cũ, thêm GiST index và kiểm tra topology.
 
 ## Chạy API
 
 ```powershell
 dotnet run --project SmartFarm.Api
 ```
+
+### Nạp dữ liệu demo local
+
+Sau khi áp dụng migrations, chạy script idempotent `scripts/seed-demo.sql` bằng `psql`:
+
+```powershell
+$env:PGPASSWORD = "<postgres-password>"
+psql -h localhost -U postgres -d SmartFarmDB01 -v ON_ERROR_STOP=1 -f scripts/seed-demo.sql
+```
+
+Các tài khoản `owner@smartfarm.demo`, `farmer@smartfarm.demo`, `admin@smartfarm.demo` và
+`technician@smartfarm.demo` dùng mật khẩu local `Demo@12345`. Không chạy seed này ở production.
 
 Health endpoint:
 
@@ -127,7 +140,7 @@ Chỉ có bốn role: `PlatformAdmin`, `PlatformTechnician`, `FarmOwner`, `Farme
 
 ## Farm Field Zone API
 
-Hợp đồng và quyết định lưu polygon nằm tại `docs/FARM_STRUCTURE_CONTRACT_V1.md`. Field và Zone dùng GeoJSON Polygon lưu trong PostgreSQL `jsonb`; hệ thống hiện không giả định PostGIS đã được cài.
+Hợp đồng và quyết định lưu polygon nằm tại `docs/FARM_STRUCTURE_CONTRACT_V1.md`. Field và Zone tiếp tục nhận/trả GeoJSON Polygon nhưng lưu bằng PostGIS `geometry(Polygon,4326)` với GiST index.
 
 - Farm: `GET|POST /api/v1/farms`, `GET|PUT|DELETE /api/v1/farms/{farmId}`, `GET /api/v1/farms/{farmId}/structure`
 - Field: `GET|POST /api/v1/farms/{farmId}/fields`, `GET|PUT|DELETE /api/v1/fields/{fieldId}`
@@ -182,6 +195,14 @@ Hợp đồng chuẩn hóa Flow 4 và API #84-#88 nằm tại `docs/AI_RECOMMEND
 - `GET|DELETE /api/v1/zones/{zoneId}/ai/history`
 
 Context Farm/Zone, mùa vụ, Crop, Growth Stage, telemetry và thời tiết được dựng phía server trong Tenant từ JWT. `IAiAdvisoryProvider` và `IAiWeatherProvider` mặc định trả trạng thái không khả dụng thay vì bịa dữ liệu; môi trường triển khai phải đăng ký adapter thật. Chỉ FarmOwner có thể chấp nhận Recommendation còn hiệu lực và đủ confidence. Khi đó hệ thống mới tạo lệnh Control bất đồng bộ với `recommendation_id` và nguồn `AI_APPROVED`; thiết bị vẫn phải gửi ACK xác thực trước khi hiển thị thành công.
+
+Adapter thật hiện dùng Google Gemini `gemini-2.5-flash` và Open-Meteo. Cấu hình Gemini cho Development bằng User Secrets, không ghi key vào `appsettings.json`:
+
+```powershell
+dotnet user-secrets set "Gemini:ApiKey" "<gemini-api-key>" --project SmartFarm.Api
+```
+
+Nếu key hoặc provider không khả dụng, endpoint vẫn lưu consultation nhưng trả kết quả giới hạn, không actionable. Gemini chỉ tạo đề xuất JSON; actuator/duration được server kiểm tra lại và AI không trực tiếp bật thiết bị.
 
 ## Inventory và Farm Task API
 
