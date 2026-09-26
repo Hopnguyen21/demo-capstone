@@ -1,33 +1,31 @@
-import React, { useState } from 'react';
-import { Power, Sliders, CheckCircle2 } from 'lucide-react';
-import { Button } from '../../components/ui/BaseUI';
+import React from 'react';
+import { Sliders, ShieldCheck } from 'lucide-react';
+import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FarmerIrrigationPage: React.FC = () => {
-  const [isRunning, setIsRunning] = useState(false);
-
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       <div>
-        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Sliders className="text-[#062326]" size={22} /> Kích hoạt Bơm Tưới Thực địa
-        </h1>
-        <p className="text-xs text-slate-600 mt-1">Nông dân được cấp quyền bật tưới thủ công 15 phút tại Zone phụ trách.</p>
+        <div className="flex items-center gap-2">
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#062326] text-emerald-400 font-mono">
+            TIÊU CHUẨN CF3 - FARM WORKER HUB
+          </span>
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <Sliders className="text-[#062326]" size={22} /> Kích hoạt Bơm Tưới Thực địa & Quản lý Vi khí hậu
+          </h1>
+        </div>
+        <p className="text-xs text-slate-600 mt-1">
+          Nông dân được cấp quyền bật/tắt tưới thủ công (hẹn giờ tối đa 15 phút per BR-SAFE-01) và theo dõi lịch tưới tự động tại Zone phụ trách.
+        </p>
       </div>
 
-      <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-xs text-center space-y-4">
-        <div className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center border-4 transition-all ${isRunning ? 'bg-emerald-50 border-[#062326] text-[#062326] animate-pulse' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-          <Power size={40} />
-        </div>
-
-        <div>
-          <h3 className="text-base font-bold text-slate-900">Bơm Tưới Nhỏ Giọt Zone 01</h3>
-          <p className="text-xs text-slate-500">Trạng thái: <strong className={isRunning ? 'text-[#062326]' : 'text-slate-500'}>{isRunning ? 'ĐANG CHẠY TƯỚI (15 PHÚT)' : 'ĐANG TẮT'}</strong></p>
-        </div>
-
-        <Button size="lg" variant={isRunning ? 'danger' : 'primary'} onClick={() => setIsRunning(!isRunning)} className="w-full">
-          {isRunning ? 'TẮT BƠM NGAY' : 'BẬT BƠM TƯỚI (15 PHÚT)'}
-        </Button>
-      </div>
+      {/* Standardized Reusable CF3 Control Hub Scoped for Farmer */}
+      <CF3ControlSection
+        scopeLevel="FARMER"
+        title="Trung tâm Bật Tưới Thủ công & Lịch tưới Nông dân"
+        subtitle="Vận hành trực tiếp Rơ-le rơ-le Bơm/Van solenoid theo thời lượng an toàn, theo dõi vi khí hậu thực địa."
+        showVisualizerTab={true}
+      />
     </div>
   );
 };

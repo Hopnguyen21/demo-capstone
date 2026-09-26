@@ -4,6 +4,7 @@ import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
+import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const ZonesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -76,6 +77,15 @@ export const ZonesPage: React.FC = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Standardized CF3 Control Hub for Zones */}
+      <div className="pt-4">
+        <CF3ControlSection
+          scopeLevel="ZONE"
+          title="Điều khiển & Lịch tưới Vi khí hậu cho các Zone / Nhà màng"
+          subtitle="Cấu hình ngưỡng tham số vi khí hậu vụ trồng, kích hoạt rơ-le và quản lý lịch tưới định kỳ cho từng Zone."
+        />
       </div>
 
       {/* Modal create Zone with GIS map picker */}

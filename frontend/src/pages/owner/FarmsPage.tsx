@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
+import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FarmsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -288,6 +289,16 @@ export const FarmsPage: React.FC = () => {
               );
             })}
           </div>
+
+          {/* Embedded Standardized CF3 Control Hub for Selected Farm */}
+          <div className="pt-4">
+            <CF3ControlSection
+              scopeLevel="FARM"
+              farmId={selectedFarm.farmId}
+              title={`Điều khiển & Lịch tưới Vi khí hậu cho Trang trại "${selectedFarm.name}"`}
+              subtitle="Cấu hình tham số, kích hoạt rơ-le chấp hành và lập lịch tưới định kỳ được gom nhóm theo toàn bộ Trang trại."
+            />
+          </div>
         </div>
       )}
 
@@ -374,6 +385,17 @@ export const FarmsPage: React.FC = () => {
               </div>
             ))}
           </div>
+
+          {/* Embedded Standardized CF3 Control Hub for Selected Field */}
+          <div className="pt-4">
+            <CF3ControlSection
+              scopeLevel="FIELD"
+              farmId={selectedFarm?.farmId}
+              fieldId={selectedField.fieldId}
+              title={`Điều khiển & Lịch tưới Vi khí hậu cho Lô đất "${selectedField.name}"`}
+              subtitle="Cấu hình tham số, kích hoạt rơ-le chấp hành và lập lịch tưới định kỳ gom nhóm cho Phân khu Lô đất này."
+            />
+          </div>
         </div>
       )}
 
@@ -450,6 +472,18 @@ export const FarmsPage: React.FC = () => {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Embedded Standardized CF3 Control Hub for Selected Zone */}
+          <div className="pt-4">
+            <CF3ControlSection
+              scopeLevel="ZONE"
+              farmId={selectedFarm?.farmId}
+              fieldId={selectedField?.fieldId}
+              zoneId={selectedZone.zoneId}
+              title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
+              subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
+            />
           </div>
         </div>
       )}

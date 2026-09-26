@@ -157,6 +157,9 @@ export interface PlantingSeason {
   currentGrowthStageName?: string;
   status: 'PLANNED' | 'ACTIVE' | 'HARVESTED' | 'CANCELLED';
   progressPercent: number;
+  schedulesCount?: number;
+  assignedFarmerNames?: string[];
+  irrigationPlanNote?: string;
 }
 
 export interface Gateway {
@@ -280,6 +283,9 @@ export interface ControlSchedule {
   actionType: 'TURN_ON' | 'TURN_OFF';
   durationMinutes?: number;
   isActive: boolean;
+  plantingSeasonId?: string;
+  seasonName?: string;
+  growthStageName?: string;
 }
 
 export interface AutomationRule {
@@ -401,3 +407,62 @@ export interface AuditLog {
   createdAt: string;
   details?: string;
 }
+
+// CF3 - Environmental Control & Actuation Domain Types
+export type CF3StepNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+export interface CF3StepDetail {
+  stepNumber: CF3StepNumber;
+  title: string;
+  subtitle: string;
+  description: string;
+  status: 'IDLE' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  detailPayload?: string;
+  timestamp?: string;
+}
+
+export interface ControlExecutionLog {
+  logId: string;
+  actuatorId: string;
+  actuatorName: string;
+  actuatorType: 'PUMP' | 'VALVE' | 'FAN' | 'GROW_LIGHT';
+  zoneId: string;
+  zoneName: string;
+  action: 'TURN_ON' | 'TURN_OFF';
+  durationMinutes?: number;
+  triggerSource: 'MANUAL' | 'SCHEDULE' | 'AUTO_RULE' | 'AI_APPROVED';
+  gatewayCode: string;
+  nodeCode: string;
+  rssi?: number;
+  executionStatus: 'SUCCESS' | 'FAILED' | 'EMERGENCY_STOP' | 'INTERLOCK_BLOCKED';
+  executedAt: string;
+  completedAt?: string;
+  failureReason?: string;
+  parametersSnapshot?: {
+    soilMoisture?: number;
+    temperature?: number;
+    humidity?: number;
+    lightIntensity?: number;
+  };
+}
+
+export interface EnvironmentalTargetConfig {
+  zoneId: string;
+  zoneName: string;
+  targetSoilMoisture: number; // %
+  minSoilMoisture: number;
+  maxSoilMoisture: number;
+  maxTemperature: number; // °C
+  targetHumidity: number; // %
+  targetLux: number; // lux
+  powerWatts?: number; // Device power rating e.g. 750W
+}
+
+export interface SafetyCheckResult {
+  passed: boolean;
+  interlockBlocked: boolean;
+  rainDelayActive: boolean;
+  failsafeTimerMinutes: number;
+  warnings: string[];
+}
+

@@ -5,9 +5,10 @@ import {
   mockCrops, mockVarieties, mockGrowthProfileTomato, mockPlantingSeasons,
   mockGateways, mockNodes, mockSensors, mockActuators, mockTelemetryHistory,
   mockAlerts, mockSchedules, mockAutomationRules, mockWeather, mockAIRecommendations,
-  mockAIMessages, mockTasks, mockInventory, mockServiceRequests, mockAuditLogs
+  mockAIMessages, mockTasks, mockInventory, mockServiceRequests, mockAuditLogs,
+  mockEnvironmentalConfigs, mockControlLogs
 } from '../mocks/mockData';
-import { User, Tenant, Farm, Field, Zone, Employee, Crop, CropVariety, GrowthProfile, PlantingSeason, Gateway, SensorNode, Sensor, Actuator, TelemetryReading, Alert, ControlSchedule, AutomationRule, AIRecommendation, AIMessage, TaskItem, MaterialInventory, ServiceRequest, AuditLog } from '../types';
+import { User, Tenant, Farm, Field, Zone, Employee, Crop, CropVariety, GrowthProfile, PlantingSeason, Gateway, SensorNode, Sensor, Actuator, TelemetryReading, Alert, ControlSchedule, AutomationRule, AIRecommendation, AIMessage, TaskItem, MaterialInventory, ServiceRequest, AuditLog, ControlExecutionLog, EnvironmentalTargetConfig, CF3StepDetail, CF3StepNumber } from '../types';
 
 // Auth Service
 export const authService = {
@@ -40,6 +41,13 @@ export const userService = {
     };
     mockEmployees.push(newEmp);
     return newEmp;
+  },
+  updateFarmerZones: async (employeeId: string, assignedZones: string[]) => {
+    const emp = mockEmployees.find(e => e.employeeId === employeeId);
+    if (emp) {
+      emp.assignedZones = assignedZones;
+    }
+    return emp;
   }
 };
 
@@ -123,17 +131,98 @@ export const alertService = {
   }
 };
 
-// Control Service
+// Control Service (CF3 - Smart Environmental Control & Actuation)
 export const controlService = {
+  getActuators: async (): Promise<Actuator[]> => mockActuators,
   getSchedules: async (): Promise<ControlSchedule[]> => mockSchedules,
   getAutoRules: async (): Promise<AutomationRule[]> => mockAutomationRules,
+  getEnvironmentalConfigs: async (): Promise<EnvironmentalTargetConfig[]> => mockEnvironmentalConfigs,
+  getControlLogs: async (): Promise<ControlExecutionLog[]> => mockControlLogs,
+
+  createSeasonSchedule: async (data: Partial<ControlSchedule>): Promise<ControlSchedule> => {
+    const act = mockActuators.find(a => a.actuatorId === data.actuatorId) || mockActuators[0];
+    const zone = mockZones.find(z => z.zoneId === data.zoneId) || mockZones[0];
+    
+    const newSchedule: ControlSchedule = {
+      scheduleId: `sched-${Date.now()}`,
+      zoneId: zone.zoneId,
+      zoneName: zone.name,
+      actuatorId: act.actuatorId,
+      actuatorName: act.name,
+      name: data.name || `Lịch tưới mùa vụ (${data.growthStageName || 'Tự động'})`,
+      startTime: data.startTime || '07:00',
+      endTime: data.endTime || '07:20',
+      daysOfWeek: data.daysOfWeek || ['Mon', 'Wed', 'Fri', 'Sun'],
+      actionType: 'TURN_ON',
+      durationMinutes: data.durationMinutes || 20,
+      isActive: true,
+      plantingSeasonId: data.plantingSeasonId,
+      seasonName: data.seasonName,
+      growthStageName: data.growthStageName,
+    };
+
+    mockSchedules.unshift(newSchedule);
+    return newSchedule;
+  },
+
   toggleActuator: async (actuatorId: string, newState: 'ON' | 'OFF') => {
     const act = mockActuators.find(a => a.actuatorId === actuatorId);
     if (act) {
       act.status = newState;
       act.lastStateChangeAt = 'Vừa xong';
+      
+      // Add log entry
+      const newLog: ControlExecutionLog = {
+        logId: `ctl-log-${Date.now()}`,
+        actuatorId: act.actuatorId,
+        actuatorName: act.name,
+        actuatorType: act.actuatorType,
+        zoneId: act.zoneId || 'zone-01',
+        zoneName: act.zoneName || 'Nhà màng 01',
+        action: newState === 'ON' ? 'TURN_ON' : 'TURN_OFF',
+        durationMinutes: 15,
+        triggerSource: 'MANUAL',
+        gatewayCode: 'GW-ESP32-DL01',
+        nodeCode: 'SN-LORA-001',
+        rssi: -78,
+        executionStatus: 'SUCCESS',
+        executedAt: new Date().toISOString(),
+        completedAt: newState === 'OFF' ? new Date().toISOString() : undefined,
+        parametersSnapshot: { soilMoisture: 68.4, temperature: 24.8, humidity: 71.5, lightIntensity: 740 }
+      };
+      mockControlLogs.unshift(newLog);
     }
     return act;
+  },
+
+  emergencyStopAll: async (): Promise<{ stoppedCount: number }> => {
+    let count = 0;
+    mockActuators.forEach(act => {
+      if (act.status === 'ON') {
+        act.status = 'OFF';
+        act.lastStateChangeAt = 'Hủy khẩn cấp (Emergency Stop)';
+        count++;
+      }
+    });
+
+    const emergencyLog: ControlExecutionLog = {
+      logId: `ctl-log-emerg-${Date.now()}`,
+      actuatorId: 'ALL',
+      actuatorName: 'TẤT CẢ THIẾT BỊ CHẤP HÀNH',
+      actuatorType: 'PUMP',
+      zoneId: 'farm-01',
+      zoneName: 'Toàn bộ Trang trại',
+      action: 'TURN_OFF',
+      triggerSource: 'MANUAL',
+      gatewayCode: 'GW-ESP32-DL01',
+      nodeCode: 'BROADCAST_ALL',
+      executionStatus: 'EMERGENCY_STOP',
+      executedAt: new Date().toISOString(),
+      failureReason: 'BR-CANCEL-01: Phát lệnh HỦY KHẨN CẤP qua MQTT Broadcast Downlink'
+    };
+    mockControlLogs.unshift(emergencyLog);
+
+    return { stoppedCount: count };
   }
 };
 

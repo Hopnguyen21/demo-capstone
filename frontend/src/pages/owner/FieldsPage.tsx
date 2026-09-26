@@ -4,6 +4,7 @@ import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers } from 'lucide-re
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
 import { useNavigate } from 'react-router-dom';
+import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FieldsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -81,6 +82,15 @@ export const FieldsPage: React.FC = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Standardized CF3 Control Hub for Fields */}
+      <div className="pt-4">
+        <CF3ControlSection
+          scopeLevel="FIELD"
+          title="Điều khiển & Lịch tưới Vi khí hậu cho Phân khu Lô đất (Field Control)"
+          subtitle="Quản lý dải chỉ số môi trường, cài đặt lịch tưới Cron và kích hoạt thiết bị rơ-le cho các Lô đất."
+        />
       </div>
 
       {/* Modal create Field with GIS Location Picker */}

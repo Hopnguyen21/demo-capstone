@@ -5,7 +5,7 @@ import {
   GrowthProfile, PlantingSeason, Gateway, SensorNode, Sensor, Actuator,
   TelemetryReading, AlertRule, Alert, ControlSchedule, AutomationRule,
   WeatherData, AIMessage, AIRecommendation, TaskItem, MaterialInventory,
-  ServiceRequest, AuditLog
+  ServiceRequest, AuditLog, ControlExecutionLog, EnvironmentalTargetConfig
 } from '../types';
 
 export const mockTenants: Tenant[] = [
@@ -662,3 +662,97 @@ export const mockAuditLogs: AuditLog[] = [
   { auditLogId: 'log-01', userId: 'user-owner', userName: 'Lê Văn An', userRole: 'FARM_OWNER', action: 'CREATE_AUTOMATION_RULE', entityName: 'AutomationRule', entityId: 'rule-01', ipAddress: '113.161.42.10', createdAt: '2026-09-22T20:15:00Z', details: 'Thêm luật tự động kích quạt khi nhiệt độ > 29°C' },
   { auditLogId: 'log-02', userId: 'user-tech', userName: 'Trần Minh Trí', userRole: 'PLATFORM_TECHNICIAN', action: 'PROVISION_GATEWAY', entityName: 'Gateway', entityId: 'gw-01', ipAddress: '42.112.98.15', createdAt: '2026-09-22T19:25:00Z', details: 'Nạp Whitelist MAC 24:DC:C3:98:A1:04 vào Gateway' }
 ];
+
+export const mockEnvironmentalConfigs: EnvironmentalTargetConfig[] = [
+  {
+    zoneId: 'zone-01',
+    zoneName: 'Nhà màng 01 - Cà chua A',
+    targetSoilMoisture: 70,
+    minSoilMoisture: 60,
+    maxSoilMoisture: 80,
+    maxTemperature: 28,
+    targetHumidity: 70,
+    targetLux: 5000,
+    powerWatts: 750,
+  },
+  {
+    zoneId: 'zone-02',
+    zoneName: 'Nhà màng 02 - Cà chua B',
+    targetSoilMoisture: 65,
+    minSoilMoisture: 55,
+    maxSoilMoisture: 75,
+    maxTemperature: 27,
+    targetHumidity: 68,
+    targetLux: 4500,
+    powerWatts: 750,
+  },
+  {
+    zoneId: 'zone-03',
+    zoneName: 'Nhà màng 03 - Ớt C',
+    targetSoilMoisture: 75,
+    minSoilMoisture: 65,
+    maxSoilMoisture: 85,
+    maxTemperature: 29,
+    targetHumidity: 75,
+    targetLux: 6000,
+    powerWatts: 1200,
+  }
+];
+
+export const mockControlLogs: ControlExecutionLog[] = [
+  {
+    logId: 'ctl-log-101',
+    actuatorId: 'act-01',
+    actuatorName: 'Bơm Tưới Nhỏ Giọt Chính',
+    actuatorType: 'PUMP',
+    zoneId: 'zone-01',
+    zoneName: 'Nhà màng 01',
+    action: 'TURN_ON',
+    durationMinutes: 15,
+    triggerSource: 'MANUAL',
+    gatewayCode: 'GW-ESP32-DL01',
+    nodeCode: 'SN-LORA-001',
+    rssi: -78,
+    executionStatus: 'SUCCESS',
+    executedAt: '2026-09-26T18:30:00Z',
+    completedAt: '2026-09-26T18:45:00Z',
+    parametersSnapshot: { soilMoisture: 58.2, temperature: 24.5, humidity: 72, lightIntensity: 3500 }
+  },
+  {
+    logId: 'ctl-log-102',
+    actuatorId: 'act-03',
+    actuatorName: 'Quạt Thông Gió Đối Lưu F1',
+    actuatorType: 'FAN',
+    zoneId: 'zone-02',
+    zoneName: 'Nhà màng 02',
+    action: 'TURN_ON',
+    durationMinutes: 60,
+    triggerSource: 'AUTO_RULE',
+    gatewayCode: 'GW-ESP32-DL01',
+    nodeCode: 'SN-LORA-002',
+    rssi: -81,
+    executionStatus: 'SUCCESS',
+    executedAt: '2026-09-26T17:15:00Z',
+    completedAt: '2026-09-26T18:15:00Z',
+    parametersSnapshot: { soilMoisture: 66, temperature: 29.8, humidity: 84, lightIntensity: 4200 }
+  },
+  {
+    logId: 'ctl-log-103',
+    actuatorId: 'act-01',
+    actuatorName: 'Bơm Tưới Nhỏ Giọt Chính',
+    actuatorType: 'PUMP',
+    zoneId: 'zone-01',
+    zoneName: 'Nhà màng 01',
+    action: 'TURN_ON',
+    durationMinutes: 20,
+    triggerSource: 'SCHEDULE',
+    gatewayCode: 'GW-ESP32-DL01',
+    nodeCode: 'SN-LORA-001',
+    rssi: -75,
+    executionStatus: 'INTERLOCK_BLOCKED',
+    executedAt: '2026-09-26T14:00:00Z',
+    failureReason: 'BR-INTERLOCK-01: Phát hiện Bơm Nhà màng 03 (1200W) đang chạy. Hệ thống ngăn chặn kích hoạt 2 bơm công suất lớn đồng thời.',
+    parametersSnapshot: { soilMoisture: 64, temperature: 26, humidity: 70, lightIntensity: 4800 }
+  }
+];
+
