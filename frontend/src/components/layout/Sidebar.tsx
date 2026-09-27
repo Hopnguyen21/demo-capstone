@@ -33,11 +33,10 @@ export const Sidebar: React.FC = () => {
 
   const techNav: NavItem[] = [
     { title: 'Trung tâm Kỹ thuật', path: '/technician/dashboard', icon: <Wrench size={18} /> },
-    { title: 'Yêu cầu Triển khai', path: '/technician/deployments', icon: <PackageCheck size={18} />, badge: 'Mới' },
-    { title: 'Cấp phát Thiết bị (QR)', path: '/technician/provisioning', icon: <CpuIcon size={18} /> },
+    { title: 'Yêu cầu Lắp đặt (Chấm Node)', path: '/technician/provisioning', icon: <CpuIcon size={18} />, badge: '⚡ Mới' },
+    { title: 'Yêu cầu Bảo trì (Chấm Node)', path: '/technician/maintenance', icon: <Wrench size={18} />, badge: '🛠️ Hot-Swap' },
     { title: 'Quản lý Gateway ESP32', path: '/technician/gateways', icon: <Radio size={18} /> },
     { title: 'Chẩn đoán Node & Cảm biến', path: '/technician/devices', icon: <Activity size={18} /> },
-    { title: 'Bảo trì & Thay thế Hot-Swap', path: '/technician/maintenance', icon: <Wrench size={18} /> },
     { title: 'Kho Vật tư Linh kiện', path: '/technician/inventory', icon: <Package size={18} /> },
     { title: 'Báo cáo Kỹ thuật', path: '/technician/reports', icon: <FileText size={18} /> },
   ];

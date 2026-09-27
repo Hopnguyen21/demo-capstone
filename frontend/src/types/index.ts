@@ -380,17 +380,24 @@ export interface ServiceRequest {
   tenantId: string;
   farmId: string;
   farmName: string;
+  zoneId?: string;
+  zoneName?: string;
   gatewayId?: string;
   nodeId?: string;
   deviceName: string;
   requestedBy: string;
+  assignedOwnerName?: string;
   assignedTechnician?: string;
   assignedTechnicianName?: string;
   title: string;
   description: string;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  requestType: 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT' | 'INITIAL_SETUP';
+  status: 'OPEN' | 'IN_PROGRESS' | 'ACCEPTED_BY_OWNER' | 'RESOLVED' | 'CLOSED';
+  requestType: 'INSTALLATION' | 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT' | 'INITIAL_SETUP';
+  isAcceptedByOwner?: boolean;
+  acceptedAtByOwner?: string;
+  completedAtByTech?: string;
+  mappedNodesCount?: number;
   createdAt: string;
   resolution?: string;
 }

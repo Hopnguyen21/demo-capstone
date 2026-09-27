@@ -268,4 +268,59 @@ export const supportService = {
   getServiceRequests: async (): Promise<ServiceRequest[]> => mockServiceRequests,
   getAuditLogs: async (): Promise<AuditLog[]> => mockAuditLogs,
   getWeather: async () => mockWeather,
+
+  createServiceRequest: async (data: Partial<ServiceRequest>): Promise<ServiceRequest> => {
+    const isInst = data.requestType === 'INSTALLATION';
+    const newReq: ServiceRequest = {
+      serviceRequestId: `sr-${isInst ? 'inst' : 'maint'}-${Date.now().toString().slice(-4)}`,
+      tenantId: 'tenant-01',
+      farmId: data.farmId || 'farm-01',
+      farmName: data.farmName || 'Trang trại Nông nghiệp Đà Lạt',
+      zoneId: data.zoneId || 'zone-01',
+      zoneName: data.zoneName || 'Nhà màng 01',
+      deviceName: data.deviceName || 'Hệ thống Gateway + Cụm Node Cảm biến',
+      requestedBy: data.requestedBy || 'Admin (Khởi tạo thay Chủ trang trại)',
+      assignedOwnerName: data.assignedOwnerName || 'Lê Văn An',
+      assignedTechnician: data.assignedTechnician || 'user-tech',
+      assignedTechnicianName: data.assignedTechnicianName || 'Trần Minh Trí (Kỹ thuật viên IoT)',
+      title: data.title || (isInst ? 'Lắp đặt & Cấp phát IoT Mới' : 'Bảo trì Phần cứng & Thay thế Node'),
+      description: data.description || 'Nhiệm vụ được khởi tạo và điều phối kỹ thuật viên.',
+      priority: data.priority || 'HIGH',
+      status: data.assignedTechnician ? 'IN_PROGRESS' : 'OPEN',
+      requestType: data.requestType || 'INSTALLATION',
+      isAcceptedByOwner: false,
+      mappedNodesCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    mockServiceRequests.unshift(newReq);
+    return newReq;
+  },
+
+  acceptByOwner: async (requestId: string): Promise<ServiceRequest | undefined> => {
+    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
+    if (req) {
+      req.isAcceptedByOwner = true;
+      req.acceptedAtByOwner = new Date().toISOString();
+      req.status = 'ACCEPTED_BY_OWNER';
+    }
+    return req;
+  },
+
+  completeByTechnician: async (requestId: string, resolution?: string): Promise<ServiceRequest | undefined> => {
+    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
+    if (req) {
+      req.status = 'RESOLVED';
+      req.completedAtByTech = new Date().toISOString();
+      req.resolution = resolution || 'Kỹ thuật viên đã hoàn tất chấm node và nghiệm thu thực địa thành công.';
+    }
+    return req;
+  },
+
+  updateMappedNodes: async (requestId: string, count: number): Promise<ServiceRequest | undefined> => {
+    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
+    if (req) {
+      req.mappedNodesCount = count;
+    }
+    return req;
+  }
 };
