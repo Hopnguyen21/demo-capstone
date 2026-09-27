@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sprout, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Layers, Cpu, Building2,
   GitBranch, Check, Plus, Trash2, ArrowDown, ChevronRight, CornerDownRight,
-  UserCheck, Wrench, ShieldCheck, Calendar, Info, Send
+  UserCheck, Wrench, ShieldCheck, Calendar, Info, Send, Compass, Loader2
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
@@ -19,12 +19,7 @@ export const CreateFarmWizard: React.FC = () => {
     areaM2: '35000',
     description: 'Nông trang trồng thực nghiệm rau củ quả theo tiêu chuẩn GlobalGAP tích hợp LoRa IoT.',
     center: [11.9404, 108.4583] as [number, number],
-    polygon: [
-      [11.942, 108.456],
-      [11.942, 108.460],
-      [11.938, 108.460],
-      [11.938, 108.456],
-    ] as [number, number][],
+    polygon: [] as [number, number][],
   });
 
   // Form State for Field Level (Level 2)
@@ -32,12 +27,12 @@ export const CreateFarmWizard: React.FC = () => {
     name: 'Lô đất A1 - Phân khu Cà chua & Dưa',
     description: 'Phân khu A1 trang bị nhà kính mái đôi thông minh',
     areaM2: '18000',
-    center: [11.9405, 108.4580] as [number, number],
+    center: [11.9404, 108.4583] as [number, number],
     polygon: [
-      [11.9415, 108.4565],
-      [11.9415, 108.4595],
-      [11.9395, 108.4595],
-      [11.9395, 108.4565],
+      [11.9419, 108.4563],
+      [11.9419, 108.4603],
+      [11.9389, 108.4603],
+      [11.9389, 108.4563],
     ] as [number, number][],
   });
 
@@ -46,14 +41,41 @@ export const CreateFarmWizard: React.FC = () => {
     name: 'Nhà màng Z01 - Cà chua Beefsteak',
     description: 'Nhà màng khép kín điều hòa vi khí hậu bằng quạt thông gió & tưới nhỏ giọt',
     areaM2: '4500',
-    center: [11.9408, 108.4582] as [number, number],
+    center: [11.9404, 108.4583] as [number, number],
     polygon: [
-      [11.9412, 108.4572],
-      [11.9412, 108.4588],
-      [11.9402, 108.4588],
-      [11.9402, 108.4572],
+      [11.9410, 108.4575],
+      [11.9410, 108.4591],
+      [11.9398, 108.4591],
+      [11.9398, 108.4575],
     ] as [number, number][],
   });
+
+  // Automatically sync farm center location to child fields & zones
+  useEffect(() => {
+    const [lat, lng] = farmData.center;
+    if (lat && lng) {
+      setFieldData(prev => ({
+        ...prev,
+        center: farmData.center,
+        polygon: [
+          [parseFloat((lat + 0.0015).toFixed(6)), parseFloat((lng - 0.0020).toFixed(6))],
+          [parseFloat((lat + 0.0015).toFixed(6)), parseFloat((lng + 0.0020).toFixed(6))],
+          [parseFloat((lat - 0.0015).toFixed(6)), parseFloat((lng + 0.0020).toFixed(6))],
+          [parseFloat((lat - 0.0015).toFixed(6)), parseFloat((lng - 0.0020).toFixed(6))],
+        ],
+      }));
+      setZoneData(prev => ({
+        ...prev,
+        center: farmData.center,
+        polygon: [
+          [parseFloat((lat + 0.0006).toFixed(6)), parseFloat((lng - 0.0008).toFixed(6))],
+          [parseFloat((lat + 0.0006).toFixed(6)), parseFloat((lng + 0.0008).toFixed(6))],
+          [parseFloat((lat - 0.0006).toFixed(6)), parseFloat((lng + 0.0008).toFixed(6))],
+          [parseFloat((lat - 0.0006).toFixed(6)), parseFloat((lng - 0.0008).toFixed(6))],
+        ],
+      }));
+    }
+  }, [farmData.center[0], farmData.center[1]]);
 
   // Crop & Planting Season Data (Level 4)
   const [cropData, setCropData] = useState({
@@ -66,6 +88,59 @@ export const CreateFarmWizard: React.FC = () => {
     nodesNeeded: 4,
     actuatorsNeeded: 4,
   });
+
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+
+  const handleSearchAddress = async (queryText?: string) => {
+    const q = (queryText !== undefined ? queryText : farmData.address).trim();
+    if (!q) return;
+
+    setIsSearchingAddress(true);
+    setSearchNotice('Đang định vị vị trí GIS...');
+
+    const LOCATION_PRESETS: Record<string, [number, number]> = {
+      'đà lạt': [11.9404, 108.4583],
+      'đức trọng': [11.7256, 108.3752],
+      'đơn dương': [11.8364, 108.5721],
+      'củ chi': [11.0067, 106.5139],
+      'mộc châu': [20.8437, 104.6853],
+      'buôn ma thuột': [12.6667, 108.0383],
+      'đắk lắk': [12.6667, 108.0383],
+    };
+
+    const lower = q.toLowerCase();
+    for (const [key, coords] of Object.entries(LOCATION_PRESETS)) {
+      if (lower.includes(key)) {
+        setFarmData(prev => ({ ...prev, center: coords }));
+        setSearchNotice(`Đã định vị thành công: ${key.toUpperCase()}`);
+        setIsSearchingAddress(false);
+        setTimeout(() => setSearchNotice(null), 3500);
+        return;
+      }
+    }
+
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=vn&limit=1`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lon = parseFloat(data[0].lon);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          const newCoords: [number, number] = [parseFloat(lat.toFixed(6)), parseFloat(lon.toFixed(6))];
+          setFarmData(prev => ({ ...prev, center: newCoords }));
+          setSearchNotice(`Đã định vị địa chỉ thành công!`);
+          setTimeout(() => setSearchNotice(null), 3500);
+        }
+      } else {
+        setSearchNotice('Không tìm thấy vị trí. Thử các vùng nông nghiệp gợi ý bên dưới.');
+      }
+    } catch (err) {
+      console.warn('Geocoding search failed', err);
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
 
   const levelTabs = [
     { id: 'FARM', label: '1. Tạo Trang trại', sub: 'Tên, địa chỉ & ranh giới GIS Trang trại', icon: Building2 },
@@ -107,38 +182,7 @@ export const CreateFarmWizard: React.FC = () => {
           </div>
         </div>
 
-        {/* Workflow Progression Diagram Bar (3 Actors: Owner -> Tech -> System) */}
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div className="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-lg flex items-center gap-2.5 text-emerald-950">
-            <div className="p-2 bg-emerald-700 text-white rounded-lg shrink-0">
-              <UserCheck size={16} />
-            </div>
-            <div>
-              <div className="font-bold text-[11px] uppercase text-emerald-800">1. Farm Owner (Bạn)</div>
-              <div className="text-[10px] text-emerald-900">Khởi tạo Trang trại, Lô đất, Nhà màng & Vụ mùa</div>
-            </div>
-          </div>
 
-          <div className="p-2.5 bg-sky-50 border border-sky-200 rounded-lg flex items-center gap-2.5 text-sky-950 opacity-80">
-            <div className="p-2 bg-sky-700 text-white rounded-lg shrink-0">
-              <Wrench size={16} />
-            </div>
-            <div>
-              <div className="font-bold text-[11px] uppercase text-sky-800">2. Kỹ thuật viên IoT</div>
-              <div className="text-[10px] text-sky-900">Cấp phát Gateway, Node, Cảm biến & Ánh xạ Zone</div>
-            </div>
-          </div>
-
-          <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-2.5 text-slate-800 opacity-80">
-            <div className="p-2 bg-slate-700 text-white rounded-lg shrink-0">
-              <ShieldCheck size={16} />
-            </div>
-            <div>
-              <div className="font-bold text-[11px] uppercase text-slate-700">3. Hệ thống Platform</div>
-              <div className="text-[10px] text-slate-600">Lưu cấu hình & Kích hoạt Giám sát Vi khí hậu</div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Stepper Tabs */}
@@ -193,31 +237,55 @@ export const CreateFarmWizard: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Địa chỉ chi tiết *</label>
-                  <Input value={farmData.address} onChange={e => setFarmData({ ...farmData, address: e.target.value })} placeholder="Tỉnh/Thành, Quận/Huyện, Xã/Phường..." />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">Tọa độ Vĩ độ (Lat)</label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={farmData.center[0]}
-                      onChange={e => setFarmData({ ...farmData, center: [parseFloat(e.target.value) || 0, farmData.center[1]] })}
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        value={farmData.address}
+                        onChange={e => setFarmData({ ...farmData, address: e.target.value })}
+                        placeholder="Tỉnh/Thành, Quận/Huyện, Xã/Phường..."
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleSearchAddress();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => handleSearchAddress()}
+                      disabled={isSearchingAddress}
+                      className="bg-[#062326] hover:bg-[#062326]/90 text-white font-semibold text-xs py-2 px-3 shrink-0 flex items-center gap-1.5 shadow-xs"
+                    >
+                      {isSearchingAddress ? <Loader2 size={13} className="animate-spin text-emerald-400" /> : <Compass size={14} className="text-emerald-400" />}
+                      <span>Định vị trên GIS Map</span>
+                    </Button>
                   </div>
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">Tọa độ Kinh độ (Lng)</label>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      value={farmData.center[1]}
-                      onChange={e => setFarmData({ ...farmData, center: [farmData.center[0], parseFloat(e.target.value) || 0] })}
-                    />
+
+                  {/* Preset Location Chips */}
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500 mt-1.5">
+                    <span className="text-slate-400">Gợi ý nhanh:</span>
+                    {['Đà Lạt', 'Đức Trọng', 'Đơn Dương', 'Củ Chi', 'Mộc Châu', 'Buôn Ma Thuột'].map(city => (
+                      <button
+                        key={city}
+                        type="button"
+                        onClick={() => {
+                          const fullAddr = `${city}, Việt Nam`;
+                          setFarmData(prev => ({ ...prev, address: fullAddr }));
+                          handleSearchAddress(city);
+                        }}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200 rounded transition-colors text-[10px]"
+                      >
+                        📍 {city}
+                      </button>
+                    ))}
                   </div>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Diện tích quy hoạch ước tính (m²)</label>
-                  <Input value={farmData.areaM2} onChange={e => setFarmData({ ...farmData, areaM2: e.target.value })} />
+
+                  {searchNotice && (
+                    <div className="text-[11px] text-emerald-700 font-medium mt-1 animate-in fade-in">
+                      ✨ {searchNotice}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Mô tả Trang trại</label>
@@ -226,19 +294,23 @@ export const CreateFarmWizard: React.FC = () => {
                     className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs shadow-xs"
                     value={farmData.description}
                     onChange={e => setFarmData({ ...farmData, description: e.target.value })}
+                    placeholder="Mô tả quy mô và nông sản chính của trang trại..."
                   />
                 </div>
               </div>
 
               {/* GIS Map Picker for Farm */}
               <div>
-                <label className="block text-slate-700 font-bold text-xs mb-1.5">Bản đồ GIS Ranh giới Trang trại (Vẽ ranh giới lớn nhất)</label>
+                <label className="block text-slate-700 font-bold text-xs mb-1.5">Bản đồ GIS Vị trí Tâm điểm Trang trại (Định vị nhanh)</label>
                 <GISLocationPicker
                   level="FARM"
                   center={farmData.center}
                   onCenterChange={c => setFarmData({ ...farmData, center: c })}
                   polygon={farmData.polygon}
                   onPolygonChange={p => setFarmData({ ...farmData, polygon: p })}
+                  hidePolygon={true}
+                  hideAddressSearch={true}
+                  addressSearchQuery={farmData.address}
                   height="360px"
                 />
               </div>
@@ -303,6 +375,7 @@ export const CreateFarmWizard: React.FC = () => {
                   polygon={fieldData.polygon}
                   onPolygonChange={p => setFieldData({ ...fieldData, polygon: p })}
                   parentFarmPolygon={farmData.polygon}
+                  hideAddressSearch={true}
                   height="360px"
                 />
               </div>
@@ -365,6 +438,7 @@ export const CreateFarmWizard: React.FC = () => {
                   onPolygonChange={p => setZoneData({ ...zoneData, polygon: p })}
                   parentFarmPolygon={farmData.polygon}
                   parentFieldPolygon={fieldData.polygon}
+                  hideAddressSearch={true}
                   height="360px"
                 />
               </div>

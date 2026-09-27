@@ -3,12 +3,15 @@ import { mockServiceRequests } from '../../mocks/mockData';
 import { ServiceRequest } from '../../types';
 import { supportService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
+import { ExperimentReportModal, HardwareItem } from '../../components/control/ExperimentReportModal';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
-import { CpuIcon, QrCode, Wifi, CheckCircle2, ArrowRight, MapPin, CheckSquare, Layers, Lock, ShieldCheck, Wrench, Building2 } from 'lucide-react';
+import { CpuIcon, QrCode, Wifi, CheckCircle2, ArrowRight, MapPin, CheckSquare, Layers, Lock, ShieldCheck, Wrench, Building2, FlaskConical, FileText } from 'lucide-react';
 
 export const ProvisioningPage: React.FC = () => {
   const [requests, setRequests] = useState<ServiceRequest[]>(mockServiceRequests);
+  const [selectedRequestForExperiment, setSelectedRequestForExperiment] = useState<ServiceRequest | null>(null);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
+  const [selectedHardwareItems, setSelectedHardwareItems] = useState<HardwareItem[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // QR Provisioning tool state
@@ -25,6 +28,12 @@ export const ProvisioningPage: React.FC = () => {
     setRequests([...mockServiceRequests]);
     setSuccessMsg(`Đã cập nhật vị trí ${mappedCount} Nodes cho Phân khu! Vui lòng báo Owner nghiệm thu.`);
     setTimeout(() => setSuccessMsg(null), 4000);
+  };
+
+  const handleProceedFromExperimentToMapper = (selectedDevices: HardwareItem[], _title: string, _notes: string) => {
+    setSelectedHardwareItems(selectedDevices);
+    setSelectedRequestForMapper(selectedRequestForExperiment);
+    setSelectedRequestForExperiment(null);
   };
 
   const handleCompleteRequest = async (req: ServiceRequest) => {
@@ -136,12 +145,13 @@ export const ProvisioningPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Button 1: Vào Zone Chấm Node */}
+                    {/* Button 1: Báo cáo thực nghiệm (Lựa chọn thiết bị trước khi chấm Node) */}
                     <Button
-                      onClick={() => setSelectedRequestForMapper(req)}
-                      className="bg-sky-600 hover:bg-sky-500 text-white font-bold"
+                      onClick={() => setSelectedRequestForExperiment(req)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1.5 shadow-sm"
                     >
-                      <MapPin size={15} className="mr-1.5" /> Vào Zone Chấm Node (Node Mapper)
+                      <FlaskConical size={15} className="text-emerald-300" />
+                      <span>Báo cáo thực nghiệm</span>
                     </Button>
 
                     {/* Button 2: Xác nhận hoàn thành (Enabled only if Owner accepted) */}
@@ -177,12 +187,23 @@ export const ProvisioningPage: React.FC = () => {
         )}
       </div>
 
-      {/* Modal Interactive Zone Node Mapper */}
+      {/* Step 1 Modal: Experiment Report & Device Selection */}
+      {selectedRequestForExperiment && (
+        <ExperimentReportModal
+          isOpen={Boolean(selectedRequestForExperiment)}
+          onClose={() => setSelectedRequestForExperiment(null)}
+          request={selectedRequestForExperiment}
+          onProceedToMapper={handleProceedFromExperimentToMapper}
+        />
+      )}
+
+      {/* Step 2 Modal: Interactive Zone Node Mapper */}
       {selectedRequestForMapper && (
         <ZoneNodeMapperModal
           isOpen={Boolean(selectedRequestForMapper)}
           onClose={() => setSelectedRequestForMapper(null)}
           request={selectedRequestForMapper}
+          selectedHardwareItems={selectedHardwareItems}
           onSaveMapping={(count) => handleSaveMapping(selectedRequestForMapper.serviceRequestId, count)}
         />
       )}

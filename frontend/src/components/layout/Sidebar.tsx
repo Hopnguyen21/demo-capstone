@@ -25,7 +25,7 @@ export const Sidebar: React.FC = () => {
     { title: 'Quản lý Người dùng', path: '/admin/users', icon: <Users size={18} /> },
     { title: 'Thư viện Giống Cây', path: '/admin/crops', icon: <Sprout size={18} /> },
     { title: 'Hồ sơ Sinh trưởng', path: '/admin/growth-profiles', icon: <Activity size={18} /> },
-    { title: 'Danh mục Thiết bị IoT', path: '/admin/devices', icon: <Cpu size={18} /> },
+    { title: 'Kho Vật tư & Linh kiện', path: '/admin/devices', icon: <Package size={18} />, badge: 'Kho' },
     { title: 'Sức khỏe Máy chủ & IoT', path: '/admin/system-health', icon: <Radio size={18} /> },
     { title: 'Nhật ký Audit Logs', path: '/admin/audit-logs', icon: <ShieldAlert size={18} /> },
     { title: 'Cấu hình Platform', path: '/admin/settings', icon: <Settings size={18} /> },
