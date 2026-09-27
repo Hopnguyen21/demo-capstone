@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole } from '../../types';
 import { mockFarms, mockZones, mockWeather, mockAlerts } from '../../mocks/mockData';
@@ -9,8 +10,30 @@ import {
 
 export const Topbar: React.FC = () => {
   const { user, role, switchRole, selectedFarmId, setSelectedFarmId, selectedZoneId, setSelectedZoneId, logout } = useAuth();
+  const navigate = useNavigate();
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+
+  const handleRoleSwitch = (targetRole: UserRole) => {
+    switchRole(targetRole);
+    setShowRoleMenu(false);
+    switch (targetRole) {
+      case 'PLATFORM_ADMIN':
+        navigate('/admin/dashboard');
+        break;
+      case 'PLATFORM_TECHNICIAN':
+        navigate('/technician/dashboard');
+        break;
+      case 'FARM_OWNER':
+        navigate('/owner/dashboard');
+        break;
+      case 'FARMER':
+        navigate('/farmer/home');
+        break;
+      default:
+        navigate('/owner/dashboard');
+    }
+  };
 
   const weather = mockWeather;
   const activeAlerts = mockAlerts.filter(a => a.status === 'OPEN');
@@ -149,28 +172,28 @@ export const Topbar: React.FC = () => {
                 Chuyển nhanh vai trò (Dev Role Switcher)
               </div>
               <button
-                onClick={() => { switchRole('PLATFORM_ADMIN'); setShowRoleMenu(false); }}
+                onClick={() => handleRoleSwitch('PLATFORM_ADMIN')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-rose-50 text-rose-700 flex items-center justify-between"
               >
                 <span>1. Platform Admin</span>
                 {role === 'PLATFORM_ADMIN' && <CheckCircle2 size={13} className="text-[#119653]" />}
               </button>
               <button
-                onClick={() => { switchRole('PLATFORM_TECHNICIAN'); setShowRoleMenu(false); }}
+                onClick={() => handleRoleSwitch('PLATFORM_TECHNICIAN')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-sky-50 text-sky-700 flex items-center justify-between"
               >
                 <span>2. Platform Technician</span>
                 {role === 'PLATFORM_TECHNICIAN' && <CheckCircle2 size={13} className="text-[#119653]" />}
               </button>
               <button
-                onClick={() => { switchRole('FARM_OWNER'); setShowRoleMenu(false); }}
+                onClick={() => handleRoleSwitch('FARM_OWNER')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-50 text-emerald-700 flex items-center justify-between"
               >
                 <span>3. Farm Owner (Tenant Root)</span>
                 {role === 'FARM_OWNER' && <CheckCircle2 size={13} className="text-[#119653]" />}
               </button>
               <button
-                onClick={() => { switchRole('FARMER'); setShowRoleMenu(false); }}
+                onClick={() => handleRoleSwitch('FARMER')}
                 className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-50 text-amber-700 flex items-center justify-between"
               >
                 <span>4. Farmer / Farm Worker</span>
