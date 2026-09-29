@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { MapPin, Layers, RefreshCw, Square, Trash2, Crosshair, Maximize2, Minimize2, Move, Search, Compass, Loader2 } from 'lucide-react';
-import { Button } from '../ui/BaseUI';
+import { MapPin, Layers, RefreshCw, Square, Trash2, Crosshair, Maximize2, Minimize2, Move, Search, Compass, Loader2, Plus, Edit3, Clipboard, FileText, Check, AlertCircle, X, List, Info } from 'lucide-react';
+import { Button, Modal } from '../ui/BaseUI';
 
 // Custom Map Pins
 const createCenterPinIcon = () =>
@@ -207,6 +207,105 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
   const [searchInput, setSearchInput] = useState(addressSearchQuery);
   const [isSearching, setIsSearching] = useState(false);
   const [searchStatus, setSearchStatus] = useState<string | null>(null);
+
+  // Manual Coordinate Input State (Min 3 Points Rule)
+  const [showCoordModal, setShowCoordModal] = useState(false);
+  const [coordInputs, setCoordInputs] = useState<{ lat: string; lng: string }[]>([]);
+  const [bulkText, setBulkText] = useState('');
+  const [coordModeTab, setCoordModeTab] = useState<'rows' | 'bulk'>('rows');
+  const [coordError, setCoordError] = useState<string | null>(null);
+
+  const handleOpenCoordModal = () => {
+    if (polygon && polygon.length > 0) {
+      const pts = polygon.map(pt => ({ lat: pt[0].toFixed(6), lng: pt[1].toFixed(6) }));
+      setCoordInputs(pts);
+      setBulkText(pts.map(p => `${p.lat}, ${p.lng}`).join('\n'));
+    } else {
+      const [lat, lng] = mapCenter;
+      const defaultPts = [
+        { lat: (lat + 0.0012).toFixed(6), lng: (lng - 0.0015).toFixed(6) },
+        { lat: (lat + 0.0012).toFixed(6), lng: (lng + 0.0015).toFixed(6) },
+        { lat: (lat - 0.0012).toFixed(6), lng: (lng + 0.0015).toFixed(6) },
+      ];
+      setCoordInputs(defaultPts);
+      setBulkText(defaultPts.map(p => `${p.lat}, ${p.lng}`).join('\n'));
+    }
+    setCoordError(null);
+    setShowCoordModal(true);
+  };
+
+  const handleAddCoordRow = () => {
+    const lastPt = coordInputs[coordInputs.length - 1];
+    const baseLat = lastPt ? parseFloat(lastPt.lat) : mapCenter[0];
+    const baseLng = lastPt ? parseFloat(lastPt.lng) : mapCenter[1];
+    const newLat = (baseLat - 0.0008).toFixed(6);
+    const newLng = (baseLng - 0.0008).toFixed(6);
+    setCoordInputs(prev => [...prev, { lat: newLat, lng: newLng }]);
+  };
+
+  const handleRemoveCoordRow = (index: number) => {
+    setCoordInputs(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCoordInputChange = (index: number, field: 'lat' | 'lng', val: string) => {
+    setCoordInputs(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: val };
+      return next;
+    });
+  };
+
+  const parseValidPoints = (): [number, number][] => {
+    if (coordModeTab === 'bulk') {
+      const lines = bulkText.split('\n');
+      const valid: [number, number][] = [];
+      for (const line of lines) {
+        const parts = line.trim().split(/[\s,;]+/);
+        if (parts.length >= 2) {
+          const lat = parseFloat(parts[0]);
+          const lng = parseFloat(parts[1]);
+          if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            valid.push([parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6))]);
+          }
+        }
+      }
+      return valid;
+    } else {
+      const valid: [number, number][] = [];
+      for (const item of coordInputs) {
+        const lat = parseFloat(item.lat);
+        const lng = parseFloat(item.lng);
+        if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          valid.push([parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6))]);
+        }
+      }
+      return valid;
+    }
+  };
+
+  const handleApplyCoordinates = () => {
+    const validPoints = parseValidPoints();
+    if (validPoints.length < 3) {
+      setCoordError(`⚠️ Không thể tạo ranh giới! Yêu cầu nhập tối thiểu 3 điểm tọa độ hợp lệ. (Hiện tại chỉ có ${validPoints.length} điểm).`);
+      return;
+    }
+
+    let sumLat = 0;
+    let sumLng = 0;
+    validPoints.forEach(pt => {
+      sumLat += pt[0];
+      sumLng += pt[1];
+    });
+    const avgLat = parseFloat((sumLat / validPoints.length).toFixed(6));
+    const avgLng = parseFloat((sumLng / validPoints.length).toFixed(6));
+
+    onPolygonChange(validPoints);
+    onCenterChange([avgLat, avgLng]);
+    setMapCenter([avgLat, avgLng]);
+    setIsCenterOnly(false);
+    setShowCoordModal(false);
+    setTimeout(() => setFitKey(k => k + 1), 150);
+  };
 
   // Keyboard shortcut Esc to exit fullscreen mode
   useEffect(() => {
@@ -513,7 +612,21 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
           </div>
 
           {/* Map Layer & Zoom & Expand Controls Overlay */}
-          <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2">
+          <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2 flex-wrap justify-end">
+            {/* Manual Coordinate Input Button (Min 3 Points Rule) */}
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleOpenCoordModal}
+                title="Nhập điểm ranh giới bằng Tọa độ (Lat, Lng) - Tối thiểu 3 điểm"
+                className="bg-[#062326] hover:bg-emerald-800 text-white px-2.5 py-1 rounded-lg border border-emerald-500/50 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <MapPin size={13} className="text-emerald-400" />
+                <span>📍 Nhập Tọa độ (Lat/Lng)</span>
+                <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-1 py-0.5 rounded font-mono">Min 3 điểm</span>
+              </button>
+            )}
+
             {/* Expand / Shrink Fullscreen Toggle Button */}
             <button
               type="button"
@@ -679,6 +792,188 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modal Nhập điểm bằng Tọa độ (Lat, Lng) - Min 3 điểm */}
+      <Modal
+        isOpen={showCoordModal}
+        title="📍 Nhập Ranh giới GIS bằng Tọa độ (Lat, Lng) - Tối thiểu 3 điểm"
+        onClose={() => setShowCoordModal(false)}
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <Info size={15} className="text-sky-600" /> Quy định nhập điểm Tọa độ GIS:
+            </div>
+            <p className="text-slate-700">
+              Nhập danh sách tọa độ (Latitude: Vĩ độ, Longitude: Kinh độ). <strong>Phải nhập tối thiểu 3 điểm hợp lệ</strong> thì mới được phép cập nhật ranh giới Polygon lên bản đồ.
+            </p>
+          </div>
+
+          {/* Tab Selection Mode */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+            <button
+              type="button"
+              onClick={() => setCoordModeTab('rows')}
+              className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors ${
+                coordModeTab === 'rows'
+                  ? 'bg-[#062326] text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <List size={14} /> Nhập từng dòng (Row Inputs)
+            </button>
+            <button
+              type="button"
+              onClick={() => setCoordModeTab('bulk')}
+              className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors ${
+                coordModeTab === 'bulk'
+                  ? 'bg-[#062326] text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <FileText size={14} /> Dán văn bản hàng loạt (Bulk Paste)
+            </button>
+          </div>
+
+          {/* Validation Status Banner */}
+          {(() => {
+            const validCount = parseValidPoints().length;
+            const isValid = validCount >= 3;
+            return (
+              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+                isValid ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : 'bg-amber-50 text-amber-900 border-amber-300'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {isValid ? <Check size={16} className="text-emerald-600 shrink-0" /> : <AlertCircle size={16} className="text-amber-600 shrink-0" />}
+                  <span>
+                    Số điểm hợp lệ nhận diện được: <strong className="font-mono text-sm">{validCount}</strong> / 3 điểm tối thiểu.
+                  </span>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                  isValid ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
+                }`}>
+                  {isValid ? '✅ Đủ điều kiện (>=3 điểm)' : '⚠️ Cần thêm điểm (< 3)'}
+                </span>
+              </div>
+            );
+          })()}
+
+          {coordError && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center gap-2">
+              <AlertCircle size={15} className="text-rose-600 shrink-0" />
+              <span>{coordError}</span>
+            </div>
+          )}
+
+          {/* Row Inputs Mode */}
+          {coordModeTab === 'rows' && (
+            <div className="space-y-3">
+              <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                {coordInputs.map((row, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-slate-50 p-2 border border-slate-200 rounded-lg">
+                    <span className="font-mono font-bold text-slate-500 w-12 shrink-0">#{idx + 1}</span>
+                    <div className="flex-1 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Vĩ độ (Lat)</label>
+                        <input
+                          type="text"
+                          value={row.lat}
+                          onChange={e => handleCoordInputChange(idx, 'lat', e.target.value)}
+                          placeholder="vd: 11.9419"
+                          className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[#062326]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Kinh độ (Lng)</label>
+                        <input
+                          type="text"
+                          value={row.lng}
+                          onChange={e => handleCoordInputChange(idx, 'lng', e.target.value)}
+                          placeholder="vd: 108.4563"
+                          className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[#062326]"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCoordRow(idx)}
+                      disabled={coordInputs.length <= 1}
+                      className="p-1.5 text-rose-500 hover:text-rose-700 disabled:opacity-30 hover:bg-rose-50 rounded shrink-0 mt-3"
+                      title="Xóa điểm này"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddCoordRow}
+                  className="text-xs"
+                >
+                  <Plus size={14} className="mr-1 text-emerald-600" /> Thêm dòng tọa độ mới
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const [lat, lng] = mapCenter;
+                    setCoordInputs([
+                      { lat: (lat + 0.0015).toFixed(6), lng: (lng - 0.0018).toFixed(6) },
+                      { lat: (lat + 0.0015).toFixed(6), lng: (lng + 0.0018).toFixed(6) },
+                      { lat: (lat - 0.0015).toFixed(6), lng: (lng + 0.0018).toFixed(6) },
+                      { lat: (lat - 0.0015).toFixed(6), lng: (lng - 0.0018).toFixed(6) },
+                    ]);
+                  }}
+                  className="text-[11px] text-sky-700 hover:underline font-semibold"
+                >
+                  ⚡ Nạp 4 tọa độ mẫu chuẩn
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Paste Mode */}
+          {coordModeTab === 'bulk' && (
+            <div className="space-y-2">
+              <label className="block text-slate-700 font-semibold">
+                Dán danh sách Tọa độ (mỗi dòng một cặp "Latitude, Longitude"):
+              </label>
+              <textarea
+                rows={6}
+                value={bulkText}
+                onChange={e => setBulkText(e.target.value)}
+                placeholder={`11.9419, 108.4563\n11.9419, 108.4603\n11.9389, 108.4603\n11.9389, 108.4563`}
+                className="w-full bg-slate-900 text-emerald-300 font-mono text-xs p-3 rounded-lg border border-slate-700 focus:outline-none focus:border-emerald-400"
+              />
+              <p className="text-[10px] text-slate-500">
+                Định dạng hỗ trợ: "11.9419, 108.4563" hoặc "11.9419 108.4563" hoặc "11.9419; 108.4563".
+              </p>
+            </div>
+          )}
+
+          {/* Modal Footer Controls */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+            <Button variant="outline" onClick={() => setShowCoordModal(false)}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleApplyCoordinates}
+              disabled={parseValidPoints().length < 3}
+              className={`${
+                parseValidPoints().length >= 3
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+              } font-bold text-xs py-2 px-4 shadow-md transition-all`}
+            >
+              Áp dụng Ranh giới từ Tọa độ ({parseValidPoints().length}/3 điểm)
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

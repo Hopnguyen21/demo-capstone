@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { mockFarms, mockFields, mockZones, mockNodes, mockSensors } from '../../mocks/mockData';
+import { mockFarms, mockFields, mockZones, mockNodes, mockSensors, mockEmployees } from '../../mocks/mockData';
 import { Farm, Field, Zone } from '../../types';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
   Building2, MapPin, Layers, Plus, ArrowUpRight, ChevronRight, Sprout,
   CornerDownRight, Home, ArrowLeft, Cpu, Activity, Gauge, Sliders, Calendar,
-  Radio, CheckCircle2
+  Radio, CheckCircle2, UserCheck, UserX, User
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
@@ -18,6 +18,21 @@ export const FarmsPage: React.FC = () => {
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+
+  // Assigned Employee mapping per Zone
+  const [assignedEmployeeIdMap, setAssignedEmployeeIdMap] = useState<Record<string, string>>({
+    'zone-01': 'emp-01',
+    'zone-02': 'emp-01',
+    'zone-03': 'emp-02',
+    'zone-04': '', // Default Trống (Empty) option
+  });
+
+  const handleAssignEmployee = (zoneId: string, employeeId: string) => {
+    setAssignedEmployeeIdMap(prev => ({
+      ...prev,
+      [zoneId]: employeeId,
+    }));
+  };
 
   // Modals for adding Field or Zone directly within current level
   const [showAddFieldModal, setShowAddFieldModal] = useState(false);
@@ -470,6 +485,91 @@ export const FarmsPage: React.FC = () => {
                     <StatusBadge status={node.status} />
                   </div>
                 ))}
+              </div>
+
+              {/* Thẻ Nhân viên Phân công phụ trách Zone */}
+              <div className="pt-4 border-t border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <UserCheck size={16} className="text-[#062326]" /> Nhân viên phân công phụ trách Zone:
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold border border-emerald-200">
+                    Phân công trực tiếp
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <select
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#062326] shadow-xs cursor-pointer"
+                    value={assignedEmployeeIdMap[selectedZone.zoneId] ?? ''}
+                    onChange={e => handleAssignEmployee(selectedZone.zoneId, e.target.value)}
+                  >
+                    <option value="">-- Trống (Chưa phân công nhân viên) --</option>
+                    {mockEmployees.map(emp => (
+                      <option key={emp.employeeId} value={emp.employeeId}>
+                        👤 {emp.fullName} ({emp.position}) - {emp.phone}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Render Employee Card or Unassigned Info Card */}
+                  {(() => {
+                    const empId = assignedEmployeeIdMap[selectedZone.zoneId] ?? '';
+                    const assignedEmp = mockEmployees.find(e => e.employeeId === empId);
+
+                    if (assignedEmp) {
+                      return (
+                        <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start justify-between gap-3 animate-in fade-in">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#062326] text-emerald-400 flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-emerald-500/30">
+                              {assignedEmp.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                                {assignedEmp.fullName}
+                                <span className="px-1.5 py-0.5 text-[10px] bg-emerald-200 text-emerald-900 rounded font-bold">
+                                  Đã phân công
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-600 mt-0.5">
+                                Chức vụ: <strong>{assignedEmp.position}</strong> • SĐT: <strong>{assignedEmp.phone}</strong>
+                              </div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                Email: {assignedEmp.email}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAssignEmployee(selectedZone.zoneId, '')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 font-bold hover:underline shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded border border-rose-200 shadow-2xs"
+                            title="Bỏ phân công (Trở về Trống)"
+                          >
+                            <UserX size={12} /> Trống (Hủy)
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="p-3.5 bg-slate-50 border border-slate-200 border-dashed rounded-xl flex items-center justify-between text-slate-600 animate-in fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 border border-slate-300">
+                            <UserX size={18} />
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                              Trạng thái: <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">Trống</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Chưa phân công nhân viên quản lý Zone này. Chọn nhân viên từ danh sách ở trên.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>

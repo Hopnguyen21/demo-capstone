@@ -360,7 +360,7 @@ export const CreateFarmWizard: React.FC = () => {
                 <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex items-start gap-2">
                   <Info size={16} className="text-sky-600 shrink-0 mt-0.5" />
                   <div>
-                    <strong>Hướng dẫn GIS:</strong> Ranh giới Trang trại Mẹ hiển thị đường nét đứt màu đen trên bản đồ. Hãy vẽ ranh giới Lô đất nằm gọn bên trong Trang trại.
+                    <strong>Hướng dẫn GIS Lô đất:</strong> Bạn có thể <strong>vẽ trực tiếp trên Map</strong> hoặc bấm vào nút <strong className="text-emerald-700 font-bold">"📍 Nhập Tọa độ (Lat/Lng)"</strong> trên thanh công cụ bản đồ bên phải để nhập danh sách điểm tọa độ (yêu cầu <strong>tối thiểu 3 điểm</strong>).
                   </div>
                 </div>
               </div>
@@ -424,6 +424,13 @@ export const CreateFarmWizard: React.FC = () => {
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Diện tích Nhà màng (m²)</label>
                   <Input value={zoneData.areaM2} onChange={e => setZoneData({ ...zoneData, areaM2: e.target.value })} />
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+                  <Info size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Hướng dẫn GIS Nhà màng:</strong> Sử dụng công cụ vẽ trên Map hoặc nhấn <strong className="text-emerald-800 font-bold">"📍 Nhập Tọa độ (Lat/Lng)"</strong> trên bản đồ để nhập thủ công bảng tọa độ (yêu cầu <strong>tối thiểu 3 điểm</strong>).
+                  </div>
                 </div>
               </div>
 
