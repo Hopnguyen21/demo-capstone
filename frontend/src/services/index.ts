@@ -8,7 +8,7 @@ import {
   mockAIMessages, mockTasks, mockInventory, mockServiceRequests, mockAuditLogs,
   mockEnvironmentalConfigs, mockControlLogs
 } from '../mocks/mockData';
-import { User, Tenant, Farm, Field, Zone, Employee, Crop, CropVariety, GrowthProfile, PlantingSeason, Gateway, SensorNode, Sensor, Actuator, TelemetryReading, Alert, ControlSchedule, AutomationRule, AIRecommendation, AIMessage, TaskItem, MaterialInventory, ServiceRequest, AuditLog, ControlExecutionLog, EnvironmentalTargetConfig, CF3StepDetail, CF3StepNumber } from '../types';
+import { User, Tenant, Farm, Field, Zone, Employee, Crop, CropVariety, GrowthProfile, PlantingSeason, Gateway, SensorNode, Sensor, Actuator, TelemetryReading, Alert, ControlSchedule, AutomationRule, AIRecommendation, AIMessage, TaskItem, MaterialInventory, ServiceRequest, AuditLog, ControlExecutionLog, EnvironmentalTargetConfig, CF3StepDetail, CF3StepNumber, ContractDetails, QuotationItem } from '../types';
 
 // Auth Service
 export const authService = {
@@ -96,7 +96,122 @@ export const cropService = {
   getCrops: async (): Promise<Crop[]> => mockCrops,
   getVarieties: async (): Promise<CropVariety[]> => mockVarieties,
   getGrowthProfiles: async (): Promise<GrowthProfile[]> => [mockGrowthProfileTomato],
+  
+  createCrop: async (data: Partial<Crop>): Promise<Crop> => {
+    const created: Crop = {
+      cropId: `crop-${Date.now()}`,
+      name: data.name || 'Cây trồng mới',
+      scientificName: data.scientificName || '',
+      category: data.category || 'Rau ăn quả',
+      growthCycleDays: data.growthCycleDays || 90,
+      description: data.description || '',
+      isSystemDefined: true,
+      createdAt: new Date().toISOString(),
+      varietiesCount: 0,
+      optimalTemperatureMin: data.optimalTemperatureMin || 20,
+      optimalTemperatureMax: data.optimalTemperatureMax || 28,
+      optimalSoilMoistureMin: data.optimalSoilMoistureMin || 65,
+      optimalSoilMoistureMax: data.optimalSoilMoistureMax || 80,
+      optimalpHMin: data.optimalpHMin || 6.0,
+      optimalpHMax: data.optimalpHMax || 6.8,
+      optimalECMin: data.optimalECMin || 1.8,
+      optimalECMax: data.optimalECMax || 2.5,
+      optimalLux: data.optimalLux || 25000,
+      calendarIrrigationPlan: data.calendarIrrigationPlan || {
+        repeatType: 'DAILY',
+        lunarSyncEnabled: true,
+        sessions: [
+          { session: 'MORNING', title: 'Tưới Sáng Khởi Động', startTime: '07:30', durationMinutes: 20, volumeMl: 500, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
+          { session: 'NOON', title: 'Tưới Trưa Giảm Nhiệt', startTime: '12:00', durationMinutes: 10, volumeMl: 300, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
+          { session: 'AFTERNOON', title: 'Tưới Chiều Bổ Sung', startTime: '16:30', durationMinutes: 15, volumeMl: 400, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }
+        ]
+      },
+      growthStages: data.growthStages || []
+    };
+    mockCrops.unshift(created);
+    return created;
+  },
+
+  updateCrop: async (cropId: string, data: Partial<Crop>): Promise<Crop | undefined> => {
+    const crop = mockCrops.find(c => c.cropId === cropId);
+    if (crop) {
+      Object.assign(crop, data);
+    }
+    return crop;
+  },
+
+  syncCropScheduleToZone: async (cropId: string, zoneId: string) => {
+    const crop = mockCrops.find(c => c.cropId === cropId);
+    const zone = mockZones.find(z => z.zoneId === zoneId) || mockZones[0];
+    const targetActuator = mockActuators.find(a => a.zoneId === zoneId && a.actuatorType === 'PUMP') || mockActuators[0];
+
+    if (!crop || !crop.calendarIrrigationPlan) {
+      return { success: false, createdSchedulesCount: 0, zoneName: zone.name };
+    }
+
+    const sessions = crop.calendarIrrigationPlan.sessions.filter(s => s.enabled);
+    let createdCount = 0;
+
+    // Remove old schedules for this zone if matching names or clear to re-sync
+    sessions.forEach(sess => {
+      const scheduleName = `[${crop.name}] ${sess.title}`;
+      // Remove any existing schedule with same name
+      const existingIdx = mockSchedules.findIndex(s => s.zoneId === zoneId && s.name === scheduleName);
+      if (existingIdx !== -1) {
+        mockSchedules.splice(existingIdx, 1);
+      }
+
+      // Add fresh schedule synced from crop library
+      const newSchedule: ControlSchedule = {
+        scheduleId: `sched-synced-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        zoneId: zone.zoneId,
+        zoneName: zone.name,
+        actuatorId: targetActuator.actuatorId,
+        actuatorName: targetActuator.name,
+        name: scheduleName,
+        startTime: sess.startTime,
+        endTime: calculateEndTime(sess.startTime, sess.durationMinutes),
+        daysOfWeek: sess.daysOfWeek.length > 0 ? sess.daysOfWeek : ['Everyday'],
+        actionType: 'TURN_ON',
+        durationMinutes: sess.durationMinutes,
+        isActive: true,
+        seasonName: `Mùa vụ ${crop.name}`,
+        growthStageName: `Ca ${sess.session === 'MORNING' ? 'Sáng' : sess.session === 'NOON' ? 'Trưa' : 'Chiều'} (Từ Thư viện Cây)`
+      };
+      mockSchedules.unshift(newSchedule);
+      createdCount++;
+    });
+
+    // Also update environmental target configs for this zone to match crop requirements!
+    const envConfig = mockEnvironmentalConfigs.find(c => c.zoneId === zoneId);
+    if (envConfig) {
+      if (crop.optimalSoilMoistureMin && crop.optimalSoilMoistureMax) {
+        envConfig.minSoilMoisture = crop.optimalSoilMoistureMin;
+        envConfig.maxSoilMoisture = crop.optimalSoilMoistureMax;
+        envConfig.targetSoilMoisture = Math.round((crop.optimalSoilMoistureMin + crop.optimalSoilMoistureMax) / 2);
+      }
+      if (crop.optimalTemperatureMax) {
+        envConfig.maxTemperature = crop.optimalTemperatureMax;
+      }
+      if (crop.optimalLux) {
+        envConfig.targetLux = crop.optimalLux;
+      }
+    }
+
+    // Update zone current crop label
+    zone.currentCrop = crop.name;
+
+    return { success: true, createdSchedulesCount: createdCount, zoneName: zone.name };
+  }
 };
+
+function calculateEndTime(startTime: string, durationMinutes: number): string {
+  const [h, m] = startTime.split(':').map(Number);
+  const totalMin = h * 60 + m + durationMinutes;
+  const newH = Math.floor(totalMin / 60) % 24;
+  const newM = totalMin % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
 
 // Season Service
 export const seasonService = {
@@ -294,6 +409,78 @@ export const supportService = {
     };
     mockServiceRequests.unshift(newReq);
     return newReq;
+  },
+
+  sendContract: async (requestId: string, contract: Partial<ContractDetails>): Promise<ServiceRequest | undefined> => {
+    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
+    if (req) {
+      const items = contract.items || [];
+      const subtotal = items.reduce((acc: number, item: QuotationItem) => acc + item.unitPrice * item.quantity, 0);
+      const vatTotal = items.reduce((acc: number, item: QuotationItem) => acc + (item.unitPrice * item.quantity * (item.vatPercent / 100)), 0);
+      const totalAmount = subtotal + vatTotal;
+      const deposit30 = Math.round(totalAmount * 0.3);
+      const remaining70 = totalAmount - deposit30;
+
+      req.contractDetails = {
+        contractId: `HD-2026-${req.serviceRequestId.toUpperCase()}`,
+        createdAt: new Date().toISOString(),
+        items,
+        subtotal,
+        vatTotal,
+        totalAmount,
+        deposit30Percent: deposit30,
+        remaining70Percent: remaining70,
+        isContractSent: true,
+        contractSentAt: new Date().toISOString(),
+        isSignedByOwner: false,
+        is30PercentPaid: false,
+      };
+      req.status = 'CONTRACT_SENT';
+    }
+    return req;
+  },
+
+  signContractAndPay30: async (
+    requestId: string,
+    signatureName: string,
+    paymentMethod: 'CASH' | 'BANK_TRANSFER'
+  ): Promise<ServiceRequest | undefined> => {
+    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
+    if (req && req.contractDetails) {
+      req.contractDetails.isSignedByOwner = true;
+      req.contractDetails.signedAtByOwner = new Date().toISOString();
+      req.contractDetails.ownerSignatureName = signatureName || req.assignedOwnerName || 'Chủ trang trại';
+      req.contractDetails.is30PercentPaid = true;
+      req.contractDetails.paid30At = new Date().toISOString();
+      req.contractDetails.payment30Method = paymentMethod;
+      req.contractDetails.payment30Ref = `PAY30-${Date.now().toString().slice(-6)}`;
+      req.status = 'CONTRACT_SIGNED_30PAID';
+    }
+    return req;
+  },
+
+  signAcceptanceAndPay70: async (
+    requestId: string,
+    signatureName: string,
+    paymentMethod: 'CASH' | 'BANK_TRANSFER'
+  ): Promise<ServiceRequest | undefined> => {
+    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
+    if (req) {
+      req.isAcceptedByOwner = true;
+      req.acceptedAtByOwner = new Date().toISOString();
+      req.status = 'RESOLVED';
+      req.acceptanceDetails = {
+        isAcceptanceSigned: true,
+        signedAt: new Date().toISOString(),
+        ownerSignatureName: signatureName || req.assignedOwnerName || 'Chủ trang trại',
+        is70PercentPaid: true,
+        paid70At: new Date().toISOString(),
+        payment70Method: paymentMethod,
+        payment70Ref: `PAY70-${Date.now().toString().slice(-6)}`,
+        notes: 'Owner đã ký biên bản nghiệm thu bàn giao và hoàn tất thanh toán 70% còn lại.'
+      };
+    }
+    return req;
   },
 
   acceptByOwner: async (requestId: string): Promise<ServiceRequest | undefined> => {
