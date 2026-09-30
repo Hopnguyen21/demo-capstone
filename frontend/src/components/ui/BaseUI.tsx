@@ -195,7 +195,7 @@ export const Modal: React.FC<{
 }> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
       <div className="w-full max-w-xl bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-900">
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
