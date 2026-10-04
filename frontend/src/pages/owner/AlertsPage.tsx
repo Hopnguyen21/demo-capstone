@@ -322,10 +322,10 @@ export const AlertsPage: React.FC = () => {
             <div className="pt-2 border-t border-slate-700 space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] text-slate-300 font-bold flex items-center gap-1">
-                  <Power size={10} className="text-emerald-400" /> Trạng thái thiết bị (Tự động)
+                  <Power size={10} className="text-emerald-400" /> Trạng thái thiết bị (Mặc định OFF ➔ Tự động BẬT khi có sự cố)
                 </div>
-                <button onClick={() => setShowLog(p => !p)} className="text-[9px] text-slate-500 hover:text-slate-300 underline">
-                  {showLog ? 'Ẩn log' : 'Xem log'}
+                <button onClick={() => setShowLog(p => !p)} className="text-[9px] text-slate-400 hover:text-slate-200 underline">
+                  {showLog ? 'Ẩn nhật ký' : 'Xem nhật ký'}
                 </button>
               </div>
               {/* Derive unique actuators from all enabled rules */}
@@ -333,17 +333,17 @@ export const AlertsPage: React.FC = () => {
                 const isOn = !!activeActions[rule.id];
                 const md = METRICS.find(m => m.key === rule.metric);
                 return (
-                  <div key={rule.id} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 transition-all duration-500 ${isOn ? 'bg-emerald-900/40 ring-1 ring-emerald-500/50' : 'bg-slate-800/60'}`}>
+                  <div key={rule.id} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 transition-all duration-500 ${isOn ? 'bg-emerald-900/60 ring-1 ring-emerald-500/60' : 'bg-slate-800/60'}`}>
                     <div className="flex items-center gap-1.5 min-w-0">
                       <div className={`w-2 h-2 rounded-full shrink-0 transition-all duration-500 ${isOn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-                      <span className={`text-[10px] truncate ${isOn ? 'text-emerald-300 font-semibold' : 'text-slate-500'}`}>
+                      <span className={`text-[10px] truncate ${isOn ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
                         {rule.action}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {md && <span className="text-[9px] text-slate-600">{md.label}</span>}
+                      {md && <span className="text-[9px] text-slate-500">{md.label}</span>}
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all duration-500 ${isOn ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-500'}`}>
-                        {isOn ? 'ON' : 'OFF'}
+                        {isOn ? '🟢 ON (TỰ BẬT)' : 'OFF (MẶC ĐỊNH)'}
                       </span>
                     </div>
                   </div>
@@ -352,10 +352,10 @@ export const AlertsPage: React.FC = () => {
               {/* Auto-action log */}
               {showLog && autoLog.length > 0 && (
                 <div className="mt-2 space-y-0.5 max-h-28 overflow-y-auto">
-                  <div className="text-[9px] text-slate-500 font-bold mb-1">Nhật ký tự động:</div>
+                  <div className="text-[9px] text-slate-400 font-bold mb-1">Nhật ký kích hoạt khi có sự cố:</div>
                   {autoLog.map((entry, i) => (
-                    <div key={i} className="text-[9px] text-slate-400 flex items-start gap-1.5">
-                      <span className="text-slate-600 font-mono shrink-0">{entry.time}</span>
+                    <div key={i} className="text-[9px] text-slate-300 flex items-start gap-1.5">
+                      <span className="text-slate-500 font-mono shrink-0">{entry.time}</span>
                       <span>{entry.msg}</span>
                     </div>
                   ))}

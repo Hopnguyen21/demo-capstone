@@ -333,53 +333,143 @@ export const CropsPage: React.FC = () => {
                 </div>
 
                 {/* Optimal Environmental Parameters */}
-                <div className="p-3 bg-[#062326]/5 border border-[#062326]/20 rounded-xl space-y-3">
-                  <h4 className="font-bold text-[#062326] flex items-center gap-1.5">
-                    <Sliders size={14} /> Cấu hình Ngưỡng Vi Khí Hậu Tối Ưu (Environmental Requirements)
-                  </h4>
+                <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3.5 shadow-xs">
+                  <div className="flex items-center gap-2.5 pb-2 border-b border-slate-200/60">
+                    <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl shrink-0">
+                      <Sliders size={16} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs sm:text-sm">
+                        Cấu hình Ngưỡng Vi Khí Hậu Tối Ưu (Environmental Requirements)
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Ngưỡng tham số sinh trưởng tối ưu VietGAP làm căn cứ tự động kích hoạt thiết bị.
+                      </p>
+                    </div>
+                  </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
-                    <div className="flex flex-col justify-end">
-                      <label className="block text-[11px] font-medium text-slate-600 mb-1.5 min-h-[32px] flex items-end leading-tight">
-                        Nhiệt độ °C (Min - Max)
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <Input type="number" value={formData.optimalTemperatureMin || 20} onChange={e => setFormData({ ...formData, optimalTemperatureMin: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
-                        <span className="text-slate-400 font-bold">-</span>
-                        <Input type="number" value={formData.optimalTemperatureMax || 28} onChange={e => setFormData({ ...formData, optimalTemperatureMax: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* 1. Nhiệt độ */}
+                    <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2.5 shadow-2xs hover:border-rose-300 transition-all flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                        <div className="p-1 rounded bg-rose-50 text-rose-600 border border-rose-100">
+                          <Thermometer size={14} />
+                        </div>
+                        <span>Nhiệt độ (°C)</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 items-center">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
+                          <Input
+                            type="number"
+                            value={formData.optimalTemperatureMin || 20}
+                            onChange={e => setFormData({ ...formData, optimalTemperatureMin: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
+                          <Input
+                            type="number"
+                            value={formData.optimalTemperatureMax || 28}
+                            onChange={e => setFormData({ ...formData, optimalTemperatureMax: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-end">
-                      <label className="block text-[11px] font-medium text-slate-600 mb-1.5 min-h-[32px] flex items-end leading-tight">
-                        Độ ẩm đất % (Min - Max)
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <Input type="number" value={formData.optimalSoilMoistureMin || 65} onChange={e => setFormData({ ...formData, optimalSoilMoistureMin: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
-                        <span className="text-slate-400 font-bold">-</span>
-                        <Input type="number" value={formData.optimalSoilMoistureMax || 80} onChange={e => setFormData({ ...formData, optimalSoilMoistureMax: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
+                    {/* 2. Độ ẩm đất */}
+                    <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2.5 shadow-2xs hover:border-sky-300 transition-all flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                        <div className="p-1 rounded bg-sky-50 text-sky-600 border border-sky-100">
+                          <Droplets size={14} />
+                        </div>
+                        <span>Độ ẩm đất (%)</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 items-center">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
+                          <Input
+                            type="number"
+                            value={formData.optimalSoilMoistureMin || 65}
+                            onChange={e => setFormData({ ...formData, optimalSoilMoistureMin: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
+                          <Input
+                            type="number"
+                            value={formData.optimalSoilMoistureMax || 80}
+                            onChange={e => setFormData({ ...formData, optimalSoilMoistureMax: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-end">
-                      <label className="block text-[11px] font-medium text-slate-600 mb-1.5 min-h-[32px] flex items-end leading-tight">
-                        Độ pH (Min - Max)
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <Input type="number" step="0.1" value={formData.optimalpHMin || 6.0} onChange={e => setFormData({ ...formData, optimalpHMin: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
-                        <span className="text-slate-400 font-bold">-</span>
-                        <Input type="number" step="0.1" value={formData.optimalpHMax || 6.8} onChange={e => setFormData({ ...formData, optimalpHMax: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
+                    {/* 3. Độ pH */}
+                    <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2.5 shadow-2xs hover:border-amber-300 transition-all flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                        <div className="p-1 rounded bg-amber-50 text-amber-600 border border-amber-100">
+                          <Sun size={14} />
+                        </div>
+                        <span>Độ pH</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 items-center">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={formData.optimalpHMin || 6.0}
+                            onChange={e => setFormData({ ...formData, optimalpHMin: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={formData.optimalpHMax || 6.8}
+                            onChange={e => setFormData({ ...formData, optimalpHMax: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-end">
-                      <label className="block text-[11px] font-medium text-slate-600 mb-1.5 min-h-[32px] flex items-end leading-tight">
-                        Độ EC mS/cm (Min - Max)
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <Input type="number" step="0.1" value={formData.optimalECMin || 1.8} onChange={e => setFormData({ ...formData, optimalECMin: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
-                        <span className="text-slate-400 font-bold">-</span>
-                        <Input type="number" step="0.1" value={formData.optimalECMax || 2.5} onChange={e => setFormData({ ...formData, optimalECMax: Number(e.target.value) })} className="px-1.5 text-center flex-1 min-w-0" />
+                    {/* 4. Độ EC */}
+                    <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2.5 shadow-2xs hover:border-purple-300 transition-all flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                        <div className="p-1 rounded bg-purple-50 text-purple-600 border border-purple-100">
+                          <Zap size={14} />
+                        </div>
+                        <span>Độ EC (mS/cm)</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 items-center">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={formData.optimalECMin || 1.8}
+                            onChange={e => setFormData({ ...formData, optimalECMin: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={formData.optimalECMax || 2.5}
+                            onChange={e => setFormData({ ...formData, optimalECMax: Number(e.target.value) })}
+                            className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
