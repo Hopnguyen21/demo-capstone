@@ -410,6 +410,20 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                       <p className={`text-[10px] font-mono mt-1 ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
                         MAC: {dev.mac}
                       </p>
+                      {isSelected && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Simulate getting GPS from phone
+                            const simLat = 11.9400 + Math.random() * 0.0008;
+                            const simLng = 108.4578 + Math.random() * 0.0012;
+                            handleMapClick(parseFloat(simLat.toFixed(6)), parseFloat(simLng.toFixed(6)));
+                          }}
+                          className="mt-2 w-full py-1.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg text-[10px] flex items-center justify-center gap-1 transition-colors"
+                        >
+                          <Crosshair size={12} /> Lấy GPS điện thoại để chấm Node
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -423,7 +437,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
               </strong>
               <p className="text-emerald-800/90 leading-relaxed">
                 1. Chọn thiết bị vật tư bên trái.<br />
-                2. Nhấp trực tiếp lên bản đồ GIS nhà màng.<br />
+                2. Nhấp trực tiếp lên bản đồ GIS hoặc <strong>bấm "Lấy GPS điện thoại"</strong> khi đang đứng tại hiện trường.<br />
                 3. Giữ chuột kéo ghim để di chuyển.<br />
                 4. Bấm "Lưu Sơ đồ Node".
               </p>

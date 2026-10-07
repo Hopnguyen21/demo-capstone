@@ -5,15 +5,15 @@ import {
 } from 'lucide-react';
 import { Button, StatusBadge } from '../../components/ui/BaseUI';
 import { controlService } from '../../services';
-import { CF3FlowVisualizer } from '../../components/control/CF3FlowVisualizer';
 import { EnvironmentalParametersPanel } from '../../components/control/EnvironmentalParametersPanel';
 import { ActuatorControlGrid } from '../../components/control/ActuatorControlGrid';
 import { SafetyInterlockRulesCard } from '../../components/control/SafetyInterlockRulesCard';
 import { ControlHistoryLogsTable } from '../../components/control/ControlHistoryLogsTable';
+import { ZoneAlertCenter } from '../../components/alerts/ZoneAlertCenter';
 import { Actuator, ControlExecutionLog, EnvironmentalTargetConfig } from '../../types';
 
 export const ControlPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'VISUALIZER' | 'ACTUATORS' | 'SAFETY' | 'LOGS'>('VISUALIZER');
+  const [activeTab, setActiveTab] = useState<'ALERTS' | 'ACTUATORS' | 'SAFETY' | 'LOGS'>('ALERTS');
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [configs, setConfigs] = useState<EnvironmentalTargetConfig[]>([]);
   const [logs, setLogs] = useState<ControlExecutionLog[]>([]);
@@ -132,15 +132,15 @@ export const ControlPage: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-1 font-medium text-xs">
         <button
-          onClick={() => setActiveTab('VISUALIZER')}
+          onClick={() => setActiveTab('ALERTS')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
-            activeTab === 'VISUALIZER'
-              ? 'bg-[#062326] text-white shadow-sm font-bold'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            activeTab === 'ALERTS'
+              ? 'bg-rose-700 text-white shadow-sm font-bold'
+              : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
           }`}
         >
-          <Sparkles size={16} className={activeTab === 'VISUALIZER' ? 'text-emerald-400' : 'text-slate-500'} />
-          Mô phỏng Trực quan Luồng 10 Bước CF3
+          <ShieldAlert size={16} className={activeTab === 'ALERTS' ? 'text-white' : 'text-rose-600'} />
+          Trung tâm Cảnh báo Nông nghiệp Zone
         </button>
 
         <button
@@ -181,10 +181,10 @@ export const ControlPage: React.FC = () => {
       </div>
 
       {/* Tab Contents */}
-      {activeTab === 'VISUALIZER' && (
-        <CF3FlowVisualizer
-          actuators={actuators}
-          onActuatorExecuted={handleToggleActuator}
+      {activeTab === 'ALERTS' && (
+        <ZoneAlertCenter
+          scopeLevel="GLOBAL"
+          onNavigateToControl={() => setActiveTab('ACTUATORS')}
         />
       )}
 

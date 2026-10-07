@@ -191,19 +191,28 @@ export const Modal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   title: string;
+  size?: 'md' | 'lg' | 'xl' | 'full';
   children: React.ReactNode;
-}> = ({ isOpen, onClose, title, children }) => {
+}> = ({ isOpen, onClose, title, size = 'md', children }) => {
   if (!isOpen) return null;
+  
+  const sizeClasses = {
+    md: 'max-w-xl',
+    lg: 'max-w-4xl',
+    xl: 'max-w-6xl',
+    full: 'max-w-[95vw] h-[95vh] flex flex-col',
+  };
+
   return (
     <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-      <div className="w-full max-w-xl bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-900">
-        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+      <div className={cn("w-full bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-900", sizeClasses[size])}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50 shrink-0">
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200">
             ✕
           </button>
         </div>
-        <div className="p-5 max-h-[80vh] overflow-y-auto">{children}</div>
+        <div className={cn("p-5 overflow-y-auto", size === 'full' ? 'flex-1' : 'max-h-[80vh]')}>{children}</div>
       </div>
     </div>
   );

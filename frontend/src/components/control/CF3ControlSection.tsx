@@ -5,12 +5,12 @@ import {
 } from 'lucide-react';
 import { Button, Modal, StatusBadge } from '../ui/BaseUI';
 import { controlService, cropService } from '../../services';
-import { CF3FlowVisualizer } from './CF3FlowVisualizer';
 import { EnvironmentalParametersPanel } from './EnvironmentalParametersPanel';
 import { ActuatorControlGrid } from './ActuatorControlGrid';
 import { SafetyInterlockRulesCard } from './SafetyInterlockRulesCard';
 import { ControlHistoryLogsTable } from './ControlHistoryLogsTable';
 import { CropCalendarView } from '../crops/CropCalendarView';
+import { ZoneAlertCenter } from '../alerts/ZoneAlertCenter';
 import { 
   Actuator, ControlExecutionLog, EnvironmentalTargetConfig, 
   ControlSchedule, AutomationRule, Zone, Field, Farm, Crop 
@@ -24,7 +24,7 @@ export interface CF3ControlSectionProps {
   zoneId?: string;
   title?: string;
   subtitle?: string;
-  showVisualizerTab?: boolean;
+  defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS';
 }
 
 export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
@@ -34,9 +34,9 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   zoneId,
   title,
   subtitle,
-  showVisualizerTab = true,
+  defaultTab = 'ACTUATORS',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'VISUALIZER' | 'SAFETY' | 'LOGS'>('ACTUATORS');
+  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>(defaultTab);
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [configs, setConfigs] = useState<EnvironmentalTargetConfig[]>([]);
   const [logs, setLogs] = useState<ControlExecutionLog[]>([]);
@@ -83,7 +83,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       ]);
 
       // Filter actuators by scope
-      const filteredActuators = allAct.filter(a => {
+      const filteredActuators = (allAct || []).filter((a: any) => {
         if (zoneId) return a.zoneId === zoneId;
         if (fieldId) return scopedZoneIds.includes(a.zoneId || '');
         if (farmId) return a.farmId === farmId;
@@ -91,10 +91,10 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       });
 
       // Filter configs by scope
-      const filteredConfigs = allCfg.filter(c => scopedZoneIds.includes(c.zoneId));
+      const filteredConfigs = (allCfg || []).filter((c: any) => scopedZoneIds.includes(c.zoneId));
 
       // Filter logs by scope
-      const filteredLogs = allLogs.filter(l => {
+      const filteredLogs = (allLogs || []).filter((l: any) => {
         if (zoneId) return l.zoneId === zoneId;
         if (fieldId) return scopedZoneIds.includes(l.zoneId);
         if (farmId) return l.zoneId === farmId || scopedZoneIds.includes(l.zoneId);
@@ -102,10 +102,10 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       });
 
       // Filter schedules by scope
-      const filteredSchedules = allSch.filter(s => scopedZoneIds.includes(s.zoneId));
+      const filteredSchedules = (allSch || []).filter((s: any) => scopedZoneIds.includes(s.zoneId));
       
       // Filter auto rules by scope
-      const filteredRules = allRules.filter(r => scopedZoneIds.includes(r.zoneId));
+      const filteredRules = (allRules || []).filter((r: any) => scopedZoneIds.includes(r.zoneId));
 
       setActuators(filteredActuators);
       setConfigs(filteredConfigs.length > 0 ? filteredConfigs : allCfg);
@@ -225,6 +225,15 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       {/* Sub Tabs Bar */}
       <div className="flex items-center gap-1 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200 overflow-x-auto">
         <button
+          onClick={() => setActiveSubTab('ALERTS')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+            activeSubTab === 'ALERTS' ? 'bg-rose-700 text-white shadow-xs font-bold' : 'text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100'
+          }`}
+        >
+          <ShieldAlert size={14} className={activeSubTab === 'ALERTS' ? 'text-white' : 'text-rose-600'} /> Trung tâm Cảnh báo Zone
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('ACTUATORS')}
           className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
             activeSubTab === 'ACTUATORS' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -251,17 +260,6 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           <Calendar size={14} /> Lịch tưới & Auto Rules ({schedules.length + autoRules.length})
         </button>
 
-        {showVisualizerTab && (
-          <button
-            onClick={() => setActiveSubTab('VISUALIZER')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-              activeSubTab === 'VISUALIZER' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sparkles size={14} /> Mô phỏng 10 Bước
-          </button>
-        )}
-
         <button
           onClick={() => setActiveSubTab('SAFETY')}
           className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
@@ -282,6 +280,16 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       </div>
 
       {/* SUBTAB CONTENT */}
+      {activeSubTab === 'ALERTS' && (
+        <ZoneAlertCenter
+          scopeLevel={scopeLevel}
+          farmId={farmId}
+          fieldId={fieldId}
+          zoneId={zoneId}
+          onNavigateToControl={() => setActiveSubTab('ACTUATORS')}
+        />
+      )}
+
       {activeSubTab === 'ACTUATORS' && (
         <ActuatorControlGrid
           actuators={actuators}
@@ -416,13 +424,6 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
             )}
           </div>
         </div>
-      )}
-
-      {activeSubTab === 'VISUALIZER' && showVisualizerTab && (
-        <CF3FlowVisualizer
-          actuators={actuators}
-          onActuatorExecuted={handleToggleActuator}
-        />
       )}
 
       {activeSubTab === 'SAFETY' && (

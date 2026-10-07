@@ -1,8 +1,7 @@
 import React from 'react';
 import { MetricCard, StatusBadge, CropRangeBand, Button } from '../../components/ui/BaseUI';
 import { mockFarms, mockZones, mockAlerts, mockWeather, mockAIRecommendations, mockActuators } from '../../mocks/mockData';
-import { Sprout, Gauge, Sliders, ShieldAlert, Bot, Sun, CloudRain, ArrowUpRight, CheckCircle2, XCircle } from 'lucide-react';
-import { FarmGISMap } from '../../components/maps/FarmGISMap';
+import { Sprout, Gauge, Sliders, ShieldAlert, Bot, Sun, CloudRain, CheckCircle2, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const OwnerDashboard: React.FC = () => {
@@ -100,27 +99,17 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Main Grid: Telemetry Range Bands + GIS Map */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 flex items-center justify-between">
-            <span>Dải vi khí hậu Thích ứng (Crop-aware)</span>
-            <span className="text-xs text-[#062326] font-semibold">Nhà màng 01</span>
-          </h3>
+      {/* Main Grid: Telemetry Range Bands */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-bold text-slate-900 flex items-center justify-between">
+          <span>Dải vi khí hậu Thích ứng (Crop-aware)</span>
+          <span className="text-xs text-[#062326] font-semibold">Nhà màng 01</span>
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <CropRangeBand label="Độ ẩm đất (Soil Moisture)" min={60} max={80} target={70} current={68.4} unit="%" />
           <CropRangeBand label="Nhiệt độ (Temperature)" min={18} max={28} target={24} current={24.8} unit="°C" />
           <CropRangeBand label="Độ ẩm không khí (Humidity)" min={60} max={80} target={70} current={71.5} unit="%" />
           <CropRangeBand label="Ánh sáng (Light)" min={500} max={950} target={750} current={740} unit="lux" />
-        </div>
-
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900">Bản đồ GIS Số phân vùng Nông trang</h3>
-            <button onClick={() => navigate('/owner/map')} className="text-xs text-[#062326] font-semibold hover:underline flex items-center gap-1">
-              Xem toàn màn hình GIS <ArrowUpRight size={13} />
-            </button>
-          </div>
-          <FarmGISMap height="400px" />
         </div>
       </div>
     </div>

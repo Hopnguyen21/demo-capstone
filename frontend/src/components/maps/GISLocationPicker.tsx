@@ -88,6 +88,21 @@ const LOCATION_PRESETS: { name: string; coords: [number, number] }[] = [
   { name: 'Buôn Ma Thuột', coords: [12.6667, 108.0383] },
 ];
 
+// ─── Utility Exports ────────────────────────────────────────────────────────
+export const calculatePolygonAreaM2 = (coords: [number, number][]): number => {
+  if (coords.length < 3) return 0;
+  let area = 0;
+  const n = coords.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const p1 = coords[i];
+    const p2 = coords[j];
+    area += (p1[1] * 111320 * Math.cos((p1[0] * Math.PI) / 180)) * (p2[0] * 110540) -
+      (p2[1] * 111320 * Math.cos((p2[0] * Math.PI) / 180)) * (p1[0] * 110540);
+  }
+  return Math.abs(Math.round(area / 2));
+};
+
 // ─── Point-in-Polygon (Ray Casting) ───────────────────────────────────────────
 function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
   if (polygon.length < 3) return true; // no boundary = always inside
@@ -794,7 +809,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
           {/* Map Layer & Zoom & Expand Controls Overlay */}
           <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2 flex-wrap justify-end">
             {/* Manual Coordinate Input Button */}
-            {!readOnly && (
+            {!readOnly && !hidePolygon && (
               <button
                 type="button"
                 onClick={handleOpenCoordModal}
@@ -1016,7 +1031,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               <Info size={15} className="text-sky-600" /> Quy định nhập điểm Tọa độ GIS:
             </div>
             <p className="text-slate-700">
-              Nhập danh sách tọa độ (Latitude: Vĩ độ, Longitude: Kinh độ). <strong>Phải nhập tối thiểu 3 điểm hợp lệ</strong> thì mới được phép cập nhật ranh giới Polygon lên bản đồ.
+              Nhập danh sách tọa độ (Latitude: Vĩ độ, Longitude: Kinh độ). <strong>Phải nhập tối thiểu 3 điểm hợp lệ</strong> theo thứ tự nối tiếp nhau (chiều kim đồng hồ hoặc ngược lại) để tạo thành vòng khép kín.
               {level === 'ZONE' && parentFieldPolygon && parentFieldPolygon.length >= 3 && (
                 <> <strong className="text-red-700">Zone phải nằm hoàn toàn bên trong Lô đất (Field).</strong></>
               )}

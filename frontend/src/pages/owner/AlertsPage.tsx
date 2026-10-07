@@ -311,8 +311,28 @@ export const AlertsPage: React.FC = () => {
                       <span className="text-[10px] text-slate-500 w-8 shrink-0">{m.unit}</span>
                     </div>
                   </div>
-                  <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-1000 ${badRule ? (badRule.severity === 'CRITICAL' ? 'bg-rose-500' : 'bg-amber-400') : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+                  <div className="relative w-full h-2 mt-1 bg-slate-700 rounded-full group">
+                    <div 
+                      className={`absolute top-0 left-0 h-full rounded-full transition-all duration-75 ${badRule ? (badRule.severity === 'CRITICAL' ? 'bg-rose-500' : 'bg-amber-400') : 'bg-emerald-500'}`} 
+                      style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} 
+                    />
+                    <input
+                      type="range"
+                      min={m.min}
+                      max={m.max}
+                      step={m.key === 'light' ? 100 : 0.1}
+                      value={val}
+                      onChange={e => { 
+                        const v = parseFloat(e.target.value); 
+                        if (!isNaN(v)) { 
+                          const next = { ...sensorRef.current, [m.key]: parseFloat(Math.min(m.max, Math.max(m.min, v)).toFixed(2)) }; 
+                          setSensorValues(next); 
+                          checkRules(next); 
+                        } 
+                      }}
+                      className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                      title={`Kéo để thay đổi ${m.label}`}
+                    />
                   </div>
                   {badRule && <div className="mt-1 text-[9px] text-amber-300 flex items-center gap-1"><Power size={8} /> {badRule.action}</div>}
                 </div>

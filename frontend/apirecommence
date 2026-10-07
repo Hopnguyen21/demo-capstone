@@ -1,0 +1,115 @@
+# Kế hoạch & Mapping API giữa Frontend và Backend
+
+Dựa trên cấu trúc Backend (thư mục `SmartFarm.Api/Controllers`) và Router của Frontend, dưới đây là bản đồ chi tiết các API sẽ được gọi ở từng trang trên Frontend.
+
+## 1. Authentication & Common
+- **Trang Login (`/login`)**
+  - `POST /api/auth/login` (Xác thực người dùng, lấy Token)
+  - `POST /api/auth/refresh-token` (Refresh phiên đăng nhập)
+
+## 2. Platform Admin (Quản trị viên Hệ thống)
+- **Dashboard (`/admin/dashboard`)**
+  - `GET /api/reports/system-health` (Thống kê tổng quan hệ thống)
+- **Quản lý Yêu cầu (`/admin/requests`)**
+  - `GET /api/service-requests` (Lấy danh sách tất cả yêu cầu)
+  - `POST /api/service-requests` (Admin tạo yêu cầu thay mặt Owner)
+  - `PUT /api/service-requests/{id}/assign` (Phân công Kỹ thuật viên)
+- **Quản lý Tenant & Nông trại (`/admin/tenants`)**
+  - `GET /api/tenants`
+  - `POST /api/tenants`
+- **Quản lý Người dùng (`/admin/users`)**
+  - `GET /api/users`
+  - `POST /api/users` (Tạo tài khoản Admin/Technician/Owner)
+- **Danh mục Cây trồng (`/admin/crops`, `/admin/growth-profiles`)**
+  - `GET /api/crop-growth/crops`
+  - `GET /api/crop-growth/profiles`
+- **Quản lý Thiết bị Chung (`/admin/devices`)**
+  - `GET /api/iot-deployment/gateways`
+  - `GET /api/iot-deployment/nodes`
+
+## 3. Technician (Kỹ thuật viên Hiện trường)
+- **Dashboard & Báo cáo (`/technician/dashboard`)**
+  - `GET /api/service-requests/assigned` (Lấy danh sách công việc được giao)
+  - `GET /api/iot-deployment/status` (Kiểm tra trạng thái thiết bị thực địa)
+- **Lắp đặt & Báo giá (`/technician/provisioning`)**
+  - `GET /api/service-requests/installations` (Yêu cầu lắp mới)
+  - `POST /api/service-requests/{id}/contract` (Gửi Bảng Dự toán & Hợp đồng - Luồng mới)
+  - `POST /api/iot-deployment/map-node` (Chấm Node lên bản đồ GIS)
+  - `POST /api/service-requests/{id}/complete` (Xác nhận hoàn thành lắp đặt)
+- **Bảo trì (`/technician/maintenance`)**
+  - `GET /api/service-requests/maintenance` (Danh sách bảo trì)
+  - `PUT /api/iot-deployment/nodes/{id}/swap` (Hot-swap phần cứng)
+- **Tồn kho vật tư (`/technician/inventory`)**
+  - `GET /api/inventory-tasks/items` (Lấy thiết bị mang theo)
+
+## 4. Farm Owner (Chủ Nông trại)
+- **Dashboard & Quản lý Nông trại (`/owner/dashboard`, `/owner/farms`, `/owner/farms/create`)**
+  - `GET /api/farms` 
+  - `POST /api/farms` (Tạo Farm mới)
+  - `GET /api/zones` (Lấy các khu vực / nhà màng)
+- **Mùa vụ & Cây trồng (`/owner/planting-seasons`)**
+  - `GET /api/crop-growth/seasons`
+  - `POST /api/crop-growth/seasons`
+- **Giám sát Vi khí hậu (`/owner/monitoring/realtime`, `/owner/monitoring/history`)**
+  - `GET /api/telemetry-alerts/latest` (Thông số realtime)
+  - `GET /api/telemetry-alerts/history` (Biểu đồ lịch sử)
+- **Quản lý Cảnh báo (`/owner/alerts`)**
+  - `GET /api/telemetry-alerts/alerts`
+  - `PUT /api/telemetry-alerts/alerts/{id}/acknowledge`
+- **Điều khiển & Tự động hóa (`/owner/control`, `/owner/schedules`)**
+  - `GET /api/control/actuators` (Lấy danh sách thiết bị điều khiển)
+  - `POST /api/control/execute` (Đóng/mở van, bơm thủ công)
+  - `GET /api/control/schedules` (Danh sách tự động hóa)
+  - `POST /api/control/schedules` (Tạo luật điều khiển theo cảm biến)
+- **Hỗ trợ & Hợp đồng (`/owner/support`)**
+  - `POST /api/service-requests` (Tạo ticket hỗ trợ mới)
+  - `GET /api/service-requests/my-requests`
+  - `POST /api/finance/deposit` (hoặc qua ServiceRequestsController để Ký HĐ & Cọc 30%)
+- **Công việc & Nông dân (`/owner/tasks`, `/owner/farmers`)**
+  - `GET /api/inventory-tasks/tasks`
+  - `POST /api/inventory-tasks/tasks` (Giao việc cho Farmer)
+  - `GET /api/users/farmers` (Danh sách nhân viên)
+- **AI Trợ lý (`/owner/ai`)**
+  - `POST /api/ai-advisory/chat` (Hỏi đáp chuyên gia AI)
+
+## 5. Farmer (Nông dân / Người chăm sóc)
+- **Dashboard (`/farmer/home`, `/farmer/zones`)**
+  - `GET /api/zones/my-zones` (Các khu vực được phân công)
+- **Công việc hằng ngày (`/farmer/tasks`)**
+  - `GET /api/inventory-tasks/my-tasks`
+  - `PUT /api/inventory-tasks/tasks/{id}/status` (Cập nhật tiến độ)
+- **Tưới tiêu & Giám sát (`/farmer/irrigation`, `/farmer/monitoring`, `/farmer/alerts`)**
+  - `GET /api/telemetry-alerts/latest`
+  - `POST /api/control/execute` (Mở van tưới thủ công)
+- **AI Tư vấn Nông nghiệp (`/farmer/ai`)**
+  - `POST /api/ai-advisory/chat` (Hỏi bệnh cây, kỹ thuật bón phân)
+
+---
+*Ghi chú: Bản đồ này được xây dựng dựa trên danh sách các Controllers hiện tại trong dự án Backend (`SmartFarm.Api`) và luồng chạy thực tế của UI Frontend.*
+
+## 6. Các tính năng Frontend có nhưng Backend chưa có API phù hợp
+Dựa vào giao diện và logic trên Frontend, dưới đây là những tính năng hiện đang "vênh" (chưa có endpoint backend tương ứng hỗ trợ):
+
+1. **Quản lý Báo giá & Hợp đồng Lắp đặt (Quotation & Contracts)**
+   - *Frontend*: Có màn hình `ExperimentReportModal` để lập danh sách thiết bị, tính tiền, VAT, tạo hợp đồng và gửi cho khách hàng.
+   - *Backend*: `ServiceRequestsController` chỉ quản lý trạng thái ticket (Diagnosis, Work, Close, v.v.). **Thiếu API** lưu trữ chi tiết bảng báo giá, trạng thái hợp đồng, và danh sách các hạng mục thiết bị đi kèm yêu cầu.
+
+2. **Thanh toán Dịch vụ & Đặt cọc (Payment & Deposit)**
+   - *Frontend*: Có luồng yêu cầu Khách hàng (Owner) thanh toán cọc 30% để Kỹ thuật viên được phép (unlock) vào Zone chấm Node. 
+   - *Backend*: `FinanceController` hiện tại chỉ dùng để ghi nhận Thu/Chi nội bộ của nông trại (Revenue/Expense), **thiếu API** tích hợp thanh toán (như VNPay, Momo) hoặc API ghi nhận thanh toán dịch vụ từ Platform đối với Owner.
+
+3. **Cập nhật Tọa độ Thiết bị trên Bản đồ GIS (GIS Node Mapping)**
+   - *Frontend*: Trang `ZoneNodeMapperModal` cho phép kỹ thuật viên kéo thả Node trên bản đồ, hoặc lấy GPS từ điện thoại để lưu tọa độ (`latitude`, `longitude`).
+   - *Backend*: `IoTDeploymentController` có `/assign` và `/unassign` để gán thiết bị vào Zone, nhưng **thiếu API** (VD: `PUT /api/devices/{id}/location`) để cập nhật tọa độ địa lý cụ thể của Node.
+
+4. **Nhật ký Hệ thống (Audit Logs)**
+   - *Frontend*: Admin có trang `/admin/audit-logs` để theo dõi lịch sử thao tác của các tài khoản trong hệ thống.
+   - *Backend*: Không có `AuditLogsController` để trả về dữ liệu này.
+
+5. **Cấu hình Hệ thống (System Settings)**
+   - *Frontend*: Admin có trang `/admin/settings` để tinh chỉnh tham số của Platform.
+   - *Backend*: Không có `SettingsController` hay bảng cấu hình toàn cục.
+
+6. **Tạo mới Nông trại Nhanh (Create Farm Wizard)**
+   - *Frontend*: Màn hình Wizard tạo Farm cho phép Owner tạo Farm + Field + Zone + Cây trồng trong cùng một bước duy nhất để tối ưu trải nghiệm.
+   - *Backend*: Các API hiện đang tách rời (phải gọi tuần tự từng endpoint POST). Nếu gọi nhiều lần ở frontend sẽ dễ gặp lỗi đồng bộ. **Thiếu API** Bulk Create cho Wizard.

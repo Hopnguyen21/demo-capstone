@@ -46,15 +46,12 @@ export const Sidebar: React.FC = () => {
     { title: 'Quản lý Nông trang', path: '/owner/farms', icon: <Building2 size={18} />, badge: 'CF1' },
     { title: 'Cây trồng & Vụ mùa', path: '/owner/planting-seasons', icon: <Calendar size={18} /> },
     { title: 'Giám sát Vi khí hậu', path: '/owner/monitoring/realtime', icon: <Gauge size={18} /> },
-    { title: 'Bản đồ GIS Số', path: '/owner/map', icon: <MapPin size={18} /> },
     { title: 'Trung tâm Cảnh báo', path: '/owner/alerts', icon: <ShieldAlert size={18} />, badge: '2' },
     { title: 'Điều khiển Tưới tiêu', path: '/owner/control', icon: <Sliders size={18} /> },
     { title: 'Lập lịch & Luật Tự động', path: '/owner/schedules', icon: <Calendar size={18} /> },
     { title: 'Quản lý Nhân công', path: '/owner/farmers', icon: <Users size={18} /> },
     { title: 'Phân công Công việc', path: '/owner/tasks', icon: <ClipboardList size={18} /> },
-    { title: 'Kho Vật tư & Phân bón', path: '/owner/inventory', icon: <Package size={18} /> },
     { title: 'Trợ lý Nông học AI', path: '/owner/ai', icon: <Bot size={18} />, badge: 'AI' },
-    { title: 'Báo cáo & Phân tích', path: '/owner/reports', icon: <FileText size={18} /> },
     { title: 'Yêu cầu Hỗ trợ Kỹ thuật', path: '/owner/support', icon: <Headphones size={18} /> },
   ];
 

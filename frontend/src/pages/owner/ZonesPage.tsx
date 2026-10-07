@@ -10,6 +10,8 @@ export const ZonesPage: React.FC = () => {
   const navigate = useNavigate();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState('field-01');
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(mockZones[0]?.zoneId || 'zone-01');
+  const [activeTabMode, setActiveTabMode] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>('ALERTS');
   const [zoneName, setZoneName] = useState('');
   const [description, setDescription] = useState('');
   const [crop, setCrop] = useState('Cà chua (Tomato)');
@@ -26,10 +28,10 @@ export const ZonesPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Sprout className="text-[#062326]" size={22} /> Quản lý Nhà màng / Khu vực Canh tác (Level 3: Zones)
+            <Sprout className="text-[#062326]" size={22} /> Quản lý & Cảnh báo Nhà màng / Khu vực Canh tác (Level 3: Zones)
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            Các Zone khép kín được lồng bên trong <strong>Phân khu Lô đất (Level 2: Field)</strong> thuộc <strong>Trang trại (Level 1: Farm)</strong> và được trang bị cảm biến LoRa IoT.
+            Các Zone khép kín lồng bên trong <strong>Phân khu Lô đất (Level 2: Field)</strong> thuộc <strong>Trang trại (Level 1: Farm)</strong> được tích hợp Trung tâm Cảnh báo Nông nghiệp thời gian thực.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -46,12 +48,30 @@ export const ZonesPage: React.FC = () => {
         {mockZones.map(z => {
           const parentField = mockFields.find(f => f.fieldId === z.fieldId);
           const parentFarm = mockFarms.find(f => f.farmId === z.farmId);
+          const isSelected = selectedZoneId === z.zoneId;
 
           return (
-            <div key={z.zoneId} className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-xs hover:border-amber-500/40 transition-all">
+            <div
+              key={z.zoneId}
+              onClick={() => setSelectedZoneId(z.zoneId)}
+              className={`p-5 bg-white border rounded-2xl space-y-4 shadow-xs transition-all cursor-pointer ${
+                isSelected ? 'border-emerald-600 ring-2 ring-emerald-500/30 bg-emerald-50/20' : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-200">LEVEL 3 ZONE</span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-200">LEVEL 3 ZONE</span>
+                    {z.zoneId === 'zone-01' ? (
+                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded border border-rose-300 animate-pulse">
+                        ⚠️ 1 Cảnh báo Mở
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded border border-emerald-300">
+                        ✓ An toàn
+                      </span>
+                    )}
+                  </div>
                   <h3 className="text-base font-bold text-slate-900 mt-1">{z.name}</h3>
                   <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                     <span className="flex items-center gap-1"><Building2 size={12} className="text-[#062326]" /> {parentFarm?.name}</span>
@@ -62,15 +82,24 @@ export const ZonesPage: React.FC = () => {
                 <StatusBadge status={z.status} />
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-xs space-y-1 text-slate-700">
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1 text-slate-700">
                 <div className="flex justify-between"><span>Cây trồng hiện tại:</span><strong className="text-[#062326]">{z.currentCrop}</strong></div>
                 <div className="flex justify-between"><span>Giai đoạn sinh trưởng:</span><strong className="text-sky-700">{z.currentStage}</strong></div>
                 <div className="flex justify-between"><span>Diện tích Nhà màng:</span><strong className="text-slate-900">{z.areaM2} m²</strong></div>
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
-                <span className="text-slate-500 flex items-center gap-1"><Gauge size={13} className="text-[#062326]" /> Cảm biến LoRa trực tuyến</span>
-                <Button size="sm" variant="outline" onClick={() => navigate('/owner/monitoring/realtime')}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedZoneId(z.zoneId);
+                    setActiveTabMode('ALERTS');
+                  }}
+                  className="text-rose-700 font-bold hover:underline"
+                >
+                  🚨 Trung tâm Cảnh báo Zone ➔
+                </button>
+                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate('/owner/monitoring/realtime'); }}>
                   Vi khí hậu Realtime <ArrowUpRight size={13} className="ml-1" />
                 </Button>
               </div>
@@ -79,12 +108,15 @@ export const ZonesPage: React.FC = () => {
         })}
       </div>
 
-      {/* Standardized CF3 Control Hub for Zones */}
+      {/* Standardized CF3 Control Hub for Zones with Alert Center */}
       <div className="pt-4">
         <CF3ControlSection
+          key={`${selectedZoneId}-${activeTabMode}`}
           scopeLevel="ZONE"
-          title="Điều khiển & Lịch tưới Vi khí hậu cho các Zone / Nhà màng"
-          subtitle="Cấu hình ngưỡng tham số vi khí hậu vụ trồng, kích hoạt rơ-le và quản lý lịch tưới định kỳ cho từng Zone."
+          zoneId={selectedZoneId}
+          defaultTab={activeTabMode}
+          title={`Trung tâm Cảnh báo & Điều khiển Vi khí hậu cho [${mockZones.find(z => z.zoneId === selectedZoneId)?.name}]`}
+          subtitle="Tích hợp cảnh báo an toàn thời gian thực, dải tham số vi khí hậu, kích hoạt rơ-le và lịch tưới tự động."
         />
       </div>
 

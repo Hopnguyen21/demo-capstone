@@ -24,7 +24,6 @@ export const FarmerIrrigationPage: React.FC = () => {
         scopeLevel="FARMER"
         title="Trung tâm Bật Tưới Thủ công & Lịch tưới Nông dân"
         subtitle="Vận hành trực tiếp Rơ-le rơ-le Bơm/Van solenoid theo thời lượng an toàn, theo dõi vi khí hậu thực địa."
-        showVisualizerTab={true}
       />
     </div>
   );

@@ -7,7 +7,7 @@ import {
   Radio, Zap, ChevronDown, TrendingUp, AlertTriangle, Wifi, Package
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
-import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
+import { GISLocationPicker, calculatePolygonAreaM2 } from '../../components/maps/GISLocationPicker';
 
 export const CreateFarmWizard: React.FC = () => {
   const navigate = useNavigate();
@@ -17,6 +17,7 @@ export const CreateFarmWizard: React.FC = () => {
   const [farmData, setFarmData] = useState({
     name: 'Trang trại Nông nghiệp Công nghệ cao Đà Lạt 02',
     address: 'Phường 12, TP. Đà Lạt, Lâm Đồng',
+    landmark: 'Khu Suối Vàng',
     areaM2: '35000',
     description: 'Nông trang trồng thực nghiệm rau củ quả theo tiêu chuẩn GlobalGAP tích hợp LoRa IoT.',
     center: [11.9404, 108.4583] as [number, number],
@@ -237,7 +238,7 @@ export const CreateFarmWizard: React.FC = () => {
                   <Input value={farmData.name} onChange={e => setFarmData({ ...farmData, name: e.target.value })} placeholder="Nhập tên trang trại..." />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Địa chỉ chi tiết *</label>
+                  <label className="block text-slate-700 font-bold mb-1">Địa chỉ hành chính *</label>
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <Input
@@ -287,6 +288,10 @@ export const CreateFarmWizard: React.FC = () => {
                       ✨ {searchNotice}
                     </div>
                   )}
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Tên địa danh / Khu vực (Tùy chọn)</label>
+                  <Input value={farmData.landmark} onChange={e => setFarmData({ ...farmData, landmark: e.target.value })} placeholder="Tên thường gọi, địa chỉ cũ (nếu có)..." />
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Mô tả Trang trại</label>
@@ -375,7 +380,7 @@ export const CreateFarmWizard: React.FC = () => {
                   center={fieldData.center}
                   onCenterChange={c => setFieldData(prev => ({ ...prev, center: c }))}
                   polygon={fieldData.polygon}
-                  onPolygonChange={p => setFieldData(prev => ({ ...prev, polygon: p }))}
+                  onPolygonChange={p => setFieldData(prev => ({ ...prev, polygon: p, areaM2: calculatePolygonAreaM2(p).toString() }))}
                   parentFarmPolygon={farmData.polygon}
                   hideAddressSearch={true}
                   height="360px"
@@ -444,7 +449,7 @@ export const CreateFarmWizard: React.FC = () => {
                   center={zoneData.center}
                   onCenterChange={c => setZoneData(prev => ({ ...prev, center: c }))}
                   polygon={zoneData.polygon}
-                  onPolygonChange={p => setZoneData(prev => ({ ...prev, polygon: p }))}
+                  onPolygonChange={p => setZoneData(prev => ({ ...prev, polygon: p, areaM2: calculatePolygonAreaM2(p).toString() }))}
                   parentFarmPolygon={farmData.polygon}
                   parentFieldPolygon={fieldData.polygon}
                   hideAddressSearch={true}
@@ -469,30 +474,35 @@ export const CreateFarmWizard: React.FC = () => {
             gatewayPer3000m2: number;
             varieties: string[];
             note: string;
+            template: { growthStage: string, nutrition: string, light: string, temp: string, humidity: string, duration: string };
           }> = {
             'Cà chua (Solanum lycopersicum)': {
               icon: '🍅', color: 'emerald',
               sensorsPer500m2: 1, actuatorsPer500m2: 1.2, gatewayPer3000m2: 1,
               varieties: ['Beefsteak Đà Lạt F1', 'Cherry Vàng F1', 'Bi đỏ VN888', 'Pink Lady F1'],
               note: 'Cà chua cần theo dõi độ ẩm đất & nhiệt độ chặt chẽ',
+              template: { growthStage: 'Mầm ➔ Sinh trưởng ➔ Ra hoa ➔ Tạo quả', nutrition: 'N-P-K (5-10-5 mầm, 5-10-10 hoa)', light: '12-14 giờ/ngày', temp: 'Ngày: 21-29°C, Đêm: 15-20°C', humidity: '60-70%', duration: '90-120 ngày' }
             },
             'Ớt ngọt (Capsicum annuum)': {
               icon: '🫑', color: 'red',
               sensorsPer500m2: 0.8, actuatorsPer500m2: 1, gatewayPer3000m2: 1,
               varieties: ['Ớt Đà Lạt F1', 'California Wonder', 'Chuông Đỏ Hà Lan', 'Sweet Baby'],
               note: 'Ớt cần cảm biến ánh sáng và kiểm soát tưới chính xác',
+              template: { growthStage: 'Mầm ➔ Phát triển cành ➔ Ra hoa ➔ Kết trái', nutrition: 'N-P-K (Tăng Kali khi kết trái)', light: '10-12 giờ/ngày', temp: 'Ngày: 25-28°C, Đêm: 18-20°C', humidity: '55-65%', duration: '100-150 ngày' }
             },
             'Dưa leo (Cucumis sativus)': {
               icon: '🥒', color: 'green',
               sensorsPer500m2: 0.8, actuatorsPer500m2: 0.8, gatewayPer3000m2: 1,
               varieties: ['Dưa Nhật TN-088', 'Dưa baby VN', 'Cucumber F1 Hà Lan', 'Mini Cuke'],
               note: 'Dưa leo phát triển nhanh, cần theo dõi độ ẩm không khí',
+              template: { growthStage: 'Mầm ➔ Leo giàn ➔ Ra hoa cái ➔ Trái non', nutrition: 'Tăng Đạm giai đoạn đầu, Lân giai đoạn hoa', light: '10-14 giờ/ngày', temp: 'Ngày: 24-30°C, Đêm: 18-22°C', humidity: '70-85%', duration: '60-80 ngày' }
             },
             'Xà lách Thủy canh (Lactuca sativa)': {
               icon: '🥬', color: 'lime',
               sensorsPer500m2: 1.2, actuatorsPer500m2: 1.5, gatewayPer3000m2: 1,
               varieties: ['Butterhead F1', 'Romaine Viet', 'Oakleaf xanh', 'Lollo Rossa'],
               note: 'Thủy canh cần giám sát EC/pH + van bơm dinh dưỡng liên tục',
+              template: { growthStage: 'Ươm hạt ➔ Lên giàn ➔ Phát triển lá ➔ Thu hoạch', nutrition: 'EC: 1.2 - 1.8 mS/cm, pH: 5.8 - 6.2', light: '14-16 giờ/ngày', temp: 'Ngày: 18-24°C, Đêm: 15-18°C', humidity: '50-70%', duration: '40-50 ngày' }
             },
           };
 
@@ -602,10 +612,45 @@ export const CreateFarmWizard: React.FC = () => {
                       <span>Nhà màng:</span><strong className="text-slate-800">{zoneData.name}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span>Diện tích Zone:</span><strong className="text-[#062326]">{Number(zoneData.areaM2).toLocaleString()} m²</strong>
+                      <span>Diện tích Zone:</span><strong className="text-[#062326]">{Number(zoneData.areaM2).toLocaleString('vi-VN')} m²</strong>
                     </div>
                     <div className="flex justify-between">
                       <span>Lô đất mẹ:</span><strong className="text-slate-800">{fieldData.name}</strong>
+                    </div>
+                  </div>
+
+                  {/* Crop Template info */}
+                  <div className="p-3 bg-white border border-emerald-200 rounded-lg space-y-2 text-[11px] text-slate-600 mt-3">
+                    <div className="font-bold text-emerald-800 border-b border-emerald-100 pb-1 mb-1">
+                      Chu kỳ sinh trưởng & Điều kiện (Template)
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-16 shrink-0 font-medium text-slate-500">Chu kỳ:</span>
+                      <span className="text-slate-800">{profile.template.growthStage}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="w-16 shrink-0 font-medium text-slate-500">Dinh dưỡng:</span>
+                      <span className="text-slate-800">{profile.template.nutrition}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <div className="flex items-start gap-2">
+                        <span className="font-medium text-slate-500">Nhiệt độ:</span>
+                        <span className="text-slate-800">{profile.template.temp}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="font-medium text-slate-500">Độ ẩm:</span>
+                        <span className="text-slate-800">{profile.template.humidity}</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between">
+                      <div className="flex items-start gap-2">
+                        <span className="font-medium text-slate-500">Ánh sáng:</span>
+                        <span className="text-slate-800">{profile.template.light}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="font-medium text-slate-500">Thời vụ:</span>
+                        <span className="text-slate-800">{profile.template.duration}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -626,7 +671,7 @@ export const CreateFarmWizard: React.FC = () => {
                           {profile.icon} {cropData.crop.split(' ')[0]}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Tính toán tự động dựa trên loại cây & diện tích {areaM2.toLocaleString()} m²</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">Bố trí theo mô hình mạng tổ ong (Lục giác) trên diện tích {Number(areaM2).toLocaleString('vi-VN')} m²</div>
                     </div>
                   </div>
                   <ChevronDown size={16} className="text-slate-400" />
@@ -739,6 +784,15 @@ export const CreateFarmWizard: React.FC = () => {
               </p>
             </div>
 
+            {/* Warning out of bounds */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5">
+              <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900 leading-relaxed">
+                <strong className="block mb-0.5">Chính sách Cảnh báo Vùng địa lý:</strong>
+                Hệ thống sẽ <strong>phát cảnh báo trên web</strong> ngay lập tức khi phát hiện thiết bị (Gateway/Node) bị di chuyển hoặc đi ra ngoài ranh giới <strong>Khu trang trại / Khu nhà màng</strong> đã được đánh dấu GIS.
+              </div>
+            </div>
+
             {/* Tree Structure Summary Card */}
             <div className="p-5 bg-slate-900 text-white rounded-2xl space-y-4 shadow-lg font-mono text-xs">
               <div className="text-emerald-400 font-bold text-sm flex items-center justify-between border-b border-slate-800 pb-2">
@@ -754,7 +808,7 @@ export const CreateFarmWizard: React.FC = () => {
                   </div>
                   <div>
                     <div className="font-bold text-emerald-300 text-sm">{farmData.name}</div>
-                    <div className="text-slate-400 text-[11px]">{farmData.address} • {farmData.areaM2} m² ({farmData.polygon.length} điểm GIS)</div>
+                    <div className="text-slate-400 text-[11px]">{farmData.address} {farmData.landmark ? `(${farmData.landmark})` : ''} • {Number(farmData.areaM2).toLocaleString('vi-VN')} m² ({farmData.polygon.length} điểm GIS)</div>
                   </div>
                 </div>
 
@@ -763,7 +817,7 @@ export const CreateFarmWizard: React.FC = () => {
                   <CornerDownRight size={16} className="text-sky-400 shrink-0 mt-1" />
                   <div>
                     <div className="font-bold text-sky-300 text-xs">{fieldData.name}</div>
-                    <div className="text-slate-400 text-[11px]">{fieldData.description} • {fieldData.areaM2} m²</div>
+                    <div className="text-slate-400 text-[11px]">{fieldData.description} • {Number(fieldData.areaM2).toLocaleString('vi-VN')} m²</div>
                   </div>
                 </div>
 
@@ -772,7 +826,7 @@ export const CreateFarmWizard: React.FC = () => {
                   <CornerDownRight size={16} className="text-amber-400 shrink-0 mt-1" />
                   <div>
                     <div className="font-bold text-amber-300 text-xs">{zoneData.name}</div>
-                    <div className="text-slate-400 text-[11px]">Cây trồng: {cropData.crop} ({cropData.variety}) • {zoneData.areaM2} m²</div>
+                    <div className="text-slate-400 text-[11px]">Cây trồng: {cropData.crop} ({cropData.variety}) • {Number(zoneData.areaM2).toLocaleString('vi-VN')} m²</div>
                   </div>
                 </div>
               </div>

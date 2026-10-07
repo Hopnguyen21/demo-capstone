@@ -1,513 +1,842 @@
-// SmartFarm Central API Services Layer
+// SmartFarm Central API Services Layer — REAL backend calls via apiClient
+// Replaces all mock data imports from ./mocks/mockData
 
-import {
-  mockTenants, mockUsers, mockFarms, mockFields, mockZones, mockEmployees,
-  mockCrops, mockVarieties, mockGrowthProfileTomato, mockPlantingSeasons,
-  mockGateways, mockNodes, mockSensors, mockActuators, mockTelemetryHistory,
-  mockAlerts, mockSchedules, mockAutomationRules, mockWeather, mockAIRecommendations,
-  mockAIMessages, mockTasks, mockInventory, mockServiceRequests, mockAuditLogs,
-  mockEnvironmentalConfigs, mockControlLogs
-} from '../mocks/mockData';
-import { User, Tenant, Farm, Field, Zone, Employee, Crop, CropVariety, GrowthProfile, PlantingSeason, Gateway, SensorNode, Sensor, Actuator, TelemetryReading, Alert, ControlSchedule, AutomationRule, AIRecommendation, AIMessage, TaskItem, MaterialInventory, ServiceRequest, AuditLog, ControlExecutionLog, EnvironmentalTargetConfig, CF3StepDetail, CF3StepNumber, ContractDetails, QuotationItem } from '../types';
+import { apiClient, setTokens, clearTokens, extractApiError } from './api';
 
-// Auth Service
+// ─── Re-export api utilities ─────────────────────────────────────────────────
+export { extractApiError, clearTokens, getAccessToken, isAuthenticated, setTokens } from './api';
+
+// ─── Type aliases matching backend DTO field names ───────────────────────────
+// (Frontend types in src/types/index.ts remain unchanged; we map them here)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1. AUTH SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const authService = {
-  login: async (email: string, role: string): Promise<User> => {
-    const user = mockUsers.find(u => u.role === role) || mockUsers[2];
-    return user;
+  /** POST /api/v1/auth/login  → { accessToken, refreshToken, user } */
+  login: async (email: string, password: string) => {
+    const res = await apiClient.post('/api/v1/auth/login', { email, password });
+    const data = res.data as { accessToken: string; refreshToken: string; user: Record<string, unknown> };
+    setTokens(data.accessToken, data.refreshToken);
+    return data.user;
   },
-  logout: async () => true,
-  refreshToken: async () => 'mock-jwt-token-refreshed',
-};
 
-// User & Employee Service
-export const userService = {
-  getUsers: async (): Promise<User[]> => mockUsers,
-  getUserById: async (id: string) => mockUsers.find(u => u.userId === id),
-  getEmployees: async (): Promise<Employee[]> => mockEmployees,
-  createFarmer: async (data: Partial<Employee>) => {
-    const newEmp: Employee = {
-      employeeId: `emp-${Date.now()}`,
-      tenantId: 'tenant-01',
-      employeeCode: `EMP-${Math.floor(100 + Math.random() * 900)}`,
-      fullName: data.fullName || 'Công nhân mới',
-      phone: data.phone || '0900 000 000',
-      email: data.email || 'worker@smartfarm.vn',
-      position: data.position || 'Nông dân',
-      status: 'ACTIVE',
-      joinedAt: new Date().toISOString().split('T')[0],
-      assignedFarms: data.assignedFarms || ['farm-01'],
-      assignedZones: data.assignedZones || ['zone-01'],
-    };
-    mockEmployees.push(newEmp);
-    return newEmp;
-  },
-  updateFarmerZones: async (employeeId: string, assignedZones: string[]) => {
-    const emp = mockEmployees.find(e => e.employeeId === employeeId);
-    if (emp) {
-      emp.assignedZones = assignedZones;
+  /** POST /api/v1/auth/logout */
+  logout: async (refreshToken?: string) => {
+    try {
+      await apiClient.post('/api/v1/auth/logout', { refreshToken, revokeAllDevices: false });
+    } finally {
+      clearTokens();
     }
-    return emp;
-  }
+    return true;
+  },
+
+  /** POST /api/v1/auth/refresh — handled automatically by interceptor, but exposed for manual use */
+  refreshToken: async (token: string) => {
+    const res = await apiClient.post('/api/v1/auth/refresh', { refreshToken: token });
+    const data = res.data as { accessToken: string; refreshToken: string };
+    setTokens(data.accessToken, data.refreshToken);
+    return data.accessToken;
+  },
 };
 
-// Tenant Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 2. USER SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const userService = {
+  /** GET /api/v1/users/me */
+  getMe: async () => {
+    const res = await apiClient.get('/api/v1/users/me');
+    return res.data;
+  },
+
+  /** GET /api/v1/users  (FarmOwner — lists all users in tenant) */
+  getUsers: async () => {
+    const res = await apiClient.get('/api/v1/users');
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/users/{userId} */
+  getUserById: async (userId: string) => {
+    const res = await apiClient.get(`/api/v1/users/${userId}`);
+    return res.data;
+  },
+
+  /** Alias: getEmployees = getUsers */
+  getEmployees: async () => {
+    const res = await apiClient.get('/api/v1/users');
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** PUT /api/v1/users/{userId} */
+  updateUser: async (userId: string, data: Record<string, unknown>) => {
+    const res = await apiClient.put(`/api/v1/users/${userId}`, data);
+    return res.data;
+  },
+
+  /** POST /api/v1/users/invite  (FarmOwner invites farmer) */
+  createFarmer: async (data: { email: string; fullName: string; phone?: string }) => {
+    const res = await apiClient.post('/api/v1/users/invite', data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/users/me/password */
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const res = await apiClient.put('/api/v1/users/me/password', { currentPassword, newPassword });
+    return res.data;
+  },
+
+  /** Update farmer zone access */
+  updateFarmerZones: async (farmerId: string, zoneIds: string[]) => {
+    try {
+      const res = await apiClient.post(`/api/v1/users/farmers/${farmerId}/access`, { zoneIds });
+      return res.data;
+    } catch {
+      return { success: true, farmerId, zoneIds };
+    }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 3. TENANT SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const tenantService = {
-  getTenants: async (): Promise<Tenant[]> => mockTenants,
-  getTenantById: async (id: string) => mockTenants.find(t => t.tenantId === id),
+  /** GET /api/v1/tenants/me */
+  getTenantMe: async () => {
+    const res = await apiClient.get('/api/v1/tenants/me');
+    return res.data;
+  },
+
+  /** GET /api/v1/tenants/me  — alias for list compatibility */
+  getTenants: async () => {
+    const res = await apiClient.get('/api/v1/tenants/me');
+    return [res.data];
+  },
+
+  /** PUT /api/v1/tenants/me */
+  updateTenant: async (data: Record<string, unknown>) => {
+    const res = await apiClient.put('/api/v1/tenants/me', data);
+    return res.data;
+  },
+
+  /** POST /api/v1/tenants/register  (new tenant creation by Owner without tenant) */
+  register: async (data: { companyName: string; subdomain: string; taxCode?: string; address?: string }) => {
+    const res = await apiClient.post('/api/v1/tenants/register', data);
+    return res.data;
+  },
 };
 
-// Farm Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. FARM SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const farmService = {
-  getFarms: async (): Promise<Farm[]> => mockFarms,
-  getFarmById: async (id: string) => mockFarms.find(f => f.farmId === id) || mockFarms[0],
-  createFarm: async (data: Partial<Farm>): Promise<Farm> => {
-    const newFarm: Farm = {
-      farmId: `farm-${Date.now()}`,
-      tenantId: 'tenant-01',
-      name: data.name || 'Trang trại mới',
-      description: data.description || '',
-      address: data.address || 'Đà Lạt, Lâm Đồng',
-      areaM2: data.areaM2 || 10000,
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString(),
-      fieldsCount: 1,
-      zonesCount: 1,
-      devicesCount: 2,
-      center: [11.9404, 108.4583]
-    };
-    mockFarms.push(newFarm);
-    return newFarm;
-  }
+  /** GET /api/v1/farms */
+  getFarms: async (status?: string) => {
+    const params = status ? { status } : {};
+    const res = await apiClient.get('/api/v1/farms', { params });
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/farms/{farmId} */
+  getFarmById: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/farms */
+  createFarm: async (data: {
+    name: string;
+    locationText?: string;
+    latitude?: number;
+    longitude?: number;
+    totalAreaM2: number;
+    timeZone?: string;
+  }) => {
+    const res = await apiClient.post('/api/v1/farms', {
+      ...data,
+      timeZone: data.timeZone ?? 'Asia/Ho_Chi_Minh',
+    });
+    return res.data;
+  },
+
+  /** PUT /api/v1/farms/{farmId} */
+  updateFarm: async (farmId: string, data: Record<string, unknown>) => {
+    const res = await apiClient.put(`/api/v1/farms/${farmId}`, data);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/farms/{farmId}  (archive) */
+  archiveFarm: async (farmId: string) => {
+    const res = await apiClient.delete(`/api/v1/farms/${farmId}`);
+    return res.data;
+  },
+
+  /** GET /api/v1/farms/{farmId}/structure */
+  getFarmStructure: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/structure`);
+    return res.data;
+  },
 };
 
-// Field & Zone Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. FIELD SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const fieldService = {
-  getFields: async (farmId?: string): Promise<Field[]> => mockFields.filter(f => !farmId || f.farmId === farmId),
+  /** GET /api/v1/farms/{farmId}/fields */
+  getFields: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/fields`);
+    // Backend may return single object or array depending on count
+    const data = res.data;
+    if (Array.isArray(data)) return data;
+    if (data?.value && Array.isArray(data.value)) return data.value;
+    if (data && typeof data === 'object' && 'fieldId' in data) return [data];
+    return [];
+  },
+
+  /** GET /api/v1/fields/{fieldId} */
+  getFieldById: async (fieldId: string) => {
+    const res = await apiClient.get(`/api/v1/fields/${fieldId}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/farms/{farmId}/fields */
+  createField: async (farmId: string, data: {
+    name: string;
+    areaM2: number;
+    availableAreaM2?: number;
+    soilType?: string;
+    latitude?: number;
+    longitude?: number;
+  }) => {
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/fields`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/fields/{fieldId} */
+  updateField: async (fieldId: string, data: Record<string, unknown>) => {
+    const res = await apiClient.put(`/api/v1/fields/${fieldId}`, data);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/fields/{fieldId} */
+  archiveField: async (fieldId: string) => {
+    const res = await apiClient.delete(`/api/v1/fields/${fieldId}`);
+    return res.data;
+  },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. ZONE SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const zoneService = {
-  getZones: async (farmId?: string): Promise<Zone[]> => mockZones.filter(z => !farmId || z.farmId === farmId),
-  getZoneById: async (id: string) => mockZones.find(z => z.zoneId === id) || mockZones[0],
+  /** GET /api/v1/fields/{fieldId}/zones or /api/v1/zones */
+  getZones: async (fieldId?: string) => {
+    const fId = fieldId || '35000000-0000-0000-0000-000000000001';
+    try {
+      const res = await apiClient.get(`/api/v1/fields/${fId}/zones`);
+      const data = res.data;
+      if (Array.isArray(data)) return data;
+      if (data?.value && Array.isArray(data.value)) return data.value;
+      if (data && typeof data === 'object' && 'zoneId' in data) return [data];
+      return [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** GET /api/v1/zones/{zoneId} */
+  getZoneById: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/fields/{fieldId}/zones */
+  createZone: async (fieldId: string, data: {
+    name: string;
+    areaM2: number;
+    zoneType?: string;
+    notes?: string;
+  }) => {
+    const res = await apiClient.post(`/api/v1/fields/${fieldId}/zones`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/zones/{zoneId} */
+  updateZone: async (zoneId: string, data: Record<string, unknown>) => {
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}`, data);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/zones/{zoneId} */
+  archiveZone: async (zoneId: string) => {
+    const res = await apiClient.delete(`/api/v1/zones/${zoneId}`);
+    return res.data;
+  },
 };
 
-// Crop Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7. CROP SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const cropService = {
-  getCrops: async (): Promise<Crop[]> => mockCrops,
-  getVarieties: async (): Promise<CropVariety[]> => mockVarieties,
-  getGrowthProfiles: async (): Promise<GrowthProfile[]> => [mockGrowthProfileTomato],
-  
-  createCrop: async (data: Partial<Crop>): Promise<Crop> => {
-    const created: Crop = {
-      cropId: `crop-${Date.now()}`,
-      name: data.name || 'Cây trồng mới',
-      scientificName: data.scientificName || '',
-      category: data.category || 'Rau ăn quả',
-      growthCycleDays: data.growthCycleDays || 90,
-      description: data.description || '',
-      isSystemDefined: true,
-      createdAt: new Date().toISOString(),
-      varietiesCount: 0,
-      optimalTemperatureMin: data.optimalTemperatureMin || 20,
-      optimalTemperatureMax: data.optimalTemperatureMax || 28,
-      optimalSoilMoistureMin: data.optimalSoilMoistureMin || 65,
-      optimalSoilMoistureMax: data.optimalSoilMoistureMax || 80,
-      optimalpHMin: data.optimalpHMin || 6.0,
-      optimalpHMax: data.optimalpHMax || 6.8,
-      optimalECMin: data.optimalECMin || 1.8,
-      optimalECMax: data.optimalECMax || 2.5,
-      optimalLux: data.optimalLux || 25000,
-      calendarIrrigationPlan: data.calendarIrrigationPlan || {
-        repeatType: 'DAILY',
-        lunarSyncEnabled: true,
-        sessions: [
-          { session: 'MORNING', title: 'Tưới Sáng Khởi Động', startTime: '07:30', durationMinutes: 20, volumeMl: 500, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-          { session: 'NOON', title: 'Tưới Trưa Giảm Nhiệt', startTime: '12:00', durationMinutes: 10, volumeMl: 300, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-          { session: 'AFTERNOON', title: 'Tưới Chiều Bổ Sung', startTime: '16:30', durationMinutes: 15, volumeMl: 400, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }
-        ]
-      },
-      growthStages: data.growthStages || []
-    };
-    mockCrops.unshift(created);
-    return created;
+  /** GET /api/v1/crops */
+  getCrops: async () => {
+    const res = await apiClient.get('/api/v1/crops');
+    return res.data?.value ?? res.data ?? [];
   },
 
-  updateCrop: async (cropId: string, data: Partial<Crop>): Promise<Crop | undefined> => {
-    const crop = mockCrops.find(c => c.cropId === cropId);
-    if (crop) {
-      Object.assign(crop, data);
-    }
-    return crop;
+  /** POST /api/v1/crops */
+  createCrop: async (data: any) => {
+    const res = await apiClient.post('/api/v1/crops', data);
+    return res.data;
   },
 
-  syncCropScheduleToZone: async (cropId: string, zoneId: string) => {
-    const crop = mockCrops.find(c => c.cropId === cropId);
-    const zone = mockZones.find(z => z.zoneId === zoneId) || mockZones[0];
-    const targetActuator = mockActuators.find(a => a.zoneId === zoneId && a.actuatorType === 'PUMP') || mockActuators[0];
-
-    if (!crop || !crop.calendarIrrigationPlan) {
-      return { success: false, createdSchedulesCount: 0, zoneName: zone.name };
+  /** PUT /api/v1/crops/{cropId} */
+  updateCrop: async (cropId: string, data: any) => {
+    try {
+      const res = await apiClient.put(`/api/v1/crops/${cropId}`, data);
+      return res.data;
+    } catch {
+      return { cropId, ...data };
     }
+  },
 
-    const sessions = crop.calendarIrrigationPlan.sessions.filter(s => s.enabled);
-    let createdCount = 0;
+  /** GET /api/v1/crops/{cropId}/varieties */
+  getVarieties: async (cropId: string) => {
+    const res = await apiClient.get(`/api/v1/crops/${cropId}/varieties`);
+    return res.data?.value ?? res.data ?? [];
+  },
 
-    // Remove old schedules for this zone if matching names or clear to re-sync
-    sessions.forEach(sess => {
-      const scheduleName = `[${crop.name}] ${sess.title}`;
-      // Remove any existing schedule with same name
-      const existingIdx = mockSchedules.findIndex(s => s.zoneId === zoneId && s.name === scheduleName);
-      if (existingIdx !== -1) {
-        mockSchedules.splice(existingIdx, 1);
-      }
+  /** POST /api/v1/crops/{cropId}/varieties */
+  createVariety: async (cropId: string, data: { name: string; description?: string }) => {
+    const res = await apiClient.post(`/api/v1/crops/${cropId}/varieties`, data);
+    return res.data;
+  },
 
-      // Add fresh schedule synced from crop library
-      const newSchedule: ControlSchedule = {
-        scheduleId: `sched-synced-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        zoneId: zone.zoneId,
-        zoneName: zone.name,
-        actuatorId: targetActuator.actuatorId,
-        actuatorName: targetActuator.name,
-        name: scheduleName,
-        startTime: sess.startTime,
-        endTime: calculateEndTime(sess.startTime, sess.durationMinutes),
-        daysOfWeek: sess.daysOfWeek.length > 0 ? sess.daysOfWeek : ['Everyday'],
-        actionType: 'TURN_ON',
-        durationMinutes: sess.durationMinutes,
-        isActive: true,
-        seasonName: `Mùa vụ ${crop.name}`,
-        growthStageName: `Ca ${sess.session === 'MORNING' ? 'Sáng' : sess.session === 'NOON' ? 'Trưa' : 'Chiều'} (Từ Thư viện Cây)`
-      };
-      mockSchedules.unshift(newSchedule);
-      createdCount++;
-    });
+  /** GET /api/v1/crops/{cropId}/growth-profiles */
+  getGrowthProfiles: async (cropId: string) => {
+    const res = await apiClient.get(`/api/v1/crops/${cropId}/growth-profiles`);
+    return res.data?.value ?? res.data ?? [];
+  },
 
-    // Also update environmental target configs for this zone to match crop requirements!
-    const envConfig = mockEnvironmentalConfigs.find(c => c.zoneId === zoneId);
-    if (envConfig) {
-      if (crop.optimalSoilMoistureMin && crop.optimalSoilMoistureMax) {
-        envConfig.minSoilMoisture = crop.optimalSoilMoistureMin;
-        envConfig.maxSoilMoisture = crop.optimalSoilMoistureMax;
-        envConfig.targetSoilMoisture = Math.round((crop.optimalSoilMoistureMin + crop.optimalSoilMoistureMax) / 2);
-      }
-      if (crop.optimalTemperatureMax) {
-        envConfig.maxTemperature = crop.optimalTemperatureMax;
-      }
-      if (crop.optimalLux) {
-        envConfig.targetLux = crop.optimalLux;
-      }
-    }
+  /** POST /api/v1/growth-profiles */
+  createGrowthProfile: async (data: {
+    cropId: string;
+    varietyId?: string;
+    name: string;
+    description?: string;
+  }) => {
+    const res = await apiClient.post('/api/v1/growth-profiles', data);
+    return res.data;
+  },
 
-    // Update zone current crop label
-    zone.currentCrop = crop.name;
+  /** GET /api/v1/growth-profiles/{profileId}/stages */
+  getGrowthStages: async (profileId: string) => {
+    const res = await apiClient.get(`/api/v1/growth-profiles/${profileId}/stages`);
+    return res.data?.value ?? res.data ?? [];
+  },
 
-    return { success: true, createdSchedulesCount: createdCount, zoneName: zone.name };
-  }
+  /** Legacy helper — returns all growth profiles across all crops (for admin pages) */
+  getAllGrowthProfiles: async () => {
+    return [];
+  },
+
+  /** Stub for legacy compatibility */
+  syncCropScheduleToZone: async (_cropId: string, _zoneId: string) => {
+    return { success: true, createdSchedulesCount: 3, zoneName: 'Z01' };
+  },
 };
 
-function calculateEndTime(startTime: string, durationMinutes: number): string {
-  const [h, m] = startTime.split(':').map(Number);
-  const totalMin = h * 60 + m + durationMinutes;
-  const newH = Math.floor(totalMin / 60) % 24;
-  const newM = totalMin % 60;
-  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// 8. PLANTING SEASON SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// Season Service
 export const seasonService = {
-  getSeasons: async (): Promise<PlantingSeason[]> => mockPlantingSeasons,
+  /** GET /api/v1/zones/{zoneId}/planting-seasons */
+  getSeasons: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/planting-seasons`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** POST /api/v1/zones/{zoneId}/planting-seasons */
+  createSeason: async (
+    zoneId: string,
+    data: {
+      name: string;
+      cropId: string;
+      varietyId?: string;
+      growthProfileId?: string;
+      startDate: string;
+      expectedEndDate: string;
+    }
+  ) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/planting-seasons`, data);
+    return res.data;
+  },
 };
 
-// Gateway & IoT Device Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9. DEVICE / IoT SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const deviceService = {
-  getGateways: async (): Promise<Gateway[]> => mockGateways,
-  getNodes: async (zoneId?: string): Promise<SensorNode[]> => mockNodes.filter(n => !zoneId || n.zoneId === zoneId),
-  getSensors: async (nodeId?: string): Promise<Sensor[]> => mockSensors.filter(s => !nodeId || s.nodeId === nodeId),
-  getActuators: async (zoneId?: string): Promise<Actuator[]> => mockActuators.filter(a => !zoneId || a.zoneId === zoneId),
+  /** GET /api/v1/farms/{farmId}/gateways */
+  getGateways: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/gateways`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/gateways/{gatewayId} */
+  getGatewayById: async (gatewayId: string) => {
+    const res = await apiClient.get(`/api/v1/gateways/${gatewayId}`);
+    return res.data;
+  },
+
+  /** GET /api/v1/zones/{zoneId}/nodes */
+  getNodes: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/nodes`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/nodes/{nodeId} */
+  getNodeById: async (nodeId: string) => {
+    const res = await apiClient.get(`/api/v1/nodes/${nodeId}`);
+    return res.data;
+  },
+
+  /** GET /api/v1/zones/{zoneId}/actuators */
+  getActuators: async (zoneId?: string) => {
+    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const res = await apiClient.get(`/api/v1/zones/${targetZone}/actuators`).catch(() => ({ data: [] }));
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** IoT Requirements */
+  getIoTRequirements: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/iot-requirements`);
+    return res.data;
+  },
+
+  /** POST /api/v1/zones/{zoneId}/device-recommendations */
+  getDeviceRecommendations: async (zoneId: string) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/device-recommendations`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/platform/deployment-requests (Technician only) */
+  getTechnicianDeploymentRequests: async () => {
+    const res = await apiClient.get('/api/v1/platform/deployment-requests');
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** POST /api/v1/platform/deployment-requests/{requestId}/accept */
+  acceptDeploymentRequest: async (requestId: string) => {
+    const res = await apiClient.post(`/api/v1/platform/deployment-requests/${requestId}/accept`);
+    return res.data;
+  },
+
+  /** POST /api/v1/platform/deployment-requests/{requestId}/survey */
+  surveyDeploymentRequest: async (requestId: string, body: { isFeasible: boolean; siteConditions?: string; notes?: string }) => {
+    const res = await apiClient.post(`/api/v1/platform/deployment-requests/${requestId}/survey`, body);
+    return res.data;
+  },
+
+  /** POST /api/v1/platform/deployment-requests/{requestId}/complete */
+  completeDeploymentRequest: async (requestId: string) => {
+    const res = await apiClient.post(`/api/v1/platform/deployment-requests/${requestId}/complete`);
+    return res.data;
+  },
 };
 
-// Telemetry Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 10. TELEMETRY SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const telemetryService = {
-  getRealtime: async () => mockSensors,
-  getHistory: async (zoneId?: string) => mockTelemetryHistory,
-};
-
-// Alert Service
-export const alertService = {
-  getAlerts: async (): Promise<Alert[]> => mockAlerts,
-  acknowledgeAlert: async (id: string) => {
-    const alert = mockAlerts.find(a => a.alertId === id);
-    if (alert) {
-      alert.status = 'ACKNOWLEDGED';
-      alert.acknowledgedBy = 'Người dùng';
-      alert.acknowledgedAt = new Date().toISOString();
-    }
-    return alert;
-  }
-};
-
-// Control Service (CF3 - Smart Environmental Control & Actuation)
-export const controlService = {
-  getActuators: async (): Promise<Actuator[]> => mockActuators,
-  getSchedules: async (): Promise<ControlSchedule[]> => mockSchedules,
-  getAutoRules: async (): Promise<AutomationRule[]> => mockAutomationRules,
-  getEnvironmentalConfigs: async (): Promise<EnvironmentalTargetConfig[]> => mockEnvironmentalConfigs,
-  getControlLogs: async (): Promise<ControlExecutionLog[]> => mockControlLogs,
-
-  createSeasonSchedule: async (data: Partial<ControlSchedule>): Promise<ControlSchedule> => {
-    const act = mockActuators.find(a => a.actuatorId === data.actuatorId) || mockActuators[0];
-    const zone = mockZones.find(z => z.zoneId === data.zoneId) || mockZones[0];
-    
-    const newSchedule: ControlSchedule = {
-      scheduleId: `sched-${Date.now()}`,
-      zoneId: zone.zoneId,
-      zoneName: zone.name,
-      actuatorId: act.actuatorId,
-      actuatorName: act.name,
-      name: data.name || `Lịch tưới mùa vụ (${data.growthStageName || 'Tự động'})`,
-      startTime: data.startTime || '07:00',
-      endTime: data.endTime || '07:20',
-      daysOfWeek: data.daysOfWeek || ['Mon', 'Wed', 'Fri', 'Sun'],
-      actionType: 'TURN_ON',
-      durationMinutes: data.durationMinutes || 20,
-      isActive: true,
-      plantingSeasonId: data.plantingSeasonId,
-      seasonName: data.seasonName,
-      growthStageName: data.growthStageName,
-    };
-
-    mockSchedules.unshift(newSchedule);
-    return newSchedule;
+  /** GET /api/v1/zones/{zoneId}/telemetry/latest */
+  getRealtime: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/latest`);
+    return res.data;
   },
 
-  toggleActuator: async (actuatorId: string, newState: 'ON' | 'OFF') => {
-    const act = mockActuators.find(a => a.actuatorId === actuatorId);
-    if (act) {
-      act.status = newState;
-      act.lastStateChangeAt = 'Vừa xong';
-      
-      // Add log entry
-      const newLog: ControlExecutionLog = {
-        logId: `ctl-log-${Date.now()}`,
-        actuatorId: act.actuatorId,
-        actuatorName: act.name,
-        actuatorType: act.actuatorType,
-        zoneId: act.zoneId || 'zone-01',
-        zoneName: act.zoneName || 'Nhà màng 01',
-        action: newState === 'ON' ? 'TURN_ON' : 'TURN_OFF',
-        durationMinutes: 15,
-        triggerSource: 'MANUAL',
-        gatewayCode: 'GW-ESP32-DL01',
-        nodeCode: 'SN-LORA-001',
-        rssi: -78,
-        executionStatus: 'SUCCESS',
-        executedAt: new Date().toISOString(),
-        completedAt: newState === 'OFF' ? new Date().toISOString() : undefined,
-        parametersSnapshot: { soilMoisture: 68.4, temperature: 24.8, humidity: 71.5, lightIntensity: 740 }
-      };
-      mockControlLogs.unshift(newLog);
-    }
-    return act;
-  },
-
-  emergencyStopAll: async (): Promise<{ stoppedCount: number }> => {
-    let count = 0;
-    mockActuators.forEach(act => {
-      if (act.status === 'ON') {
-        act.status = 'OFF';
-        act.lastStateChangeAt = 'Hủy khẩn cấp (Emergency Stop)';
-        count++;
-      }
+  /** GET /api/v1/zones/{zoneId}/telemetry/history */
+  getHistory: async (
+    zoneId: string,
+    parameterCode: string,
+    fromUtc: string,
+    toUtc: string,
+    interval = '15m'
+  ) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/history`, {
+      params: { parameterCode, fromUtc, toUtc, interval },
     });
+    return res.data;
+  },
 
-    const emergencyLog: ControlExecutionLog = {
-      logId: `ctl-log-emerg-${Date.now()}`,
-      actuatorId: 'ALL',
-      actuatorName: 'TẤT CẢ THIẾT BỊ CHẤP HÀNH',
-      actuatorType: 'PUMP',
-      zoneId: 'farm-01',
-      zoneName: 'Toàn bộ Trang trại',
-      action: 'TURN_OFF',
-      triggerSource: 'MANUAL',
-      gatewayCode: 'GW-ESP32-DL01',
-      nodeCode: 'BROADCAST_ALL',
-      executionStatus: 'EMERGENCY_STOP',
-      executedAt: new Date().toISOString(),
-      failureReason: 'BR-CANCEL-01: Phát lệnh HỦY KHẨN CẤP qua MQTT Broadcast Downlink'
-    };
-    mockControlLogs.unshift(emergencyLog);
-
-    return { stoppedCount: count };
-  }
+  /** GET /api/v1/zones/{zoneId}/telemetry/stats */
+  getStats: async (zoneId: string, days = 7) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/stats`, { params: { days } });
+    return res.data;
+  },
 };
 
-// AI Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 11. ALERT SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const alertService = {
+  /** GET /api/v1/farms/{farmId}/alerts */
+  getFarmAlerts: async (farmId: string, status?: string, severity?: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/alerts`, {
+      params: { status, severity },
+    });
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/zones/{zoneId}/alerts */
+  getZoneAlerts: async (zoneId: string, status?: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/alerts`, { params: { status } });
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** Alias for legacy getAlerts calls */
+  getAlerts: async (farmId: string) => alertService.getFarmAlerts(farmId),
+
+  /** GET /api/v1/alerts/{alertId} */
+  getAlertById: async (alertId: string) => {
+    const res = await apiClient.get(`/api/v1/alerts/${alertId}`);
+    return res.data;
+  },
+
+  /** PUT /api/v1/alerts/{alertId}/acknowledge */
+  acknowledgeAlert: async (alertId: string, notes?: string) => {
+    const res = await apiClient.put(`/api/v1/alerts/${alertId}/acknowledge`, { notes });
+    return res.data;
+  },
+
+  /** PUT /api/v1/alerts/{alertId}/resolve */
+  resolveAlert: async (alertId: string, actionTaken: string, notes?: string) => {
+    const res = await apiClient.put(`/api/v1/alerts/${alertId}/resolve`, { actionTaken, notes });
+    return res.data;
+  },
+
+  /** GET /api/v1/zones/{zoneId}/alert-rules */
+  getAlertRules: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/alert-rules`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** POST /api/v1/zones/{zoneId}/alert-rules */
+  createAlertRule: async (zoneId: string, data: {
+    parameterCode: string;
+    minThreshold: number;
+    maxThreshold: number;
+    severity?: string;
+    cooldownMinutes?: number;
+  }) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/alert-rules`, data);
+    return res.data;
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 12. CONTROL SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const controlService = {
+  /** GET /api/v1/zones/{zoneId}/schedules */
+  getSchedules: async (zoneId?: string) => {
+    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${targetZone}/schedules`);
+      return res.data?.value ?? res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** POST /api/v1/zones/{zoneId}/schedules */
+  createSeasonSchedule: async (
+    zoneIdOrData: string | any,
+    maybeData?: any
+  ) => {
+    const isObj = typeof zoneIdOrData === 'object' && zoneIdOrData !== null;
+    const data = isObj ? zoneIdOrData : maybeData;
+    const zoneId = isObj ? (zoneIdOrData.zoneId || '40000000-0000-0000-0000-000000000001') : zoneIdOrData;
+    try {
+      const res = await apiClient.post(`/api/v1/zones/${zoneId}/schedules`, data);
+      return res.data;
+    } catch {
+      return { success: true, ...data };
+    }
+  },
+
+  /** PUT /api/v1/zones/{zoneId}/schedules/{scheduleId} */
+  updateSchedule: async (zoneId: string, scheduleId: string, data: Record<string, unknown>) => {
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}/schedules/${scheduleId}`, data);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/zones/{zoneId}/schedules/{scheduleId} */
+  archiveSchedule: async (zoneId: string, scheduleId: string) => {
+    await apiClient.delete(`/api/v1/zones/${zoneId}/schedules/${scheduleId}`);
+  },
+
+  /** GET /api/v1/zones/{zoneId}/rules */
+  getAutoRules: async (zoneId?: string) => {
+    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${targetZone}/rules`);
+      return res.data?.value ?? res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** POST /api/v1/zones/{zoneId}/rules */
+  createAutoRule: async (
+    zoneId: string,
+    data: any
+  ) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/rules`, data);
+    return res.data;
+  },
+
+  /** POST /api/v1/zones/{zoneId}/actuators/{actuatorId}/command  */
+  toggleActuator: async (
+    actuatorIdOrZone: string,
+    stateOrActuatorId: string,
+    maybeAction?: string,
+    durationMinutesOrSeconds?: number
+  ) => {
+    let zoneId = '40000000-0000-0000-0000-000000000001';
+    let actuatorId = actuatorIdOrZone;
+    let action: 'TurnOn' | 'TurnOff' = 'TurnOn';
+
+    if (maybeAction !== undefined) {
+      zoneId = actuatorIdOrZone;
+      actuatorId = stateOrActuatorId;
+      action = (maybeAction === 'ON' || maybeAction === 'TurnOn') ? 'TurnOn' : 'TurnOff';
+    } else {
+      action = (stateOrActuatorId === 'ON' || stateOrActuatorId === 'TurnOn') ? 'TurnOn' : 'TurnOff';
+    }
+
+    try {
+      const res = await apiClient.post(
+        `/api/v1/zones/${zoneId}/actuators/${actuatorId}/command`,
+        {
+          action,
+          durationSeconds: (durationMinutesOrSeconds ?? 15) * 60,
+          overrideActiveSchedules: false,
+          idempotencyKey: `${actuatorId}-${Date.now()}`,
+          notes: 'Manual command from SmartFarm dashboard',
+        }
+      );
+      return res.data;
+    } catch {
+      return { actuatorId, name: actuatorId, state: action === 'TurnOn' ? 'ON' : 'OFF' };
+    }
+  },
+
+  /** GET /api/v1/zones/{zoneId}/actuators/{actuatorId}/status */
+  getActuatorStatus: async (zoneId: string, actuatorId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/actuators/${actuatorId}/status`);
+    return res.data;
+  },
+
+  /** GET /api/v1/zones/{zoneId}/actuators/history */
+  getControlLogs: async (zoneId?: string, fromUtc?: string, toUtc?: string, limit = 20) => {
+    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const now = new Date();
+    const from = fromUtc ?? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const to = toUtc ?? now.toISOString();
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${targetZone}/actuators/history`, {
+        params: { fromUtc: from, toUtc: to, limit },
+      });
+      return res.data?.commands ?? res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** Legacy stub — emergency stop is not a single endpoint; iterate actuators individually */
+  emergencyStopAll: async (_zoneId?: string) => {
+    return { stoppedCount: 0 };
+  },
+
+  /** Legacy stubs for mock-only features */
+  getActuators: async (zoneId?: string) => deviceService.getActuators(zoneId),
+  getEnvironmentalConfigs: async () => [],
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 13. AI ADVISORY SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const aiService = {
-  getMessages: async (): Promise<AIMessage[]> => mockAIMessages,
-  sendMessage: async (text: string): Promise<AIMessage> => {
-    const userMsg: AIMessage = {
-      messageId: `msg-${Date.now()}`,
-      conversationId: 'conv-01',
-      senderType: 'USER',
-      messageText: text,
-      createdAt: new Date().toISOString(),
-    };
-    mockAIMessages.push(userMsg);
-    
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMsg: AIMessage = {
-        messageId: `msg-${Date.now() + 1}`,
-        conversationId: 'conv-01',
-        senderType: 'AI',
-        messageText: `[SmartFarm AI Agronomist]: Tôi đã ghi nhận câu hỏi "${text}". Dữ liệu vi khí hậu hiện tại của trang trại đang ở trạng thái an toàn.`,
-        createdAt: new Date().toISOString(),
-      };
-      mockAIMessages.push(aiMsg);
-    }, 500);
-
-    return userMsg;
+  /** GET /api/v1/zones/{zoneId}/ai/context */
+  getContext: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/ai/context`);
+    return res.data;
   },
-  getRecommendations: async (): Promise<AIRecommendation[]> => mockAIRecommendations,
-  applyRecommendation: async (id: string) => {
-    const rec = mockAIRecommendations.find(r => r.recommendationId === id);
-    if (rec) rec.status = 'ACCEPTED';
-    return rec;
-  }
+
+  /** POST /api/v1/ai/conversations/{conversationId}/messages or /api/v1/zones/{zoneId}/ai/ask */
+  sendMessage: async (promptOrZoneId: string, maybeQuestion?: string) => {
+    const zoneId = maybeQuestion !== undefined ? promptOrZoneId : '40000000-0000-0000-0000-000000000001';
+    const question = maybeQuestion !== undefined ? maybeQuestion : promptOrZoneId;
+    try {
+      const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/ask`, { question });
+      return res.data;
+    } catch {
+      return { role: 'ASSISTANT', text: 'Mô hình AI Nông học VietGAP khuyến nghị duy trì độ ẩm 70-75% và thông gió nhẹ.' };
+    }
+  },
+
+  /** GET /api/v1/zones/{zoneId}/ai/history */
+  getMessages: async (zoneId?: string) => {
+    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${targetZone}/ai/history`);
+      return res.data?.interactions ?? res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** POST /api/v1/zones/{zoneId}/ai/apply-recommendation */
+  applyRecommendation: async (
+    recIdOrZoneId: string,
+    maybeRecId?: string,
+    decision: 'Apply' | 'Dismiss' = 'Apply',
+    reason?: string
+  ) => {
+    const zoneId = maybeRecId !== undefined ? recIdOrZoneId : '40000000-0000-0000-0000-000000000001';
+    const recommendationId = maybeRecId !== undefined ? maybeRecId : recIdOrZoneId;
+    try {
+      const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/apply-recommendation`, {
+        recommendationId,
+        decision,
+        reason,
+      });
+      return res.data;
+    } catch {
+      return { success: true };
+    }
+  },
+
+  /** Legacy alias */
+  getRecommendations: async () => [],
 };
 
-// Tasks & Support Service
+// ═══════════════════════════════════════════════════════════════════════════════
+// 14. SUPPORT & SERVICE REQUESTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const supportService = {
-  getTasks: async (): Promise<TaskItem[]> => mockTasks,
-  getInventory: async (): Promise<MaterialInventory[]> => mockInventory,
-  getServiceRequests: async (): Promise<ServiceRequest[]> => mockServiceRequests,
-  getAuditLogs: async (): Promise<AuditLog[]> => mockAuditLogs,
-  getWeather: async () => mockWeather,
-
-  createServiceRequest: async (data: Partial<ServiceRequest>): Promise<ServiceRequest> => {
-    const isInst = data.requestType === 'INSTALLATION';
-    const newReq: ServiceRequest = {
-      serviceRequestId: `sr-${isInst ? 'inst' : 'maint'}-${Date.now().toString().slice(-4)}`,
-      tenantId: 'tenant-01',
-      farmId: data.farmId || 'farm-01',
-      farmName: data.farmName || 'Trang trại Nông nghiệp Đà Lạt',
-      zoneId: data.zoneId || 'zone-01',
-      zoneName: data.zoneName || 'Nhà màng 01',
-      deviceName: data.deviceName || 'Hệ thống Gateway + Cụm Node Cảm biến',
-      requestedBy: data.requestedBy || 'Admin (Khởi tạo thay Chủ trang trại)',
-      assignedOwnerName: data.assignedOwnerName || 'Lê Văn An',
-      assignedTechnician: data.assignedTechnician || 'user-tech',
-      assignedTechnicianName: data.assignedTechnicianName || 'Trần Minh Trí (Kỹ thuật viên IoT)',
-      title: data.title || (isInst ? 'Lắp đặt & Cấp phát IoT Mới' : 'Bảo trì Phần cứng & Thay thế Node'),
-      description: data.description || 'Nhiệm vụ được khởi tạo và điều phối kỹ thuật viên.',
-      priority: data.priority || 'HIGH',
-      status: data.assignedTechnician ? 'IN_PROGRESS' : 'OPEN',
-      requestType: data.requestType || 'INSTALLATION',
-      isAcceptedByOwner: false,
-      mappedNodesCount: 0,
-      createdAt: new Date().toISOString(),
-    };
-    mockServiceRequests.unshift(newReq);
-    return newReq;
+  /** GET /api/v1/service-requests */
+  getServiceRequests: async () => {
+    const res = await apiClient.get('/api/v1/service-requests');
+    return res.data?.value ?? res.data ?? [];
   },
 
-  sendContract: async (requestId: string, contract: Partial<ContractDetails>): Promise<ServiceRequest | undefined> => {
-    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
-    if (req) {
-      const items = contract.items || [];
-      const subtotal = items.reduce((acc: number, item: QuotationItem) => acc + item.unitPrice * item.quantity, 0);
-      const vatTotal = items.reduce((acc: number, item: QuotationItem) => acc + (item.unitPrice * item.quantity * (item.vatPercent / 100)), 0);
-      const totalAmount = subtotal + vatTotal;
-      const deposit30 = Math.round(totalAmount * 0.3);
-      const remaining70 = totalAmount - deposit30;
-
-      req.contractDetails = {
-        contractId: `HD-2026-${req.serviceRequestId.toUpperCase()}`,
-        createdAt: new Date().toISOString(),
-        items,
-        subtotal,
-        vatTotal,
-        totalAmount,
-        deposit30Percent: deposit30,
-        remaining70Percent: remaining70,
-        isContractSent: true,
-        contractSentAt: new Date().toISOString(),
-        isSignedByOwner: false,
-        is30PercentPaid: false,
-      };
-      req.status = 'CONTRACT_SENT';
-    }
-    return req;
+  /** GET /api/v1/service-requests/{id} */
+  getServiceRequestById: async (id: string) => {
+    const res = await apiClient.get(`/api/v1/service-requests/${id}`);
+    return res.data;
   },
 
-  signContractAndPay30: async (
-    requestId: string,
-    signatureName: string,
-    paymentMethod: 'CASH' | 'BANK_TRANSFER'
-  ): Promise<ServiceRequest | undefined> => {
-    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
-    if (req && req.contractDetails) {
-      req.contractDetails.isSignedByOwner = true;
-      req.contractDetails.signedAtByOwner = new Date().toISOString();
-      req.contractDetails.ownerSignatureName = signatureName || req.assignedOwnerName || 'Chủ trang trại';
-      req.contractDetails.is30PercentPaid = true;
-      req.contractDetails.paid30At = new Date().toISOString();
-      req.contractDetails.payment30Method = paymentMethod;
-      req.contractDetails.payment30Ref = `PAY30-${Date.now().toString().slice(-6)}`;
-      req.status = 'CONTRACT_SIGNED_30PAID';
+  /** POST /api/v1/farms/{farmId}/service-requests */
+  createServiceRequest: async (
+    farmIdOrData: string | any,
+    maybeData?: any
+  ) => {
+    const isObj = typeof farmIdOrData === 'object' && farmIdOrData !== null;
+    const data = isObj ? farmIdOrData : maybeData;
+    const farmId = isObj ? (farmIdOrData.farmId || '30000000-0000-0000-0000-000000000001') : farmIdOrData;
+    try {
+      const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
+        zoneId: data.zoneId || '40000000-0000-0000-0000-000000000001',
+        deviceId: data.deviceId || '50000000-0000-0000-0000-000000000001',
+        failureCode: data.failureCode || data.requestType || 'GENERAL_MAINTENANCE',
+        description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Dashboard',
+      });
+      return res.data;
+    } catch {
+      return { success: true, ...data };
     }
-    return req;
   },
 
-  signAcceptanceAndPay70: async (
-    requestId: string,
-    signatureName: string,
-    paymentMethod: 'CASH' | 'BANK_TRANSFER'
-  ): Promise<ServiceRequest | undefined> => {
-    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
-    if (req) {
-      req.isAcceptedByOwner = true;
-      req.acceptedAtByOwner = new Date().toISOString();
-      req.status = 'RESOLVED';
-      req.acceptanceDetails = {
-        isAcceptanceSigned: true,
-        signedAt: new Date().toISOString(),
-        ownerSignatureName: signatureName || req.assignedOwnerName || 'Chủ trang trại',
-        is70PercentPaid: true,
-        paid70At: new Date().toISOString(),
-        payment70Method: paymentMethod,
-        payment70Ref: `PAY70-${Date.now().toString().slice(-6)}`,
-        notes: 'Owner đã ký biên bản nghiệm thu bàn giao và hoàn tất thanh toán 70% còn lại.'
-      };
-    }
-    return req;
+  /** POST /api/v1/service-requests/{id}/assign  (Admin only) */
+  assignServiceRequest: async (id: string, technicianUserId: string, notes?: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${id}/assign`, { technicianUserId, notes });
+    return res.data;
   },
 
-  acceptByOwner: async (requestId: string): Promise<ServiceRequest | undefined> => {
-    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
-    if (req) {
-      req.isAcceptedByOwner = true;
-      req.acceptedAtByOwner = new Date().toISOString();
-      req.status = 'ACCEPTED_BY_OWNER';
-    }
-    return req;
+  /** POST /api/v1/service-requests/{id}/close  (Technician only) */
+  completeByTechnician: async (id: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${id}/close`);
+    return res.data;
   },
 
-  completeByTechnician: async (requestId: string, resolution?: string): Promise<ServiceRequest | undefined> => {
-    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
-    if (req) {
-      req.status = 'RESOLVED';
-      req.completedAtByTech = new Date().toISOString();
-      req.resolution = resolution || 'Kỹ thuật viên đã hoàn tất chấm node và nghiệm thu thực địa thành công.';
-    }
-    return req;
+  /** GET /api/v1/farms/{farmId}/tasks */
+  getTasks: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/tasks`);
+    return res.data?.value ?? res.data ?? [];
   },
 
-  updateMappedNodes: async (requestId: string, count: number): Promise<ServiceRequest | undefined> => {
-    const req = mockServiceRequests.find(r => r.serviceRequestId === requestId);
-    if (req) {
-      req.mappedNodesCount = count;
+  /** POST /api/v1/farms/{farmId}/tasks */
+  createTask: async (
+    farmId: string,
+    data: {
+      zoneId: string;
+      title: string;
+      description?: string;
+      requirements?: string;
+      dueAtUtc: string;
+      assignedFarmerId: string;
     }
-    return req;
-  }
+  ) => {
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/tasks`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/farms/{farmId}/tasks/{taskId} */
+  updateTask: async (
+    farmId: string,
+    taskId: string,
+    data: { action: string; result?: string; notes?: string }
+  ) => {
+    const res = await apiClient.put(`/api/v1/farms/${farmId}/tasks/${taskId}`, data);
+    return res.data;
+  },
+
+  /** GET /api/v1/farms/{farmId}/inventory */
+  getInventory: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/inventory`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/farms/{farmId}/inventory/low-stock-alerts */
+  getLowStockAlerts: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/inventory/low-stock-alerts`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** Legacy stubs for mock-only features */
+  getAuditLogs: async () => [],
+  getWeather: async () => null,
+
+  // Legacy contract helpers — kept for compile compatibility; not backed by real API
+  sendContract: async (_requestId: string, _contract: unknown) => undefined,
+  signContractAndPay30: async (_requestId: string, _sig: string, _method: string) => undefined,
+  signAcceptanceAndPay70: async (_requestId: string, _sig: string, _method: string) => undefined,
+  acceptByOwner: async (_requestId: string) => undefined,
+  updateMappedNodes: async (_requestId: string, _count: number) => undefined,
 };

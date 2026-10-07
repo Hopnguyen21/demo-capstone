@@ -2,22 +2,52 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole } from '../../types';
-import { Sprout, ShieldCheck, ArrowRight, UserCheck, KeyRound, Mail } from 'lucide-react';
+import { Sprout, ShieldCheck, ArrowRight, UserCheck, KeyRound, Mail, AlertCircle, Loader2 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
+import { extractApiError } from '../../services';
 
 export const LoginPage: React.FC = () => {
-  const { switchRole } = useAuth();
+  const { login, switchRole } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('owner@smartfarm.vn');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('owner@smartfarm.demo');
+  const [password, setPassword] = useState('Demo@12345');
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleDevRoleLogin = (targetRole: UserRole) => {
-    switchRole(targetRole);
-    switch (targetRole) {
+  const navigateForRole = (role: UserRole) => {
+    switch (role) {
       case 'PLATFORM_ADMIN': navigate('/admin/dashboard'); break;
       case 'PLATFORM_TECHNICIAN': navigate('/technician/dashboard'); break;
       case 'FARM_OWNER': navigate('/owner/dashboard'); break;
       case 'FARMER': navigate('/farmer/home'); break;
+      default: navigate('/owner/dashboard');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      const loggedUser = await login(email, password);
+      navigateForRole(loggedUser.role);
+    } catch (err) {
+      setErrorMessage(extractApiError(err) || 'Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDevRoleLogin = async (targetRole: UserRole) => {
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      await switchRole(targetRole);
+      navigateForRole(targetRole);
+    } catch (err) {
+      setErrorMessage(extractApiError(err) || 'Không thể chuyển đổi vai trò.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,7 +98,14 @@ export const LoginPage: React.FC = () => {
             <h2 className="text-lg font-bold text-slate-900">Đăng nhập Hệ thống</h2>
             <p className="text-xs text-slate-500 mt-1">Nhập tài khoản của bạn để truy cập Workspace</p>
 
-            <form onSubmit={(e) => { e.preventDefault(); handleDevRoleLogin('FARM_OWNER'); }} className="mt-6 space-y-4">
+            {errorMessage && (
+              <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-500" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Email / Tên đăng nhập</label>
                 <div className="relative">
@@ -99,14 +136,22 @@ export const LoginPage: React.FC = () => {
 
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="rounded bg-slate-100 border-slate-300 text-[#062326] focus:ring-0" />
+                  <input type="checkbox" defaultChecked className="rounded bg-slate-100 border-slate-300 text-[#062326] focus:ring-0" />
                   <span>Ghi nhớ đăng nhập</span>
                 </label>
                 <a href="/forgot-password" className="text-[#062326] font-medium hover:underline">Quên mật khẩu?</a>
               </div>
 
-              <Button type="submit" className="w-full mt-2 bg-[#062326] hover:bg-[#093539]">
-                Đăng nhập ngay <ArrowRight size={16} className="ml-2" />
+              <Button type="submit" disabled={loading} className="w-full mt-2 bg-[#062326] hover:bg-[#093539] flex items-center justify-center gap-2">
+                {loading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Đang xác thực...
+                  </>
+                ) : (
+                  <>
+                    Đăng nhập ngay <ArrowRight size={16} className="ml-1" />
+                  </>
+                )}
               </Button>
             </form>
           </div>
@@ -118,29 +163,37 @@ export const LoginPage: React.FC = () => {
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button
+                type="button"
+                disabled={loading}
                 onClick={() => handleDevRoleLogin('PLATFORM_ADMIN')}
-                className="p-2 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-left text-xs transition-all"
+                className="p-2 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-left text-xs transition-all disabled:opacity-50"
               >
                 <div className="font-semibold">1. Platform Admin</div>
                 <div className="text-[10px] text-rose-600">Quản trị toàn sàn SaaS</div>
               </button>
               <button
+                type="button"
+                disabled={loading}
                 onClick={() => handleDevRoleLogin('PLATFORM_TECHNICIAN')}
-                className="p-2 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 text-left text-xs transition-all"
+                className="p-2 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 text-left text-xs transition-all disabled:opacity-50"
               >
                 <div className="font-semibold">2. Technician</div>
                 <div className="text-[10px] text-sky-600">Triển khai & Cấp phát IoT</div>
               </button>
               <button
+                type="button"
+                disabled={loading}
                 onClick={() => handleDevRoleLogin('FARM_OWNER')}
-                className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-left text-xs transition-all"
+                className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-left text-xs transition-all disabled:opacity-50"
               >
                 <div className="font-semibold">3. Farm Owner</div>
                 <div className="text-[10px] text-emerald-600">Chủ Nông trang Tenant Root</div>
               </button>
               <button
+                type="button"
+                disabled={loading}
                 onClick={() => handleDevRoleLogin('FARMER')}
-                className="p-2 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-left text-xs transition-all"
+                className="p-2 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-left text-xs transition-all disabled:opacity-50"
               >
                 <div className="font-semibold">4. Farmer / Worker</div>
                 <div className="text-[10px] text-amber-600">Công nhân thực địa</div>

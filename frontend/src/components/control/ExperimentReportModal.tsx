@@ -120,6 +120,43 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
     );
   };
 
+  const addNewItem = () => {
+    const newItemId = `item-custom-${Date.now()}`;
+    setQuotationItems([
+      ...quotationItems,
+      {
+        id: newItemId,
+        code: 'SP-MOI',
+        name: 'Tên thiết bị mới',
+        unit: 'Cái',
+        unitPrice: 1000000,
+        vatPercent: 8,
+        quantity: 1,
+        totalAmount: 1080000,
+        notes: 'Nhập ghi chú hoặc mô tả liên kết',
+        isSelected: true,
+      }
+    ]);
+  };
+
+  const updateItemField = (id: string, field: keyof QuotationItem, value: any) => {
+    setQuotationItems(prev => prev.map(item => {
+      if (item.id === id) {
+        const updated = { ...item, [field]: value };
+        if (field === 'unitPrice' || field === 'quantity' || field === 'vatPercent') {
+          const rawPrice = updated.unitPrice * updated.quantity;
+          updated.totalAmount = Math.round(rawPrice * (1 + updated.vatPercent / 100));
+        }
+        return updated;
+      }
+      return item;
+    }));
+  };
+
+  const removeItem = (id: string) => {
+    setQuotationItems(prev => prev.filter(item => item.id !== id));
+  };
+
   const selectedItems = quotationItems.filter(i => i.isSelected);
   const subtotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
   const vatTotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity * (i.vatPercent / 100)), 0);
@@ -150,7 +187,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="📄 Báo giá & Hợp đồng Lắp đặt IoT Thực địa">
+    <Modal isOpen={isOpen} onClose={onClose} title="📄 Bảng Dự Toán Thiết Bị & Hợp Đồng Triển Khai IoT" size="full">
       <form onSubmit={handleSendContract} className="space-y-4 text-xs">
         {/* Header Info Banner */}
         <div className="p-3.5 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-xl shadow-xs space-y-1">
@@ -186,13 +223,22 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
             <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
               <Package size={15} className="text-[#062326]" /> Bảng Báo giá Thiết bị & Vật tư IoT ({selectedItems.length}/{quotationItems.length})
             </h4>
-            <button
-              type="button"
-              onClick={() => setQuotationItems(prev => prev.map(item => ({ ...item, isSelected: true })))}
-              className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold hover:underline"
-            >
-              Chọn tất cả
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={addNewItem}
+                className="text-[11px] text-sky-600 hover:text-sky-800 font-bold hover:underline flex items-center gap-1"
+              >
+                + Thêm thiết bị ngoài
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuotationItems(prev => prev.map(item => ({ ...item, isSelected: true })))}
+                className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold hover:underline"
+              >
+                Chọn tất cả
+              </button>
+            </div>
           </div>
 
           {/* Table Container styled like Image 2 */}
@@ -201,14 +247,15 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
               <table className="w-full text-left text-[11px] border-collapse">
                 <thead className="bg-slate-100 text-slate-800 font-bold sticky top-0 border-b border-slate-200 shadow-2xs">
                   <tr>
-                    <th className="p-2 text-center w-8">Chọnn</th>
-                    <th className="p-2">Mã hàng</th>
-                    <th className="p-2">Tên hàng / Mô tả</th>
-                    <th className="p-2 text-center">ĐVT</th>
-                    <th className="p-2 text-right">Đơn giá (đ)</th>
-                    <th className="p-2 text-center">VAT</th>
-                    <th className="p-2 text-center w-20">SL</th>
-                    <th className="p-2 text-right">Thành tiền (đ)</th>
+                    <th className="p-2 text-center w-8">Chọn</th>
+                    <th className="p-2 w-28">Mã hàng</th>
+                    <th className="p-2">Tên hàng / Mô tả / Mối quan hệ điều khiển</th>
+                    <th className="p-2 text-center w-16">ĐVT</th>
+                    <th className="p-2 text-right w-28">Đơn giá (đ)</th>
+                    <th className="p-2 text-center w-16">VAT</th>
+                    <th className="p-2 text-center w-24">SL</th>
+                    <th className="p-2 text-right w-28">Thành tiền (đ)</th>
+                    <th className="p-2 text-center w-8"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -225,16 +272,44 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                           className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                         />
                       </td>
-                      <td className="p-2 font-mono font-bold text-slate-900 whitespace-nowrap">
-                        {item.code}
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={item.code}
+                          onChange={(e) => updateItemField(item.id, 'code', e.target.value)}
+                          className="w-full font-mono font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none"
+                        />
                       </td>
                       <td className="p-2">
-                        <div className="font-semibold text-slate-800">{item.name}</div>
-                        {item.notes && <div className="text-[10px] text-slate-400 font-serif italic">{item.notes}</div>}
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
+                          className="w-full font-semibold text-slate-800 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none mb-1"
+                        />
+                        <input
+                          type="text"
+                          value={item.notes || ''}
+                          onChange={(e) => updateItemField(item.id, 'notes', e.target.value)}
+                          placeholder="Mô tả hoặc: Sensor này điều khiển bơm nào?"
+                          className="w-full text-[10px] text-slate-500 font-serif italic bg-transparent border-b border-transparent focus:border-emerald-300 focus:outline-none"
+                        />
                       </td>
-                      <td className="p-2 text-center font-medium text-slate-600">{item.unit}</td>
-                      <td className="p-2 text-right font-mono font-medium text-slate-700">
-                        {item.unitPrice.toLocaleString('vi-VN')}đ
+                      <td className="p-2 text-center">
+                        <input
+                          type="text"
+                          value={item.unit}
+                          onChange={(e) => updateItemField(item.id, 'unit', e.target.value)}
+                          className="w-full text-center font-medium text-slate-600 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none"
+                        />
+                      </td>
+                      <td className="p-2 text-right">
+                        <input
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateItemField(item.id, 'unitPrice', Number(e.target.value))}
+                          className="w-full text-right font-mono font-medium text-slate-700 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none"
+                        />
                       </td>
                       <td className="p-2 text-center font-mono text-slate-500">{item.vatPercent}%</td>
                       <td className="p-2 text-center">
@@ -258,6 +333,16 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                       </td>
                       <td className="p-2 text-right font-mono font-bold text-emerald-950">
                         {item.totalAmount.toLocaleString('vi-VN')}đ
+                      </td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="text-rose-400 hover:text-rose-600 font-bold"
+                          title="Xóa thiết bị"
+                        >
+                          ✕
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -313,8 +398,8 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
               type="submit"
               className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md px-4 py-2"
             >
-              <Send size={15} />
-              <span>Gửi Báo giá & Hợp đồng cho Khách (Owner)</span>
+              <CheckCircle2 size={15} />
+              <span>Xác nhận & Gửi Hợp đồng ngay cho Khách</span>
             </Button>
           </div>
         </div>
