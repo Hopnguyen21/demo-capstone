@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
+import { adminService } from '../../services';
 import {
   Package, Cpu, Radio, Activity, Wifi, Battery, Plus, Search,
   Filter, CheckCircle2, ShieldCheck, Wrench, Layers, Tag, MapPin, Trash2, Edit
@@ -142,6 +143,27 @@ export const DevicesPage: React.FC = () => {
     },
   ]);
 
+  useEffect(() => {
+    adminService.getHardwareItems().then((items: any[]) => {
+      if (Array.isArray(items) && items.length > 0) {
+        setDevices(items.map((i: any) => ({
+          id: i.id,
+          code: i.code,
+          name: i.name,
+          category: (i.category || 'GATEWAY').toUpperCase(),
+          serialNumber: i.serialNumber || '',
+          macAddress: i.macAddress || '',
+          model: i.model || '',
+          manufacturer: i.manufacturer || '',
+          quantityInStock: i.quantityInStock || 0,
+          locationRack: i.locationRack || '',
+          status: (i.status || 'AVAILABLE').toUpperCase(),
+          addedAt: i.createdAtUtc ? i.createdAtUtc.substring(0, 10) : '2026-08-10',
+        })));
+      }
+    }).catch(() => {});
+  }, []);
+
   // Form State for Adding New Hardware Item
   const [newItem, setNewItem] = useState({
     code: '',
@@ -155,7 +177,7 @@ export const DevicesPage: React.FC = () => {
     locationRack: 'Kệ A1 - Kho Trung tâm',
   });
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItem.code || !newItem.name) {
       alert('⚠️ Vui lòng nhập đầy đủ Mã và Tên linh kiện!');
@@ -176,6 +198,24 @@ export const DevicesPage: React.FC = () => {
       status: 'AVAILABLE',
       addedAt: new Date().toISOString().split('T')[0],
     };
+
+    try {
+      await adminService.createHardwareItem({
+        code: created.code,
+        name: created.name,
+        category: created.category,
+        model: created.model,
+        manufacturer: created.manufacturer,
+        serialNumber: created.serialNumber,
+        macAddress: created.macAddress,
+        quantityInStock: created.quantityInStock,
+        locationRack: created.locationRack,
+        unitPrice: 0,
+        status: created.status
+      });
+    } catch {
+      // Keep optimistic update
+    }
 
     setDevices(prev => [created, ...prev]);
     setIsAddModalOpen(false);

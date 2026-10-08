@@ -8,6 +8,8 @@ using SmartFarm.Application;
 using SmartFarm.Infrastructure;
 using System.Text.Json.Serialization;
 using SmartFarm.Api.HostedServices;
+using Microsoft.EntityFrameworkCore;
+using SmartFarm.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -74,6 +76,21 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Auto-migration: apply pending EF Core migrations on startup
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        await db.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Auto-migration failed on startup");
+    }
+}
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();

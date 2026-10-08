@@ -78,6 +78,17 @@ internal sealed partial class TenantService(SmartFarmDbContext dbContext, TimePr
         return await LoadViewAsync(tenant.Id, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<TenantView>> ListAllAsync(CancellationToken cancellationToken)
+    {
+        var tenantIds = await dbContext.Tenants.AsNoTracking().OrderBy(x => x.CompanyName).Select(x => x.Id).ToListAsync(cancellationToken);
+        var result = new List<TenantView>();
+        foreach (var id in tenantIds)
+        {
+            result.Add(await LoadViewAsync(id, cancellationToken));
+        }
+        return result;
+    }
+
     private async Task<AppUser> GetOwnerAsync(Guid userId, bool requireTenant, CancellationToken cancellationToken)
     {
         var owner = await dbContext.AppUsers.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);

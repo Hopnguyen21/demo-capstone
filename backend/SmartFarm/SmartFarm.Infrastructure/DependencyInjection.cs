@@ -19,6 +19,8 @@ using SmartFarm.Application.Features.Finance;
 using SmartFarm.Infrastructure.Finance;
 using SmartFarm.Application.Features.Reports;
 using SmartFarm.Infrastructure.Reports;
+using SmartFarm.Application.Features.Platform;
+using SmartFarm.Infrastructure.Platform;
 
 namespace SmartFarm.Infrastructure;
 
@@ -103,6 +105,14 @@ public static class DependencyInjection
         services.AddScoped<IFinanceService, FinanceService>();
         services.AddScoped<IServiceRequestService, ServiceRequestService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<IPlatformAdminService, PlatformAdminService>();
+        services.AddScoped<IQuotationService, QuotationService>();
+        services.AddScoped<IGisService, GisService>();
+        services.AddScoped<IFarmWizardService, FarmWizardService>();
+        services.AddScoped<IWeatherService, WeatherService>();
+        services.AddScoped<IFarmerService, FarmerService>();
+        services.AddScoped<IScheduleSyncService, ScheduleSyncService>();
+        services.AddScoped<IControlAutomationService, ControlAutomationService>();
 
         return services;
     }

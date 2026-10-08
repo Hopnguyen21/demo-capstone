@@ -15,11 +15,17 @@ internal sealed class UserService(SmartFarmDbContext dbContext, TimeProvider tim
         UserRole? role,
         CancellationToken cancellationToken)
     {
-        var owner = await GetOwnerAsync(ownerUserId, cancellationToken);
+        var caller = await dbContext.AppUsers.SingleOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var query = dbContext.AppUsers
             .AsNoTracking()
             .Include(x => x.ZoneAccesses)
-            .Where(x => x.TenantId == owner.TenantId);
+            .AsQueryable();
+
+        if (caller?.Role != UserRole.PlatformAdmin)
+        {
+            var owner = await GetOwnerAsync(ownerUserId, cancellationToken);
+            query = query.Where(x => x.TenantId == owner.TenantId);
+        }
         if (role.HasValue)
         {
             query = query.Where(x => x.Role == role.Value);

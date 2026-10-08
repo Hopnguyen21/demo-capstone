@@ -23,7 +23,12 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         Guid ownerUserId, Guid tenantId, FarmStatus? status, CancellationToken cancellationToken)
     {
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
-        var query = dbContext.Farms.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
+        var query = dbContext.Farms.AsNoTracking();
+        if (caller?.Role != UserRole.PlatformAdmin)
+        {
+            query = query.Where(x => x.TenantId == tenantId);
+        }
         query = status.HasValue ? query.Where(x => x.Status == status) : query.Where(x => x.Status != FarmStatus.Archived);
         return await query.OrderBy(x => x.Name).Select(x => new FarmSummaryView(
             x.Id, x.Name, x.Status, x.TotalAreaM2,
@@ -58,8 +63,9 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         Guid ownerUserId, Guid tenantId, Guid farmId, CancellationToken cancellationToken)
     {
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
+        var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var farm = await dbContext.Farms.AsNoTracking().SingleOrDefaultAsync(
-            x => x.Id == farmId && x.TenantId == tenantId, cancellationToken)
+            x => x.Id == farmId && (caller != null && caller.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), cancellationToken)
             ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
         var fields = await dbContext.Fields.CountAsync(x => x.FarmId == farmId && x.ArchivedAtUtc == null, cancellationToken);
         var zones = await dbContext.Zones.CountAsync(
@@ -135,8 +141,9 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         Guid ownerUserId, Guid tenantId, Guid farmId, CancellationToken cancellationToken)
     {
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
+        var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var farm = await dbContext.Farms.AsNoTracking().SingleOrDefaultAsync(
-            x => x.Id == farmId && x.TenantId == tenantId, cancellationToken)
+            x => x.Id == farmId && (caller != null && caller.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), cancellationToken)
             ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
         var fields = await dbContext.Fields.AsNoTracking().Where(x => x.FarmId == farmId && x.ArchivedAtUtc == null)
             .OrderBy(x => x.Name).Select(x => new FieldStructureView(
@@ -370,18 +377,34 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         return new ArchiveView("Zone was archived.", now);
     }
 
-    private async Task EnsureOwnerScopeAsync(Guid ownerUserId, Guid tenantId, CancellationToken cancellationToken)
+    private async Task EnsureOwnerScopeAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken)
     {
-        var valid = await dbContext.AppUsers.AnyAsync(x => x.Id == ownerUserId && x.Role == UserRole.FarmOwner &&
-            x.Status == AccountStatus.Active && x.TenantId == tenantId, cancellationToken);
-        if (!valid)
+        var user = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user == null || user.Status != AccountStatus.Active)
         {
-            throw new AuthorizationException("The JWT Tenant does not match an active FarmOwner account.");
+            throw new AuthorizationException("The user account is inactive or not found.");
         }
+
+        if (user.Role == UserRole.PlatformAdmin)
+        {
+            return;
+        }
+
+        if (user.Role == UserRole.FarmOwner && user.TenantId == tenantId)
+        {
+            return;
+        }
+
+        if ((user.Role == UserRole.Farmer || user.Role == UserRole.PlatformTechnician) && user.TenantId == tenantId)
+        {
+            return;
+        }
+
+        throw new AuthorizationException("The user does not have permission to access farm structure in this scope.");
     }
 
     private async Task<Farm> GetFarmEntityAsync(Guid tenantId, Guid farmId, CancellationToken cancellationToken) =>
-        await dbContext.Farms.SingleOrDefaultAsync(x => x.Id == farmId && x.TenantId == tenantId, cancellationToken)
+        await dbContext.Farms.SingleOrDefaultAsync(x => x.Id == farmId && (tenantId == Guid.Empty || x.TenantId == tenantId), cancellationToken)
         ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
 
     private async Task<Field> GetFieldEntityAsync(Guid tenantId, Guid fieldId, bool tracking, CancellationToken cancellationToken)

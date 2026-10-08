@@ -1,15 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/BaseUI';
+import { supportService } from '../../services';
+
+const initialSpareParts = [
+  { id: '1', name: 'Mạch Gateway ESP32 SX1278 433MHz', code: 'SP-GW-01', stock: 12, unit: 'Bộ' },
+  { id: '2', name: 'Node LoRa Cảm biến Đất & Khi hậu', code: 'SP-NODE-01', stock: 25, unit: 'Cái' },
+  { id: '3', name: 'Cảm biến Độ ẩm đất RS485 Chống ăn mòn', code: 'SP-SEN-SM', stock: 40, unit: 'Cái' },
+  { id: '4', name: 'Mạch Relay 4 Kênh Cách ly Quang', code: 'SP-RELAY-4CH', stock: 18, unit: 'Cái' },
+  { id: '5', name: 'Pin Lithium 3.7V 5000mAh Solar Grade', code: 'SP-BAT-37V', stock: 30, unit: 'Viên' },
+];
 
 export const TechnicianInventoryPage: React.FC = () => {
-  const spareParts = [
-    { id: '1', name: 'Mạch Gateway ESP32 SX1278 433MHz', code: 'SP-GW-01', stock: 12, unit: 'Bộ' },
-    { id: '2', name: 'Node LoRa Cảm biến Đất & Khi hậu', code: 'SP-NODE-01', stock: 25, unit: 'Cái' },
-    { id: '3', name: 'Cảm biến Độ ẩm đất RS485 Chống ăn mòn', code: 'SP-SEN-SM', stock: 40, unit: 'Cái' },
-    { id: '4', name: 'Mạch Relay 4 Kênh Cách ly Quang', code: 'SP-RELAY-4CH', stock: 18, unit: 'Cái' },
-    { id: '5', name: 'Pin Lithium 3.7V 5000mAh Solar Grade', code: 'SP-BAT-37V', stock: 30, unit: 'Viên' },
-  ];
+  const [parts, setParts] = useState(initialSpareParts);
+
+  useEffect(() => {
+    supportService.getTechnicianSpareParts().then((items: any[]) => {
+      if (Array.isArray(items) && items.length > 0) {
+        setParts(items.map((i: any) => ({
+          id: i.id,
+          name: i.name,
+          code: i.code,
+          stock: i.quantityInStock || 0,
+          unit: 'Cái'
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -35,7 +52,7 @@ export const TechnicianInventoryPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-slate-700">
-            {spareParts.map(sp => (
+            {parts.map(sp => (
               <tr key={sp.id} className="hover:bg-slate-50/80 transition-colors">
                 <td className="p-4 font-semibold text-slate-900">{sp.name}</td>
                 <td className="p-4 font-mono text-sky-700 font-semibold">{sp.code}</td>

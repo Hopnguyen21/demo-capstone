@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using SmartFarm.Infrastructure.Persistence;
 namespace SmartFarm.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SmartFarmDbContext))]
-    partial class SmartFarmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261008065412_PlatformFeatures")]
+    partial class PlatformFeatures
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

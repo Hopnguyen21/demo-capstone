@@ -123,6 +123,8 @@ public sealed class Device : AuditableEntity
     public string? InstallationNotes { get; set; }
     public decimal? GpsLatitude { get; set; }
     public decimal? GpsLongitude { get; set; }
+    public int? BatteryLevel { get; set; }
+    public decimal? Rssi { get; set; }
     public DateTime? DecommissionedAtUtc { get; set; }
     public ICollection<DeviceSensor> Sensors { get; } = new List<DeviceSensor>();
     public ICollection<DeviceActuator> Actuators { get; } = new List<DeviceActuator>();
@@ -223,6 +225,13 @@ public sealed class ServiceRequest : AuditableEntity
     public Device? CurrentDevice { get; set; }
     public DateTime? AcceptedAtUtc { get; set; }
     public DateTime? ClosedAtUtc { get; set; }
+    // Contract & payment milestone flags
+    public bool IsContractSigned { get; set; } = false;
+    public bool IsDepositPaid { get; set; } = false;
+    public bool IsAcceptanceSigned { get; set; } = false;
+    public bool IsFullyPaid { get; set; } = false;
     public ICollection<ServiceRequestHistory> History { get; } = new List<ServiceRequestHistory>();
     public ICollection<DeviceReplacement> Replacements { get; } = new List<DeviceReplacement>();
+    public ICollection<ServiceRequestQuotation> Quotations { get; } = new List<ServiceRequestQuotation>();
+    public ICollection<ServiceRequestPayment> Payments { get; } = new List<ServiceRequestPayment>();
 }

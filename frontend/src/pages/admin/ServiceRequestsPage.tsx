@@ -56,20 +56,30 @@ export const ServiceRequestsPage: React.FC = () => {
     return matchesFilter && matchesSearch;
   });
 
-  const handleAssignTechnician = (requestId: string) => {
-    const techName = assignedTechMap[requestId] || 'Trần Minh Trí (Kỹ thuật viên IoT)';
-    setRequests(prev => prev.map(req => {
-      if (req.serviceRequestId === requestId) {
-        return {
-          ...req,
-          status: 'IN_PROGRESS',
-          assignedTechnician: 'user-tech',
-          assignedTechnicianName: techName,
-        };
+  const handleAssignTechnician = async (requestId: string) => {
+    const techId = assignedTechMap[requestId] || technicians[0]?.userId;
+    const tech = technicians.find(t => t.userId === techId);
+    const techName = tech?.fullName || 'Trần Minh Trí (Kỹ thuật viên IoT)';
+    try {
+      if (tech?.userId) {
+        await supportService.assignServiceRequest(requestId, tech.userId, `Admin phân công cho ${techName}`);
       }
-      return req;
-    }));
-    setSuccessMsg(`Đã phân công công việc cho ${techName} thành công!`);
+      await loadRequests();
+      setSuccessMsg(`Đã phân công công việc cho ${techName} thành công!`);
+    } catch {
+      setRequests(prev => prev.map(req => {
+        if (req.serviceRequestId === requestId) {
+          return {
+            ...req,
+            status: 'IN_PROGRESS',
+            assignedTechnician: techId || 'user-tech',
+            assignedTechnicianName: techName,
+          };
+        }
+        return req;
+      }));
+      setSuccessMsg(`Đã phân công công việc cho ${techName} thành công!`);
+    }
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
@@ -266,7 +276,7 @@ export const ServiceRequestsPage: React.FC = () => {
                         className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg p-1.5 focus:outline-none"
                       >
                         {technicians.map(t => (
-                          <option key={t.userId} value={t.fullName}>{t.fullName}</option>
+                          <option key={t.userId} value={t.userId}>{t.fullName}</option>
                         ))}
                       </select>
                       <Button size="sm" onClick={() => handleAssignTechnician(req.serviceRequestId)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold">

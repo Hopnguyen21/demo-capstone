@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../app/providers/AuthContext';
-import { alertService, supportService } from '../../services';
+import { alertService, supportService, farmerService } from '../../services';
 import { Alert } from '../../types';
 import { StatusBadge, Button } from '../../components/ui/BaseUI';
 import { Sprout, CheckSquare, ShieldAlert, Sun, Power, Bot, Clock } from 'lucide-react';
@@ -10,6 +10,7 @@ export const FarmerHome: React.FC = () => {
   const navigate = useNavigate();
   const { user, zones, selectedFarmId } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
+  const [farmerZones, setFarmerZones] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   useEffect(() => {
@@ -17,13 +18,21 @@ export const FarmerHome: React.FC = () => {
       if (res) setAlerts(res);
     }).catch(() => {});
 
-    const farmId = selectedFarmId || '30000000-0000-0000-0000-000000000001';
-    supportService.getTasks(farmId).then(res => {
-      if (res) setTasks(res);
+    farmerService.getMyTasks().then(res => {
+      if (res && res.length > 0) {
+        setTasks(res);
+      } else {
+        const farmId = selectedFarmId || '30000000-0000-0000-0000-000000000001';
+        supportService.getTasks(farmId).then(tRes => { if (tRes) setTasks(tRes); }).catch(() => {});
+      }
+    }).catch(() => {});
+
+    farmerService.getMyZones().then(res => {
+      if (res && res.length > 0) setFarmerZones(res);
     }).catch(() => {});
   }, [selectedFarmId]);
 
-  const assignedZones = zones.slice(0, 2);
+  const assignedZones = farmerZones.length > 0 ? farmerZones : zones.slice(0, 2);
   const myTasks = tasks.filter(t => t.status !== 'COMPLETED' && t.status !== 'Completed');
   const activeAlerts = alerts.filter(a => a.status === 'OPEN');
 
