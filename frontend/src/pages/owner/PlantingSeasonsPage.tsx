@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { mockPlantingSeasons, mockActuators } from '../../mocks/mockData';
 import { Calendar, Plus, Clock, CheckCircle2, Sliders, Droplets, Radio, Play, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
-import { controlService } from '../../services';
+import { controlService, seasonService } from '../../services';
 import { PlantingSeason, ControlSchedule, Actuator } from '../../types';
 
 export const PlantingSeasonsPage: React.FC = () => {
-  const [seasons, setSeasons] = useState<PlantingSeason[]>(mockPlantingSeasons);
+  const [seasons, setSeasons] = useState<PlantingSeason[]>([]);
   const [schedules, setSchedules] = useState<ControlSchedule[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<PlantingSeason | null>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
@@ -25,12 +24,18 @@ export const PlantingSeasonsPage: React.FC = () => {
   });
 
   const loadData = async () => {
-    const [allSchedules, allActuators] = await Promise.all([
-      controlService.getSchedules(),
-      controlService.getActuators(),
-    ]);
-    setSchedules(allSchedules);
-    setActuators(allActuators);
+    try {
+      const [allSeasons, allSchedules, allActuators] = await Promise.all([
+        seasonService.getSeasons(),
+        controlService.getSchedules(),
+        controlService.getActuators(),
+      ]);
+      if (Array.isArray(allSeasons)) setSeasons(allSeasons);
+      setSchedules(allSchedules);
+      setActuators(allActuators);
+    } catch (err) {
+      console.error('Failed to load season data:', err);
+    }
   };
 
   useEffect(() => {

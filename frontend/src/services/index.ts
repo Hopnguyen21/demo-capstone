@@ -82,6 +82,18 @@ export const userService = {
     return res.data;
   },
 
+  /** Alias: createUser = createFarmer / invite */
+  createUser: async (data: any) => {
+    const res = await apiClient.post('/api/v1/users/invite', data);
+    return res.data;
+  },
+
+  /** Alias: getFarmers = getUsers */
+  getFarmers: async () => {
+    const res = await apiClient.get('/api/v1/users');
+    return res.data?.value ?? res.data ?? [];
+  },
+
   /** PUT /api/v1/users/me/password */
   changePassword: async (currentPassword: string, newPassword: string) => {
     const res = await apiClient.put('/api/v1/users/me/password', { currentPassword, newPassword });
@@ -100,7 +112,7 @@ export const userService = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. TENANT SERVICE
+// 3. TENANT SERVICE & ADMIN SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const tenantService = {
@@ -127,6 +139,19 @@ export const tenantService = {
     const res = await apiClient.post('/api/v1/tenants/register', data);
     return res.data;
   },
+
+  /** Alias: createTenant */
+  createTenant: async (data: any) => {
+    const res = await apiClient.post('/api/v1/tenants/register', data);
+    return res.data;
+  },
+};
+
+export const adminService = {
+  getAuditLogs: async () => {
+    const res = await apiClient.get('/api/v1/audit-logs').catch(() => ({ data: [] }));
+    return res.data?.value ?? res.data ?? [];
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -145,6 +170,12 @@ export const farmService = {
   getFarmById: async (farmId: string) => {
     const res = await apiClient.get(`/api/v1/farms/${farmId}`);
     return res.data;
+  },
+
+  /** GET farm members */
+  getFarmMembers: async (_farmId?: string) => {
+    const res = await apiClient.get('/api/v1/users').catch(() => ({ data: [] }));
+    return res.data?.value ?? res.data ?? [];
   },
 
   /** POST /api/v1/farms */
@@ -188,8 +219,9 @@ export const farmService = {
 
 export const fieldService = {
   /** GET /api/v1/farms/{farmId}/fields */
-  getFields: async (farmId: string) => {
-    const res = await apiClient.get(`/api/v1/farms/${farmId}/fields`);
+  getFields: async (farmId?: string) => {
+    const target = farmId || '30000000-0000-0000-0000-000000000001';
+    const res = await apiClient.get(`/api/v1/farms/${target}/fields`);
     // Backend may return single object or array depending on count
     const data = res.data;
     if (Array.isArray(data)) return data;
@@ -237,7 +269,7 @@ export const fieldService = {
 export const zoneService = {
   /** GET /api/v1/fields/{fieldId}/zones or /api/v1/zones */
   getZones: async (fieldId?: string) => {
-    const fId = fieldId || '35000000-0000-0000-0000-000000000001';
+    const fId = fieldId || '31000000-0000-0000-0000-000000000001';
     try {
       const res = await apiClient.get(`/api/v1/fields/${fId}/zones`);
       const data = res.data;
@@ -359,8 +391,9 @@ export const cropService = {
 
 export const seasonService = {
   /** GET /api/v1/zones/{zoneId}/planting-seasons */
-  getSeasons: async (zoneId: string) => {
-    const res = await apiClient.get(`/api/v1/zones/${zoneId}/planting-seasons`);
+  getSeasons: async (zoneId?: string) => {
+    const target = zoneId || '32000000-0000-0000-0000-000000000001';
+    const res = await apiClient.get(`/api/v1/zones/${target}/planting-seasons`);
     return res.data?.value ?? res.data ?? [];
   },
 
@@ -387,8 +420,9 @@ export const seasonService = {
 
 export const deviceService = {
   /** GET /api/v1/farms/{farmId}/gateways */
-  getGateways: async (farmId: string) => {
-    const res = await apiClient.get(`/api/v1/farms/${farmId}/gateways`);
+  getGateways: async (farmId?: string) => {
+    const target = farmId || '30000000-0000-0000-0000-000000000001';
+    const res = await apiClient.get(`/api/v1/farms/${target}/gateways`);
     return res.data?.value ?? res.data ?? [];
   },
 
@@ -399,8 +433,9 @@ export const deviceService = {
   },
 
   /** GET /api/v1/zones/{zoneId}/nodes */
-  getNodes: async (zoneId: string) => {
-    const res = await apiClient.get(`/api/v1/zones/${zoneId}/nodes`);
+  getNodes: async (zoneId?: string) => {
+    const target = zoneId || '32000000-0000-0000-0000-000000000001';
+    const res = await apiClient.get(`/api/v1/zones/${target}/nodes`);
     return res.data?.value ?? res.data ?? [];
   },
 
@@ -410,9 +445,16 @@ export const deviceService = {
     return res.data;
   },
 
+  /** GET /api/v1/zones/{zoneId}/sensors */
+  getSensors: async (zoneId?: string) => {
+    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
+    const res = await apiClient.get(`/api/v1/zones/${targetZone}/sensors`).catch(() => ({ data: [] }));
+    return res.data?.value ?? res.data ?? [];
+  },
+
   /** GET /api/v1/zones/{zoneId}/actuators */
   getActuators: async (zoneId?: string) => {
-    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     const res = await apiClient.get(`/api/v1/zones/${targetZone}/actuators`).catch(() => ({ data: [] }));
     return res.data?.value ?? res.data ?? [];
   },
@@ -506,7 +548,10 @@ export const alertService = {
   },
 
   /** Alias for legacy getAlerts calls */
-  getAlerts: async (farmId: string) => alertService.getFarmAlerts(farmId),
+  getAlerts: async (farmId?: string) => {
+    const target = farmId || '30000000-0000-0000-0000-000000000001';
+    return alertService.getFarmAlerts(target);
+  },
 
   /** GET /api/v1/alerts/{alertId} */
   getAlertById: async (alertId: string) => {
@@ -552,7 +597,7 @@ export const alertService = {
 export const controlService = {
   /** GET /api/v1/zones/{zoneId}/schedules */
   getSchedules: async (zoneId?: string) => {
-    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     try {
       const res = await apiClient.get(`/api/v1/zones/${targetZone}/schedules`);
       return res.data?.value ?? res.data ?? [];
@@ -568,7 +613,7 @@ export const controlService = {
   ) => {
     const isObj = typeof zoneIdOrData === 'object' && zoneIdOrData !== null;
     const data = isObj ? zoneIdOrData : maybeData;
-    const zoneId = isObj ? (zoneIdOrData.zoneId || '40000000-0000-0000-0000-000000000001') : zoneIdOrData;
+    const zoneId = isObj ? (zoneIdOrData.zoneId || '32000000-0000-0000-0000-000000000001') : zoneIdOrData;
     try {
       const res = await apiClient.post(`/api/v1/zones/${zoneId}/schedules`, data);
       return res.data;
@@ -590,7 +635,7 @@ export const controlService = {
 
   /** GET /api/v1/zones/{zoneId}/rules */
   getAutoRules: async (zoneId?: string) => {
-    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     try {
       const res = await apiClient.get(`/api/v1/zones/${targetZone}/rules`);
       return res.data?.value ?? res.data ?? [];
@@ -615,7 +660,7 @@ export const controlService = {
     maybeAction?: string,
     durationMinutesOrSeconds?: number
   ) => {
-    let zoneId = '40000000-0000-0000-0000-000000000001';
+    let zoneId = '32000000-0000-0000-0000-000000000001';
     let actuatorId = actuatorIdOrZone;
     let action: 'TurnOn' | 'TurnOff' = 'TurnOn';
 
@@ -652,7 +697,7 @@ export const controlService = {
 
   /** GET /api/v1/zones/{zoneId}/actuators/history */
   getControlLogs: async (zoneId?: string, fromUtc?: string, toUtc?: string, limit = 20) => {
-    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     const now = new Date();
     const from = fromUtc ?? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const to = toUtc ?? now.toISOString();
@@ -689,7 +734,7 @@ export const aiService = {
 
   /** POST /api/v1/ai/conversations/{conversationId}/messages or /api/v1/zones/{zoneId}/ai/ask */
   sendMessage: async (promptOrZoneId: string, maybeQuestion?: string) => {
-    const zoneId = maybeQuestion !== undefined ? promptOrZoneId : '40000000-0000-0000-0000-000000000001';
+    const zoneId = maybeQuestion !== undefined ? promptOrZoneId : '32000000-0000-0000-0000-000000000001';
     const question = maybeQuestion !== undefined ? maybeQuestion : promptOrZoneId;
     try {
       const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/ask`, { question });
@@ -701,7 +746,7 @@ export const aiService = {
 
   /** GET /api/v1/zones/{zoneId}/ai/history */
   getMessages: async (zoneId?: string) => {
-    const targetZone = zoneId || '40000000-0000-0000-0000-000000000001';
+    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     try {
       const res = await apiClient.get(`/api/v1/zones/${targetZone}/ai/history`);
       return res.data?.interactions ?? res.data ?? [];
@@ -717,7 +762,7 @@ export const aiService = {
     decision: 'Apply' | 'Dismiss' = 'Apply',
     reason?: string
   ) => {
-    const zoneId = maybeRecId !== undefined ? recIdOrZoneId : '40000000-0000-0000-0000-000000000001';
+    const zoneId = maybeRecId !== undefined ? recIdOrZoneId : '32000000-0000-0000-0000-000000000001';
     const recommendationId = maybeRecId !== undefined ? maybeRecId : recIdOrZoneId;
     try {
       const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/apply-recommendation`, {
@@ -762,7 +807,7 @@ export const supportService = {
     const farmId = isObj ? (farmIdOrData.farmId || '30000000-0000-0000-0000-000000000001') : farmIdOrData;
     try {
       const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
-        zoneId: data.zoneId || '40000000-0000-0000-0000-000000000001',
+        zoneId: data.zoneId || '32000000-0000-0000-0000-000000000001',
         deviceId: data.deviceId || '50000000-0000-0000-0000-000000000001',
         failureCode: data.failureCode || data.requestType || 'GENERAL_MAINTENANCE',
         description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Dashboard',

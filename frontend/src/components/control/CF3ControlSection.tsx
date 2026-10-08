@@ -15,7 +15,7 @@ import {
   Actuator, ControlExecutionLog, EnvironmentalTargetConfig, 
   ControlSchedule, AutomationRule, Zone, Field, Farm, Crop 
 } from '../../types';
-import { mockZones, mockFields, mockSchedules, mockAutomationRules, mockEmployees } from '../../mocks/mockData';
+import { useAuth } from '../../app/providers/AuthContext';
 
 export interface CF3ControlSectionProps {
   scopeLevel: 'FARM' | 'FIELD' | 'ZONE' | 'GLOBAL' | 'FARMER';
@@ -36,6 +36,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   subtitle,
   defaultTab = 'ACTUATORS',
 }) => {
+  const { zones: authZones } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>(defaultTab);
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [configs, setConfigs] = useState<EnvironmentalTargetConfig[]>([]);
@@ -54,31 +55,32 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   // Helper to determine allowed zoneIds for the given scope
   const getScopedZoneIds = (): string[] => {
     if (scopeLevel === 'FARMER') {
-      const farmerZones = mockEmployees[0]?.assignedZones || ['zone-01', 'zone-02'];
+      const farmerZones = authZones.map(z => z.zoneId);
       if (zoneId) return farmerZones.filter(z => z === zoneId);
-      return farmerZones;
+      return farmerZones.length > 0 ? farmerZones : ['32000000-0000-0000-0000-000000000001'];
     }
     if (zoneId) return [zoneId];
     if (fieldId) {
-      return mockZones.filter(z => z.fieldId === fieldId).map(z => z.zoneId);
+      return authZones.filter(z => z.fieldId === fieldId).map(z => z.zoneId);
     }
     if (farmId) {
-      return mockZones.filter(z => z.farmId === farmId).map(z => z.zoneId);
+      return authZones.filter(z => z.farmId === farmId).map(z => z.zoneId);
     }
-    return mockZones.map(z => z.zoneId);
+    return authZones.map(z => z.zoneId);
   };
 
   const loadScopedData = async () => {
     setIsLoading(true);
     try {
       const scopedZoneIds = getScopedZoneIds();
+      const primaryZone = zoneId || (scopedZoneIds.length > 0 ? scopedZoneIds[0] : undefined);
       
       const [allAct, allCfg, allLogs, allSch, allRules, allCrops] = await Promise.all([
-        controlService.getActuators(),
+        controlService.getActuators(primaryZone),
         controlService.getEnvironmentalConfigs(),
-        controlService.getControlLogs(),
-        controlService.getSchedules(),
-        controlService.getAutoRules(),
+        controlService.getControlLogs(primaryZone),
+        controlService.getSchedules(primaryZone),
+        controlService.getAutoRules(primaryZone),
         cropService.getCrops(),
       ]);
 

@@ -1,9 +1,18 @@
-import React from 'react';
-import { mockGateways } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { Gateway } from '../../types';
+import { deviceService } from '../../services';
 import { StatusBadge, Button } from '../../components/ui/BaseUI';
 import { Radio, Activity, RefreshCw, Terminal } from 'lucide-react';
 
 export const GatewaysPage: React.FC = () => {
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+
+  useEffect(() => {
+    deviceService.getGateways().then(data => {
+      if (Array.isArray(data)) setGateways(data);
+    }).catch(err => console.error('Failed to load gateways:', err));
+  }, []);
+
   return (
     <div className="space-y-6">
       <div>
@@ -14,7 +23,7 @@ export const GatewaysPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockGateways.map(gw => (
+        {gateways.map(gw => (
           <div key={gw.gatewayId} className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <div>

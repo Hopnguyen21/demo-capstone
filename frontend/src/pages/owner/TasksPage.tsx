@@ -1,19 +1,33 @@
-import React, { useState } from 'react';
-import { mockTasks } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../app/providers/AuthContext';
+import { supportService } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import { ClipboardList, Plus, Calendar, UserCheck } from 'lucide-react';
 
 export const TasksPage: React.FC = () => {
-  const [tasks, setTasks] = useState(mockTasks);
+  const { selectedFarmId, zones } = useAuth();
+  const farmId = selectedFarmId || '30000000-0000-0000-0000-000000000001';
+  const [tasks, setTasks] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', description: '', priority: 'HIGH' as const, dueDate: '2026-09-24' });
 
-  const handleAdd = (e: React.FormEvent) => {
+  const loadTasks = async () => {
+    try {
+      const res = await supportService.getTasks(farmId);
+      if (res && res.length > 0) setTasks(res);
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadTasks();
+  }, [farmId]);
+
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created = {
+    const createdLocal = {
       taskId: `task-${Date.now()}`,
-      farmId: 'farm-01',
-      zoneName: 'Nhà màng 01',
+      farmId,
+      zoneName: zones[0]?.name || 'Nhà màng 01',
       title: newTask.title,
       description: newTask.description,
       taskType: 'MAINTENANCE' as const,
@@ -22,7 +36,18 @@ export const TasksPage: React.FC = () => {
       assignedToName: 'Trần Văn Bình',
       dueDate: newTask.dueDate,
     };
-    setTasks([created, ...tasks]);
+    try {
+      await supportService.createTask(farmId, {
+        zoneId: zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001',
+        title: newTask.title,
+        description: newTask.description,
+        dueAtUtc: new Date(newTask.dueDate).toISOString(),
+        assignedFarmerId: '20000000-0000-0000-0000-000000000004',
+      });
+      await loadTasks();
+    } catch {
+      setTasks([createdLocal, ...tasks]);
+    }
     setIsModalOpen(false);
   };
 
@@ -41,26 +66,31 @@ export const TasksPage: React.FC = () => {
       </div>
 
       <div className="space-y-3">
-        {tasks.map(t => (
-          <div key={t.taskId} className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#062326] font-mono">#{t.taskId}</span>
-                <StatusBadge status={t.status} />
-                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  {t.priority}
-                </span>
-              </div>
-              <h3 className="text-sm font-bold text-slate-900">{t.title}</h3>
-              <p className="text-xs text-slate-600">{t.description}</p>
-              <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-4">
-                <span>Khu vực: <strong className="text-slate-800">{t.zoneName}</strong></span>
-                <span>Người thực hiện: <strong className="text-[#062326]">{t.assignedToName}</strong></span>
-                <span>Hạn chót: <strong className="text-slate-800">{t.dueDate}</strong></span>
+        {tasks.map(t => {
+          const id = t.taskId || t.id;
+          const isDone = t.status === 'COMPLETED' || t.status === 'Completed';
+
+          return (
+            <div key={id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#062326] font-mono">#{id?.substring(0, 8)}</span>
+                  <StatusBadge status={isDone ? 'COMPLETED' : 'PENDING'} />
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                    {t.priority || 'HIGH'}
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">{t.title}</h3>
+                <p className="text-xs text-slate-600">{t.description || 'Không có mô tả chi tiết'}</p>
+                <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-4">
+                  <span>Khu vực: <strong className="text-slate-800">{t.zoneName || 'Nhà màng'}</strong></span>
+                  <span>Người thực hiện: <strong className="text-[#062326]">{t.assignedToName || 'Công nhân phụ trách'}</strong></span>
+                  <span>Hạn chót: <strong className="text-slate-800">{t.dueDate || t.dueAtUtc?.substring(0, 10) || 'Hôm nay'}</strong></span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Tạo Task Mới cho Công nhân">

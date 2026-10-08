@@ -1,12 +1,28 @@
-import React, { useState } from 'react';
-import { mockZones, mockAlerts } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../app/providers/AuthContext';
+import { alertService } from '../../services';
+import { Alert } from '../../types';
 import { Sprout, ShieldAlert, CheckCircle2, Power, Activity } from 'lucide-react';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 import { Button } from '../../components/ui/BaseUI';
 
 export const FarmerZonesPage: React.FC = () => {
-  const [selectedZoneId, setSelectedZoneId] = useState<string>(mockZones[0]?.zoneId || 'zone-01');
+  const { zones } = useAuth();
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001');
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activeControlTab, setActiveControlTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>('ALERTS');
+
+  useEffect(() => {
+    alertService.getAlerts().then(res => {
+      if (res) setAlerts(res);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (zones.length > 0 && (!selectedZoneId || selectedZoneId === '32000000-0000-0000-0000-000000000001')) {
+      setSelectedZoneId(zones[0].zoneId);
+    }
+  }, [zones]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
@@ -35,9 +51,9 @@ export const FarmerZonesPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockZones.slice(0, 2).map(z => {
+        {zones.slice(0, 2).map(z => {
           const isSelected = selectedZoneId === z.zoneId;
-          const zoneAlertsCount = mockAlerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
+          const zoneAlertsCount = alerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
 
           return (
             <div
@@ -111,7 +127,7 @@ export const FarmerZonesPage: React.FC = () => {
         scopeLevel="ZONE"
         zoneId={selectedZoneId}
         defaultTab={activeControlTab}
-        title={`Trung tâm Cảnh báo & Điều khiển cho Nhà màng [${mockZones.find(z => z.zoneId === selectedZoneId)?.name}]`}
+        title={`Trung tâm Cảnh báo & Điều khiển cho Nhà màng [${zones.find(z => z.zoneId === selectedZoneId)?.name || 'Nhà màng'}]`}
         subtitle="Theo dõi cảnh báo vi phạm vi khí hậu thời gian thực, quản lý luật cảnh báo, kích hoạt rơ-le và theo dõi lịch tưới."
       />
     </div>

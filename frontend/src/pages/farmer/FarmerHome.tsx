@@ -1,22 +1,39 @@
-import React from 'react';
-import { mockZones, mockTasks, mockAlerts, mockWeather } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../app/providers/AuthContext';
+import { alertService, supportService } from '../../services';
+import { Alert } from '../../types';
 import { StatusBadge, Button } from '../../components/ui/BaseUI';
 import { Sprout, CheckSquare, ShieldAlert, Sun, Power, Bot, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const FarmerHome: React.FC = () => {
   const navigate = useNavigate();
-  const assignedZones = mockZones.slice(0, 2);
-  const myTasks = mockTasks.filter(t => t.status !== 'COMPLETED');
-  const activeAlerts = mockAlerts.filter(a => a.status === 'OPEN');
+  const { user, zones, selectedFarmId } = useAuth();
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  useEffect(() => {
+    alertService.getAlerts().then(res => {
+      if (res) setAlerts(res);
+    }).catch(() => {});
+
+    const farmId = selectedFarmId || '30000000-0000-0000-0000-000000000001';
+    supportService.getTasks(farmId).then(res => {
+      if (res) setTasks(res);
+    }).catch(() => {});
+  }, [selectedFarmId]);
+
+  const assignedZones = zones.slice(0, 2);
+  const myTasks = tasks.filter(t => t.status !== 'COMPLETED' && t.status !== 'Completed');
+  const activeAlerts = alerts.filter(a => a.status === 'OPEN');
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* Mobile Header Banner */}
       <div className="p-5 bg-gradient-to-r from-emerald-50 via-white to-slate-50 border border-emerald-200 rounded-2xl shadow-xs space-y-2">
         <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#062326]">Giao diện Nông dân Thực địa</span>
-        <h1 className="text-xl font-bold text-slate-900">Xin chào, Trần Văn Bình!</h1>
-        <p className="text-xs text-slate-600">Bạn được phân quyền quản lý <strong className="text-[#062326]">2 Nhà màng</strong> tại Trang trại Đà Lạt.</p>
+        <h1 className="text-xl font-bold text-slate-900">Xin chào, {user?.fullName || 'Nông dân'}!</h1>
+        <p className="text-xs text-slate-600">Bạn được phân quyền quản lý <strong className="text-[#062326]">{assignedZones.length} Nhà màng</strong> tại Trang trại.</p>
       </div>
 
       {/* Quick Field Alert Warning */}
@@ -43,10 +60,10 @@ export const FarmerHome: React.FC = () => {
 
         <div className="space-y-2.5">
           {myTasks.map(t => (
-            <div key={t.taskId} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+            <div key={t.taskId || t.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
               <div className="space-y-0.5">
                 <span className="font-bold text-slate-900 block">{t.title}</span>
-                <span className="text-[11px] text-slate-500">{t.zoneName} • Hạn chót: {t.dueDate}</span>
+                <span className="text-[11px] text-slate-500">{t.zoneName || 'Khu vực'} • Hạn chót: {t.dueDate || t.dueAtUtc?.substring(0, 10) || 'Hôm nay'}</span>
               </div>
               <Button size="sm" variant="success" onClick={() => navigate('/farmer/tasks')}>Báo Hoàn thành</Button>
             </div>
@@ -62,7 +79,7 @@ export const FarmerHome: React.FC = () => {
 
         <div className="grid grid-cols-1 gap-3">
           {assignedZones.map(z => {
-            const openAlerts = mockAlerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
+            const openAlerts = alerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
 
             return (
               <div key={z.zoneId} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3 hover:border-emerald-500/50 transition-all">

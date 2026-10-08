@@ -1,9 +1,23 @@
-import React from 'react';
-import { mockSchedules, mockAutomationRules } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { controlService } from '../../services';
+import { ControlSchedule, AutomationRule } from '../../types';
 import { Calendar, Sliders, Plus, Clock, Cpu } from 'lucide-react';
 import { Button, StatusBadge } from '../../components/ui/BaseUI';
 
 export const SchedulesAutomationPage: React.FC = () => {
+  const [schedules, setSchedules] = useState<ControlSchedule[]>([]);
+  const [rules, setRules] = useState<AutomationRule[]>([]);
+
+  useEffect(() => {
+    controlService.getSchedules().then(data => {
+      if (Array.isArray(data)) setSchedules(data);
+    }).catch(err => console.error(err));
+
+    controlService.getAutoRules().then(data => {
+      if (Array.isArray(data)) setRules(data);
+    }).catch(err => console.error(err));
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -23,7 +37,7 @@ export const SchedulesAutomationPage: React.FC = () => {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {mockSchedules.map(sch => (
+          {schedules.map(sch => (
             <div key={sch.scheduleId} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[#062326]">{sch.name}</span>
@@ -46,7 +60,7 @@ export const SchedulesAutomationPage: React.FC = () => {
         </h3>
 
         <div className="space-y-3">
-          {mockAutomationRules.map(rule => (
+          {rules.map(rule => (
             <div key={rule.ruleId} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">

@@ -1,30 +1,45 @@
-import React, { useState } from 'react';
-import { mockUsers } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { User, UserRole } from '../../types';
+import { userService } from '../../services';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
 import { Users, Plus, Search, ShieldCheck, Mail, Phone } from 'lucide-react';
-import { UserRole } from '../../types';
 
 export const UsersPage: React.FC = () => {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ fullName: '', email: '', username: '', role: 'FARM_OWNER' as UserRole });
 
+  const loadUsers = async () => {
+    try {
+      const data = await userService.getUsers();
+      if (Array.isArray(data)) setUsers(data);
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
   const filtered = users.filter(u => u.fullName.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created = {
-      userId: `user-${Date.now()}`,
-      username: newUser.username,
-      email: newUser.email,
-      fullName: newUser.fullName,
-      role: newUser.role,
-      status: 'ACTIVE' as const,
-      createdAt: new Date().toISOString(),
-    };
-    setUsers([created, ...users]);
-    setIsModalOpen(false);
+    try {
+      await userService.createUser({
+        fullName: newUser.fullName,
+        email: newUser.email,
+        role: newUser.role,
+        password: 'Password@123',
+      });
+      await loadUsers();
+      setIsModalOpen(false);
+      setNewUser({ fullName: '', email: '', username: '', role: 'FARM_OWNER' as UserRole });
+    } catch (err) {
+      console.error('Failed to create user:', err);
+    }
   };
 
   return (

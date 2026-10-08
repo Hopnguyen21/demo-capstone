@@ -1,18 +1,38 @@
-import React, { useState } from 'react';
-import { mockServiceRequests, mockUsers, mockFarms, mockZones } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
-import { supportService } from '../../services';
+import { supportService, userService } from '../../services';
+import { useAuth } from '../../app/providers/AuthContext';
 import {
   ClipboardList, UserCheck, Wrench, Building2, Cpu, CheckCircle2,
   Clock, AlertCircle, ArrowUpRight, Search, Filter, ShieldCheck, User, Plus, CheckSquare
 } from 'lucide-react';
 
 export const ServiceRequestsPage: React.FC = () => {
-  const [requests, setRequests] = useState<ServiceRequest[]>(mockServiceRequests);
+  const { farms, zones } = useAuth();
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [assignedTechMap, setAssignedTechMap] = useState<Record<string, string>>({});
+
+  const [technicians, setTechnicians] = useState<any[]>([]);
+
+  const loadRequests = async () => {
+    try {
+      const data = await supportService.getServiceRequests();
+      if (Array.isArray(data)) setRequests(data);
+      const uData = await userService.getUsers();
+      if (Array.isArray(uData)) {
+        setTechnicians(uData.filter((u: any) => u.role === 'PLATFORM_TECHNICIAN' || u.role === 'PlatformTechnician'));
+      }
+    } catch (err) {
+      console.error('Failed to load service requests:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
 
   // Modal Admin Create Request on behalf of Owner
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -28,13 +48,11 @@ export const ServiceRequestsPage: React.FC = () => {
   });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const technicians = mockUsers.filter(u => u.role === 'PLATFORM_TECHNICIAN');
-
   const filteredRequests = requests.filter(r => {
     const matchesFilter = activeFilter === 'ALL' ? true : r.status === activeFilter;
     const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          r.farmName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          r.requestedBy.toLowerCase().includes(searchTerm.toLowerCase());
+                          (r.farmName && r.farmName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (r.requestedBy && r.requestedBy.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesFilter && matchesSearch;
   });
 
@@ -57,10 +75,10 @@ export const ServiceRequestsPage: React.FC = () => {
 
   const handleCreateOnBehalfOfOwner = async (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedFarm = mockFarms.find(f => f.farmId === newRequest.farmId);
-    const selectedZone = mockZones.find(z => z.zoneId === newRequest.zoneId);
+    const selectedFarm = farms.find(f => f.farmId === newRequest.farmId);
+    const selectedZone = zones.find(z => z.zoneId === newRequest.zoneId);
 
-    const created = await supportService.createServiceRequest({
+    await supportService.createServiceRequest({
       farmId: newRequest.farmId,
       farmName: selectedFarm?.name || 'Trang trại Đà Lạt',
       zoneId: newRequest.zoneId,
@@ -74,7 +92,7 @@ export const ServiceRequestsPage: React.FC = () => {
       assignedTechnicianName: newRequest.assignedTechnicianName,
     });
 
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setIsCreateModalOpen(false);
     setNewRequest({
       farmId: 'farm-01',
@@ -86,7 +104,7 @@ export const ServiceRequestsPage: React.FC = () => {
       assignedOwnerName: 'Lê Văn An (Owner Trang trại Đà Lạt)',
       assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
     });
-    setSuccessMsg(`Đã khởi tạo thành công Yêu cầu [${created.title}] thay cho Owner!`);
+    setSuccessMsg(`Đã khởi tạo thành công Yêu cầu [${newRequest.title}] thay cho Owner!`);
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
@@ -305,8 +323,8 @@ export const ServiceRequestsPage: React.FC = () => {
               onChange={e => setNewRequest({ ...newRequest, farmId: e.target.value })}
               className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-medium focus:outline-none focus:border-[#062326]"
             >
-              {mockFarms.map(f => (
-                <option key={f.farmId} value={f.farmId}>{f.name} ({f.address})</option>
+              {farms.map((f: any) => (
+                <option key={f.farmId} value={f.farmId}>{f.name} ({f.address || f.locationText || 'Trang trại'})</option>
               ))}
             </select>
           </div>
@@ -318,7 +336,7 @@ export const ServiceRequestsPage: React.FC = () => {
               onChange={e => setNewRequest({ ...newRequest, zoneId: e.target.value })}
               className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-medium focus:outline-none focus:border-[#062326]"
             >
-              {mockZones.map(z => (
+              {zones.map((z: any) => (
                 <option key={z.zoneId} value={z.zoneId}>{z.name} ({z.currentCrop || 'Chưa gán vụ'})</option>
               ))}
             </select>

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { mockFarms, mockFields, mockZones, mockNodes, mockSensors, mockEmployees } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { Farm, Field, Zone } from '../../types';
+import { farmService, fieldService, zoneService, deviceService } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
   Building2, MapPin, Layers, Plus, ArrowUpRight, ChevronRight, Sprout,
@@ -13,6 +13,35 @@ import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FarmsPage: React.FC = () => {
   const navigate = useNavigate();
+
+  const [farms, setFarms] = useState<Farm[]>([]);
+  const [fields, setFields] = useState<Field[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [nodes, setNodes] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+
+  const loadData = async () => {
+    try {
+      const [fData, fdData, zData, nData] = await Promise.all([
+        farmService.getFarms(),
+        fieldService.getFields(),
+        zoneService.getZones(),
+        deviceService.getNodes(),
+      ]);
+      if (Array.isArray(fData)) setFarms(fData);
+      if (Array.isArray(fdData)) setFields(fdData);
+      if (Array.isArray(zData)) setZones(zData);
+      if (Array.isArray(nData)) setNodes(nData);
+      const members = await farmService.getFarmMembers();
+      if (Array.isArray(members)) setEmployees(members);
+    } catch (err) {
+      console.error('Failed to load farms data:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Drill-down State Hierarchy: Farm ➔ Field ➔ Zone
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
@@ -163,9 +192,9 @@ export const FarmsPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockFarms.map(farm => {
-              const farmFields = mockFields.filter(fd => fd.farmId === farm.farmId);
-              const farmZones = mockZones.filter(z => z.farmId === farm.farmId);
+            {farms.map(farm => {
+              const farmFields = fields.filter(fd => fd.farmId === farm.farmId);
+              const farmZones = zones.filter(z => z.farmId === farm.farmId);
 
               return (
                 <div
@@ -253,13 +282,13 @@ export const FarmsPage: React.FC = () => {
               <CornerDownRight size={18} className="text-sky-600" /> Danh sách Các Phân khu Lô đất (Level 2: Fields) thuộc Trang trại
             </h3>
             <span className="text-xs text-slate-500 font-semibold">
-              {mockFields.filter(f => f.farmId === selectedFarm.farmId).length} Lô đất tìm thấy
+              {fields.filter(f => f.farmId === selectedFarm.farmId).length} Lô đất tìm thấy
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockFields.filter(f => f.farmId === selectedFarm.farmId).map(field => {
-              const childZones = mockZones.filter(z => z.fieldId === field.fieldId);
+            {fields.filter(f => f.farmId === selectedFarm.farmId).map(field => {
+              const childZones = zones.filter(z => z.fieldId === field.fieldId);
 
               return (
                 <div
@@ -349,12 +378,12 @@ export const FarmsPage: React.FC = () => {
               <CornerDownRight size={18} className="text-amber-600" /> Các Khu vực Nhà màng (Level 3: Zones) lồng trong Lô đất
             </h3>
             <span className="text-xs text-slate-500 font-semibold">
-              {mockZones.filter(z => z.fieldId === selectedField.fieldId).length} Nhà màng tìm thấy
+              {zones.filter(z => z.fieldId === selectedField.fieldId).length} Nhà màng tìm thấy
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockZones.filter(z => z.fieldId === selectedField.fieldId).map(zone => (
+            {zones.filter(z => z.fieldId === selectedField.fieldId).map(zone => (
               <div
                 key={zone.zoneId}
                 onClick={() => handleSelectZone(zone)}
@@ -474,7 +503,7 @@ export const FarmsPage: React.FC = () => {
 
               <div className="space-y-2">
                 <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
-                {mockNodes.filter(n => n.zoneId === selectedZone.zoneId).map(node => (
+                {nodes.filter(n => n.zoneId === selectedZone.zoneId).map(node => (
                   <div key={node.nodeId} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
                     <div>
                       <div className="font-bold text-slate-900 flex items-center gap-1.5">
@@ -505,9 +534,9 @@ export const FarmsPage: React.FC = () => {
                     onChange={e => handleAssignEmployee(selectedZone.zoneId, e.target.value)}
                   >
                     <option value="">-- Trống (Chưa phân công nhân viên) --</option>
-                    {mockEmployees.map(emp => (
-                      <option key={emp.employeeId} value={emp.employeeId}>
-                        👤 {emp.fullName} ({emp.position}) - {emp.phone}
+                    {employees.map(emp => (
+                      <option key={emp.employeeId || emp.userId} value={emp.employeeId || emp.userId}>
+                        👤 {emp.fullName} ({emp.position || emp.role}) - {emp.phone}
                       </option>
                     ))}
                   </select>
@@ -515,14 +544,14 @@ export const FarmsPage: React.FC = () => {
                   {/* Render Employee Card or Unassigned Info Card */}
                   {(() => {
                     const empId = assignedEmployeeIdMap[selectedZone.zoneId] ?? '';
-                    const assignedEmp = mockEmployees.find(e => e.employeeId === empId);
+                    const assignedEmp = employees.find(e => (e.employeeId || e.userId) === empId);
 
                     if (assignedEmp) {
                       return (
                         <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start justify-between gap-3 animate-in fade-in">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-[#062326] text-emerald-400 flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-emerald-500/30">
-                              {assignedEmp.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              {assignedEmp.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                             </div>
                             <div>
                               <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">

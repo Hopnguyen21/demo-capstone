@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { mockTelemetryHistory } from '../../mocks/mockData';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Activity, Download, Calendar } from 'lucide-react';
 import { Button } from '../../components/ui/BaseUI';

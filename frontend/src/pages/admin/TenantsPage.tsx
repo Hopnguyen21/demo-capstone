@@ -1,34 +1,45 @@
-import React, { useState } from 'react';
-import { mockTenants } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { Tenant } from '../../types';
+import { tenantService } from '../../services';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
 import { Building2, Plus, Search, MapPin, Mail, Phone, ExternalLink } from 'lucide-react';
 
 export const TenantsPage: React.FC = () => {
-  const [tenants, setTenants] = useState(mockTenants);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTenant, setNewTenant] = useState({ name: '', code: '', email: '', phone: '', address: '' });
 
-  const filtered = tenants.filter(t => t.name.toLowerCase().includes(search.toLowerCase()) || t.code.toLowerCase().includes(search.toLowerCase()));
+  const loadTenants = async () => {
+    try {
+      const data = await tenantService.getTenants();
+      if (Array.isArray(data)) setTenants(data);
+    } catch (err) {
+      console.error('Failed to load tenants:', err);
+    }
+  };
 
-  const handleAdd = (e: React.FormEvent) => {
+  useEffect(() => {
+    loadTenants();
+  }, []);
+
+  const filtered = tenants.filter(t => t.name.toLowerCase().includes(search.toLowerCase()) || (t.code && t.code.toLowerCase().includes(search.toLowerCase())));
+
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created = {
-      tenantId: `tenant-${Date.now()}`,
-      name: newTenant.name,
-      code: newTenant.code.toUpperCase(),
-      email: newTenant.email,
-      phone: newTenant.phone,
-      address: newTenant.address,
-      status: 'ACTIVE' as const,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      farmsCount: 0,
-      usersCount: 1,
-    };
-    setTenants([created, ...tenants]);
-    setIsModalOpen(false);
-    setNewTenant({ name: '', code: '', email: '', phone: '', address: '' });
+    try {
+      await tenantService.createTenant({
+        companyName: newTenant.name,
+        subdomain: newTenant.code.toLowerCase(),
+        taxCode: newTenant.code.toUpperCase(),
+        address: newTenant.address,
+      });
+      await loadTenants();
+      setIsModalOpen(false);
+      setNewTenant({ name: '', code: '', email: '', phone: '', address: '' });
+    } catch (err) {
+      console.error('Failed to create tenant:', err);
+    }
   };
 
   return (

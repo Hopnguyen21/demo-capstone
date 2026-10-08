@@ -1,9 +1,29 @@
-import React from 'react';
-import { mockSensors, mockZones } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { Sensor } from '../../types';
+import { deviceService } from '../../services';
+import { useAuth } from '../../app/providers/AuthContext';
 import { Gauge, RefreshCw, Sun, CloudRain, ShieldCheck, Activity } from 'lucide-react';
 import { StatusBadge, Button, CropRangeBand } from '../../components/ui/BaseUI';
 
 export const MonitoringRealtime: React.FC = () => {
+  const { zones } = useAuth();
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+
+  const loadSensors = async () => {
+    try {
+      const data = await deviceService.getSensors();
+      if (Array.isArray(data)) setSensors(data);
+    } catch (err) {
+      console.error('Failed to load sensors:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadSensors();
+  }, []);
+
+  const activeZoneName = zones[0]?.name || 'Demo Greenhouse Zone';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -13,12 +33,12 @@ export const MonitoringRealtime: React.FC = () => {
           </h1>
           <p className="text-xs text-slate-600 mt-1">Số liệu cảm biến trực tiếp từ các LoRa Sensor Nodes truyền về chu kỳ 60 giây.</p>
         </div>
-        <Button variant="outline"><RefreshCw size={15} className="mr-1.5 animate-spin-slow" /> Cập nhật Trực tiếp</Button>
+        <Button variant="outline" onClick={loadSensors}><RefreshCw size={15} className="mr-1.5 animate-spin-slow" /> Cập nhật Trực tiếp</Button>
       </div>
 
       <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <h3 className="text-base font-bold text-slate-900">{mockZones[0].name}</h3>
+          <h3 className="text-base font-bold text-slate-900">{activeZoneName}</h3>
           <StatusBadge status="ONLINE" label="Khu vực An toàn" />
         </div>
 
@@ -32,7 +52,7 @@ export const MonitoringRealtime: React.FC = () => {
 
       {/* Sensor Cards List */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {mockSensors.map(s => (
+        {sensors.map(s => (
           <div key={s.sensorId} className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold text-slate-500">{s.sensorCode}</span>

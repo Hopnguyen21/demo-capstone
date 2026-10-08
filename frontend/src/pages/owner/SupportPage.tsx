@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { mockServiceRequests, mockFarms, mockZones } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
 import { supportService } from '../../services';
+import { useAuth } from '../../app/providers/AuthContext';
 import {
   Headphones, Plus, CheckSquare, CheckCircle2, Clock, Wrench,
   Building2, User, AlertCircle, Info, Layers, FileText, DollarSign,
@@ -10,8 +10,22 @@ import {
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
 export const SupportPage: React.FC = () => {
-  const [requests, setRequests] = useState<ServiceRequest[]>(mockServiceRequests);
+  const { farms, zones } = useAuth();
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const loadRequests = async () => {
+    try {
+      const data = await supportService.getServiceRequests();
+      if (Array.isArray(data)) setRequests(data);
+    } catch (err) {
+      console.error('Failed to load support requests:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
 
   // Form states for Owner Contract Signature & 30% Payment
   const [ownerSignatures, setOwnerSignatures] = useState<Record<string, string>>({});
@@ -24,8 +38,8 @@ export const SupportPage: React.FC = () => {
   // Modal Owner Create Support / Maintenance Request
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newReq, setNewReq] = useState({
-    farmId: 'farm-01',
-    zoneId: 'zone-01',
+    farmId: '30000000-0000-0000-0000-000000000001',
+    zoneId: '32000000-0000-0000-0000-000000000001',
     requestType: 'MAINTENANCE' as 'INSTALLATION' | 'MAINTENANCE',
     title: '',
     description: '',
@@ -37,7 +51,7 @@ export const SupportPage: React.FC = () => {
     const method = paymentMethods30[requestId] || 'BANK_TRANSFER';
 
     await supportService.signContractAndPay30(requestId, signature, method);
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG! Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).');
     setTimeout(() => setSuccessMsg(null), 5000);
   };
@@ -47,15 +61,15 @@ export const SupportPage: React.FC = () => {
     const method = paymentMethods70[requestId] || 'BANK_TRANSFER';
 
     await supportService.signAcceptanceAndPay70(requestId, signature, method);
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setSuccessMsg('✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN 70% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.');
     setTimeout(() => setSuccessMsg(null), 5000);
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const farm = mockFarms.find(f => f.farmId === newReq.farmId);
-    const zone = mockZones.find(z => z.zoneId === newReq.zoneId);
+    const farm = farms.find(f => f.farmId === newReq.farmId);
+    const zone = zones.find(z => z.zoneId === newReq.zoneId);
 
     await supportService.createServiceRequest({
       farmId: newReq.farmId,
@@ -71,9 +85,9 @@ export const SupportPage: React.FC = () => {
       assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
     });
 
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setIsModalOpen(false);
-    setNewReq({ farmId: 'farm-01', zoneId: 'zone-01', requestType: 'MAINTENANCE', title: '', description: '', priority: 'HIGH' });
+    setNewReq({ farmId: '30000000-0000-0000-0000-000000000001', zoneId: '32000000-0000-0000-0000-000000000001', requestType: 'MAINTENANCE', title: '', description: '', priority: 'HIGH' });
     setSuccessMsg('Đã gửi phiếu Yêu cầu Kỹ thuật thành công!');
     setTimeout(() => setSuccessMsg(null), 3000);
   };
@@ -466,7 +480,7 @@ export const SupportPage: React.FC = () => {
               onChange={e => setNewReq({ ...newReq, zoneId: e.target.value })}
               className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
             >
-              {mockZones.map(z => (
+              {zones.map(z => (
                 <option key={z.zoneId} value={z.zoneId}>{z.name} ({z.currentCrop})</option>
               ))}
             </select>

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MetricCard, StatusBadge } from '../../components/ui/BaseUI';
-import { mockTenants, mockFarms, mockGateways, mockAuditLogs } from '../../mocks/mockData';
+import { tenantService, farmService, deviceService, adminService } from '../../services';
+import { AuditLog } from '../../types';
 import { Building2, Sprout, Radio, Cpu, Users, ShieldAlert, Activity, ArrowUpRight } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
@@ -14,6 +15,29 @@ const tenantGrowthData = [
 ];
 
 export const AdminDashboard: React.FC = () => {
+  const [tenantsCount, setTenantsCount] = useState(2);
+  const [farmsCount, setFarmsCount] = useState(1);
+  const [gatewaysCount, setGatewaysCount] = useState(0);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
+  useEffect(() => {
+    tenantService.getTenants().then((data: any) => {
+      if (Array.isArray(data)) setTenantsCount(data.length);
+    }).catch((err: any) => console.error(err));
+
+    farmService.getFarms().then((data: any) => {
+      if (Array.isArray(data)) setFarmsCount(data.length);
+    }).catch((err: any) => console.error(err));
+
+    deviceService.getGateways().then((data: any) => {
+      if (Array.isArray(data)) setGatewaysCount(data.length);
+    }).catch((err: any) => console.error(err));
+
+    adminService.getAuditLogs().then((data: any) => {
+      if (Array.isArray(data)) setAuditLogs(data.slice(0, 5));
+    }).catch((err: any) => console.error(err));
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -32,7 +56,7 @@ export const AdminDashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Tổng người thuê (Tenants)"
-          value={mockTenants.length + 36}
+          value={tenantsCount}
           unit="Tổ chức"
           subtext="+24% so với tháng trước"
           icon={<Building2 size={20} />}
@@ -41,7 +65,7 @@ export const AdminDashboard: React.FC = () => {
         />
         <MetricCard
           title="Nông trang trên sàn"
-          value={mockFarms.length + 93}
+          value={farmsCount}
           unit="Trang trại"
           subtext="Tổng diện tích 450 ha"
           icon={<Sprout size={20} />}
@@ -50,7 +74,7 @@ export const AdminDashboard: React.FC = () => {
         />
         <MetricCard
           title="Gateway ESP32 LoRa"
-          value={mockGateways.length + 42}
+          value={gatewaysCount}
           unit="Trạm"
           subtext="Tỷ lệ trực tuyến 98.4%"
           icon={<Radio size={20} />}
@@ -154,7 +178,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="divide-y divide-slate-100">
-          {mockAuditLogs.map(log => (
+          {auditLogs.map(log => (
             <div key={log.auditLogId} className="py-3 flex items-center justify-between text-xs">
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-[#062326] border border-slate-200">

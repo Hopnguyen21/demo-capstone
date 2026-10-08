@@ -1,18 +1,37 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MetricCard, StatusBadge, Button } from '../../components/ui/BaseUI';
-import { mockGateways, mockNodes, mockServiceRequests } from '../../mocks/mockData';
+import { supportService, deviceService } from '../../services';
+import { ServiceRequest, Gateway, SensorNode } from '../../types';
 import { Wrench, Radio, Cpu, Battery, Wifi, ShieldAlert, CpuIcon, ArrowUpRight, CheckCircle2, Layers, CheckSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const TechnicianDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const lowBatteryNodes = mockNodes.filter(n => n.batteryLevel < 30);
-  const weakSignalNodes = mockNodes.filter(n => n.rssi < -90);
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [nodes, setNodes] = useState<SensorNode[]>([]);
 
-  const installationRequests = mockServiceRequests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP');
-  const maintenanceRequests = mockServiceRequests.filter(r => r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT');
+  useEffect(() => {
+    supportService.getServiceRequests().then(data => {
+      if (Array.isArray(data)) setRequests(data);
+    }).catch(err => console.error(err));
 
-  const acceptedByOwnerCount = mockServiceRequests.filter(r => r.isAcceptedByOwner).length;
+    deviceService.getGateways().then(data => {
+      if (Array.isArray(data)) setGateways(data);
+    }).catch(err => console.error(err));
+
+    deviceService.getNodes().then(data => {
+      if (Array.isArray(data)) setNodes(data);
+    }).catch(err => console.error(err));
+  }, []);
+
+  const lowBatteryNodes = nodes.filter(n => n.batteryLevel < 30);
+  const weakSignalNodes = nodes.filter(n => n.rssi < -90);
+
+  const installationRequests = requests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP');
+  const maintenanceRequests = requests.filter(r => r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT');
+
+  const acceptedByOwnerCount = requests.filter(r => r.isAcceptedByOwner).length;
 
   return (
     <div className="space-y-6">
@@ -63,7 +82,7 @@ export const TechnicianDashboard: React.FC = () => {
         />
         <MetricCard
           title="Gateway LoRa Trực tuyến"
-          value={`${mockGateways.filter(g => g.status === 'ONLINE').length} / ${mockGateways.length}`}
+          value={`${gateways.filter((g: any) => g.status === 'ONLINE').length} / ${gateways.length}`}
           unit="Gateways"
           subtext="Sóng trung bình -78 dBm"
           icon={<Radio size={20} />}
@@ -81,7 +100,7 @@ export const TechnicianDashboard: React.FC = () => {
         </div>
 
         <div className="space-y-3">
-          {mockServiceRequests.map(sr => {
+          {requests.map(sr => {
             const isInst = sr.requestType === 'INSTALLATION' || sr.requestType === 'INITIAL_SETUP';
 
             return (

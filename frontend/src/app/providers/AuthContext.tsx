@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, Farm, Zone } from '../../types';
-import { mockUsers, mockFarms, mockZones } from '../../mocks/mockData';
 import { authService, farmService, zoneService, getAccessToken } from '../../services';
 
 interface AuthContextType {
@@ -56,13 +55,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [user, setUser] = useState<User | null>(() => {
-    return mockUsers.find(u => u.role === role) || mockUsers[2];
+    const saved = localStorage.getItem('smartfarm_user');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return null;
   });
 
-  const [farms, setFarms] = useState<Farm[]>(mockFarms);
-  const [zones, setZones] = useState<Zone[]>(mockZones);
-  const [selectedFarmId, setSelectedFarmId] = useState<string>(mockFarms[0]?.farmId || '');
-  const [selectedZoneId, setSelectedZoneId] = useState<string>(mockZones[0]?.zoneId || '');
+  const [farms, setFarms] = useState<Farm[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [selectedFarmId, setSelectedFarmId] = useState<string>('');
+  const [selectedZoneId, setSelectedZoneId] = useState<string>('');
 
   // Fetch real farms & zones when logged in
   const refreshFarmsAndZones = async () => {
@@ -78,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } catch {
-      // Keep fallback mocks if offline
+      // Offline fallback
     }
   };
 
@@ -94,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(mapped);
     setRole(mapped.role);
     localStorage.setItem('smartfarm_role', mapped.role);
+    localStorage.setItem('smartfarm_user', JSON.stringify(mapped));
     await refreshFarmsAndZones();
     return mapped;
   };
@@ -107,14 +111,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const rawUser = await authService.login(cred.email, cred.pass);
         const mapped = mapBackendUser(rawUser);
         setUser(mapped);
+        localStorage.setItem('smartfarm_user', JSON.stringify(mapped));
         await refreshFarmsAndZones();
         return;
       } catch (err) {
-        console.warn('Backend login for role failed, fallback to mock:', err);
+        console.warn('Backend login for role failed:', err);
       }
     }
-    const matchedUser = mockUsers.find(u => u.role === newRole) || mockUsers[0];
-    setUser(matchedUser);
   };
 
   const logout = async () => {
@@ -124,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore
     }
     setUser(null);
+    localStorage.removeItem('smartfarm_user');
   };
 
   return (

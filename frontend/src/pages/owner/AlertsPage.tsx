@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { mockAlerts } from '../../mocks/mockData';
+import { alertService } from '../../services';
 import { StatusBadge, Button, Modal } from '../../components/ui/BaseUI';
 import {
   ShieldAlert, CheckCircle2, Bot, Plus, Settings, Trash2, Edit3,
@@ -55,7 +55,14 @@ function fmtVal(val: number, key: string) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const AlertsPage: React.FC = () => {
-  const [historicAlerts, setHistoricAlerts] = useState(mockAlerts);
+  const [historicAlerts, setHistoricAlerts] = useState<any[]>([]);
+
+  useEffect(() => {
+    alertService.getAlerts().then(data => {
+      if (Array.isArray(data)) setHistoricAlerts(data);
+    }).catch(err => console.error('Failed to load alerts:', err));
+  }, []);
+
   const [rules, setRules] = useState<AlertRule[]>(DEFAULT_RULES);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);

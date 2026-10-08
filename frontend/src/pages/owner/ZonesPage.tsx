@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { mockZones, mockFields, mockFarms } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { Zone, Field, Farm } from '../../types';
+import { zoneService, fieldService, farmService } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -8,9 +9,12 @@ import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const ZonesPage: React.FC = () => {
   const navigate = useNavigate();
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [fields, setFields] = useState<Field[]>([]);
+  const [farms, setFarms] = useState<Farm[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedFieldId, setSelectedFieldId] = useState('field-01');
-  const [selectedZoneId, setSelectedZoneId] = useState<string>(mockZones[0]?.zoneId || 'zone-01');
+  const [selectedFieldId, setSelectedFieldId] = useState('31000000-0000-0000-0000-000000000001');
+  const [selectedZoneId, setSelectedZoneId] = useState<string>('32000000-0000-0000-0000-000000000001');
   const [activeTabMode, setActiveTabMode] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>('ALERTS');
   const [zoneName, setZoneName] = useState('');
   const [description, setDescription] = useState('');
@@ -22,6 +26,31 @@ export const ZonesPage: React.FC = () => {
     [11.9402, 108.4588],
     [11.9402, 108.4572],
   ]);
+
+  const loadData = async () => {
+    try {
+      const [zData, fdData, fData] = await Promise.all([
+        zoneService.getZones(),
+        fieldService.getFields(),
+        farmService.getFarms(),
+      ]);
+      if (Array.isArray(zData)) {
+        setZones(zData);
+        if (zData.length > 0) setSelectedZoneId(zData[0].zoneId);
+      }
+      if (Array.isArray(fdData)) {
+        setFields(fdData);
+        if (fdData.length > 0) setSelectedFieldId(fdData[0].fieldId);
+      }
+      if (Array.isArray(fData)) setFarms(fData);
+    } catch (err) {
+      console.error('Failed to load zones data:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -45,9 +74,9 @@ export const ZonesPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockZones.map(z => {
-          const parentField = mockFields.find(f => f.fieldId === z.fieldId);
-          const parentFarm = mockFarms.find(f => f.farmId === z.farmId);
+        {zones.map(z => {
+          const parentField = fields.find(f => f.fieldId === z.fieldId);
+          const parentFarm = farms.find(f => f.farmId === z.farmId);
           const isSelected = selectedZoneId === z.zoneId;
 
           return (
@@ -115,7 +144,7 @@ export const ZonesPage: React.FC = () => {
           scopeLevel="ZONE"
           zoneId={selectedZoneId}
           defaultTab={activeTabMode}
-          title={`Trung tâm Cảnh báo & Điều khiển Vi khí hậu cho [${mockZones.find(z => z.zoneId === selectedZoneId)?.name}]`}
+          title={`Trung tâm Cảnh báo & Điều khiển Vi khí hậu cho [${zones.find((z: any) => z.zoneId === selectedZoneId)?.name || 'Nhà màng'}]`}
           subtitle="Tích hợp cảnh báo an toàn thời gian thực, dải tham số vi khí hậu, kích hoạt rơ-le và lịch tưới tự động."
         />
       </div>
@@ -130,8 +159,8 @@ export const ZonesPage: React.FC = () => {
               value={selectedFieldId}
               onChange={e => setSelectedFieldId(e.target.value)}
             >
-              {mockFields.map(fd => {
-                const farm = mockFarms.find(fm => fm.farmId === fd.farmId);
+              {fields.map(fd => {
+                const farm = farms.find(fm => fm.farmId === fd.farmId);
                 return (
                   <option key={fd.fieldId} value={fd.fieldId}>
                     [{farm?.name}] ➔ {fd.name}
@@ -165,7 +194,7 @@ export const ZonesPage: React.FC = () => {
               onCenterChange={setCenter}
               polygon={polygon}
               onPolygonChange={setPolygon}
-              parentFarmPolygon={mockFarms[0].boundary?.coordinates[0].map(c => [c[1], c[0]]) as [number, number][]}
+              parentFarmPolygon={farms[0]?.boundary?.coordinates[0]?.map(c => [c[1], c[0]]) as [number, number][]}
               parentFieldPolygon={[
                 [11.9415, 108.4565],
                 [11.9415, 108.4595],

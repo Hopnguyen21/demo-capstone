@@ -1,10 +1,33 @@
 import React from 'react';
-import { mockGrowthProfileTomato } from '../../mocks/mockData';
 import { CropRangeBand } from '../../components/ui/BaseUI';
 import { Activity, Clock, CheckCircle, Sliders, ArrowRight } from 'lucide-react';
 
+const defaultProfile = {
+  growthProfileId: 'profile-tomato-std',
+  cropId: 'crop-tomato',
+  varietyId: 'var-beefsteak',
+  name: 'Quy trình Cà chua Beefsteak Chuẩn 90 ngày',
+  description: 'Hồ sơ sinh trưởng 5 giai đoạn thích ứng vi khí hậu',
+  isDefault: true,
+  stages: [
+    { growthStageId: 'stage-1', growthProfileId: 'profile-tomato-std', name: 'Cây non (Seedling)', stageOrder: 1, durationDays: 14, description: 'Yêu cầu độ ẩm đất cao và ánh sáng vừa phải' },
+    { growthStageId: 'stage-2', growthProfileId: 'profile-tomato-std', name: 'Sinh trưởng (Vegetative)', stageOrder: 2, durationDays: 25, description: 'Cần dinh dưỡng NPK cân bằng và độ ẩm 65-75%' },
+    { growthStageId: 'stage-3', growthProfileId: 'profile-tomato-std', name: 'Ra hoa (Flowering)', stageOrder: 3, durationDays: 15, description: 'Giai đoạn nhạy cảm nhiệt độ (tối ưu 22-26°C), duy trì ẩm đất 70%' },
+    { growthStageId: 'stage-4', growthProfileId: 'profile-tomato-std', name: 'Nuôi trái (Fruit Dev)', stageOrder: 4, durationDays: 26, description: 'Nhu cầu nước lớn nhất, ánh sáng mạnh 700-900 lux' },
+    { growthStageId: 'stage-5', growthProfileId: 'profile-tomato-std', name: 'Thu hoạch (Harvest)', stageOrder: 5, durationDays: 10, description: 'Giảm lượng nước tưới nhẹ để tăng độ đường brix' },
+  ],
+  requirements: {
+    'stage-3': [
+      { requirementId: 'req-1', growthStageId: 'stage-3', parameterCode: 'SOIL_MOISTURE', minValue: 60, maxValue: 80, targetValue: 70, unit: '%', description: 'Độ ẩm đất tối ưu cho thụ phấn ra hoa' },
+      { requirementId: 'req-2', growthStageId: 'stage-3', parameterCode: 'TEMPERATURE', minValue: 18, maxValue: 28, targetValue: 24, unit: '°C', description: 'Nhiệt độ không khí duy trì độ nảy mầm hạt phấn' },
+      { requirementId: 'req-3', growthStageId: 'stage-3', parameterCode: 'AIR_HUMIDITY', minValue: 60, maxValue: 80, targetValue: 70, unit: '%', description: 'Tránh nấm phấn trắng khi ẩm quá cao' },
+      { requirementId: 'req-4', growthStageId: 'stage-3', parameterCode: 'LIGHT_INTENSITY', minValue: 500, maxValue: 950, targetValue: 750, unit: 'lux', description: 'Ánh sáng tổng hợp diệp lục' },
+    ]
+  }
+};
+
 export const GrowthProfilesPage: React.FC = () => {
-  const profile = mockGrowthProfileTomato;
+  const profile = defaultProfile;
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { mockFields, mockFarms, mockZones } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
+import { Field, Farm, Zone } from '../../types';
+import { fieldService, farmService, zoneService } from '../../services';
 import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
@@ -8,8 +9,11 @@ import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FieldsPage: React.FC = () => {
   const navigate = useNavigate();
+  const [fields, setFields] = useState<Field[]>([]);
+  const [farms, setFarms] = useState<Farm[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedFarmId, setSelectedFarmId] = useState('farm-01');
+  const [selectedFarmId, setSelectedFarmId] = useState('30000000-0000-0000-0000-000000000001');
   const [fieldName, setFieldName] = useState('');
   const [description, setDescription] = useState('');
   const [areaM2, setAreaM2] = useState('20000');
@@ -20,6 +24,28 @@ export const FieldsPage: React.FC = () => {
     [11.9395, 108.4595],
     [11.9395, 108.4565],
   ]);
+
+  const loadData = async () => {
+    try {
+      const [fdData, fData, zData] = await Promise.all([
+        fieldService.getFields(),
+        farmService.getFarms(),
+        zoneService.getZones(),
+      ]);
+      if (Array.isArray(fdData)) setFields(fdData);
+      if (Array.isArray(fData)) {
+        setFarms(fData);
+        if (fData.length > 0) setSelectedFarmId(fData[0].farmId);
+      }
+      if (Array.isArray(zData)) setZones(zData);
+    } catch (err) {
+      console.error('Failed to load fields data:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -43,9 +69,9 @@ export const FieldsPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mockFields.map(field => {
-          const farm = mockFarms.find(f => f.farmId === field.farmId);
-          const childZones = mockZones.filter(z => z.fieldId === field.fieldId);
+        {fields.map(field => {
+          const farm = farms.find(f => f.farmId === field.farmId);
+          const childZones = zones.filter(z => z.fieldId === field.fieldId);
 
           return (
             <div key={field.fieldId} className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4 hover:border-sky-500/40 transition-all">
@@ -103,7 +129,7 @@ export const FieldsPage: React.FC = () => {
               value={selectedFarmId}
               onChange={e => setSelectedFarmId(e.target.value)}
             >
-              {mockFarms.map(f => (
+              {farms.map(f => (
                 <option key={f.farmId} value={f.farmId}>{f.name} ({f.address})</option>
               ))}
             </select>
@@ -127,7 +153,7 @@ export const FieldsPage: React.FC = () => {
               onCenterChange={setCenter}
               polygon={polygon}
               onPolygonChange={setPolygon}
-              parentFarmPolygon={mockFarms[0].boundary?.coordinates[0].map(c => [c[1], c[0]]) as [number, number][]}
+              parentFarmPolygon={farms[0]?.boundary?.coordinates[0]?.map(c => [c[1], c[0]]) as [number, number][]}
               height="320px"
             />
           </div>

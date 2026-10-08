@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { mockFarms, mockNodes, mockGateways } from '../../mocks/mockData';
+import { useAuth } from '../../app/providers/AuthContext';
+import { deviceService } from '../../services';
 import { SensorNode, Gateway } from '../../types';
 import { Radio, Cpu, Battery, Wifi, Maximize2, Move } from 'lucide-react';
 
@@ -45,13 +46,24 @@ export const FarmGISMap: React.FC<{
   onSelectZone?: (id: string) => void;
   allowDragNodes?: boolean;
 }> = ({ height = '450px', selectedZoneId, onSelectZone, allowDragNodes = true }) => {
+  const { farms } = useAuth();
   const [mapType, setMapType] = useState<'osm' | 'street' | 'satellite'>('osm');
   const [fitKey, setFitKey] = useState(0);
-  const [nodesList, setNodesList] = useState<SensorNode[]>(mockNodes);
-  const [gatewaysList, setGatewaysList] = useState<Gateway[]>(mockGateways);
+  const [nodesList, setNodesList] = useState<SensorNode[]>([]);
+  const [gatewaysList, setGatewaysList] = useState<Gateway[]>([]);
 
-  const farm = mockFarms[0];
-  const center: [number, number] = farm.center || [11.9404, 108.4583];
+  useEffect(() => {
+    deviceService.getGateways().then(res => {
+      if (res && res.length > 0) setGatewaysList(res);
+    }).catch(() => {});
+
+    deviceService.getNodes().then(res => {
+      if (res && res.length > 0) setNodesList(res);
+    }).catch(() => {});
+  }, []);
+
+  const farm = farms[0];
+  const center: [number, number] = farm?.center || [11.9404, 108.4583];
 
   // Map boundary polygon coordinates
   const polygonCoords: [number, number][] = [
@@ -163,7 +175,7 @@ export const FarmGISMap: React.FC<{
         />
 
         {/* Gateway Markers (Draggable) */}
-        {gatewaysList.map((gw: Gateway) => (
+        {gatewaysList.filter(gw => typeof gw.latitude === 'number' && typeof gw.longitude === 'number').map((gw: Gateway) => (
           <Marker
             key={gw.gatewayId}
             position={[gw.latitude, gw.longitude]}
@@ -197,7 +209,7 @@ export const FarmGISMap: React.FC<{
         ))}
 
         {/* Node Markers (Draggable) */}
-        {nodesList.map((node: SensorNode) => {
+        {nodesList.filter(n => typeof n.latitude === 'number' && typeof n.longitude === 'number').map((node: SensorNode) => {
           const color = node.status === 'ONLINE' ? '#16a34a' : node.status === 'WARNING' ? '#eab308' : '#e11d48';
           return (
             <Marker

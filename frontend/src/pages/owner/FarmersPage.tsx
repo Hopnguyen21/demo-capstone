@@ -1,22 +1,36 @@
-import React, { useState } from 'react';
-import { mockEmployees, mockZones } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
 import { Users, Plus, ShieldCheck, CheckSquare, Edit, Save, CheckCircle2 } from 'lucide-react';
 import { userService } from '../../services';
+import { useAuth } from '../../app/providers/AuthContext';
 import { Employee } from '../../types';
 
 export const FarmersPage: React.FC = () => {
-  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
+  const { zones } = useAuth();
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [selectedZonesForEdit, setSelectedZonesForEdit] = useState<string[]>([]);
-  const [newFarmer, setNewFarmer] = useState({ fullName: '', phone: '', email: '', position: 'Công nhân thực địa', assignedZones: ['zone-01'] });
+  const [newFarmer, setNewFarmer] = useState({ fullName: '', phone: '', email: '', position: 'Công nhân thực địa', assignedZones: ['32000000-0000-0000-0000-000000000001'] });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const loadFarmers = async () => {
+    try {
+      const data = await userService.getFarmers();
+      if (Array.isArray(data)) setEmployees(data);
+    } catch (err) {
+      console.error('Failed to load farmers:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadFarmers();
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     await userService.createFarmer(newFarmer);
-    setEmployees([...mockEmployees]);
+    await loadFarmers();
     setIsAddModalOpen(false);
     setSuccessMsg('Đã tạo tài khoản công nhân và cấp quyền zone thành công!');
     setTimeout(() => setSuccessMsg(null), 3000);
@@ -24,13 +38,13 @@ export const FarmersPage: React.FC = () => {
 
   const handleOpenEditPermission = (emp: Employee) => {
     setEditEmployee(emp);
-    setSelectedZonesForEdit([...emp.assignedZones]);
+    setSelectedZonesForEdit([...(emp.assignedZones || [])]);
   };
 
   const handleSavePermission = async () => {
     if (!editEmployee) return;
     await userService.updateFarmerZones(editEmployee.employeeId, selectedZonesForEdit);
-    setEmployees([...mockEmployees]);
+    await loadFarmers();
     setEditEmployee(null);
     setSuccessMsg(`Đã cập nhật phân quyền Zone cho công nhân [${editEmployee.fullName}]!`);
     setTimeout(() => setSuccessMsg(null), 3000);
@@ -105,7 +119,7 @@ export const FarmersPage: React.FC = () => {
 
               <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {emp.assignedZones.map(zId => {
-                  const z = mockZones.find(x => x.zoneId === zId);
+                  const z = zones.find((x: any) => x.zoneId === zId);
                   return (
                     <span key={zId} className="px-2.5 py-1 rounded-lg bg-emerald-100 text-[#062326] border border-emerald-300 text-[11px] font-bold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
@@ -148,11 +162,11 @@ export const FarmersPage: React.FC = () => {
           <div>
             <label className="block text-slate-700 font-bold mb-2">Phân quyền Khu vực phụ trách (Zone Scope):</label>
             <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-40 overflow-y-auto">
-              {mockZones.map(z => (
+              {zones.map(z => (
                 <label key={z.zoneId} className="flex items-center gap-2 text-slate-700 cursor-pointer">
                   <input
                     type="checkbox"
-                    defaultChecked={z.zoneId === 'zone-01'}
+                    defaultChecked={z.zoneId === '32000000-0000-0000-0000-000000000001'}
                     className="rounded bg-white border-slate-300 text-[#062326]"
                   />
                   <span className="font-semibold text-slate-900">{z.name}</span>
@@ -184,7 +198,7 @@ export const FarmersPage: React.FC = () => {
               </label>
 
               <div className="space-y-2 p-3 bg-white border border-slate-200 rounded-xl">
-                {mockZones.map(z => {
+                {zones.map(z => {
                   const isChecked = selectedZonesForEdit.includes(z.zoneId);
 
                   return (

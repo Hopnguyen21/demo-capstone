@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { mockServiceRequests } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
 import { supportService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
@@ -12,7 +11,7 @@ import {
 } from 'lucide-react';
 
 export const ProvisioningPage: React.FC = () => {
-  const [requests, setRequests] = useState<ServiceRequest[]>(mockServiceRequests);
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [selectedRequestForExperiment, setSelectedRequestForExperiment] = useState<ServiceRequest | null>(null);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
   const [selectedHardwareItems, setSelectedHardwareItems] = useState<HardwareItem[]>([]);
@@ -24,18 +23,31 @@ export const ProvisioningPage: React.FC = () => {
   const [deviceCode, setDeviceCode] = useState('GW-ESP32-DL03');
   const [step, setStep] = useState(1);
 
+  const loadRequests = async () => {
+    try {
+      const data = await supportService.getServiceRequests();
+      if (Array.isArray(data)) setRequests(data);
+    } catch (err) {
+      console.error('Failed to load requests:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
+
   // Filter ONLY installation requests
   const installationRequests = requests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP');
 
   const handleSaveMapping = async (requestId: string, mappedCount: number) => {
     await supportService.updateMappedNodes(requestId, mappedCount);
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setSuccessMsg(`Đã cập nhật vị trí ${mappedCount} Nodes cho Phân khu! Vui lòng báo Owner ký Biên bản Nghiệm thu & 70% còn lại.`);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
 
-  const handleSendContractSuccess = () => {
-    setRequests([...mockServiceRequests]);
+  const handleSendContractSuccess = async () => {
+    await loadRequests();
     setSuccessMsg('📩 Đã gửi Báo giá & Hợp đồng thành công! Vui lòng chờ Owner Ký Hợp đồng & Thanh toán 30% tiền cọc.');
     setTimeout(() => setSuccessMsg(null), 5000);
   };
@@ -46,7 +58,7 @@ export const ProvisioningPage: React.FC = () => {
       return;
     }
     await supportService.completeByTechnician(req.serviceRequestId);
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setSuccessMsg(`Đã xác nhận hoàn thành công trình Lắp đặt [${req.title}]!`);
     setTimeout(() => setSuccessMsg(null), 4000);
   };

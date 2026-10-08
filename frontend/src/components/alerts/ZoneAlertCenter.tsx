@@ -5,7 +5,8 @@ import {
   X, ChevronDown, ChevronUp, Play, Pause, RefreshCw, Power, Info, Sparkles, AlertOctagon, HelpCircle
 } from 'lucide-react';
 import { Button, StatusBadge, Modal } from '../ui/BaseUI';
-import { mockAlerts, mockZones, mockFarms } from '../../mocks/mockData';
+import { alertService } from '../../services';
+import { useAuth } from '../../app/providers/AuthContext';
 import { Alert, AlertRule as DomainAlertRule } from '../../types';
 
 export interface ZoneAlertCenterProps {
@@ -82,7 +83,8 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   scopeLevel = 'ZONE',
   onNavigateToControl
 }) => {
-  const targetZone = mockZones.find(z => z.zoneId === zoneId) || (zoneId ? { zoneId, name: `Zone ${zoneId}`, currentCrop: 'Cà chua' } : null);
+  const { zones: authZones } = useAuth();
+  const targetZone = authZones.find(z => z.zoneId === zoneId) || (zoneId ? { zoneId, name: `Zone ${zoneId}`, currentCrop: 'Cà chua' } : null);
 
   const [rules, setRules] = useState<AlertRule[]>(() => {
     if (zoneId) {
@@ -91,12 +93,16 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
     return DEFAULT_ZONE_RULES;
   });
 
-  const [historicAlerts, setHistoricAlerts] = useState<Alert[]>(() => {
-    if (zoneId) {
-      return mockAlerts.filter(a => a.zoneId === zoneId);
-    }
-    return mockAlerts;
-  });
+  const [historicAlerts, setHistoricAlerts] = useState<Alert[]>([]);
+
+  useEffect(() => {
+    alertService.getAlerts().then(data => {
+      if (Array.isArray(data)) {
+        if (zoneId) setHistoricAlerts(data.filter((a: any) => a.zoneId === zoneId));
+        else setHistoricAlerts(data);
+      }
+    }).catch(err => console.error(err));
+  }, [zoneId]);
 
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
   const [activeActions, setActiveActions] = useState<Record<string, { action: string; since: string }>>({});

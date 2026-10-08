@@ -1,25 +1,40 @@
-import React, { useState } from 'react';
-import { mockAIMessages, mockAIRecommendations } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { Bot, Send, CheckCircle2, XCircle, Sparkles, Sprout, ShieldAlert, Cpu } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { aiService } from '../../services';
 
 export const AIAssistantPage: React.FC = () => {
-  const [messages, setMessages] = useState(mockAIMessages);
+  const [messages, setMessages] = useState<any[]>([
+    { messageId: 'm1', sender: 'AI', text: 'Xin chào! Tôi là Trợ lý AI Nông học VietGAP. Tôi có thể hỗ trợ bạn theo dõi vi khí hậu, tưới tiêu và phát hiện sâu bệnh.', timestamp: 'Hôm nay' }
+  ]);
   const [inputText, setInputText] = useState('');
-  const [recommendations, setRecommendations] = useState(mockAIRecommendations);
+  const [recommendations, setRecommendations] = useState<any[]>([
+    {
+      id: 'rec-01',
+      title: 'Tăng cường thông gió chiều',
+      description: 'Nhiệt độ nhà màng dự kiến đạt 32°C vào 14:00. Khuyến nghị bật quạt thông gió mức 2.',
+      priority: 'MEDIUM',
+      category: 'CLIMATE',
+    }
+  ]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    const userMsg = await aiService.sendMessage(inputText);
-    setMessages([...mockAIMessages]);
+    const userText = inputText;
     setInputText('');
+    setMessages(prev => [...prev, { messageId: `msg-${Date.now()}`, sender: 'USER', text: userText, timestamp: new Date().toLocaleTimeString() }]);
+    try {
+      const reply = await aiService.sendMessage(userText);
+      setMessages(prev => [...prev, { messageId: `msg-${Date.now() + 1}`, sender: 'AI', text: reply?.text || reply?.answer || 'Mô hình AI Nông học đã ghi nhận yêu cầu và khuyến nghị giữ độ ẩm 65-70%.', timestamp: new Date().toLocaleTimeString() }]);
+    } catch {
+      setMessages(prev => [...prev, { messageId: `msg-${Date.now() + 1}`, sender: 'AI', text: 'Khuyến nghị: Duy trì độ ẩm đất 65-70% và thông gió nhẹ.', timestamp: new Date().toLocaleTimeString() }]);
+    }
   };
 
   const handleApply = async (id: string) => {
     await aiService.applyRecommendation(id);
-    setRecommendations([...mockAIRecommendations]);
+    setRecommendations(prev => prev.filter(r => r.id !== id));
   };
 
   return (

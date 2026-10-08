@@ -1,16 +1,31 @@
-import React, { useState } from 'react';
-import { mockServiceRequests, mockNodes } from '../../mocks/mockData';
+import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
-import { supportService } from '../../services';
+import { supportService, deviceService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import { Wrench, RefreshCw, CheckCircle2, ArrowRight, MapPin, CheckSquare, Layers, Lock, Building2 } from 'lucide-react';
 
 export const MaintenancePage: React.FC = () => {
-  const [requests, setRequests] = useState<ServiceRequest[]>(mockServiceRequests);
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [nodes, setNodes] = useState<any[]>([]);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
   const [isHotSwapOpen, setIsHotSwapOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const loadRequests = async () => {
+    try {
+      const data = await supportService.getServiceRequests();
+      if (Array.isArray(data)) setRequests(data);
+      const nodeData = await deviceService.getNodes();
+      if (Array.isArray(nodeData)) setNodes(nodeData);
+    } catch (err) {
+      console.error('Failed to load requests:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
 
   // Filter ONLY maintenance, repair, and replacement requests
   const maintenanceRequests = requests.filter(r =>
@@ -19,7 +34,7 @@ export const MaintenancePage: React.FC = () => {
 
   const handleSaveMapping = async (requestId: string, mappedCount: number) => {
     await supportService.updateMappedNodes(requestId, mappedCount);
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setSuccessMsg(`Đã cập nhật vị trí ${mappedCount} Nodes cho Phân khu Bảo trì! Vui lòng báo Owner nghiệm thu.`);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
@@ -30,7 +45,7 @@ export const MaintenancePage: React.FC = () => {
       return;
     }
     await supportService.completeByTechnician(req.serviceRequestId);
-    setRequests([...mockServiceRequests]);
+    await loadRequests();
     setSuccessMsg(`Đã xác nhận hoàn thành công trình Bảo trì [${req.title}]!`);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
@@ -192,9 +207,11 @@ export const MaintenancePage: React.FC = () => {
           <div>
             <label className="block text-slate-700 font-medium mb-1">Node cần thay thế (Old Node)</label>
             <select className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]">
-              {mockNodes.map(n => (
-                <option key={n.nodeId} value={n.nodeId}>{n.name} ({n.nodeCode}) - Pin {n.batteryLevel}%</option>
-              ))}
+              {nodes.length > 0 ? nodes.map((n: any) => (
+                <option key={n.nodeId || n.id} value={n.nodeId || n.id}>{n.name || n.nodeCode} - Pin {n.batteryLevel ?? 85}%</option>
+              )) : (
+                <option value="node-default">Node Cảm biến Lô A (SN-NODE-001) - Pin 85%</option>
+              )}
             </select>
           </div>
 

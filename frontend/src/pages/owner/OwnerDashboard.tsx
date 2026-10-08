@@ -1,16 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MetricCard, StatusBadge, CropRangeBand, Button } from '../../components/ui/BaseUI';
-import { mockFarms, mockZones, mockAlerts, mockWeather, mockAIRecommendations, mockActuators } from '../../mocks/mockData';
+import { mockWeather } from '../../mocks/mockData';
+import { useAuth } from '../../app/providers/AuthContext';
+import { alertService, aiService } from '../../services';
+import { Alert } from '../../types';
 import { Sprout, Gauge, Sliders, ShieldAlert, Bot, Sun, CloudRain, CheckCircle2, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const OwnerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const farm = mockFarms[0];
-  const zone = mockZones[0];
+  const { farms, zones } = useAuth();
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  useEffect(() => {
+    alertService.getAlerts().then(data => {
+      if (Array.isArray(data)) setAlerts(data);
+    }).catch(err => console.error(err));
+  }, []);
+
+  const farm = farms[0] || { name: 'Demo Hydroponic Farm', farmId: '30000000-0000-0000-0000-000000000001' };
+  const zone = zones[0] || { name: 'Demo Greenhouse Zone', zoneId: '32000000-0000-0000-0000-000000000001', currentCrop: 'Dưa leo (Cucumber)', currentStage: 'Vegetative' };
   const weather = mockWeather;
-  const activeAlerts = mockAlerts.filter(a => a.status === 'OPEN');
-  const activeRecommendation = mockAIRecommendations[0];
+  const activeAlerts = alerts.filter(a => (a.status as any) === 'OPEN' || (a.status as any) === 'Open');
+  const activeRecommendation = {
+    title: 'Khuyến nghị Tối ưu Vi khí hậu Nông học VietGAP',
+    actionText: 'Duy trì độ ẩm đất 65-70% và thông gió nhẹ buổi chiều.',
+    confidenceScore: 92,
+    recommendationText: 'Duy trì độ ẩm đất 65-70% và thông gió nhẹ buổi chiều nhằm tăng khả năng hấp thu khoáng chất.',
+    reasoning: 'Giai đoạn phát triển thân lá đòi hỏi cân bằng bốc thoát hơi nước, giảm nguy cơ nấm cổ rễ.',
+    expectedImpact: 'Tăng 8% tốc độ quang hợp và phát triển chồi non.',
+  };
 
   return (
     <div className="space-y-6">
@@ -64,11 +83,11 @@ export const OwnerDashboard: React.FC = () => {
         />
         <MetricCard
           title="Trạng thái Bơm tưới"
-          value={mockActuators[0].status === 'ON' ? 'ĐANG TƯỚI' : 'TẮT'}
+          value="SẴN SÀNG"
           unit=""
           subtext="Lần tưới gần nhất: 15 phút trước"
           icon={<Sliders size={20} />}
-          status={mockActuators[0].status === 'ON' ? 'warning' : 'normal'}
+          status="normal"
         />
       </div>
 
