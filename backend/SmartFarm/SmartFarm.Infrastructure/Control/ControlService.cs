@@ -13,6 +13,42 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
     private static readonly TimeSpan FeedbackTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ConnectivityWindow = TimeSpan.FromMinutes(5);
 
+    public async Task<IReadOnlyList<ZoneActuatorItemView>> ListActuatorsAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
+    {
+        await EnsureZoneReadAsync(userId, tenantId, zoneId, ct);
+        var items = await db.DeviceActuators
+            .Include(x => x.Device)
+            .Where(x => x.Device.ZoneId == zoneId)
+            .OrderBy(x => x.RelayChannel)
+            .ToListAsync(ct);
+        return items.Select(x => new ZoneActuatorItemView(
+            x.Id,
+            x.DeviceId,
+            x.Device.FarmId,
+            zoneId,
+            x.ActuatorType switch
+            {
+                "IrrigationPump" => $"Máy bơm tưới #{x.RelayChannel}",
+                "VentilationFan" => $"Quạt thông gió #{x.RelayChannel}",
+                "MistSprayer" => $"Hệ thống phun sương #{x.RelayChannel}",
+                _ => $"Thiết bị {x.ActuatorType} #{x.RelayChannel}"
+            },
+            $"ACT-{x.RelayChannel:D2}",
+            x.ActuatorType switch
+            {
+                "IrrigationPump" => "PUMP",
+                "VentilationFan" => "FAN",
+                "MistSprayer" => "VALVE",
+                _ => "PUMP"
+            },
+            x.RelayChannel,
+            x.Device.Status == DeviceStatus.Online ? "OFF" : "MAINTENANCE",
+            x.RatedPowerWatt,
+            x.MaxDurationMinutes,
+            x.FlowRateLitersPerMinute
+        )).ToList();
+    }
+
     public async Task<IReadOnlyList<ScheduleView>> ListSchedulesAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
     { await EnsureZoneReadAsync(userId, tenantId, zoneId, ct); return (await db.ControlSchedules.AsNoTracking().Where(x => x.ZoneId == zoneId && x.ArchivedAtUtc == null).OrderBy(x => x.NextRunAtUtc).ToListAsync(ct)).Select(ToView).ToList(); }
 

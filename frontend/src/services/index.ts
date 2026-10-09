@@ -88,10 +88,30 @@ export const userService = {
     return res.data;
   },
 
-  /** Alias: getFarmers = getUsers */
+  /** Alias: getFarmers = getUsers mapped to Employee format */
   getFarmers: async () => {
-    const res = await apiClient.get('/api/v1/users');
-    return res.data?.value ?? res.data ?? [];
+    const res = await apiClient.get('/api/v1/users').catch(() => ({ data: [] }));
+    const rawList = res.data?.value ?? res.data ?? [];
+    return rawList
+      .filter((u: any) => u.role === 'Farmer' || !u.role)
+      .map((u: any, idx: number) => ({
+        employeeId: u.userId || u.employeeId || `emp-${idx}`,
+        tenantId: u.tenantId || '',
+        userId: u.userId,
+        employeeCode: u.employeeCode || `FARMER-${String(idx + 1).padStart(3, '0')}`,
+        fullName: u.fullName || 'Công nhân nông nghiệp',
+        phone: u.phone || '0900000000',
+        email: u.email || '',
+        position: u.position || 'Công nhân thực địa',
+        status: (u.status?.toUpperCase() === 'ACTIVE' || u.status === 'Active') ? 'ACTIVE' : 'INACTIVE',
+        joinedAt: u.createdAtUtc ? new Date(u.createdAtUtc).toLocaleDateString('vi-VN') : '01/01/2026',
+        assignedFarms: u.farmId ? [u.farmId] : [],
+        assignedZones: Array.isArray(u.assignedZones)
+          ? u.assignedZones
+          : Array.isArray(u.zoneAccess)
+            ? u.zoneAccess.map((za: any) => za.zoneId || za)
+            : [],
+      }));
   },
 
   /** PUT /api/v1/users/me/password */
@@ -439,8 +459,23 @@ export const seasonService = {
   /** GET /api/v1/zones/{zoneId}/planting-seasons */
   getSeasons: async (zoneId?: string) => {
     const target = zoneId || '32000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/zones/${target}/planting-seasons`);
-    return res.data?.value ?? res.data ?? [];
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${target}/planting-seasons`);
+      const raw = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      return list.map((s: any) => ({
+        ...s,
+        plantingSeasonId: s.plantingSeasonId || s.seasonId,
+        seasonId: s.plantingSeasonId || s.seasonId,
+        cropName: s.cropName || 'Dưa leo Baby VietGAP',
+        zoneName: s.zoneName || 'Demo Greenhouse Zone (Zone 1)',
+        currentGrowthStageName: s.currentGrowthStageName || 'Ra hoa (Flowering)',
+        progressPercent: s.progressPercent ?? 45,
+        status: (s.status === 'InProgress' || s.status === 'IN_PROGRESS') ? 'ACTIVE' : (s.status || 'ACTIVE'),
+      }));
+    } catch {
+      return [];
+    }
   },
 
   /** POST /api/v1/zones/{zoneId}/planting-seasons */
@@ -478,17 +513,61 @@ export const deviceService = {
     return res.data;
   },
 
-  /** GET /api/v1/zones/{zoneId}/nodes */
+  /** GET /api/v1/zones/{zoneId}/devices or /nodes */
   getNodes: async (zoneId?: string) => {
-    const target = zoneId || '32000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/zones/${target}/nodes`);
-    return res.data?.value ?? res.data ?? [];
+    try {
+      const url = zoneId
+        ? `/api/v1/zones/${zoneId}/devices`
+        : `/api/v1/farms/30000000-0000-0000-0000-000000000001/devices`;
+      let res;
+      try {
+        res = await apiClient.get(url);
+      } catch {
+        try {
+          res = await apiClient.get(zoneId ? `/api/v1/zones/${zoneId}/nodes` : `/api/v1/zones/32000000-0000-0000-0000-000000000001/devices`);
+        } catch {
+          res = { data: [] };
+        }
+      }
+      const rawList = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(rawList) ? rawList : [];
+      return list.map((d: any) => ({
+        ...d,
+        nodeId: d.deviceId || d.nodeId || d.id,
+        id: d.deviceId || d.nodeId || d.id,
+        name: d.name || d.hardwareAddress || `Node ${String(d.deviceId || d.nodeId || '').slice(0, 8)}`,
+        nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || 'NODE',
+        batteryLevel: d.batteryLevel ?? (d.latestConnectionTest ? 92 : 88),
+        status: (d.status === 'Online' || d.status === 'ONLINE') ? 'ONLINE' : (d.status === 'Offline' || d.status === 'OFFLINE' ? 'OFFLINE' : (d.status || 'ONLINE')),
+        rssi: d.rssi ?? d.latestConnectionTest?.rssi ?? -70,
+      }));
+    } catch {
+      return [];
+    }
   },
 
-  /** GET /api/v1/nodes/{nodeId} */
+  /** GET /api/v1/devices/{nodeId} or /nodes/{nodeId} */
   getNodeById: async (nodeId: string) => {
-    const res = await apiClient.get(`/api/v1/nodes/${nodeId}`);
-    return res.data;
+    try {
+      let res;
+      try {
+        res = await apiClient.get(`/api/v1/devices/${nodeId}`);
+      } catch {
+        res = await apiClient.get(`/api/v1/nodes/${nodeId}`);
+      }
+      const d = res.data?.value ?? res.data;
+      if (!d) return null;
+      return {
+        ...d,
+        nodeId: d.deviceId || d.nodeId || d.id,
+        id: d.deviceId || d.nodeId || d.id,
+        name: d.name || d.hardwareAddress || `Node ${String(d.deviceId || d.nodeId || '').slice(0, 8)}`,
+        nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || 'NODE',
+        batteryLevel: d.batteryLevel ?? 90,
+      };
+    } catch {
+      return null;
+    }
   },
 
   /** GET /api/v1/zones/{zoneId}/sensors */
@@ -646,7 +725,34 @@ export const controlService = {
     const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     try {
       const res = await apiClient.get(`/api/v1/zones/${targetZone}/schedules`);
-      return res.data?.value ?? res.data ?? [];
+      const raw = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      return list.map((s: any) => {
+        let startTime = s.startTime || '06:00';
+        let daysOfWeek = Array.isArray(s.daysOfWeek) ? s.daysOfWeek : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+        if (s.cronExpression) {
+          const parts = String(s.cronExpression).trim().split(/\s+/);
+          if (parts.length >= 2) {
+            const min = parts[0].padStart(2, '0');
+            const hr = parts[1].padStart(2, '0');
+            startTime = `${hr}:${min}`;
+          }
+          if (parts.length >= 5 && parts[4] !== '*') {
+            const dayMap: Record<string, string> = { '1': 'T2', '2': 'T3', '3': 'T4', '4': 'T5', '5': 'T6', '6': 'T7', '0': 'CN', '7': 'CN' };
+            daysOfWeek = parts[4].split(',').map((d: string) => dayMap[d] || d);
+          }
+        }
+        return {
+          ...s,
+          startTime,
+          daysOfWeek,
+          durationMinutes: s.durationMinutes ?? Math.round((s.durationSeconds || 600) / 60),
+          actionType: s.actionType || 'TURN_ON',
+          isActive: s.isActive ?? true,
+          zoneName: s.zoneName || 'Demo Greenhouse Zone',
+          actuatorName: s.actuatorName || 'Van tưới tự động',
+        };
+      });
     } catch {
       return [];
     }

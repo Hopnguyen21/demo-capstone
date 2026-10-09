@@ -15,6 +15,7 @@ public sealed record CommandEventView(Guid EventId, CommandEventKind EventKind, 
 public sealed record ActuatorCommandView(Guid CommandId, Guid ZoneId, Guid ActuatorId, Guid DeviceId, CommandTriggerSource TriggerSource, Guid? TriggeredByUserId, ActuatorCommandAction Action, int DurationSeconds, ActuatorCommandStatus Status, DateTime QueuedAtUtc, DateTime? SentAtUtc, DateTime? AcknowledgedAtUtc, DateTime? ExecutionEndsAtUtc, DateTime? CancellationRequestedAtUtc, string? ObservedState, string? ErrorCode, string? ErrorMessage, IReadOnlyList<CommandEventView> Events);
 public sealed record ActuatorStatusView(Guid ActuatorId, string ActuatorType, string CurrentState, Guid? CommandId, DateTime? FeedbackAtUtc, DateTime? ExecutionEndsAtUtc, int? RemainingSeconds);
 public sealed record CommandHistoryView(Guid ZoneId, IReadOnlyList<ActuatorCommandView> Commands);
+public sealed record ZoneActuatorItemView(Guid ActuatorId, Guid DeviceId, Guid FarmId, Guid ZoneId, string Name, string ActuatorCode, string ActuatorType, int RelayChannel, string Status, decimal? RatedPowerWatt, int MaxDurationMinutes, decimal? FlowRateLitersPerMinute);
 
 public sealed record CommandDispatchEnvelope(Guid CommandId, Guid GatewayId, Guid DeviceId, Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds, DateTime HardwareCutoffAtUtc);
 public sealed record CommandTransportResult(bool Published, string? ErrorCode = null, string? ErrorMessage = null);

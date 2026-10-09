@@ -73,11 +73,12 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
 Select.displayName = 'Select';
 
 // StatusBadge
-export const StatusBadge: React.FC<{ status: string; label?: string }> = ({ status, label }) => {
-  const upper = status.toUpperCase();
+export const StatusBadge: React.FC<{ status?: string | null; label?: string }> = ({ status, label }) => {
+  const safeStatus = status || 'ACTIVE';
+  const upper = String(safeStatus).toUpperCase();
   let color = 'bg-slate-100 text-slate-700 border-slate-200';
   
-  if (['ACTIVE', 'ONLINE', 'VALID', 'ACCEPTED', 'COMPLETED', 'RESOLVED', 'ON'].includes(upper)) {
+  if (['ACTIVE', 'ONLINE', 'VALID', 'ACCEPTED', 'COMPLETED', 'RESOLVED', 'ON', 'OPERATING'].includes(upper)) {
     color = 'bg-emerald-50 text-emerald-800 border-emerald-200';
   } else if (['WARNING', 'PENDING', 'PROPOSED', 'IN_PROGRESS', 'ASSIGNED', 'ACKNOWLEDGED'].includes(upper)) {
     color = 'bg-amber-50 text-amber-800 border-amber-200';
@@ -88,11 +89,11 @@ export const StatusBadge: React.FC<{ status: string; label?: string }> = ({ stat
   return (
     <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-xs', color)}>
       <span className={cn('w-1.5 h-1.5 rounded-full mr-1.5',
-        upper.includes('ACTIVE') || upper.includes('ONLINE') || upper.includes('ON') ? 'bg-emerald-500 animate-pulse' :
+        upper.includes('ACTIVE') || upper.includes('ONLINE') || upper.includes('ON') || upper.includes('OPERATING') ? 'bg-emerald-500 animate-pulse' :
         upper.includes('WARNING') || upper.includes('PENDING') ? 'bg-amber-500 animate-ping' :
         upper.includes('CRITICAL') || upper.includes('OFFLINE') ? 'bg-rose-500' : 'bg-slate-400'
       )} />
-      {label || status}
+      {label || safeStatus}
     </span>
   );
 };

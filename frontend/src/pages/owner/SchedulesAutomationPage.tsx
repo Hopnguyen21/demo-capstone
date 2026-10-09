@@ -46,7 +46,7 @@ export const SchedulesAutomationPage: React.FC = () => {
               <div className="text-xs text-slate-600">{sch.zoneName} - {sch.actuatorName}</div>
               <div className="text-xs text-slate-500 flex items-center justify-between pt-2 border-t border-slate-200 font-mono">
                 <span>Thời gian: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
-                <span>Lặp lại: <strong className="text-sky-700">{sch.daysOfWeek.join(', ')}</strong></span>
+                <span>Lặp lại: <strong className="text-sky-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>
               </div>
             </div>
           ))}
