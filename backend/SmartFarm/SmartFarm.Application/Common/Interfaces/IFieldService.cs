@@ -6,6 +6,7 @@ namespace SmartFarm.Application.Common.Interfaces;
 public interface IFieldService
 {
     Task<IReadOnlyList<FieldSummaryView>> ListAsync(Guid ownerUserId, Guid tenantId, Guid farmId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<FieldDetailView>> ListAllAsync(Guid ownerUserId, Guid tenantId, Guid? farmId, CancellationToken cancellationToken);
     Task<FieldDetailView> CreateAsync(Guid ownerUserId, Guid tenantId, Guid farmId, CreateFieldCommand command, CancellationToken cancellationToken);
     Task<FieldDetailView> GetAsync(Guid ownerUserId, Guid tenantId, Guid fieldId, CancellationToken cancellationToken);
     Task<FieldDetailView> UpdateAsync(Guid ownerUserId, Guid tenantId, Guid fieldId, UpdateFieldCommand command, CancellationToken cancellationToken);

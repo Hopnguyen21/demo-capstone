@@ -14,6 +14,12 @@ namespace SmartFarm.Api.Controllers;
 [Authorize]
 public sealed class ZonesController(IZoneService zoneService) : ControllerBase
 {
+    [HttpGet("api/v1/zones")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
+    public async Task<ActionResult<IReadOnlyList<ZoneView>>> ListAll(
+        [FromQuery] Guid? fieldId, [FromQuery] ZoneStatus? status, CancellationToken cancellationToken) =>
+        Ok(await zoneService.ListAllAsync(User.GetUserId(), User.GetTenantId(), fieldId, status, cancellationToken));
+
     // API catalog #28
     [HttpGet("api/v1/fields/{fieldId:guid}/zones")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]

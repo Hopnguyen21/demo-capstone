@@ -4,7 +4,7 @@ import { zoneService, fieldService, farmService } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
+import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const ZonesPage: React.FC = () => {
@@ -26,6 +26,7 @@ export const ZonesPage: React.FC = () => {
     [11.9402, 108.4588],
     [11.9402, 108.4572],
   ]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadData = async () => {
     try {
@@ -36,15 +37,49 @@ export const ZonesPage: React.FC = () => {
       ]);
       if (Array.isArray(zData)) {
         setZones(zData);
-        if (zData.length > 0) setSelectedZoneId(zData[0].zoneId);
+        if (zData.length > 0 && !selectedZoneId) setSelectedZoneId(zData[0].zoneId);
       }
       if (Array.isArray(fdData)) {
         setFields(fdData);
-        if (fdData.length > 0) setSelectedFieldId(fdData[0].fieldId);
+        if (fdData.length > 0 && !selectedFieldId) setSelectedFieldId(fdData[0].fieldId);
       }
       if (Array.isArray(fData)) setFarms(fData);
     } catch (err) {
       console.error('Failed to load zones data:', err);
+    }
+  };
+
+  const handleCreateZone = async () => {
+    if (!zoneName.trim()) {
+      alert('Vui lòng nhập tên Nhà màng / Zone!');
+      return;
+    }
+    const fieldId = selectedFieldId || (fields.length > 0 ? fields[0].fieldId : '');
+    if (!fieldId) {
+      alert('Vui lòng chọn Lô đất (Field) Mẹ!');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const geoJson = toGeoJsonPolygon(polygon);
+      const computedArea = calculatePolygonAreaM2(polygon) || 2000;
+      await zoneService.createZone(fieldId, {
+        name: zoneName.trim(),
+        areaM2: computedArea,
+        zoneType: 'Greenhouse',
+        notes: `${crop || 'Rau màu'}${description ? ` - ${description}` : ''}`,
+        polygonGeoJson: geoJson,
+      });
+      await loadData();
+      setShowCreateModal(false);
+      setZoneName('');
+      setDescription('');
+      alert('Đã lưu Nhà màng mới cùng tọa độ GIS vào PostgreSQL thành công!');
+    } catch (err: any) {
+      console.error('Lỗi tạo Zone:', err);
+      alert('Lỗi tạo Zone: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -194,23 +229,19 @@ export const ZonesPage: React.FC = () => {
               onCenterChange={setCenter}
               polygon={polygon}
               onPolygonChange={setPolygon}
-              parentFarmPolygon={farms[0]?.boundary?.coordinates[0]?.map(c => [c[1], c[0]]) as [number, number][]}
-              parentFieldPolygon={[
-                [11.9415, 108.4565],
-                [11.9415, 108.4595],
-                [11.9395, 108.4595],
-                [11.9395, 108.4565],
-              ]}
+              parentFieldPolygon={(() => {
+                const currentField = fields.find(f => f.fieldId === selectedFieldId);
+                return extractPolygonPoints(currentField?.boundary || (currentField as any)?.boundaryGeoJson);
+              })()}
               height="320px"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setShowCreateModal(false)}>Hủy</Button>
-            <Button onClick={() => {
-              alert('Tạo Zone nhà màng thành công!');
-              setShowCreateModal(false);
-            }}>Tạo Zone & Lưu GIS</Button>
+            <Button variant="outline" onClick={() => setShowCreateModal(false)} disabled={isSubmitting}>Hủy</Button>
+            <Button onClick={handleCreateZone} disabled={isSubmitting}>
+              {isSubmitting ? 'Đang lưu vào DB...' : 'Tạo Zone & Lưu GIS'}
+            </Button>
           </div>
         </div>
       </Modal>

@@ -5,10 +5,10 @@ import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
   Building2, MapPin, Layers, Plus, ArrowUpRight, ChevronRight, Sprout,
   CornerDownRight, Home, ArrowLeft, Cpu, Activity, Gauge, Sliders, Calendar,
-  Radio, CheckCircle2, UserCheck, UserX, User
+  Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
+import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FarmsPage: React.FC = () => {
@@ -66,6 +66,8 @@ export const FarmsPage: React.FC = () => {
   // Modals for adding Field or Zone directly within current level
   const [showAddFieldModal, setShowAddFieldModal] = useState(false);
   const [showAddZoneModal, setShowAddZoneModal] = useState(false);
+  const [isSubmittingField, setIsSubmittingField] = useState(false);
+  const [isSubmittingZone, setIsSubmittingZone] = useState(false);
 
   // Form states for quick creation
   const [newFieldName, setNewFieldName] = useState('');
@@ -88,6 +90,45 @@ export const FarmsPage: React.FC = () => {
     [11.9402, 108.4572],
   ]);
 
+  // Zone GIS editing state
+  const [isEditingZoneGIS, setIsEditingZoneGIS] = useState(false);
+  const [isSavingZoneGIS, setIsSavingZoneGIS] = useState(false);
+  const [zoneEditPolygon, setZoneEditPolygon] = useState<[number, number][]>([]);
+  const [zoneEditCenter, setZoneEditCenter] = useState<[number, number]>([11.9408, 108.4582]);
+
+  // Dynamic polygon extraction from PostgreSQL data
+  const currentFarmPolygon = React.useMemo(() => {
+    return extractPolygonPoints((selectedFarm as any)?.boundaryGeoJson || selectedFarm?.boundary);
+  }, [selectedFarm]);
+
+  const currentFieldPolygon = React.useMemo(() => {
+    return extractPolygonPoints((selectedField as any)?.boundaryGeoJson || selectedField?.boundary);
+  }, [selectedField]);
+
+  const currentZonePoints = React.useMemo(() => {
+    return extractPolygonPoints((selectedZone as any)?.boundaryGeoJson || selectedZone?.boundary);
+  }, [selectedZone]);
+
+  const currentZoneCenter = React.useMemo(() => {
+    if (currentZonePoints.length > 0) return getPolygonCenter(currentZonePoints);
+    if (currentFieldPolygon.length > 0) return getPolygonCenter(currentFieldPolygon);
+    if (selectedFarm?.latitude && selectedFarm?.longitude) {
+      return [Number(selectedFarm.latitude), Number(selectedFarm.longitude)] as [number, number];
+    }
+    return [11.9408, 108.4582] as [number, number];
+  }, [currentZonePoints, currentFieldPolygon, selectedFarm]);
+
+  // Sync edit polygon when selectedZone changes
+  useEffect(() => {
+    if (selectedZone) {
+      const zPoly = extractPolygonPoints((selectedZone as any).boundaryGeoJson || selectedZone.boundary);
+      setZoneEditPolygon(zPoly);
+      const cent = getPolygonCenter(zPoly, [11.9408, 108.4582]);
+      setZoneEditCenter(cent);
+      setIsEditingZoneGIS(false);
+    }
+  }, [selectedZone]);
+
   // Reset drill-down
   const handleResetToFarms = () => {
     setSelectedFarm(null);
@@ -99,15 +140,121 @@ export const FarmsPage: React.FC = () => {
     setSelectedFarm(farm);
     setSelectedField(null);
     setSelectedZone(null);
+    const cent: [number, number] = [
+      Number(farm.latitude) || 11.9404,
+      Number(farm.longitude) || 108.4583,
+    ];
+    setFieldCenter(cent);
+    const d = 0.0015;
+    setFieldPolygon([
+      [cent[0] + d, cent[1] - d],
+      [cent[0] + d, cent[1] + d],
+      [cent[0] - d, cent[1] + d],
+      [cent[0] - d, cent[1] - d],
+    ]);
   };
 
   const handleSelectField = (field: Field) => {
     setSelectedField(field);
     setSelectedZone(null);
+    const fPoly = extractPolygonPoints((field as any)?.boundaryGeoJson || field?.boundary);
+    const cent: [number, number] = fPoly.length > 0
+      ? getPolygonCenter(fPoly)
+      : [Number((field as any).latitude) || 11.9404, Number((field as any).longitude) || 108.4583];
+    setZoneCenter(cent);
+    const d = 0.0006;
+    setZonePolygon([
+      [cent[0] + d, cent[1] - d],
+      [cent[0] + d, cent[1] + d],
+      [cent[0] - d, cent[1] + d],
+      [cent[0] - d, cent[1] - d],
+    ]);
   };
 
   const handleSelectZone = (zone: Zone) => {
     setSelectedZone(zone);
+  };
+
+  const handleAddFieldSubmit = async () => {
+    if (!newFieldName.trim()) {
+      alert('Vui lòng nhập tên Lô đất!');
+      return;
+    }
+    if (!selectedFarm) return;
+    setIsSubmittingField(true);
+    try {
+      const geoJson = toGeoJsonPolygon(fieldPolygon);
+      const computedArea = Number(newFieldArea) || calculatePolygonAreaM2(fieldPolygon) || 5000;
+      await fieldService.createField(selectedFarm.farmId, {
+        name: newFieldName.trim(),
+        areaM2: computedArea,
+        soilType: 'Loam',
+        latitude: fieldCenter[0],
+        longitude: fieldCenter[1],
+        boundaryGeoJson: geoJson,
+      });
+      await loadData();
+      setShowAddFieldModal(false);
+      setNewFieldName('');
+      alert('Đã lưu Lô đất mới cùng tọa độ GIS vào PostgreSQL thành công!');
+    } catch (err: any) {
+      console.error('Lỗi thêm Lô đất:', err);
+      alert('Lỗi thêm Lô đất: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSubmittingField(false);
+    }
+  };
+
+  const handleAddZoneSubmit = async () => {
+    if (!newZoneName.trim()) {
+      alert('Vui lòng nhập tên Nhà màng / Zone!');
+      return;
+    }
+    if (!selectedField) return;
+    setIsSubmittingZone(true);
+    try {
+      const geoJson = toGeoJsonPolygon(zonePolygon);
+      const computedArea = calculatePolygonAreaM2(zonePolygon) || 2000;
+      await zoneService.createZone(selectedField.fieldId, {
+        name: newZoneName.trim(),
+        areaM2: computedArea,
+        zoneType: 'Greenhouse',
+        notes: newZoneCrop,
+        polygonGeoJson: geoJson,
+      });
+      await loadData();
+      setShowAddZoneModal(false);
+      setNewZoneName('');
+      alert('Đã lưu Nhà màng mới cùng tọa độ GIS vào PostgreSQL thành công!');
+    } catch (err: any) {
+      console.error('Lỗi thêm Nhà màng:', err);
+      alert('Lỗi thêm Nhà màng: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSubmittingZone(false);
+    }
+  };
+
+  const handleSaveZoneGIS = async () => {
+    if (!selectedZone) return;
+    setIsSavingZoneGIS(true);
+    try {
+      const geoJson = toGeoJsonPolygon(zoneEditPolygon);
+      const computedArea = calculatePolygonAreaM2(zoneEditPolygon) || selectedZone.areaM2;
+      await zoneService.updateZone(selectedZone.zoneId, {
+        name: selectedZone.name,
+        areaM2: computedArea,
+        polygonGeoJson: geoJson,
+      });
+      await loadData();
+      setSelectedZone(prev => prev ? ({ ...prev, areaM2: computedArea, boundary: geoJson as any, boundaryGeoJson: geoJson as any }) : null);
+      setIsEditingZoneGIS(false);
+      alert('Đã cập nhật và lưu tọa độ GIS Nhà màng vào PostgreSQL thành công!');
+    } catch (err: any) {
+      console.error('Lỗi lưu GIS Zone:', err);
+      alert('Lỗi lưu GIS: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSavingZoneGIS(false);
+    }
   };
 
   return (
@@ -470,23 +617,66 @@ export const FarmsPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
             {/* GIS Map Location of Zone */}
             <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
-              <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                <MapPin size={16} className="text-[#062326]" /> Vị trí GIS Map của Nhà màng này
-              </h4>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                    <MapPin size={16} className="text-[#062326]" /> Vị trí GIS Map của Nhà màng này
+                  </h4>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
+                    </span>
+                    <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
+                  </div>
+                </div>
+                <div>
+                  {!isEditingZoneGIS ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+                      onClick={() => {
+                        setIsEditingZoneGIS(true);
+                        setZoneEditPolygon(currentZonePoints);
+                        setZoneEditCenter(currentZoneCenter);
+                      }}
+                    >
+                      <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => setIsEditingZoneGIS(false)}
+                        disabled={isSavingZoneGIS}
+                      >
+                        Hủy
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                        onClick={handleSaveZoneGIS}
+                        disabled={isSavingZoneGIS}
+                      >
+                        <Save size={13} className="mr-1" />
+                        {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <GISLocationPicker
                 level="ZONE"
-                center={[11.9408, 108.4582]}
-                onCenterChange={() => { }}
-                polygon={[
-                  [11.9412, 108.4572],
-                  [11.9412, 108.4588],
-                  [11.9402, 108.4588],
-                  [11.9402, 108.4572],
-                ]}
-                onPolygonChange={() => { }}
-                parentFarmPolygon={selectedFarm?.boundary?.coordinates[0].map(c => [c[1], c[0]]) as [number, number][]}
+                center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
+                onCenterChange={setZoneEditCenter}
+                polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
+                onPolygonChange={setZoneEditPolygon}
+                parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
                 height="280px"
-                readOnly={true}
+                readOnly={!isEditingZoneGIS}
               />
             </div>
 
@@ -638,17 +828,15 @@ export const FarmsPage: React.FC = () => {
               onCenterChange={setFieldCenter}
               polygon={fieldPolygon}
               onPolygonChange={setFieldPolygon}
-              parentFarmPolygon={selectedFarm?.boundary?.coordinates[0].map(c => [c[1], c[0]]) as [number, number][]}
               height="280px"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setShowAddFieldModal(false)}>Hủy</Button>
-            <Button onClick={() => {
-              alert('Thêm Lô đất mới thành công!');
-              setShowAddFieldModal(false);
-            }}>Thêm Lô đất vào Farm</Button>
+            <Button variant="outline" onClick={() => setShowAddFieldModal(false)} disabled={isSubmittingField}>Hủy</Button>
+            <Button onClick={handleAddFieldSubmit} disabled={isSubmittingField}>
+              {isSubmittingField ? 'Đang lưu vào DB...' : 'Thêm Lô đất vào Farm'}
+            </Button>
           </div>
         </div>
       </Modal>
@@ -674,18 +862,16 @@ export const FarmsPage: React.FC = () => {
               onCenterChange={setZoneCenter}
               polygon={zonePolygon}
               onPolygonChange={setZonePolygon}
-              parentFarmPolygon={selectedFarm?.boundary?.coordinates[0].map(c => [c[1], c[0]]) as [number, number][]}
-              parentFieldPolygon={fieldPolygon}
+              parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
               height="280px"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setShowAddZoneModal(false)}>Hủy</Button>
-            <Button onClick={() => {
-              alert('Thêm Nhà màng mới thành công!');
-              setShowAddZoneModal(false);
-            }}>Thêm Zone vào Field</Button>
+            <Button variant="outline" onClick={() => setShowAddZoneModal(false)} disabled={isSubmittingZone}>Hủy</Button>
+            <Button onClick={handleAddZoneSubmit} disabled={isSubmittingZone}>
+              {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Field'}
+            </Button>
           </div>
         </div>
       </Modal>
