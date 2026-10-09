@@ -2,6 +2,7 @@ import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Shell } from '../../components/layout/Shell';
 import { LoginPage } from '../../pages/auth/LoginPage';
+import { RegisterPage } from '../../pages/auth/RegisterPage';
 import { AdminDashboard } from '../../pages/admin/AdminDashboard';
 import { TenantsPage } from '../../pages/admin/TenantsPage';
 import { UsersPage } from '../../pages/admin/UsersPage';
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/register',
+    element: <RegisterPage />,
   },
   {
     path: '/',

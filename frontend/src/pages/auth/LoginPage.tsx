@@ -1,18 +1,36 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole } from '../../types';
-import { Sprout, ShieldCheck, ArrowRight, UserCheck, KeyRound, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  Sprout, ShieldCheck, ArrowRight, UserCheck, KeyRound,
+  Mail, AlertCircle, Loader2, Eye, EyeOff, CheckCircle2
+} from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { extractApiError } from '../../services';
 
 export const LoginPage: React.FC = () => {
   const { login, switchRole } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [email, setEmail] = useState('owner@smartfarm.demo');
   const [password, setPassword] = useState('Demo@12345');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const state = location.state as { registeredEmail?: string; message?: string } | null;
+    if (state?.registeredEmail) {
+      setEmail(state.registeredEmail);
+      setPassword('');
+      setSuccessMessage('Đăng ký tài khoản thành công! Hãy nhập mật khẩu của bạn để đăng nhập.');
+    } else if (state?.message) {
+      setSuccessMessage(state.message);
+    }
+  }, [location.state]);
 
   const navigateForRole = (role: UserRole) => {
     switch (role) {
@@ -28,6 +46,7 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       const loggedUser = await login(email, password);
       navigateForRole(loggedUser.role);
@@ -41,6 +60,7 @@ export const LoginPage: React.FC = () => {
   const handleDevRoleLogin = async (targetRole: UserRole) => {
     setLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       await switchRole(targetRole);
       navigateForRole(targetRole);
@@ -95,8 +115,25 @@ export const LoginPage: React.FC = () => {
         {/* Right column: Form & Quick Role Switcher */}
         <div className="p-8 flex flex-col justify-between bg-white">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Đăng nhập Hệ thống</h2>
-            <p className="text-xs text-slate-500 mt-1">Nhập tài khoản của bạn để truy cập Workspace</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Đăng nhập Hệ thống</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Nhập tài khoản của bạn để truy cập Workspace</p>
+              </div>
+              <Link
+                to="/register"
+                className="text-xs font-semibold text-[#119653] hover:underline"
+              >
+                Đăng ký ngay
+              </Link>
+            </div>
+
+            {successMessage && (
+              <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-start gap-2">
+                <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-[#119653]" />
+                <span>{successMessage}</span>
+              </div>
+            )}
 
             {errorMessage && (
               <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-start gap-2">
@@ -105,7 +142,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Email / Tên đăng nhập</label>
                 <div className="relative">
@@ -114,7 +151,8 @@ export const LoginPage: React.FC = () => {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 text-xs"
+                    placeholder="tenban@example.com"
                     required
                   />
                 </div>
@@ -125,12 +163,20 @@ export const LoginPage: React.FC = () => {
                 <div className="relative">
                   <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <Input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 pr-9 text-xs"
+                    placeholder="Mật khẩu của bạn..."
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
                 </div>
               </div>
 
@@ -139,10 +185,12 @@ export const LoginPage: React.FC = () => {
                   <input type="checkbox" defaultChecked className="rounded bg-slate-100 border-slate-300 text-[#062326] focus:ring-0" />
                   <span>Ghi nhớ đăng nhập</span>
                 </label>
-                <a href="/forgot-password" className="text-[#062326] font-medium hover:underline">Quên mật khẩu?</a>
+                <Link to="/register" className="text-[#119653] font-medium hover:underline">
+                  Tạo tài khoản mới?
+                </Link>
               </div>
 
-              <Button type="submit" disabled={loading} className="w-full mt-2 bg-[#062326] hover:bg-[#093539] flex items-center justify-center gap-2">
+              <Button type="submit" disabled={loading} className="w-full mt-2 bg-[#062326] hover:bg-[#093539] flex items-center justify-center gap-2 py-2.5">
                 {loading ? (
                   <>
                     <Loader2 size={16} className="animate-spin" /> Đang xác thực...

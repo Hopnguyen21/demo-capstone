@@ -5,12 +5,20 @@ import { authService, farmService, zoneService, getAccessToken } from '../../ser
 interface AuthContextType {
   user: User | null;
   role: UserRole;
+  isAuthenticated: boolean;
   selectedFarmId: string;
   selectedZoneId: string;
   setSelectedFarmId: (id: string) => void;
   setSelectedZoneId: (id: string) => void;
   switchRole: (newRole: UserRole) => Promise<void>;
   login: (email: string, password: string) => Promise<User>;
+  register: (payload: {
+    email: string;
+    fullName: string;
+    phone?: string;
+    password: string;
+    role: 'FarmOwner' | 'Farmer';
+  }) => Promise<any>;
   logout: () => Promise<void>;
   farms: Farm[];
   zones: Zone[];
@@ -67,6 +75,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
 
+  // Listen for unauthenticated event from API interceptor
+  useEffect(() => {
+    const handleUnauthenticated = () => {
+      setUser(null);
+      localStorage.removeItem('smartfarm_user');
+      localStorage.removeItem('smartfarm_role');
+    };
+    window.addEventListener('sf:unauthenticated', handleUnauthenticated);
+    return () => window.removeEventListener('sf:unauthenticated', handleUnauthenticated);
+  }, []);
+
   // Fetch real farms & zones when logged in
   const refreshFarmsAndZones = async () => {
     try {
@@ -102,6 +121,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return mapped;
   };
 
+  const register = async (payload: {
+    email: string;
+    fullName: string;
+    phone?: string;
+    password: string;
+    role: 'FarmOwner' | 'Farmer';
+  }) => {
+    return await authService.register(payload);
+  };
+
   const switchRole = async (newRole: UserRole) => {
     setRole(newRole);
     localStorage.setItem('smartfarm_role', newRole);
@@ -128,19 +157,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     localStorage.removeItem('smartfarm_user');
+    localStorage.removeItem('smartfarm_role');
   };
+
+  const isAuthenticated = !!user && !!getAccessToken();
 
   return (
     <AuthContext.Provider
       value={{
         user,
         role,
+        isAuthenticated,
         selectedFarmId,
         selectedZoneId,
         setSelectedFarmId,
         setSelectedZoneId,
         switchRole,
         login,
+        register,
         logout,
         farms,
         zones,

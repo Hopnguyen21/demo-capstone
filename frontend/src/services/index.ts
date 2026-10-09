@@ -13,6 +13,14 @@ export { extractApiError, clearTokens, getAccessToken, isAuthenticated, setToken
 // 1. AUTH SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+export interface RegisterPayload {
+  email: string;
+  fullName: string;
+  phone?: string;
+  password: string;
+  role: 'FarmOwner' | 'Farmer';
+}
+
 export const authService = {
   /** POST /api/v1/auth/login  → { accessToken, refreshToken, user } */
   login: async (email: string, password: string) => {
@@ -22,10 +30,25 @@ export const authService = {
     return data.user;
   },
 
+  /** POST /api/v1/auth/register → { userId, email, fullName, role, status, createdAtUtc } */
+  register: async (payload: RegisterPayload) => {
+    const res = await apiClient.post('/api/v1/auth/register', {
+      email: payload.email.trim(),
+      fullName: payload.fullName.trim(),
+      phone: payload.phone ? payload.phone.trim() : null,
+      password: payload.password,
+      role: payload.role,
+    });
+    return res.data;
+  },
+
   /** POST /api/v1/auth/logout */
   logout: async (refreshToken?: string) => {
     try {
-      await apiClient.post('/api/v1/auth/logout', { refreshToken, revokeAllDevices: false });
+      const token = refreshToken || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('sf_refresh_token') : null);
+      await apiClient.post('/api/v1/auth/logout', { refreshToken: token, revokeAllDevices: false });
+    } catch (err) {
+      console.warn('Backend logout call completed with notice:', err);
     } finally {
       clearTokens();
     }

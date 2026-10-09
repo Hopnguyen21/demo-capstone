@@ -1,9 +1,18 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router-dom';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
+import { useAuth } from '../../app/providers/AuthContext';
+import { getAccessToken } from '../../services';
 
 export const Shell: React.FC = () => {
+  const { user } = useAuth();
+  const token = getAccessToken();
+
+  if (!user && !token) {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       <Topbar />
