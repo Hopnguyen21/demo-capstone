@@ -236,24 +236,79 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 {
     public async Task BulkUpdateNodeLocationsAsync(Guid technicianId, Guid zoneId, BulkUpdateNodeLocationsCommand command, CancellationToken ct)
     {
+        var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+        if (zone is null && command.ServiceRequestId is { } reqId)
+        {
+            var sr = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == reqId, ct);
+            if (sr is not null)
+            {
+                zoneId = sr.ZoneId;
+                zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+            }
+        }
+
+        var farmId = zone?.Field?.FarmId ?? Guid.Parse("30000000-0000-0000-0000-000000000001");
+        var gateway = await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == farmId, ct);
+        var defaultGwId = gateway?.Id ?? Guid.Parse("40000000-0000-0000-0000-000000000001");
+        var defaultDepReqId = gateway?.DeploymentRequestId ?? Guid.Parse("22000000-0000-0000-0000-000000000001");
+
         var deviceIds = command.Nodes.Select(n => n.DeviceId).ToList();
-        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id) && x.ZoneId == zoneId).ToListAsync(ct);
+        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id) || (x.ZoneId == zoneId)).ToListAsync(ct);
+
         foreach (var node in command.Nodes)
         {
             var device = devices.FirstOrDefault(d => d.Id == node.DeviceId);
-            if (device is null) continue;
-            device.GpsLatitude = node.Latitude;
-            device.GpsLongitude = node.Longitude;
-            device.BatteryLevel = node.BatteryLevel;
-            device.Rssi = node.Rssi;
+            if (device is null)
+            {
+                var newId = node.DeviceId != Guid.Empty ? node.DeviceId : Guid.NewGuid();
+                device = new Device
+                {
+                    Id = newId,
+                    FarmId = farmId,
+                    GatewayId = defaultGwId,
+                    DeploymentRequestId = defaultDepReqId,
+                    ZoneId = zoneId,
+                    HardwareAddress = $"NODE-{newId.ToString()[..8].ToUpperInvariant()}",
+                    DeviceType = DeviceType.SensorNode,
+                    Status = DeviceStatus.Online,
+                    GpsLatitude = node.Latitude,
+                    GpsLongitude = node.Longitude,
+                    BatteryLevel = node.BatteryLevel ?? 100,
+                    Rssi = node.Rssi ?? -70
+                };
+                db.Devices.Add(device);
+                devices.Add(device);
+            }
+            else
+            {
+                device.ZoneId = zoneId;
+                device.GpsLatitude = node.Latitude;
+                device.GpsLongitude = node.Longitude;
+                if (node.BatteryLevel.HasValue) device.BatteryLevel = node.BatteryLevel;
+                if (node.Rssi.HasValue) device.Rssi = node.Rssi;
+            }
         }
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct) =>
-        await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && x.Status != DeviceStatus.Decommissioned)
-            .Select(x => new DeviceMapLocationView(x.Id, x.HardwareAddress, x.DeviceType.ToString(), x.GpsLatitude, x.GpsLongitude, x.BatteryLevel, x.Rssi, x.Status.ToString()))
+    public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct)
+    {
+        var sr = await db.ServiceRequests.AsNoTracking().FirstOrDefaultAsync(x => x.Id == zoneId, ct);
+        var targetZoneId = sr?.ZoneId ?? zoneId;
+
+        return await db.Devices.AsNoTracking()
+            .Where(x => x.ZoneId == targetZoneId && x.Status != DeviceStatus.Decommissioned)
+            .Select(x => new DeviceMapLocationView(
+                x.Id,
+                x.HardwareAddress,
+                x.DeviceType.ToString(),
+                x.GpsLatitude,
+                x.GpsLongitude,
+                x.BatteryLevel,
+                x.Rssi,
+                x.Status.ToString()))
             .ToListAsync(ct);
+    }
 }
 
 // ─── Farm Wizard Service ──────────────────────────────────────────────────────

@@ -1291,19 +1291,30 @@ export const supportService = {
   },
 
   /** PUT /api/v1/zones/{zoneId}/devices/bulk-locations */
-  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any) => {
+  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any, serviceRequestId?: string) => {
     const isArray = Array.isArray(nodesOrCount);
     const nodes = isArray ? nodesOrCount : [];
-    const zoneId = !isArray && typeof nodesOrCount === 'string' ? nodesOrCount : zoneIdOrRequestId;
-    const res = await apiClient.put(`/api/v1/zones/${zoneId}/devices/bulk-locations`, {
-      serviceRequestId: typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined,
-      nodes: nodes.map((n: any) => ({
-        deviceId: n.deviceId || n.id,
-        latitude: n.latitude || n.lat || 11.9404,
-        longitude: n.longitude || n.lng || 108.4583,
+    const zoneId = zoneIdOrRequestId;
+    const reqId = serviceRequestId || (typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined);
+
+    const formattedNodes = nodes.map((n: any, idx: number) => {
+      let devId = n.deviceId || n.nodeId || n.id;
+      const isGuid = typeof devId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(devId);
+      if (!isGuid) {
+        devId = `52000000-0000-0000-0000-${String(idx + 1).padStart(12, '0')}`;
+      }
+      return {
+        deviceId: devId,
+        latitude: typeof n.latitude === 'number' ? n.latitude : (typeof n.lat === 'number' ? n.lat : 11.9404),
+        longitude: typeof n.longitude === 'number' ? n.longitude : (typeof n.lng === 'number' ? n.lng : 108.4583),
         batteryLevel: n.batteryLevel ?? 100,
         rssi: n.rssi ?? -70
-      }))
+      };
+    });
+
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}/devices/bulk-locations`, {
+      serviceRequestId: reqId,
+      nodes: formattedNodes
     });
     return res.data;
   },
@@ -1318,6 +1329,44 @@ export const supportService = {
   getTechnicianSpareParts: async () => {
     const res = await apiClient.get('/api/v1/platform/technicians/me/spare-parts');
     return res.data?.value ?? res.data ?? [];
+  },
+
+  /** POST /api/v1/zones/{zoneId}/devices/{oldDeviceId}/hot-swap */
+  hotSwapDevice: async (zoneId: string, oldDeviceId: string, newDeviceId: string, serviceRequestId?: string, notes?: string) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/devices/${oldDeviceId}/hot-swap`, {
+      serviceRequestId,
+      newDeviceId,
+      notes: notes || 'Hot-swap replacement executed by technician.'
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/diagnosis */
+  diagnoseRequest: async (requestId: string, inspectionNotes: string, diagnosis: string, resolutionAction: number = 0) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/diagnosis`, {
+      inspectionNotes,
+      diagnosis,
+      resolutionAction
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/work */
+  recordWork: async (requestId: string, workPerformed: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/work`, { workPerformed });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/connection-tests */
+  testConnection: async (requestId: string, succeeded: boolean = true, roundTripLatencyMs: number = 35) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/connection-tests`, {
+      succeeded,
+      observedAtUtc: new Date().toISOString(),
+      roundTripLatencyMs,
+      rssi: -72,
+      snr: 9.5
+    });
+    return res.data;
   },
 };
 

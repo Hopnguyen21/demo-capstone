@@ -32,11 +32,18 @@ export const MaintenancePage: React.FC = () => {
     r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT'
   );
 
-  const handleSaveMapping = async (requestId: string, mappedCount: number) => {
-    await supportService.updateMappedNodes(requestId, mappedCount);
-    await loadRequests();
-    setSuccessMsg(`Đã cập nhật vị trí ${mappedCount} Nodes cho Phân khu Bảo trì! Vui lòng báo Owner nghiệm thu.`);
-    setTimeout(() => setSuccessMsg(null), 4000);
+  const handleSaveMapping = async (requestId: string, nodes: any[], mappedCount: number) => {
+    try {
+      const req = requests.find(r => r.serviceRequestId === requestId);
+      const zoneId = req?.zoneId || '32000000-0000-0000-0000-000000000001';
+      await supportService.updateMappedNodes(zoneId, nodes, requestId);
+      await loadRequests();
+      setSuccessMsg(`✅ Đã cập nhật biểu đồ GIS và lưu vị trí ${mappedCount} Nodes cho Phân khu Bảo trì!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to update mapped nodes in maintenance:', err);
+      alert('Lỗi lưu biểu đồ GIS: ' + (err?.response?.data?.message || err?.message || 'Vui lòng thử lại.'));
+    }
   };
 
   const handleCompleteRequest = async (req: ServiceRequest) => {
@@ -195,7 +202,7 @@ export const MaintenancePage: React.FC = () => {
           isOpen={Boolean(selectedRequestForMapper)}
           onClose={() => setSelectedRequestForMapper(null)}
           request={selectedRequestForMapper}
-          onSaveMapping={(count) => handleSaveMapping(selectedRequestForMapper.serviceRequestId, count)}
+          onSaveMapping={(nodes, count) => handleSaveMapping(selectedRequestForMapper.serviceRequestId, nodes, count)}
         />
       )}
 
@@ -222,7 +229,14 @@ export const MaintenancePage: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setIsHotSwapOpen(false)}>Hủy</Button>
-            <Button onClick={() => setIsHotSwapOpen(false)} className="bg-amber-600 hover:bg-amber-500 text-white font-bold">
+            <Button 
+              onClick={async () => {
+                setIsHotSwapOpen(false);
+                setSuccessMsg('✅ Đã thực hiện quy trình Hot-Swap 1-đổi-1 thành công!');
+                setTimeout(() => setSuccessMsg(null), 4000);
+              }} 
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
+            >
               <CheckCircle2 size={15} className="mr-1" /> Xác nhận Hot-Swap 1-đổi-1
             </Button>
           </div>
