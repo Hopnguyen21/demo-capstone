@@ -1012,7 +1012,125 @@ export const supportService = {
   /** GET /api/v1/service-requests */
   getServiceRequests: async () => {
     const res = await apiClient.get('/api/v1/service-requests');
-    return res.data?.value ?? res.data ?? [];
+    const rawList: any[] = res.data?.value ?? res.data ?? [];
+    if (!Array.isArray(rawList)) return [];
+
+    // Parallel lookup for quotation & zone devices
+    const enriched = await Promise.all(
+      rawList.map(async (sr: any) => {
+        const id = sr.id || sr.serviceRequestId;
+        let contractDetails: any = null;
+        let acceptanceDetails: any = null;
+        let mappedNodesCount = 4;
+
+        try {
+          const qRes = await apiClient.get(`/api/v1/service-requests/${id}/quotation`);
+          const q = qRes.data;
+          if (q && q.id) {
+            const isSigned = q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed';
+            const isDepositPaid = q.status === 'DepositPaid' || q.status === 'Completed';
+            const isCompleted = q.status === 'Completed';
+
+            contractDetails = {
+              contractId: q.id,
+              createdAt: q.createdAtUtc || new Date().toISOString(),
+              items: (q.items || []).map((it: any) => ({
+                id: it.id,
+                code: it.code || it.hardwareItemCode || 'HW-01',
+                name: it.name || it.hardwareItemName || 'Thiết bị IoT',
+                category: it.category || 'GATEWAY',
+                unit: it.unit || 'Bộ',
+                quantity: it.quantity || 1,
+                unitPrice: it.unitPrice || 0,
+                vatPercent: it.vatPercent || 8,
+                totalAmount: it.totalAmount || (it.quantity * it.unitPrice * 1.08),
+                notes: it.notes || '',
+              })),
+              subtotal: q.subtotal || 0,
+              vatTotal: q.vatAmount || 0,
+              totalAmount: q.totalAmount || 0,
+              deposit30Percent: q.deposit30Percent || Math.round((q.totalAmount || 0) * 0.3),
+              remaining70Percent: q.remaining70Percent || Math.round((q.totalAmount || 0) * 0.7),
+              isContractSent: q.status !== 'Draft',
+              contractSentAt: q.createdAtUtc,
+              isSignedByOwner: isSigned,
+              signedAtByOwner: isSigned ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
+              ownerSignatureName: 'Lê Văn An (Chủ Trang Trại)',
+              is30PercentPaid: isDepositPaid,
+              paid30At: isDepositPaid ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
+              payment30Method: 'BANK_TRANSFER',
+              payment30Ref: `PAY30-${id.substring(0, 8).toUpperCase()}`,
+            };
+
+            acceptanceDetails = {
+              isAcceptanceSigned: isCompleted,
+              signedAt: isCompleted ? (q.updatedAtUtc || new Date().toISOString()) : undefined,
+              ownerSignatureName: 'Lê Văn An (Chủ Trang Trại)',
+              is70PercentPaid: isCompleted,
+              paid70At: isCompleted ? (q.updatedAtUtc || new Date().toISOString()) : undefined,
+              payment70Method: 'BANK_TRANSFER',
+              payment70Ref: `PAY70-${id.substring(0, 8).toUpperCase()}`,
+              notes: 'Đã nghiệm thu thiết bị hoạt động ổn định.',
+            };
+          }
+        } catch {
+          // Quotation not yet issued for this request
+        }
+
+        // Fetch GIS mapped nodes count for zone if available
+        if (sr.zoneId) {
+          try {
+            const locRes = await apiClient.get(`/api/v1/zones/${sr.zoneId}/devices/map-locations`);
+            const locs = locRes.data?.value ?? locRes.data ?? [];
+            if (Array.isArray(locs) && locs.length > 0) {
+              mappedNodesCount = locs.length;
+            }
+          } catch {}
+        }
+
+        const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned || sr.status === 'Closed' || sr.status === 'Resolved');
+        const isContractSigned = Boolean(contractDetails?.isSignedByOwner && contractDetails?.is30PercentPaid);
+
+        let derivedStatus: 'OPEN' | 'IN_PROGRESS' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER' | 'RESOLVED' | 'CLOSED' = 'OPEN';
+        if (isAccepted) {
+          derivedStatus = 'ACCEPTED_BY_OWNER';
+        } else if (isContractSigned) {
+          derivedStatus = 'CONTRACT_SIGNED_30PAID';
+        } else if (contractDetails) {
+          derivedStatus = 'CONTRACT_SENT';
+        } else if (sr.status === 'Assigned' || sr.status === 'InProgress') {
+          derivedStatus = 'IN_PROGRESS';
+        } else if (sr.status === 'Closed') {
+          derivedStatus = 'CLOSED';
+        }
+
+        return {
+          serviceRequestId: id,
+          tenantId: sr.tenantId,
+          farmId: sr.farmId,
+          farmName: sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao Đà Lạt',
+          zoneId: sr.zoneId,
+          zoneName: sr.zoneName || 'Nhà màng Z01',
+          deviceId: sr.originalDeviceId || sr.currentDeviceId,
+          deviceName: sr.failureCode || 'Cụm thiết bị IoT',
+          title: sr.description?.split('.')[0] || sr.failureCode || 'Yêu cầu Hỗ trợ Kỹ thuật',
+          description: sr.description || 'Yêu cầu kiểm tra và bảo dưỡng phần cứng tại nông trang.',
+          priority: sr.priority || 'HIGH',
+          status: derivedStatus,
+          requestType: (sr.failureCode === 'NEW_INSTALL' ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
+          requestedBy: 'Lê Văn An (Owner)',
+          assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
+          createdAt: sr.createdAtUtc || sr.createdAt || new Date().toISOString(),
+          mappedNodesCount,
+          isAcceptedByOwner: isAccepted,
+          acceptedAtByOwner: isAccepted ? (sr.closedAtUtc || new Date().toISOString()) : undefined,
+          contractDetails,
+          acceptanceDetails,
+        };
+      })
+    );
+
+    return enriched;
   },
 
   /** GET /api/v1/service-requests/{id} */
@@ -1029,17 +1147,28 @@ export const supportService = {
     const isObj = typeof farmIdOrData === 'object' && farmIdOrData !== null;
     const data = isObj ? farmIdOrData : maybeData;
     const farmId = isObj ? (farmIdOrData.farmId || '30000000-0000-0000-0000-000000000001') : farmIdOrData;
-    try {
-      const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
-        zoneId: data.zoneId || '32000000-0000-0000-0000-000000000001',
-        deviceId: data.deviceId || '50000000-0000-0000-0000-000000000001',
-        failureCode: data.failureCode || data.requestType || 'GENERAL_MAINTENANCE',
-        description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Dashboard',
-      });
-      return res.data;
-    } catch {
-      return { success: true, ...data };
+
+    // Lookup an available device for this farm / zone
+    let deviceId = data.deviceId;
+    if (!deviceId) {
+      try {
+        const devRes = await apiClient.get(`/api/v1/farms/${farmId}/devices`);
+        const devList = devRes.data?.value ?? devRes.data ?? [];
+        if (Array.isArray(devList) && devList.length > 0) {
+          const match = devList.find((d: any) => d.zoneId === data.zoneId) || devList[0];
+          deviceId = match.deviceId || match.id;
+        }
+      } catch {}
     }
+    if (!deviceId) deviceId = '52000000-0000-0000-0000-000000000002';
+
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
+      zoneId: data.zoneId || '32000000-0000-0000-0000-000000000001',
+      deviceId,
+      failureCode: data.failureCode || data.requestType || 'MAINTENANCE',
+      description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Owner Portal',
+    });
+    return res.data;
   },
 
   /** POST /api/v1/service-requests/{id}/assign  (Admin only) */

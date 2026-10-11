@@ -5,21 +5,31 @@ import { useAuth } from '../../app/providers/AuthContext';
 import {
   Headphones, Plus, CheckSquare, CheckCircle2, Clock, Wrench,
   Building2, User, AlertCircle, Info, Layers, FileText, DollarSign,
-  QrCode, CreditCard, ShieldCheck, Lock, ChevronDown, ChevronUp, Package
+  QrCode, CreditCard, ShieldCheck, Lock, ChevronDown, ChevronUp, Package,
+  RefreshCw, Loader2
 } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
 export const SupportPage: React.FC = () => {
   const { farms, zones } = useAuth();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const loadRequests = async () => {
     try {
+      setIsLoading(true);
+      setErrorMsg(null);
       const data = await supportService.getServiceRequests();
       if (Array.isArray(data)) setRequests(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load support requests:', err);
+      setErrorMsg('Không thể tải danh sách phiếu yêu cầu từ máy chủ API.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -49,47 +59,80 @@ export const SupportPage: React.FC = () => {
   const handleSignContractAndPay30 = async (requestId: string) => {
     const signature = ownerSignatures[requestId] || 'Lê Văn An (Chủ Trang Trại)';
     const method = paymentMethods30[requestId] || 'BANK_TRANSFER';
+    setIsProcessingId(requestId);
+    setErrorMsg(null);
 
-    await supportService.signContractAndPay30(requestId, signature, method);
-    await loadRequests();
-    setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG! Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).');
-    setTimeout(() => setSuccessMsg(null), 5000);
+    try {
+      await supportService.signContractAndPay30(requestId, signature, method);
+      await loadRequests();
+      setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG! Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).');
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to sign contract deposit:', err);
+      const msg = err.response?.data?.detail || err.response?.data?.title || err.message || 'Lỗi khi ký hợp đồng';
+      setErrorMsg(`⚠️ Không thể ký Hợp đồng: ${msg}`);
+      setTimeout(() => setErrorMsg(null), 6000);
+    } finally {
+      setIsProcessingId(null);
+    }
   };
 
   const handleSignAcceptanceAndPay70 = async (requestId: string) => {
     const signature = acceptanceSignatures[requestId] || 'Lê Văn An (Chủ Trang Trại)';
     const method = paymentMethods70[requestId] || 'BANK_TRANSFER';
+    setIsProcessingId(requestId);
+    setErrorMsg(null);
 
-    await supportService.signAcceptanceAndPay70(requestId, signature, method);
-    await loadRequests();
-    setSuccessMsg('✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN 70% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.');
-    setTimeout(() => setSuccessMsg(null), 5000);
+    try {
+      await supportService.signAcceptanceAndPay70(requestId, signature, method);
+      await loadRequests();
+      setSuccessMsg('✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN 70% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.');
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to sign acceptance:', err);
+      const msg = err.response?.data?.detail || err.response?.data?.title || err.message || 'Lỗi khi ký nghiệm thu';
+      setErrorMsg(`⚠️ Không thể ký Nghiệm thu: ${msg}`);
+      setTimeout(() => setErrorMsg(null), 6000);
+    } finally {
+      setIsProcessingId(null);
+    }
   };
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const farm = farms.find(f => f.farmId === newReq.farmId);
-    const zone = zones.find(z => z.zoneId === newReq.zoneId);
+    setIsCreating(true);
+    setErrorMsg(null);
 
-    await supportService.createServiceRequest({
-      farmId: newReq.farmId,
-      farmName: farm?.name || 'Trang trại Đà Lạt',
-      zoneId: newReq.zoneId,
-      zoneName: zone?.name || 'Nhà màng Z01',
-      requestType: newReq.requestType,
-      title: newReq.title,
-      description: newReq.description,
-      priority: newReq.priority,
-      requestedBy: 'Lê Văn An (Owner)',
-      assignedOwnerName: 'Lê Văn An',
-      assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
-    });
+    try {
+      const farm = farms.find(f => f.farmId === newReq.farmId);
+      const zone = zones.find(z => z.zoneId === newReq.zoneId);
 
-    await loadRequests();
-    setIsModalOpen(false);
-    setNewReq({ farmId: '30000000-0000-0000-0000-000000000001', zoneId: '32000000-0000-0000-0000-000000000001', requestType: 'MAINTENANCE', title: '', description: '', priority: 'HIGH' });
-    setSuccessMsg('Đã gửi phiếu Yêu cầu Kỹ thuật thành công!');
-    setTimeout(() => setSuccessMsg(null), 3000);
+      await supportService.createServiceRequest({
+        farmId: newReq.farmId,
+        farmName: farm?.name || 'Trang trại Đà Lạt',
+        zoneId: newReq.zoneId,
+        zoneName: zone?.name || 'Nhà màng Z01',
+        requestType: newReq.requestType,
+        title: newReq.title,
+        description: newReq.description,
+        priority: newReq.priority,
+        requestedBy: 'Lê Văn An (Owner)',
+        assignedOwnerName: 'Lê Văn An',
+        assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
+      });
+
+      await loadRequests();
+      setIsModalOpen(false);
+      setNewReq({ farmId: '30000000-0000-0000-0000-000000000001', zoneId: '32000000-0000-0000-0000-000000000001', requestType: 'MAINTENANCE', title: '', description: '', priority: 'HIGH' });
+      setSuccessMsg('Đã gửi phiếu Yêu cầu Kỹ thuật thành công lên API máy chủ!');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Failed to create service request:', err);
+      const msg = err.response?.data?.detail || err.response?.data?.title || err.message || 'Lỗi khi gửi yêu cầu';
+      alert(`Không thể gửi yêu cầu: ${msg}`);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -108,15 +151,56 @@ export const SupportPage: React.FC = () => {
           </p>
         </div>
 
-        <Button onClick={() => setIsModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shrink-0">
-          <Plus size={16} className="mr-1.5" /> Gửi Yêu cầu Hỗ trợ Mới
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => loadRequests()}
+            disabled={isLoading}
+            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs flex items-center gap-1.5"
+          >
+            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            <span>Làm mới API</span>
+          </Button>
+
+          <Button onClick={() => setIsModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shrink-0">
+            <Plus size={16} className="mr-1.5" /> Gửi Yêu cầu Hỗ trợ Mới
+          </Button>
+        </div>
       </div>
 
       {successMsg && (
         <div className="p-4 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg animate-in fade-in">
           <CheckCircle2 size={18} className="shrink-0" />
           <span>{successMsg}</span>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="p-4 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg animate-in fade-in">
+          <AlertCircle size={18} className="shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Loading state indicator */}
+      {isLoading && requests.length === 0 && (
+        <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <Loader2 size={32} className="mx-auto text-emerald-600 animate-spin" />
+          <p className="text-sm font-semibold text-slate-700">Đang tải dữ liệu Hợp đồng, Báo giá & Nghiệm thu từ máy chủ...</p>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && requests.length === 0 && (
+        <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <Headphones size={36} className="mx-auto text-slate-400" />
+          <h3 className="text-base font-bold text-slate-800">Chưa có Phiếu Yêu cầu Kỹ thuật nào</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Chủ trang trại có thể tạo yêu cầu lắp đặt mới hoặc bảo dưỡng để nhận báo giá hợp đồng từ Kỹ thuật viên.
+          </p>
+          <Button onClick={() => setIsModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs">
+            <Plus size={14} className="mr-1" /> Gửi Yêu cầu Hỗ trợ Đầu tiên
+          </Button>
         </div>
       )}
 
@@ -314,11 +398,21 @@ export const SupportPage: React.FC = () => {
                           )}
 
                           <Button
+                            disabled={isProcessingId === req.serviceRequestId}
                             onClick={() => handleSignContractAndPay30(req.serviceRequestId)}
                             className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
                           >
-                            <CheckSquare size={16} />
-                            KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC ({contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ)
+                            {isProcessingId === req.serviceRequestId ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" />
+                                Đang xác thực Ký HĐ & Ghi nhận Cọc 30% qua API...
+                              </>
+                            ) : (
+                              <>
+                                <CheckSquare size={16} />
+                                KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC ({contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ)
+                              </>
+                            )}
                           </Button>
                         </div>
                       ) : (
@@ -428,11 +522,21 @@ export const SupportPage: React.FC = () => {
                       </div>
 
                       <Button
+                        disabled={isProcessingId === req.serviceRequestId}
                         onClick={() => handleSignAcceptanceAndPay70(req.serviceRequestId)}
                         className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
                       >
-                        <CheckSquare size={16} />
-                        KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN 70% CÒN LẠI ({(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ)
+                        {isProcessingId === req.serviceRequestId ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            Đang xác nhận Ký Nghiệm thu & Ghi nhận 70% qua API...
+                          </>
+                        ) : (
+                          <>
+                            <CheckSquare size={16} />
+                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN 70% CÒN LẠI ({(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ)
+                          </>
+                        )}
                       </Button>
                     </div>
                   ) : (
@@ -510,8 +614,18 @@ export const SupportPage: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Hủy</Button>
-            <Button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
-              Gửi Yêu cầu
+            <Button
+              type="submit"
+              disabled={isCreating}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 size={14} className="animate-spin mr-1" /> Đang gửi API...
+                </>
+              ) : (
+                'Gửi Yêu cầu'
+              )}
             </Button>
           </div>
         </form>
