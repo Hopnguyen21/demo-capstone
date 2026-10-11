@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Field, Farm, Zone } from '../../types';
-import { fieldService, farmService, zoneService } from '../../services';
-import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers } from 'lucide-react';
+import { fieldService, farmService, zoneService, extractApiError } from '../../services';
+import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers, Wrench } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +49,10 @@ export const FieldsPage: React.FC = () => {
       alert('Vui lòng nhập tên Lô đất!');
       return;
     }
+    if (fieldName.trim().length < 2) {
+      alert('Tên Phân khu Lô đất phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      return;
+    }
     const farmId = selectedFarmId || (farms.length > 0 ? farms[0].farmId : '');
     if (!farmId) {
       alert('Vui lòng chọn Trang trại Mẹ!');
@@ -57,7 +61,7 @@ export const FieldsPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       const geoJson = toGeoJsonPolygon(polygon);
-      const computedArea = calculatePolygonAreaM2(polygon) || Number(areaM2) || 5000;
+      const computedArea = Number(areaM2) || calculatePolygonAreaM2(polygon) || 5000;
       await fieldService.createField(farmId, {
         name: fieldName.trim(),
         areaM2: computedArea,
@@ -73,7 +77,8 @@ export const FieldsPage: React.FC = () => {
       alert('Đã lưu Lô đất mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi tạo Field:', err);
-      alert('Lỗi tạo Field: ' + (err.response?.data?.message || err.message));
+      const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
+      alert('Lỗi tạo Field: ' + errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -135,8 +140,16 @@ export const FieldsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500 flex items-center gap-1"><Sprout size={13} className="text-amber-600" /> Cấp 3: {childZones.map(z => z.name).join(', ')}</span>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/owner/support')}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs"
+                  title="Gửi yêu cầu lắp đặt thiết bị cho Lô đất này"
+                >
+                  <Wrench size={13} className="text-emerald-700" />
+                  <span>Gửi yêu cầu thiết bị</span>
+                </button>
                 <Button size="sm" variant="ghost" onClick={() => navigate('/owner/zones')}>
                   Xem Zones <ArrowUpRight size={13} className="ml-1" />
                 </Button>

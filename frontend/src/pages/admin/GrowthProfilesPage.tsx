@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { CropRangeBand } from '../../components/ui/BaseUI';
-import { Activity, Clock, CheckCircle, Sliders, ArrowRight } from 'lucide-react';
+import { Activity, Clock, CheckCircle, Sliders, ArrowRight, RefreshCw, Sprout } from 'lucide-react';
+import { cropService } from '../../services';
 
-const defaultProfile = {
+const fallbackProfile = {
   growthProfileId: 'profile-tomato-std',
   cropId: 'crop-tomato',
   varietyId: 'var-beefsteak',
@@ -27,7 +28,27 @@ const defaultProfile = {
 };
 
 export const GrowthProfilesPage: React.FC = () => {
-  const profile = defaultProfile;
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [activeProfile, setActiveProfile] = useState<any>(fallbackProfile);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    cropService.getAllGrowthProfiles().then((data: any[]) => {
+      if (Array.isArray(data) && data.length > 0) {
+        setProfiles(data);
+        const first = data[0];
+        setActiveProfile({
+          ...fallbackProfile,
+          growthProfileId: first.profileId || first.id || fallbackProfile.growthProfileId,
+          name: first.name || fallbackProfile.name,
+          description: first.description || `Hồ sơ cho cây trồng ${first.cropName || 'chuyên canh'}`,
+        });
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const profile = activeProfile;
 
   return (
     <div className="space-y-6">
@@ -60,7 +81,7 @@ export const GrowthProfilesPage: React.FC = () => {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          {profile.stages.map(st => (
+          {profile.stages.map((st: any) => (
             <div key={st.growthStageId} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative">
               <div className="flex items-center justify-between">
                 <span className="w-5 h-5 rounded-full bg-[#062326] text-white text-xs font-bold flex items-center justify-center">

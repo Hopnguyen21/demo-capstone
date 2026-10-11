@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Zone, Field, Farm } from '../../types';
-import { zoneService, fieldService, farmService } from '../../services';
+import { zoneService, fieldService, farmService, extractApiError } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
-import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers } from 'lucide-react';
+import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
@@ -54,6 +54,10 @@ export const ZonesPage: React.FC = () => {
       alert('Vui lòng nhập tên Nhà màng / Zone!');
       return;
     }
+    if (zoneName.trim().length < 2) {
+      alert('Tên Nhà màng / Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      return;
+    }
     const fieldId = selectedFieldId || (fields.length > 0 ? fields[0].fieldId : '');
     if (!fieldId) {
       alert('Vui lòng chọn Lô đất (Field) Mẹ!');
@@ -77,7 +81,8 @@ export const ZonesPage: React.FC = () => {
       alert('Đã lưu Nhà màng mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi tạo Zone:', err);
-      alert('Lỗi tạo Zone: ' + (err.response?.data?.message || err.message));
+      const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
+      alert('Lỗi tạo Zone: ' + errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -152,20 +157,34 @@ export const ZonesPage: React.FC = () => {
                 <div className="flex justify-between"><span>Diện tích Nhà màng:</span><strong className="text-slate-900">{z.areaM2} m²</strong></div>
               </div>
 
-              <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
+              <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs gap-2 flex-wrap">
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedZoneId(z.zoneId);
-                    setActiveTabMode('ALERTS');
+                    navigate('/owner/support');
                   }}
-                  className="text-rose-700 font-bold hover:underline"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs"
+                  title="Gửi yêu cầu lắp đặt thiết bị cho Nhà màng này"
                 >
-                  🚨 Trung tâm Cảnh báo Zone ➔
+                  <Wrench size={13} className="text-emerald-700" />
+                  <span>Gửi yêu cầu thiết bị</span>
                 </button>
-                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate('/owner/monitoring/realtime'); }}>
-                  Vi khí hậu Realtime <ArrowUpRight size={13} className="ml-1" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedZoneId(z.zoneId);
+                      setActiveTabMode('ALERTS');
+                    }}
+                    className="text-rose-700 font-bold hover:underline"
+                  >
+                    🚨 Cảnh báo Zone
+                  </button>
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); navigate('/owner/monitoring/realtime'); }}>
+                    Realtime <ArrowUpRight size={13} className="ml-1" />
+                  </Button>
+                </div>
               </div>
             </div>
           );

@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Shell } from '../../components/layout/Shell';
+import { HomePage } from '../../pages/public/HomePage';
 import { LoginPage } from '../../pages/auth/LoginPage';
 import { RegisterPage } from '../../pages/auth/RegisterPage';
 import { AdminDashboard } from '../../pages/admin/AdminDashboard';
@@ -44,6 +45,16 @@ import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
 
 export const router = createBrowserRouter([
+  // Public Landing Homepage (Opens by default on root '/')
+  {
+    path: '/',
+    element: <HomePage />,
+  },
+  {
+    path: '/home',
+    element: <HomePage />,
+  },
+  // Public Auth Pages
   {
     path: '/login',
     element: <LoginPage />,
@@ -52,59 +63,58 @@ export const router = createBrowserRouter([
     path: '/register',
     element: <RegisterPage />,
   },
+  // Authenticated Portal Layout (Protected by Shell)
   {
-    path: '/',
     element: <Shell />,
     children: [
-      { index: true, element: <Navigate to="/owner/dashboard" replace /> },
-      
       // Admin Routes
-      { path: 'admin/dashboard', element: <AdminDashboard /> },
-      { path: 'admin/requests', element: <ServiceRequestsPage /> },
-      { path: 'admin/tenants', element: <TenantsPage /> },
-      { path: 'admin/users', element: <UsersPage /> },
-      { path: 'admin/crops', element: <CropsPage /> },
-      { path: 'admin/growth-profiles', element: <GrowthProfilesPage /> },
-      { path: 'admin/devices', element: <DevicesPage /> },
-      { path: 'admin/system-health', element: <SystemHealthPage /> },
-      { path: 'admin/audit-logs', element: <AuditLogsPage /> },
-      { path: 'admin/settings', element: <SettingsPage /> },
+      { path: '/admin/dashboard', element: <AdminDashboard /> },
+      { path: '/admin/requests', element: <ServiceRequestsPage /> },
+      { path: '/admin/tenants', element: <TenantsPage /> },
+      { path: '/admin/users', element: <UsersPage /> },
+      { path: '/admin/crops', element: <CropsPage /> },
+      { path: '/admin/growth-profiles', element: <GrowthProfilesPage /> },
+      { path: '/admin/devices', element: <DevicesPage /> },
+      { path: '/admin/system-health', element: <SystemHealthPage /> },
+      { path: '/admin/audit-logs', element: <AuditLogsPage /> },
+      { path: '/admin/settings', element: <SettingsPage /> },
 
       // Technician Routes
-      { path: 'technician/dashboard', element: <TechnicianDashboard /> },
-      { path: 'technician/deployments', element: <TechnicianDashboard /> },
-      { path: 'technician/provisioning', element: <ProvisioningPage /> },
-      { path: 'technician/gateways', element: <GatewaysPage /> },
-      { path: 'technician/devices', element: <GatewaysPage /> },
-      { path: 'technician/maintenance', element: <MaintenancePage /> },
-      { path: 'technician/inventory', element: <TechnicianInventoryPage /> },
+      { path: '/technician/dashboard', element: <TechnicianDashboard /> },
+      { path: '/technician/deployments', element: <TechnicianDashboard /> },
+      { path: '/technician/provisioning', element: <ProvisioningPage /> },
+      { path: '/technician/gateways', element: <GatewaysPage /> },
+      { path: '/technician/devices', element: <GatewaysPage /> },
+      { path: '/technician/maintenance', element: <MaintenancePage /> },
+      { path: '/technician/inventory', element: <TechnicianInventoryPage /> },
+
       // Farm Owner Routes
-      { path: 'owner/dashboard', element: <OwnerDashboard /> },
-      { path: 'owner/farms', element: <FarmsPage /> },
-      { path: 'owner/farms/create', element: <CreateFarmWizard /> },
-      { path: 'owner/fields', element: <Navigate to="/owner/farms" replace /> },
-      { path: 'owner/zones', element: <Navigate to="/owner/farms" replace /> },
-      { path: 'owner/planting-seasons', element: <PlantingSeasonsPage /> },
-      { path: 'owner/monitoring/realtime', element: <MonitoringRealtime /> },
-      { path: 'owner/monitoring/history', element: <MonitoringHistory /> },
-      { path: 'owner/alerts', element: <AlertsPage /> },
-      { path: 'owner/control', element: <ControlPage /> },
-      { path: 'owner/schedules', element: <SchedulesAutomationPage /> },
-      { path: 'owner/farmers', element: <FarmersPage /> },
-      { path: 'owner/tasks', element: <TasksPage /> },
-      { path: 'owner/ai', element: <AIAssistantPage /> },
-      { path: 'owner/support', element: <SupportPage /> },
+      { path: '/owner/dashboard', element: <OwnerDashboard /> },
+      { path: '/owner/farms', element: <FarmsPage /> },
+      { path: '/owner/farms/create', element: <CreateFarmWizard /> },
+      { path: '/owner/fields', element: <Navigate to="/owner/farms" replace /> },
+      { path: '/owner/zones', element: <Navigate to="/owner/farms" replace /> },
+      { path: '/owner/planting-seasons', element: <PlantingSeasonsPage /> },
+      { path: '/owner/monitoring/realtime', element: <MonitoringRealtime /> },
+      { path: '/owner/monitoring/history', element: <MonitoringHistory /> },
+      { path: '/owner/alerts', element: <AlertsPage /> },
+      { path: '/owner/control', element: <ControlPage /> },
+      { path: '/owner/schedules', element: <SchedulesAutomationPage /> },
+      { path: '/owner/farmers', element: <FarmersPage /> },
+      { path: '/owner/tasks', element: <TasksPage /> },
+      { path: '/owner/ai', element: <AIAssistantPage /> },
+      { path: '/owner/support', element: <SupportPage /> },
 
       // Farmer Routes
-      { path: 'farmer/home', element: <FarmerHome /> },
-      { path: 'farmer/zones', element: <FarmerZonesPage /> },
-      { path: 'farmer/monitoring', element: <MonitoringRealtime /> },
-      { path: 'farmer/alerts', element: <AlertsPage /> },
-      { path: 'farmer/tasks', element: <FarmerTasksPage /> },
-      { path: 'farmer/irrigation', element: <FarmerIrrigationPage /> },
-      { path: 'farmer/ai', element: <FarmerAIPage /> },
+      { path: '/farmer/home', element: <FarmerHome /> },
+      { path: '/farmer/zones', element: <FarmerZonesPage /> },
+      { path: '/farmer/monitoring', element: <MonitoringRealtime /> },
+      { path: '/farmer/alerts', element: <AlertsPage /> },
+      { path: '/farmer/tasks', element: <FarmerTasksPage /> },
+      { path: '/farmer/irrigation', element: <FarmerIrrigationPage /> },
+      { path: '/farmer/ai', element: <FarmerAIPage /> },
 
-      { path: '*', element: <Navigate to="/owner/dashboard" replace /> }
-    ]
-  }
+      { path: '*', element: <Navigate to="/owner/dashboard" replace /> },
+    ],
+  },
 ]);

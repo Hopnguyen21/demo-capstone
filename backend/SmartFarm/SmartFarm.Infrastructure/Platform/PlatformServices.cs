@@ -333,11 +333,14 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
         // 2. Create Field (optional)
         if (command.Field is not null)
         {
+            var fieldArea = command.Field.AreaM2 ?? 0;
+            var zoneArea = command.Zone?.AreaM2 ?? 0;
             var field = new Field
             {
                 FarmId = farm.Id,
                 Name = command.Field.Name,
-                AreaM2 = command.Field.AreaM2 ?? 0,
+                AreaM2 = fieldArea,
+                AvailableAreaM2 = Math.Max(0, fieldArea - zoneArea),
                 SoilType = command.Field.SoilType,
                 BoundaryGeoJson = command.Field.BoundaryGeoJson
             };
