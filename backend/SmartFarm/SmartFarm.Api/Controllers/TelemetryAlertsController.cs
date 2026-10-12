@@ -45,16 +45,16 @@ public sealed class AlertRulesController(ITelemetryAlertService service) : Contr
     public async Task<IActionResult> Archive(Guid zoneId, Guid ruleId, CancellationToken ct) { await service.ArchiveRuleAsync(User.GetUserId(), User.GetTenantId(), zoneId, ruleId, ct); return NoContent(); }
 }
 
-[ApiController, Authorize(Roles = "FarmOwner,Farmer")]
+[ApiController, Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin")]
 public sealed class AlertsController(ITelemetryAlertService service) : ControllerBase
 {
     // API catalog #72
     [HttpGet("api/v1/farms/{farmId:guid}/alerts")]
-    public async Task<ActionResult<IReadOnlyList<AlertView>>> Farm(Guid farmId, [FromQuery] AlertStatus? status, [FromQuery] AlertSeverity? severity, CancellationToken ct) => Ok(await service.ListFarmAlertsAsync(User.GetUserId(), User.GetTenantId(), farmId, status, severity, ct));
+    public async Task<ActionResult<IReadOnlyList<AlertView>>> Farm(Guid farmId, [FromQuery] AlertStatus? status, [FromQuery] AlertSeverity? severity, CancellationToken ct) => Ok(await service.ListFarmAlertsAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, status, severity, ct));
 
     // API catalog #73
     [HttpGet("api/v1/zones/{zoneId:guid}/alerts")]
-    public async Task<ActionResult<IReadOnlyList<AlertView>>> Zone(Guid zoneId, [FromQuery] AlertStatus? status, CancellationToken ct) => Ok(await service.ListZoneAlertsAsync(User.GetUserId(), User.GetTenantId(), zoneId, status, ct));
+    public async Task<ActionResult<IReadOnlyList<AlertView>>> Zone(Guid zoneId, [FromQuery] AlertStatus? status, CancellationToken ct) => Ok(await service.ListZoneAlertsAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, status, ct));
 
     // API catalog #74
     [HttpGet("api/v1/alerts/{alertId:guid}")]

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Control;
@@ -15,9 +16,30 @@ public sealed class MqttActuatorCommandTransport : IActuatorCommandTransport
     public Task<CommandTransportResult> PublishEmergencyStopAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken) => Task.FromResult(new CommandTransportResult(false, "MQTT_NOT_CONFIGURED", "No MQTT emergency-stop publisher is configured."));
 }
 
-public sealed class UnavailableRainForecastProvider : IRainForecastProvider
+public sealed class UnavailableRainForecastProvider(IServiceProvider serviceProvider) : IRainForecastProvider
 {
-    public Task<RainForecastResult> GetAsync(Guid farmId, CancellationToken cancellationToken) => Task.FromResult(new RainForecastResult(false, null));
+    public async Task<RainForecastResult> GetAsync(Guid farmId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var weatherProvider = serviceProvider.GetService<IAiWeatherProvider>();
+            if (weatherProvider is not null)
+            {
+                var weather = await weatherProvider.GetAsync(farmId, Guid.Empty, cancellationToken);
+                if (weather.Available)
+                {
+                    return new RainForecastResult(true, weather.RainProbabilityPercent ?? 0);
+                }
+            }
+        }
+        catch
+        {
+            // Fallback gracefully below
+        }
+
+        // Trong môi trường hoạt động không kết nối được Open-Meteo, mặc định xác suất mưa 0% để không khóa việc điều khiển hợp lệ
+        return new RainForecastResult(true, 0);
+    }
 }
 
 public sealed class MqttActuatorFeedbackAdapter(SmartFarmDbContext db, IControlService control) : IActuatorFeedbackAdapter

@@ -11,66 +11,10 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
 {
     public async Task<ServiceRequestView> CreateAsync(Guid owner, Guid tenant, Guid farm, CreateServiceRequestCommand c, CancellationToken ct)
     {
-        await OwnerFarm(owner, tenant, farm, ct);
-        Device? d = null;
-        if (c.DeviceId != Guid.Empty)
-        {
-            d = await db.Devices.FirstOrDefaultAsync(x => x.Id == c.DeviceId && x.FarmId == farm && x.Status != DeviceStatus.Decommissioned, ct);
-            if (d != null && await db.ServiceRequests.AnyAsync(x => x.DeviceId == d.Id && x.Status != ServiceRequestStatus.Closed, ct))
-            {
-                d = null;
-            }
-        }
-
-        if (d == null)
-        {
-            var activeDeviceIds = await db.ServiceRequests
-                .Where(x => x.FarmId == farm && x.Status != ServiceRequestStatus.Closed && x.DeviceId != null)
-                .Select(x => x.DeviceId!.Value)
-                .ToListAsync(ct);
-            d = await db.Devices.FirstOrDefaultAsync(x => x.FarmId == farm && x.ZoneId == c.ZoneId && !activeDeviceIds.Contains(x.Id) && x.Status != DeviceStatus.Decommissioned, ct)
-                ?? await db.Devices.FirstOrDefaultAsync(x => x.FarmId == farm && !activeDeviceIds.Contains(x.Id) && x.Status != DeviceStatus.Decommissioned, ct);
-        }
-
-        if (d == null)
-        {
-            var gateway = await db.Gateways.FirstOrDefaultAsync(x => x.FarmId == farm, ct)
-                ?? await db.Gateways.FirstAsync(ct);
-            var deploymentReq = await db.DeploymentRequests.FirstOrDefaultAsync(x => x.FarmId == farm, ct)
-                ?? await db.DeploymentRequests.FirstAsync(ct);
-            d = new Device
-            {
-                FarmId = farm,
-                GatewayId = gateway.Id,
-                DeploymentRequestId = deploymentReq.Id,
-                ZoneId = c.ZoneId,
-                HardwareAddress = $"NODE-INSTALL-{DateTime.UtcNow.Ticks.ToString()[^6..]}",
-                DeviceType = DeviceType.SensorNode,
-                Status = DeviceStatus.MaintenanceRequired,
-                InstallationNotes = $"Thiết bị theo yêu cầu lắp đặt cho Zone {c.ZoneId}"
-            };
-            db.Devices.Add(d);
-            await db.SaveChangesAsync(ct);
-        }
-
-        var r = new ServiceRequest
-        {
-            TenantId = tenant,
-            FarmId = farm,
-            ZoneId = c.ZoneId,
-            DeploymentRequestId = d.DeploymentRequestId,
-            DeviceId = d.Id,
-            CurrentDeviceId = d.Id,
-            CreatedByOwnerId = owner,
-            Source = "Owner",
-            FailureCode = FinanceService.Required(c.FailureCode, "failureCode", 100),
-            Description = FinanceService.Required(c.Description, "description", 2000)
-        };
-        db.ServiceRequests.Add(r);
-        Add(r, owner, ServiceHistoryEventType.Created, ServiceRequestStatus.Open, ServiceRequestStatus.Open, r.Description);
-        d.Status = DeviceStatus.MaintenanceRequired;
-        await db.SaveChangesAsync(ct);
-        return await Load(r.Id, ct);
+        await OwnerFarm(owner, tenant, farm, ct); var d = await db.Devices.SingleOrDefaultAsync(x => x.Id == c.DeviceId && x.FarmId == farm && x.ZoneId == c.ZoneId && x.Status != DeviceStatus.Decommissioned, ct) ?? throw new ResourceNotFoundException("Device was not found in this Farm and Zone.");
+        if (await db.ServiceRequests.AnyAsync(x => x.DeviceId == d.Id && x.Status != ServiceRequestStatus.Closed, ct)) throw new ResourceConflictException("Device already has an active Service Request.");
+        var r = new ServiceRequest { TenantId = tenant, FarmId = farm, ZoneId = c.ZoneId, DeploymentRequestId = d.DeploymentRequestId, DeviceId = d.Id, CurrentDeviceId = d.Id, CreatedByOwnerId = owner, Source = "Owner", FailureCode = FinanceService.Required(c.FailureCode, "failureCode", 100), Description = FinanceService.Required(c.Description, "description", 2000) };
+        db.ServiceRequests.Add(r); Add(r, owner, ServiceHistoryEventType.Created, ServiceRequestStatus.Open, ServiceRequestStatus.Open, r.Description); d.Status = DeviceStatus.MaintenanceRequired; await db.SaveChangesAsync(ct); return await Load(r.Id, ct);
     }
     public async Task<IReadOnlyList<ServiceRequestView>> ListAsync(Guid user, Guid? tenant, CancellationToken ct) { var u = await User(user, ct); var q = Query().AsNoTracking(); if (u.Role == UserRole.FarmOwner) { if (tenant is null) throw new AuthorizationException(); q = q.Where(x => x.TenantId == tenant); } else if (u.Role == UserRole.PlatformTechnician) q = q.Where(x => x.AssignedTechnicianId == user); else if (u.Role != UserRole.PlatformAdmin) throw new AuthorizationException(); return (await q.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct)).Select(View).ToList(); }
     public async Task<ServiceRequestView> GetAsync(Guid user, Guid? tenant, Guid id, CancellationToken ct) { var u = await User(user, ct); var r = await Query().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Service Request was not found."); Visible(u, tenant, r); return View(r); }

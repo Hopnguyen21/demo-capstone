@@ -18,7 +18,7 @@ public sealed class FarmsController(IFarmService farmService) : ControllerBase
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<FarmSummaryView>>> List(
         [FromQuery] FarmStatus? status, CancellationToken cancellationToken) =>
-        Ok(await farmService.ListAsync(User.GetUserId(), User.GetTenantId(), status, cancellationToken));
+        Ok(await farmService.ListAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, status, cancellationToken));
 
     // API catalog #17
     [HttpPost]
@@ -33,7 +33,7 @@ public sealed class FarmsController(IFarmService farmService) : ControllerBase
     [HttpGet("{farmId:guid}")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<FarmDetailView>> Get(Guid farmId, CancellationToken cancellationToken) =>
-        Ok(await farmService.GetAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
+        Ok(await farmService.GetAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, cancellationToken));
 
     // API catalog #19
     [HttpPut("{farmId:guid}")]

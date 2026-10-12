@@ -6,6 +6,7 @@ namespace SmartFarm.Application.Features.Ai;
 public sealed record AiTelemetryContextItem(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc, bool IsFresh);
 public sealed record AiRequirementContextItem(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
 public sealed record AiActuatorContextItem(Guid ActuatorId, string ActuatorType, int MaxDurationSeconds, bool IsOnline);
+public sealed record AiUpcomingScheduleContextItem(string Name, DateTime NextRunAtUtc, string NextRunTimeFormatted, int DurationSeconds, int MinutesUntilRun);
 public sealed record AiWeatherContext(bool Available, string? Summary, decimal? RainProbabilityPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
 public sealed record AiZoneContext(
     Guid FarmId, string FarmName, string FarmTimeZone, Guid FieldId, string FieldName, Guid ZoneId, string ZoneName, decimal ZoneAreaM2,
@@ -14,6 +15,7 @@ public sealed record AiZoneContext(
     IReadOnlyList<AiRequirementContextItem> Requirements,
     IReadOnlyList<AiTelemetryContextItem> Telemetry,
     IReadOnlyList<AiActuatorContextItem> Actuators,
+    IReadOnlyList<AiUpcomingScheduleContextItem> UpcomingSchedules,
     AiWeatherContext Weather,
     IReadOnlyList<string> MissingData,
     bool IsSufficientForAdvice);

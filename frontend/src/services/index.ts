@@ -999,7 +999,7 @@ export const aiService = {
     const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
     try {
       const res = await apiClient.get(`/api/v1/zones/${targetZone}/ai/history`);
-      return res.data?.interactions ?? res.data ?? [];
+      return res.data?.recommendations ?? res.data?.interactions ?? (Array.isArray(res.data) ? res.data : []);
     } catch {
       return [];
     }
@@ -1009,7 +1009,7 @@ export const aiService = {
   applyRecommendation: async (
     recIdOrZoneId: string,
     maybeRecId?: string,
-    decision: 'Apply' | 'Dismiss' = 'Apply',
+    decision: 'Apply' | 'Dismiss' | 'Accepted' | 'Rejected' = 'Apply',
     reason?: string
   ) => {
     const zoneId = maybeRecId !== undefined ? recIdOrZoneId : '32000000-0000-0000-0000-000000000001';

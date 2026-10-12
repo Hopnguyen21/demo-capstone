@@ -58,6 +58,7 @@ public sealed class AiAdvisoryService(
             case AiRecommendationDecisionType.Accepted:
                 ValidateAcceptable(recommendation);
                 await EnsureStageIsCurrentAsync(recommendation, cancellationToken);
+                await EnsureAgronomicSafetyAsync(recommendation, cancellationToken);
                 await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
                 {
                     actuatorCommand = await controlService.CreateAiApprovedCommandAsync(
@@ -153,10 +154,11 @@ public sealed class AiAdvisoryService(
         AiRecommendation recommendation;
         if (!context.IsSufficientForAdvice)
         {
+            var missingDetails = string.Join(", ", context.MissingData);
             recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
-                "Insufficient data for reliable advice",
-                "The system did not call the AI provider because required Farm context is incomplete.",
-                context.MissingData.Select(x => $"Missing or stale: {x}"), now);
+                "Chưa đủ dữ liệu vi khí hậu & mùa vụ",
+                $"Hệ thống chưa thể đưa ra khuyến nghị chính xác cho khu vực này do thiếu thông tin: {missingDetails}. Vui lòng kiểm tra mùa vụ đang canh tác hoặc kết nối cảm biến IoT của khu vực.",
+                context.MissingData.Select(x => $"Thiếu hoặc chưa cập nhật: {x}"), now);
             request.Status = AiConsultationStatus.Limited;
         }
         else
@@ -244,8 +246,11 @@ public sealed class AiAdvisoryService(
         var season = await db.PlantingSeasons.AsNoTracking()
             .Include(x => x.Crop).Include(x => x.Variety).Include(x => x.GrowthProfile).Include(x => x.CurrentGrowthStage).Include(x => x.AppliedRequirements)
             .SingleOrDefaultAsync(x => x.ZoneId == zone.Id && x.Status == PlantingSeasonStatus.InProgress, cancellationToken);
-        var readings = await db.TelemetryReadings.AsNoTracking().Where(x => x.ZoneId == zone.Id)
-            .OrderByDescending(x => x.CapturedAtUtc).ToListAsync(cancellationToken);
+        var readings = await db.TelemetryReadings.AsNoTracking()
+            .Where(x => x.ZoneId == zone.Id)
+            .OrderByDescending(x => x.CapturedAtUtc)
+            .Take(100)
+            .ToListAsync(cancellationToken);
         var telemetry = readings.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x =>
             new AiTelemetryContextItem(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc, x.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes))).ToList();
         var actuators = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
@@ -261,8 +266,27 @@ public sealed class AiAdvisoryService(
         if (season?.Crop is null) missing.Add("crop");
         if (season?.GrowthProfile is null) missing.Add("growth profile");
         if (season?.CurrentGrowthStage is null) missing.Add("growth stage");
-        if (!telemetry.Any(x => x.IsFresh)) missing.Add("fresh telemetry");
+        if (telemetry.Count == 0) missing.Add("telemetry");
         if (!weather.Available) missing.Add("weather");
+
+        TimeZoneInfo farmTz;
+        try { farmTz = TimeZoneInfo.FindSystemTimeZoneById(zone.Field.Farm.TimeZone); }
+        catch { farmTz = TimeZoneInfo.Utc; }
+
+        var rawSchedules = await db.ControlSchedules.AsNoTracking()
+            .Where(x => x.ZoneId == zone.Id && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddHours(12))
+            .OrderBy(x => x.NextRunAtUtc)
+            .Take(5)
+            .Select(x => new { x.Name, x.NextRunAtUtc, x.DurationSeconds })
+            .ToListAsync(cancellationToken);
+
+        var upcomingSchedules = rawSchedules.Select(x =>
+        {
+            var localTime = TimeZoneInfo.ConvertTimeFromUtc(x.NextRunAtUtc, farmTz);
+            var formatted = localTime.ToString("HH:mm 'ngày' dd/MM/yyyy");
+            var minutesUntil = (int)Math.Max(1, (x.NextRunAtUtc - now).TotalMinutes);
+            return new AiUpcomingScheduleContextItem(x.Name, x.NextRunAtUtc, formatted, x.DurationSeconds, minutesUntil);
+        }).ToList();
 
         return new AiZoneContext(
             zone.Field.FarmId, zone.Field.Farm.Name, zone.Field.Farm.TimeZone, zone.FieldId, zone.Field.Name, zone.Id, zone.Name, zone.AreaM2,
@@ -272,6 +296,7 @@ public sealed class AiAdvisoryService(
             season?.AppliedRequirements.Select(x => new AiRequirementContextItem(x.ParameterCode, x.MinValue, x.MaxValue, x.TargetValue, x.Unit)).ToList() ?? [],
             telemetry,
             actuators,
+            upcomingSchedules,
             new AiWeatherContext(weather.Available, weather.Summary, weather.RainProbabilityPercent, weather.TemperatureCelsius, weather.ObservedAtUtc, weather.Limitation),
             missing,
             missing.Count == 0);
@@ -308,6 +333,55 @@ public sealed class AiAdvisoryService(
     {
         if (!recommendation.GrowthStageId.HasValue || !await db.PlantingSeasons.AsNoTracking().AnyAsync(x => x.ZoneId == recommendation.ZoneId && x.Status == PlantingSeasonStatus.InProgress && x.CurrentGrowthStageId == recommendation.GrowthStageId, cancellationToken))
             throw new ResourceConflictException("The planting season or growth stage changed; request a new analysis.");
+    }
+
+    private async Task EnsureAgronomicSafetyAsync(AiRecommendation recommendation, CancellationToken cancellationToken)
+    {
+        if (recommendation.ProposedAction != ActuatorCommandAction.TurnOn || !recommendation.ProposedActuatorId.HasValue)
+            return;
+
+        var actuator = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
+            .SingleOrDefaultAsync(x => x.Id == recommendation.ProposedActuatorId && x.Device.ZoneId == recommendation.ZoneId, cancellationToken);
+        if (actuator is null) return;
+
+        var isPump = actuator.ActuatorType.Contains("pump", StringComparison.OrdinalIgnoreCase) ||
+                     actuator.ActuatorType.Contains("water", StringComparison.OrdinalIgnoreCase) ||
+                     actuator.ActuatorType.Contains("irrigation", StringComparison.OrdinalIgnoreCase);
+
+        if (!isPump) return;
+
+        var now = clock.GetUtcNow().UtcDateTime;
+
+        // 1. Kiểm tra lịch tưới sắp diễn ra trong vòng 30 phút tới
+        var upcomingSchedule = await db.ControlSchedules.AsNoTracking()
+            .Where(x => x.ZoneId == recommendation.ZoneId && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddMinutes(30))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (upcomingSchedule is not null)
+        {
+            var minutesUntil = (int)Math.Max(1, (upcomingSchedule.NextRunAtUtc - now).TotalMinutes);
+            throw new ResourceConflictException($"Không thể duyệt tưới: Khu vực đã có lịch tưới '{upcomingSchedule.Name}' tự động kích hoạt sau {minutesUntil} phút nữa.");
+        }
+
+        // 2. Kiểm tra độ ẩm đất hiện tại nếu đã quá cao
+        var latestSoilMoisture = await db.TelemetryReadings.AsNoTracking()
+            .Where(x => x.ZoneId == recommendation.ZoneId && x.ParameterCode == EnvironmentalParameterCode.SoilMoisture)
+            .OrderByDescending(x => x.CapturedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (latestSoilMoisture is not null)
+        {
+            // Lấy ngưỡng tối đa cho phép từ mùa vụ đang canh tác
+            var maxAllowedMoisture = await db.SeasonAppliedRequirements.AsNoTracking()
+                .Where(x => x.PlantingSeason.ZoneId == recommendation.ZoneId && x.PlantingSeason.Status == PlantingSeasonStatus.InProgress && x.ParameterCode == EnvironmentalParameterCode.SoilMoisture)
+                .Select(x => (decimal?)x.MaxValue)
+                .FirstOrDefaultAsync(cancellationToken) ?? 80m;
+
+            if (latestSoilMoisture.Value >= maxAllowedMoisture)
+            {
+                throw new ResourceConflictException($"Không thể duyệt tưới: Độ ẩm đất đo được hiện tại ({latestSoilMoisture.Value}%) đã vượt ngưỡng cho phép ({maxAllowedMoisture}%), tưới thêm sẽ gây úng rễ.");
+            }
+        }
     }
 
     private void ValidateAcceptable(AiRecommendation recommendation)

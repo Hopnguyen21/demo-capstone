@@ -25,7 +25,7 @@ public sealed class GeminiAiAdvisoryProviderTests
         });
         var envelope = JsonSerializer.Serialize(new { candidates = new[] { new { content = new { parts = new[] { new { text = output } } } } } });
         var handler = new StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(envelope, Encoding.UTF8, "application/json") });
-        var provider = new GeminiAiAdvisoryProvider(new HttpClient(handler), Options.Create(new GeminiOptions { ApiKey = "test-secret-key", Model = "gemini-2.5-flash" }));
+        var provider = new GeminiAiAdvisoryProvider(new HttpClient(handler), Options.Create(new GeminiOptions { ApiKey = "test-secret-key", Model = "gemini-2.5-flash" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<GeminiAiAdvisoryProvider>.Instance);
 
         var result = await provider.GenerateAsync(new AiProviderRequest("Có nên tưới không?", Context(actuatorId)), CancellationToken.None);
 
@@ -42,7 +42,7 @@ public sealed class GeminiAiAdvisoryProviderTests
     public async Task Provider_rejects_response_without_candidate_text()
     {
         var handler = new StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });
-        var provider = new GeminiAiAdvisoryProvider(new HttpClient(handler), Options.Create(new GeminiOptions { ApiKey = "test-secret-key" }));
+        var provider = new GeminiAiAdvisoryProvider(new HttpClient(handler), Options.Create(new GeminiOptions { ApiKey = "test-secret-key" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<GeminiAiAdvisoryProvider>.Instance);
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GenerateAsync(new AiProviderRequest("Phân tích", Context(Guid.NewGuid())), CancellationToken.None));
     }
 
@@ -52,6 +52,7 @@ public sealed class GeminiAiAdvisoryProviderTests
         [new(EnvironmentalParameterCode.SoilMoisture, 55, 75, 65, "%")],
         [new(EnvironmentalParameterCode.SoilMoisture, 40, "%", DateTime.UtcNow, true)],
         [new(actuatorId, "Pump", 1800, true)],
+        [],
         new(true, "Clear", 10, 27, DateTime.UtcNow, null), [], true);
 
     private sealed class StubHandler(HttpResponseMessage response) : HttpMessageHandler

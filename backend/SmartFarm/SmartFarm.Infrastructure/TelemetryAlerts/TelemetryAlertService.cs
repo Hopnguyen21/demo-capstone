@@ -285,6 +285,10 @@ public sealed class TelemetryAlertService(SmartFarmDbContext db, TimeProvider cl
     {
         var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, ct) ?? throw new AuthorizationException();
         var farm = await db.Farms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == farmId, ct) ?? throw new ResourceNotFoundException("Farm was not found.");
+        if (user.Role == UserRole.PlatformAdmin)
+        {
+            return await db.Zones.AsNoTracking().Where(x => x.Field.FarmId == farmId).Select(x => x.Id).ToListAsync(ct);
+        }
         if (farm.TenantId != tenantId) throw new ResourceNotFoundException("Farm was not found.");
         if (user.TenantId != tenantId || (user.Role != UserRole.FarmOwner && user.Role != UserRole.Farmer)) throw new AuthorizationException();
         var zoneQuery = db.Zones.AsNoTracking().Where(x => x.Field.FarmId == farmId);

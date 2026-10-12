@@ -24,16 +24,25 @@ export const Topbar: React.FC = () => {
     if (selectedFarmId) {
       supportService.getWeather(selectedFarmId).then((wData: any) => {
         if (wData && wData.temperature !== undefined) {
+          const rainProb = wData.precipitationProbability ?? 
+                           wData.dailyForecast?.[0]?.precipitationProbability ?? 
+                           prevRainProb(wData);
           setWeather(prev => ({
             ...prev,
             temperature: Number(wData.temperature),
             humidity: wData.humidity ? Number(wData.humidity) : prev.humidity,
             condition: wData.weatherDescription ?? prev.condition,
+            rainProbability: rainProb !== null && rainProb !== undefined ? Number(rainProb) : prev.rainProbability,
           }));
         }
       }).catch(() => {});
     }
   }, [selectedFarmId]);
+
+  const prevRainProb = (w: any) => {
+    if (w.weatherDescription?.toLowerCase().includes('mưa')) return 100;
+    return 0;
+  };
 
   const handleRoleSwitch = (targetRole: UserRole) => {
     switchRole(targetRole);

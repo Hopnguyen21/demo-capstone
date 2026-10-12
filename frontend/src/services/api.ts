@@ -12,10 +12,10 @@ export const BASE_URL =
   ((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL) ??
   (typeof window !== 'undefined' ? '' : 'http://localhost:5144');
 
-// ─── Token storage (sessionStorage — never localStorage per AGENTS.md) ───────
+// ─── Token storage (sessionStorage with fallback to localStorage for persistent session) ───────
 
-let _accessToken: string | null = sessionStorage.getItem('sf_access_token');
-let _refreshToken: string | null = sessionStorage.getItem('sf_refresh_token');
+let _accessToken: string | null = null;
+let _refreshToken: string | null = null;
 let _refreshPromise: Promise<string | null> | null = null;
 
 export function setTokens(access: string, refresh: string) {
@@ -23,6 +23,8 @@ export function setTokens(access: string, refresh: string) {
   _refreshToken = refresh;
   sessionStorage.setItem('sf_access_token', access);
   sessionStorage.setItem('sf_refresh_token', refresh);
+  localStorage.setItem('sf_access_token', access);
+  localStorage.setItem('sf_refresh_token', refresh);
 }
 
 export function clearTokens() {
@@ -30,11 +32,25 @@ export function clearTokens() {
   _refreshToken = null;
   sessionStorage.removeItem('sf_access_token');
   sessionStorage.removeItem('sf_refresh_token');
+  localStorage.removeItem('sf_access_token');
+  localStorage.removeItem('sf_refresh_token');
 }
 
-export function getAccessToken() { return _accessToken; }
-export function getRefreshToken() { return _refreshToken; }
-export function isAuthenticated() { return !!_accessToken; }
+export function getAccessToken(): string | null { 
+  if (!_accessToken) {
+    _accessToken = sessionStorage.getItem('sf_access_token') || localStorage.getItem('sf_access_token');
+  }
+  return _accessToken; 
+}
+
+export function getRefreshToken(): string | null { 
+  if (!_refreshToken) {
+    _refreshToken = sessionStorage.getItem('sf_refresh_token') || localStorage.getItem('sf_refresh_token');
+  }
+  return _refreshToken; 
+}
+
+export function isAuthenticated() { return !!getAccessToken(); }
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 
@@ -46,9 +62,10 @@ export const apiClient: AxiosInstance = axios.create({
 
 // ── Request interceptor: attach Bearer token ──────────────────────────────────
 apiClient.interceptors.request.use((config) => {
-  if (_accessToken) {
+  const token = getAccessToken();
+  if (token) {
     config.headers = config.headers ?? {};
-    config.headers['Authorization'] = `Bearer ${_accessToken}`;
+    config.headers['Authorization'] = `Bearer ${token}`;
   }
   return config;
 });
@@ -58,27 +75,39 @@ apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const originalRequest = error.config as AxiosRequestConfig & { _retried?: boolean };
-    if (error.response?.status === 401 && !originalRequest._retried && _refreshToken) {
-      originalRequest._retried = true;
-      if (!_refreshPromise) {
-        _refreshPromise = axios
-          .post(`${BASE_URL}/api/v1/auth/refresh`, { refreshToken: _refreshToken })
-          .then((res) => {
-            const { accessToken, refreshToken } = res.data as { accessToken: string; refreshToken: string };
-            setTokens(accessToken, refreshToken);
-            return accessToken;
-          })
-          .catch(() => {
-            clearTokens();
-            window.dispatchEvent(new CustomEvent('sf:unauthenticated'));
-            return null;
-          })
-          .finally(() => { _refreshPromise = null; });
-      }
-      const newToken = await _refreshPromise;
-      if (newToken && originalRequest.headers) {
-        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-        return apiClient(originalRequest);
+    const refreshToken = getRefreshToken();
+    if (error.response?.status === 401) {
+      if (!originalRequest._retried && refreshToken) {
+        originalRequest._retried = true;
+        if (!_refreshPromise) {
+          _refreshPromise = axios
+            .post(`${BASE_URL}/api/v1/auth/refresh`, { refreshToken })
+            .then((res) => {
+              const { accessToken, refreshToken } = res.data as { accessToken: string; refreshToken: string };
+              setTokens(accessToken, refreshToken);
+              return accessToken;
+            })
+            .catch(() => {
+              clearTokens();
+              window.dispatchEvent(new CustomEvent('sf:unauthenticated'));
+              if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+              }
+              return null;
+            })
+            .finally(() => { _refreshPromise = null; });
+        }
+        const newToken = await _refreshPromise;
+        if (newToken && originalRequest.headers) {
+          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+          return apiClient(originalRequest);
+        }
+      } else {
+        clearTokens();
+        window.dispatchEvent(new CustomEvent('sf:unauthenticated'));
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

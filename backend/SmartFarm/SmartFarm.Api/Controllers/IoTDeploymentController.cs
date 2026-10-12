@@ -70,7 +70,7 @@ public sealed class TechnicianDeploymentController(IIoTDeploymentService service
 public sealed class IoTHardwareController(IIoTDeploymentService service) : ControllerBase
 {
     // API catalog #54
-    [HttpGet("api/v1/farms/{farmId:guid}/gateways"), Authorize(Roles = "FarmOwner,PlatformTechnician")]
+    [HttpGet("api/v1/farms/{farmId:guid}/gateways"), Authorize(Roles = "FarmOwner,PlatformTechnician,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<GatewayView>>> Gateways(Guid farmId, CancellationToken ct) => Ok(await service.ListGatewaysAsync(User.GetUserId(), User.GetOptionalTenantId(), farmId, ct));
     // API catalog #55
     [HttpPost("api/v1/gateways"), Authorize(Roles = "PlatformTechnician")]
