@@ -120,7 +120,7 @@ public sealed class PlatformFeaturesController(
 
     [HttpGet("api/v1/service-requests/{id:guid}/quotation")]
     [Authorize(Roles = "PlatformTechnician,FarmOwner,PlatformAdmin")]
-    public async Task<ActionResult<QuotationView>> GetQuotation(Guid id, CancellationToken ct)
+    public async Task<ActionResult<QuotationView?>> GetQuotation(Guid id, CancellationToken ct)
     {
         return Ok(await quotationService.GetAsync(User.GetUserId(), id, ct));
     }

@@ -14,11 +14,19 @@ export const AuditLogsPage: React.FC = () => {
     }).catch((err: any) => console.error('Failed to load audit logs:', err));
   }, []);
 
-  const filteredLogs = logs.filter(l =>
-    (l.userName && l.userName.toLowerCase().includes(search.toLowerCase())) ||
-    (l.action && l.action.toLowerCase().includes(search.toLowerCase())) ||
-    (l.details && l.details.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filteredLogs = logs.filter(l => {
+    const name = l.actorName || l.userName || '';
+    const action = l.action || '';
+    const details = l.details || '';
+    const ip = l.ipAddress || '';
+    const s = search.toLowerCase();
+    return (
+      name.toLowerCase().includes(s) ||
+      action.toLowerCase().includes(s) ||
+      details.toLowerCase().includes(s) ||
+      ip.toLowerCase().includes(s)
+    );
+  });
 
   return (
     <div className="space-y-6">

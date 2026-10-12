@@ -37,6 +37,22 @@ export const SupportPage: React.FC = () => {
     loadRequests();
   }, []);
 
+  // State for Payment Success Screen / Receipt Modal
+  interface PaymentSuccessModalData {
+    stage: 'DEPOSIT_30' | 'FINAL_70';
+    requestId: string;
+    title: string;
+    amount: number;
+    paymentMethod: string;
+    signerFullName: string;
+    transactionRef: string;
+    paidAt: string;
+    status: string;
+    contractTotal?: number;
+    notes?: string;
+  }
+  const [paymentSuccessData, setPaymentSuccessData] = useState<PaymentSuccessModalData | null>(null);
+
   // Form states for Owner Contract Signature & 30% Payment
   const [ownerSignatures, setOwnerSignatures] = useState<Record<string, string>>({});
   const [paymentMethods30, setPaymentMethods30] = useState<Record<string, 'CASH' | 'BANK_TRANSFER'>>({});
@@ -63,9 +79,27 @@ export const SupportPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      await supportService.signContractAndPay30(requestId, signature, method);
+      const paymentRes = await supportService.signContractAndPay30(requestId, signature, method);
+      const req = requests.find(r => r.serviceRequestId === requestId);
+      const amount = paymentRes?.amount || req?.contractDetails?.deposit30Percent || 0;
+
+      // Show Payment Success Screen Modal
+      setPaymentSuccessData({
+        stage: 'DEPOSIT_30',
+        requestId,
+        title: 'KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG',
+        amount,
+        paymentMethod: paymentRes?.paymentMethod || method,
+        signerFullName: paymentRes?.signerFullName || signature,
+        transactionRef: paymentRes?.transactionReference || `PAY30-${Date.now()}`,
+        paidAt: paymentRes?.paidAtUtc || new Date().toISOString(),
+        status: paymentRes?.status || 'Confirmed',
+        contractTotal: req?.contractDetails?.totalAmount,
+        notes: 'Hệ thống SmartFarm đã ghi nhận thanh toán tạm ứng 30% và Hợp đồng đã có hiệu lực. Nút Ký hợp đồng & Thanh toán đã được KHÓA. Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).',
+      });
+
       await loadRequests();
-      setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG! Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).');
+      setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG!');
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to sign contract deposit:', err);
@@ -84,7 +118,25 @@ export const SupportPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      await supportService.signAcceptanceAndPay70(requestId, signature, method);
+      const paymentRes = await supportService.signAcceptanceAndPay70(requestId, signature, method);
+      const req = requests.find(r => r.serviceRequestId === requestId);
+      const amount = paymentRes?.amount || req?.contractDetails?.remaining70Percent || 0;
+
+      // Show Payment Success Screen Modal
+      setPaymentSuccessData({
+        stage: 'FINAL_70',
+        requestId,
+        title: 'NGHIỆM THU BÀN GIAO & QUYẾT TOÁN 70% THÀNH CÔNG',
+        amount,
+        paymentMethod: paymentRes?.paymentMethod || method,
+        signerFullName: paymentRes?.signerFullName || signature,
+        transactionRef: paymentRes?.transactionReference || `PAY70-${Date.now()}`,
+        paidAt: paymentRes?.paidAtUtc || new Date().toISOString(),
+        status: paymentRes?.status || 'Confirmed',
+        contractTotal: req?.contractDetails?.totalAmount,
+        notes: 'Đã hoàn tất nghiệm thu bàn giao 100% công trình và thanh toán đầy đủ toàn bộ giá trị hợp đồng. Nút Nghiệm thu đã được KHÓA. Toàn bộ thiết bị đã chuyển sang trạng thái Vận hành chính thức!',
+      });
+
       await loadRequests();
       setSuccessMsg('✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN 70% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.');
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -416,21 +468,49 @@ export const SupportPage: React.FC = () => {
                           </Button>
                         </div>
                       ) : (
-                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-emerald-950 text-xs">
-                          <div className="flex items-center justify-between font-bold text-emerald-900">
-                            <span className="flex items-center gap-1.5">
-                              <CheckCircle2 size={16} className="text-emerald-600" />
-                              Đã ký Hợp đồng bởi Owner ({contract.ownerSignatureName || 'Lê Văn An'})
+                        <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-xl space-y-3 text-emerald-950 text-xs shadow-xs">
+                          <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-200 pb-2">
+                            <span className="flex items-center gap-2 text-sm text-emerald-800">
+                              <CheckCircle2 size={18} className="text-emerald-600" />
+                              ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC THÀNH CÔNG
                             </span>
-                            <span className="text-[10px] bg-emerald-200 text-emerald-950 px-2 py-0.5 rounded font-mono">
-                              {contract.paid30At ? new Date(contract.paid30At).toLocaleString('vi-VN') : 'Vừa xong'}
+                            <span className="text-[11px] bg-emerald-200 text-emerald-950 px-2.5 py-1 rounded-full font-mono font-bold flex items-center gap-1">
+                              <Lock size={12} /> Đã khóa thao tác
                             </span>
                           </div>
-                          <p className="text-[11px] text-emerald-800">
-                            Đã thanh toán 30% Tạm ứng: <strong>{contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ</strong> qua <strong>{contract.payment30Method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản (VietQR)'}</strong>. (Mã GD: <span className="font-mono">{contract.payment30Ref}</span>).
-                          </p>
-                          <p className="text-[11px] text-emerald-900 font-semibold pt-1">
-                            🚀 Kỹ thuật viên hiện đã được mở khóa và đang tiến hành Vào Zone Chấm Node (Node Mapper)!
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-emerald-900 bg-white/80 p-3 rounded-lg border border-emerald-200">
+                            <div>
+                              <span className="text-slate-500 block">Đại diện ký:</span>
+                              <strong>{contract.ownerSignatureName || 'Lê Văn An (Chủ Trang Trại)'}</strong>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Số tiền tạm ứng 30%:</span>
+                              <strong className="text-emerald-700 font-mono text-xs">{contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ</strong>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Phương thức thanh toán:</span>
+                              <strong>{contract.payment30Method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản (VietQR)'}</strong>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block">Mã GD / Thời gian:</span>
+                              <strong className="font-mono text-[10px]">{contract.payment30Ref} ({contract.paid30At ? new Date(contract.paid30At).toLocaleString('vi-VN') : 'Vừa xong'})</strong>
+                            </div>
+                          </div>
+
+                          {/* KHÓA NÚT KÝ HỢP ĐỒNG VÀ THANH TOÁN - KHÔNG CHO BẤM NỮA */}
+                          <button
+                            type="button"
+                            disabled={true}
+                            className="w-full bg-slate-100 text-slate-400 font-bold py-2.5 px-4 rounded-xl border border-slate-300 text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-90 shadow-2xs"
+                            title="Hợp đồng đã được ký và thanh toán 30% cọc thành công. Nút này đã bị khóa."
+                          >
+                            <Lock size={15} className="text-slate-400" />
+                            ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC (NÚT ĐÃ KHÓA HOÀN TOÀN)
+                          </button>
+
+                          <p className="text-[11px] text-emerald-900 font-semibold pt-0.5 flex items-center gap-1.5">
+                            <span>🚀</span> Kỹ thuật viên hiện đã được mở khóa quyền Vào Zone Chấm Node (Node Mapper) trên bản đồ!
                           </p>
                         </div>
                       )}
@@ -540,18 +620,48 @@ export const SupportPage: React.FC = () => {
                       </Button>
                     </div>
                   ) : (
-                    <div className="p-3 bg-emerald-100/70 border border-emerald-300 rounded-xl space-y-1 text-emerald-950 text-xs">
-                      <div className="flex items-center justify-between font-bold text-emerald-900">
-                        <span className="flex items-center gap-1.5">
-                          <CheckCircle2 size={16} className="text-emerald-700" />
-                          Đã ký Nghiệm thu & Bàn giao bởi Owner ({req.acceptanceDetails?.ownerSignatureName || 'Lê Văn An'})
+                    <div className="p-4 bg-emerald-100/80 border-2 border-emerald-500 rounded-xl space-y-3 text-emerald-950 text-xs shadow-xs">
+                      <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-300 pb-2">
+                        <span className="flex items-center gap-2 text-sm text-emerald-800">
+                          <CheckCircle2 size={18} className="text-emerald-700" />
+                          ĐÃ KÝ NGHIỆM THU & QUYẾT TOÁN 100% CÔNG TRÌNH
                         </span>
-                        <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded font-mono">
-                          {req.acceptedAtByOwner ? new Date(req.acceptedAtByOwner).toLocaleString('vi-VN') : 'Hoàn tất'}
+                        <span className="text-[11px] bg-emerald-700 text-white px-2.5 py-1 rounded-full font-mono font-bold flex items-center gap-1">
+                          <Lock size={12} /> Đã khóa hoàn tất
                         </span>
                       </div>
-                      <p className="text-[11px] text-emerald-900">
-                        Đã thanh toán đủ 100% Hợp đồng (70% còn lại: <strong>{(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ</strong> qua <strong>{req.acceptanceDetails?.payment70Method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản'}</strong>).
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-emerald-900 bg-white/80 p-3 rounded-lg border border-emerald-200">
+                        <div>
+                          <span className="text-slate-500 block">Đại diện nghiệm thu:</span>
+                          <strong>{req.acceptanceDetails?.ownerSignatureName || 'Lê Văn An (Chủ Trang Trại)'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Số tiền thanh toán 70%:</span>
+                          <strong className="text-emerald-700 font-mono text-xs">{(contract?.remaining70Percent || 0).toLocaleString('vi-VN')} VNĐ</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Phương thức thanh toán:</span>
+                          <strong>{req.acceptanceDetails?.payment70Method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản (VietQR)'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Thời gian nghiệm thu:</span>
+                          <strong className="font-mono text-[10px]">{req.acceptedAtByOwner ? new Date(req.acceptedAtByOwner).toLocaleString('vi-VN') : 'Vừa xong'}</strong>
+                        </div>
+                      </div>
+
+                      {/* KHÓA NÚT KÝ NGHIỆM THU VÀ THANH TOÁN 70% - KHÔNG CHO BẤM NỮA */}
+                      <button
+                        type="button"
+                        disabled={true}
+                        className="w-full bg-slate-100 text-slate-400 font-bold py-2.5 px-4 rounded-xl border border-slate-300 text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-90 shadow-2xs"
+                        title="Công trình đã được nghiệm thu và thanh toán 100%, nút này đã bị khóa."
+                      >
+                        <Lock size={15} className="text-slate-400" />
+                        ĐÃ HOÀN TẤT NGHIỆM THU & THANH TOÁN 100% (NÚT ĐÃ KHÓA HOÀN TOÀN)
+                      </button>
+
+                      <p className="text-[11px] text-emerald-900 font-medium pt-0.5">
+                        🎉 Đã thanh toán đầy đủ 100% giá trị hợp đồng ({(contract?.totalAmount || 0).toLocaleString('vi-VN')} VNĐ). Thiết bị đã chuyển sang trạng thái Vận hành chính thức!
                       </p>
                     </div>
                   )}
@@ -630,6 +740,108 @@ export const SupportPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* ========================================================================= */}
+      {/* MÀN HÌNH THANH TOÁN THÀNH CÔNG (PAYMENT SUCCESS MODAL / RECEIPT)          */}
+      {/* ========================================================================= */}
+      {paymentSuccessData && (
+        <Modal
+          isOpen={true}
+          onClose={() => setPaymentSuccessData(null)}
+          title="Biên lai Xác nhận Giao dịch Thanh toán"
+        >
+          <div className="text-center py-2 space-y-4">
+            {/* Success Icon */}
+            <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+              <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-75" />
+              <div className="relative w-16 h-16 bg-gradient-to-tr from-emerald-600 to-teal-500 text-white rounded-full flex items-center justify-center shadow-lg">
+                <CheckCircle2 size={36} />
+              </div>
+            </div>
+
+            <div>
+              <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px] uppercase tracking-wider inline-block">
+                ✓ Giao dịch Thành công
+              </span>
+              <h3 className="text-base font-black text-slate-900 mt-2">
+                {paymentSuccessData.title}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Biên lai điện tử xác nhận giao dịch trên nền tảng SmartFarm Platform
+              </p>
+            </div>
+
+            {/* Prominent Amount Box */}
+            <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 rounded-2xl shadow-xs">
+              <span className="text-[11px] font-bold text-emerald-800 uppercase block tracking-wider">
+                Số tiền đã thanh toán
+              </span>
+              <div className="text-2xl font-black text-emerald-900 font-mono mt-0.5">
+                {paymentSuccessData.amount.toLocaleString('vi-VN')} <span className="text-base font-bold">VNĐ</span>
+              </div>
+              <span className="text-[10px] text-emerald-700 mt-1 inline-block font-medium">
+                {paymentSuccessData.stage === 'DEPOSIT_30'
+                  ? 'Giai đoạn: Tạm ứng 30% Hợp đồng triển khai'
+                  : 'Giai đoạn: Quyết toán 70% Bàn giao nghiệm thu'}
+              </span>
+            </div>
+
+            {/* Receipt Details Card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-left space-y-2">
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Mã phiếu yêu cầu:</span>
+                <span className="font-mono font-bold text-slate-800 text-[11px]">#{paymentSuccessData.requestId.substring(0, 16)}...</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Người đại diện ký:</span>
+                <span className="font-bold text-slate-800">{paymentSuccessData.signerFullName}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Phương thức thanh toán:</span>
+                <span className="font-semibold text-slate-800">
+                  {paymentSuccessData.paymentMethod === 'CASH' ? '💵 Tiền mặt' : '💳 Chuyển khoản (VietQR)'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Mã giao dịch (Ref):</span>
+                <span className="font-mono text-emerald-800 font-bold">{paymentSuccessData.transactionRef}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Thời gian giao dịch:</span>
+                <span className="font-mono text-slate-700">{new Date(paymentSuccessData.paidAt).toLocaleString('vi-VN')}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">Trạng thái xác thực:</span>
+                <span className="font-bold text-emerald-700 flex items-center gap-1">
+                  <CheckCircle2 size={13} /> {paymentSuccessData.status === 'Confirmed' ? 'ĐÃ XÁC NHẬN (CONFIRMED)' : paymentSuccessData.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Next Steps Notice */}
+            <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl text-left text-xs text-amber-950 space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                <Lock size={14} className="text-amber-700" />
+                Nút Thao Tác Ký & Thanh Toán Đã Được Khóa
+              </div>
+              <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                {paymentSuccessData.notes}
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2">
+              <Button
+                onClick={() => setPaymentSuccessData(null)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
+              >
+                <CheckCircle2 size={16} />
+                Xác nhận & Đóng biên lai
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

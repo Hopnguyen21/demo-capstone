@@ -142,7 +142,7 @@ export const ProvisioningPage: React.FC = () => {
         ) : (
           installationRequests.map(req => {
             const contract = req.contractDetails;
-            const is30Paid = Boolean(contract?.isSignedByOwner && contract?.is30PercentPaid);
+            const is30Paid = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || req.isContractSigned || req.isDepositPaid || req.isFullyPaid);
             const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
             const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED';
 
@@ -208,7 +208,7 @@ export const ProvisioningPage: React.FC = () => {
                     <div className="shrink-0">
                       {is30Paid ? (
                         <span className="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold text-[11px] flex items-center gap-1">
-                          <CheckCircle2 size={13} /> Owner Đã Ký & Cọc 30%
+                          <CheckCircle2 size={13} /> Owner Đã Ký & Cọc 30% (Khóa Sửa)
                         </span>
                       ) : (
                         <span className="px-2.5 py-1 rounded bg-amber-200 text-amber-950 font-bold text-[11px] flex items-center gap-1">
@@ -226,20 +226,31 @@ export const ProvisioningPage: React.FC = () => {
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa</span>
                       <span className="text-white font-semibold">
-                        {is30Paid ? 'Đã đủ điều kiện: Tiến hành Vào Zone Chấm Node' : 'Cần gửi Báo giá Hợp đồng & cọc 30% trước khi chấm Node'}
+                        {is30Paid ? 'Hợp đồng đã ký & cọc (Không thể sửa) • Tiến hành Vào Zone Chấm Node' : 'Cần gửi Báo giá Hợp đồng & cọc 30% trước khi chấm Node'}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* BUTTON 1: BÁO GIÁ & HỢP ĐỒNG LẮP ĐẶT */}
-                    <Button
-                      onClick={() => setSelectedRequestForExperiment(req)}
-                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex items-center gap-1.5 shadow-sm"
-                    >
-                      <FileText size={15} className="text-emerald-300" />
-                      <span>{contract ? 'Xem / Sửa Báo giá HĐ' : 'Soạn Báo giá & Hợp đồng'}</span>
-                    </Button>
+                    {is30Paid ? (
+                      <Button
+                        onClick={() => setSelectedRequestForExperiment(req)}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center gap-1.5 shadow-sm border border-slate-600"
+                        title="Hợp đồng đã được ký kết & đặt cọc 30%. Xem chi tiết (Chỉ đọc, không thể sửa)"
+                      >
+                        <Lock size={14} className="text-amber-400" />
+                        <span>Xem Hợp đồng (Đã khóa)</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => setSelectedRequestForExperiment(req)}
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex items-center gap-1.5 shadow-sm"
+                      >
+                        <FileText size={15} className="text-emerald-300" />
+                        <span>{contract ? 'Xem / Sửa Báo giá HĐ' : 'Soạn Báo giá & Hợp đồng'}</span>
+                      </Button>
+                    )}
 
                     {/* BUTTON 2: SỬA / CHẤM BIỂU ĐỒ GIS CHO REQUEST (TECHNICIAN CAN ALWAYS EDIT GIS) */}
                     <Button

@@ -149,9 +149,26 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         if (sr.AssignedTechnicianId != technicianId)
             throw new AuthorizationException("Only the assigned technician may create a quotation.");
 
+        if (sr.IsContractSigned || sr.IsDepositPaid || sr.IsFullyPaid)
+            throw new ResourceConflictException("Hợp đồng đã được chủ trang trại ký kết và thanh toán. Kỹ thuật viên không thể chỉnh sửa hoặc tạo lại hợp đồng.");
+
+        var hasSignedOrPaid = await db.ServiceRequestQuotations.AnyAsync(
+            x => x.ServiceRequestId == serviceRequestId && (x.Status == "SignedByOwner" || x.Status == "DepositPaid" || x.Status == "Completed"), ct);
+        if (hasSignedOrPaid)
+            throw new ResourceConflictException("Hợp đồng đã được ký kết và thanh toán cọc. Kỹ thuật viên không thể chỉnh sửa hoặc tạo lại hợp đồng.");
+
         // Remove previous draft quotation if any
-        var existing = await db.ServiceRequestQuotations.Include(q => q.Items).SingleOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId && x.Status == "Draft", ct);
-        if (existing is not null) { db.ServiceRequestQuotationItems.RemoveRange(existing.Items); db.ServiceRequestQuotations.Remove(existing); }
+        var existingDrafts = await db.ServiceRequestQuotations.Include(q => q.Items)
+            .Where(x => x.ServiceRequestId == serviceRequestId && x.Status == "Draft")
+            .ToListAsync(ct);
+        if (existingDrafts.Count > 0)
+        {
+            foreach (var d in existingDrafts)
+            {
+                db.ServiceRequestQuotationItems.RemoveRange(d.Items);
+            }
+            db.ServiceRequestQuotations.RemoveRange(existingDrafts);
+        }
 
         var items = command.Items.Select(i => new ServiceRequestQuotationItem
         {
@@ -175,19 +192,19 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         return ToView(q);
     }
 
-    public async Task<QuotationView> GetAsync(Guid userId, Guid serviceRequestId, CancellationToken ct)
+    public async Task<QuotationView?> GetAsync(Guid userId, Guid serviceRequestId, CancellationToken ct)
     {
         var q = await db.ServiceRequestQuotations.Include(x => x.Items).AsNoTracking()
-            .SingleOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId, ct)
-            ?? throw new ResourceNotFoundException("Quotation not found for this Service Request.");
-        return ToView(q);
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId, ct);
+        return q is null ? null : ToView(q);
     }
 
     public async Task<ServiceRequestPaymentView> SignContractDepositAsync(Guid ownerId, Guid serviceRequestId, SignContractDepositCommand command, CancellationToken ct)
     {
-        var sr = await db.ServiceRequests.Include(x => x.Quotations).SingleOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+        var sr = await db.ServiceRequests.Include(x => x.Quotations).FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
-        var quotation = sr.Quotations.FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists for this Service Request.");
+        var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists for this Service Request.");
         var payment = new ServiceRequestPayment
         {
             ServiceRequestId = serviceRequestId, QuotationId = quotation.Id, PaymentStage = "DEPOSIT_30",
@@ -205,10 +222,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
 
     public async Task<ServiceRequestPaymentView> SignAcceptanceFinalAsync(Guid ownerId, Guid serviceRequestId, SignAcceptanceFinalCommand command, CancellationToken ct)
     {
-        var sr = await db.ServiceRequests.Include(x => x.Quotations).SingleOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+        var sr = await db.ServiceRequests.Include(x => x.Quotations).FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
         if (!sr.IsDepositPaid) throw new ResourceConflictException("Deposit must be paid before final acceptance.");
-        var quotation = sr.Quotations.FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
+        var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
         var payment = new ServiceRequestPayment
         {
             ServiceRequestId = serviceRequestId, QuotationId = quotation.Id, PaymentStage = "FINAL_70",

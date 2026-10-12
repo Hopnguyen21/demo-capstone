@@ -4,7 +4,7 @@ import { ServiceRequest, QuotationItem } from '../../types';
 import { supportService } from '../../services';
 import {
   FileText, Send, CheckCircle2, ShieldCheck, Info,
-  Package, DollarSign, Calculator, Cpu, Sparkles, Building2, User
+  Package, DollarSign, Calculator, Cpu, Sparkles, Building2, User, Lock
 } from 'lucide-react';
 
 export interface HardwareItem {
@@ -100,13 +100,37 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
     'Báo giá lắp đặt trọn gói hệ thống IoT nhà màng. Đã bao gồm thiết bị, công lắp đặt thực địa và bảo hành 2 năm.'
   );
 
+  const isLocked = Boolean(
+    request.contractDetails?.isSignedByOwner ||
+    request.contractDetails?.is30PercentPaid ||
+    request.isContractSigned ||
+    request.isDepositPaid ||
+    request.isFullyPaid
+  );
+
+  useEffect(() => {
+    if (request.contractDetails?.items && request.contractDetails.items.length > 0) {
+      setQuotationItems(
+        request.contractDetails.items.map((it: any) => ({
+          ...it,
+          isSelected: true,
+        }))
+      );
+    }
+    if (request.contractDetails?.notes) {
+      setContractNote(request.contractDetails.notes);
+    }
+  }, [request]);
+
   const toggleSelectItem = (id: string) => {
+    if (isLocked) return;
     setQuotationItems(prev =>
       prev.map(item => (item.id === id ? { ...item, isSelected: !item.isSelected } : item))
     );
   };
 
   const updateQuantity = (id: string, delta: number) => {
+    if (isLocked) return;
     setQuotationItems(prev =>
       prev.map(item => {
         if (item.id === id) {
@@ -121,6 +145,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   };
 
   const addNewItem = () => {
+    if (isLocked) return;
     const newItemId = `item-custom-${Date.now()}`;
     setQuotationItems([
       ...quotationItems,
@@ -140,6 +165,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   };
 
   const updateItemField = (id: string, field: keyof QuotationItem, value: any) => {
+    if (isLocked) return;
     setQuotationItems(prev => prev.map(item => {
       if (item.id === id) {
         const updated = { ...item, [field]: value };
@@ -154,6 +180,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   };
 
   const removeItem = (id: string) => {
+    if (isLocked) return;
     setQuotationItems(prev => prev.filter(item => item.id !== id));
   };
 
@@ -166,6 +193,10 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
 
   const handleSendContract = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) {
+      alert('🔒 Hợp đồng đã được Chủ trang trại ký kết và thanh toán cọc. Kỹ thuật viên không được phép chỉnh sửa hợp đồng.');
+      return;
+    }
     if (selectedItems.length === 0) {
       alert('⚠️ Vui lòng chọn ít nhất 1 sản phẩm/thiết bị để lập Báo giá & Hợp đồng!');
       return;
@@ -187,13 +218,36 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="📄 Bảng Dự Toán Thiết Bị & Hợp Đồng Triển Khai IoT" size="full">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={isLocked ? "🔒 Hợp Đồng Triển Khai IoT (Đã Ký & Thanh Toán Cọc - Khóa Chỉnh Sửa)" : "📄 Bảng Dự Toán Thiết Bị & Hợp Đồng Triển Khai IoT"}
+      size="full"
+    >
       <form onSubmit={handleSendContract} className="space-y-4 text-xs">
+        {/* Warning Banner when locked */}
+        {isLocked && (
+          <div className="p-3.5 bg-amber-500/10 border-2 border-amber-500/40 text-amber-950 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="w-9 h-9 rounded-full bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+              <Lock size={20} />
+            </div>
+            <div className="space-y-0.5">
+              <h4 className="font-bold text-xs uppercase tracking-wide text-amber-950 flex items-center gap-1.5">
+                🔒 HỢP ĐỒNG ĐÃ ĐƯỢC CHỦ TRANG TRẠI KÝ KẾT & THANH TOÁN TIỀN CỌC
+              </h4>
+              <p className="text-[11px] text-amber-900 leading-snug">
+                Hợp đồng này đã có hiệu lực pháp lý và đã xác nhận thanh toán cọc thành công từ Chủ trang trại. <strong>Kỹ thuật viên không được phép chỉnh sửa hoặc thay đổi danh mục thiết bị, số lượng, đơn giá và điều khoản hợp đồng.</strong> Chế độ xem thông tin chỉ đọc.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header Info Banner */}
         <div className="p-3.5 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-xl shadow-xs space-y-1">
           <div className="flex items-center justify-between">
             <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-sm">
-              <FileText size={16} /> Hợp đồng Lắp đặt IoT #{request.serviceRequestId.toUpperCase()}
+              {isLocked ? <Lock size={16} className="text-amber-400" /> : <FileText size={16} />}
+              Hợp đồng Lắp đặt IoT #{request.serviceRequestId.toUpperCase()}
             </span>
             <span className="text-[11px] px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30">
               Khách hàng: {request.assignedOwnerName || 'Lê Văn An'}
@@ -208,40 +262,52 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
 
         {/* Contract Note */}
         <div className="space-y-1.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-          <label className="block font-bold text-slate-800">Ghi chú Điều khoản & Phạm vi Lắp đặt *</label>
+          <label className="block font-bold text-slate-800">
+            Ghi chú Điều khoản & Phạm vi Lắp đặt * {isLocked && <span className="text-amber-700 text-[11px] font-normal">(Đã khóa)</span>}
+          </label>
           <Input
             value={contractNote}
             onChange={e => setContractNote(e.target.value)}
             placeholder="Nhập ghi chú điều khoản báo giá..."
             required
+            disabled={isLocked}
+            readOnly={isLocked}
           />
         </div>
 
-        {/* Product Quotation Table (Matching Image 2 Format) */}
+        {/* Product Quotation Table */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
               <Package size={15} className="text-[#062326]" /> Bảng Báo giá Thiết bị & Vật tư IoT ({selectedItems.length}/{quotationItems.length})
             </h4>
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={addNewItem}
-                className="text-[11px] text-sky-600 hover:text-sky-800 font-bold hover:underline flex items-center gap-1"
-              >
-                + Thêm thiết bị ngoài
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuotationItems(prev => prev.map(item => ({ ...item, isSelected: true })))}
-                className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold hover:underline"
-              >
-                Chọn tất cả
-              </button>
+              {!isLocked ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={addNewItem}
+                    className="text-[11px] text-sky-600 hover:text-sky-800 font-bold hover:underline flex items-center gap-1"
+                  >
+                    + Thêm thiết bị ngoài
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuotationItems(prev => prev.map(item => ({ ...item, isSelected: true })))}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold hover:underline"
+                  >
+                    Chọn tất cả
+                  </button>
+                </>
+              ) : (
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
+                  <Lock size={12} /> Bảng giá cố định (Không thể sửa)
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Table Container styled like Image 2 */}
+          {/* Table Container styled */}
           <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white">
             <div className="max-h-56 overflow-y-auto">
               <table className="w-full text-left text-[11px] border-collapse">
@@ -269,7 +335,8 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                           type="checkbox"
                           checked={item.isSelected}
                           onChange={() => toggleSelectItem(item.id)}
-                          className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          disabled={isLocked}
+                          className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="p-2">
@@ -277,7 +344,9 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                           type="text"
                           value={item.code}
                           onChange={(e) => updateItemField(item.id, 'code', e.target.value)}
-                          className="w-full font-mono font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none"
+                          disabled={isLocked}
+                          readOnly={isLocked}
+                          className="w-full font-mono font-bold text-slate-900 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="p-2">
@@ -285,14 +354,18 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                           type="text"
                           value={item.name}
                           onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
-                          className="w-full font-semibold text-slate-800 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none mb-1"
+                          disabled={isLocked}
+                          readOnly={isLocked}
+                          className="w-full font-semibold text-slate-800 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none mb-1 disabled:cursor-not-allowed"
                         />
                         <input
                           type="text"
                           value={item.notes || ''}
                           onChange={(e) => updateItemField(item.id, 'notes', e.target.value)}
+                          disabled={isLocked}
+                          readOnly={isLocked}
                           placeholder="Mô tả hoặc: Sensor này điều khiển bơm nào?"
-                          className="w-full text-[10px] text-slate-500 font-serif italic bg-transparent border-b border-transparent focus:border-emerald-300 focus:outline-none"
+                          className="w-full text-[10px] text-slate-500 font-serif italic bg-transparent border-b border-transparent focus:border-emerald-300 focus:outline-none disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="p-2 text-center">
@@ -300,7 +373,9 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                           type="text"
                           value={item.unit}
                           onChange={(e) => updateItemField(item.id, 'unit', e.target.value)}
-                          className="w-full text-center font-medium text-slate-600 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none"
+                          disabled={isLocked}
+                          readOnly={isLocked}
+                          className="w-full text-center font-medium text-slate-600 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="p-2 text-right">
@@ -308,41 +383,49 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                           type="number"
                           value={item.unitPrice}
                           onChange={(e) => updateItemField(item.id, 'unitPrice', Number(e.target.value))}
-                          className="w-full text-right font-mono font-medium text-slate-700 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none"
+                          disabled={isLocked}
+                          readOnly={isLocked}
+                          className="w-full text-right font-mono font-medium text-slate-700 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none disabled:cursor-not-allowed"
                         />
                       </td>
                       <td className="p-2 text-center font-mono text-slate-500">{item.vatPercent}%</td>
                       <td className="p-2 text-center">
-                        <div className="flex items-center justify-center gap-1 border border-slate-200 rounded bg-white px-1">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.id, -1)}
-                            className="px-1 text-slate-500 hover:text-slate-900 font-bold"
-                          >
-                            -
-                          </button>
-                          <span className="font-mono font-bold w-4 text-center">{item.quantity}</span>
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.id, 1)}
-                            className="px-1 text-slate-500 hover:text-slate-900 font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
+                        {isLocked ? (
+                          <span className="font-mono font-bold text-slate-800 text-center block">{item.quantity}</span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1 border border-slate-200 rounded bg-white px-1">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, -1)}
+                              className="px-1 text-slate-500 hover:text-slate-900 font-bold"
+                            >
+                              -
+                            </button>
+                            <span className="font-mono font-bold w-4 text-center">{item.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, 1)}
+                              className="px-1 text-slate-500 hover:text-slate-900 font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="p-2 text-right font-mono font-bold text-emerald-950">
                         {item.totalAmount.toLocaleString('vi-VN')}đ
                       </td>
                       <td className="p-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="text-rose-400 hover:text-rose-600 font-bold"
-                          title="Xóa thiết bị"
-                        >
-                          ✕
-                        </button>
+                        {!isLocked && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="text-rose-400 hover:text-rose-600 font-bold"
+                            title="Xóa thiết bị"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -387,20 +470,33 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         {/* Footer Actions */}
         <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
           <div className="text-[11px] text-slate-500">
-            Sau khi gửi, Owner sẽ nhận được Hợp đồng để ký & đặt cọc 30%.
+            {isLocked ? (
+              <span className="text-amber-800 font-semibold flex items-center gap-1">
+                <Lock size={13} className="text-amber-600" /> Hợp đồng đã có giá trị pháp lý và đã nhận thanh toán cọc thành công.
+              </span>
+            ) : (
+              'Sau khi gửi, Owner sẽ nhận được Hợp đồng để ký & đặt cọc 30%.'
+            )}
           </div>
 
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={onClose} className="text-xs">
-              Hủy bỏ
+              {isLocked ? 'Đóng' : 'Hủy bỏ'}
             </Button>
-            <Button
-              type="submit"
-              className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md px-4 py-2"
-            >
-              <CheckCircle2 size={15} />
-              <span>Xác nhận & Gửi Hợp đồng ngay cho Khách</span>
-            </Button>
+            {isLocked ? (
+              <div className="px-3.5 py-2 rounded-xl bg-amber-100 text-amber-950 font-bold text-xs border border-amber-300 flex items-center gap-1.5 shadow-2xs">
+                <Lock size={14} className="text-amber-700" />
+                <span>Hợp đồng đã thanh toán cọc (Khóa chỉnh sửa)</span>
+              </div>
+            ) : (
+              <Button
+                type="submit"
+                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md px-4 py-2"
+              >
+                <CheckCircle2 size={15} />
+                <span>Xác nhận & Gửi Hợp đồng ngay cho Khách</span>
+              </Button>
+            )}
           </div>
         </div>
       </form>

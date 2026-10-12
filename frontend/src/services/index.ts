@@ -1027,9 +1027,9 @@ export const supportService = {
           const qRes = await apiClient.get(`/api/v1/service-requests/${id}/quotation`);
           const q = qRes.data;
           if (q && q.id) {
-            const isSigned = q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed';
-            const isDepositPaid = q.status === 'DepositPaid' || q.status === 'Completed';
-            const isCompleted = q.status === 'Completed';
+            const isSigned = Boolean(sr.isContractSigned || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
+            const isDepositPaid = Boolean(sr.isDepositPaid || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
+            const isCompleted = Boolean(sr.isFullyPaid || sr.isAcceptanceSigned || q.status === 'Completed');
 
             contractDetails = {
               contractId: q.id,
