@@ -79,7 +79,7 @@ export const HomePage: React.FC = () => {
             <a href="#testimonials" className="hover:text-[#062326] transition-colors">Khách hàng</a>
           </nav>
 
-          {/* Action Buttons: Đăng nhập, Đăng ký, Đăng ký ngay */}
+          {/* Action Buttons: Đăng nhập, Đăng ký */}
           <div className="flex items-center gap-2.5 sm:gap-3">
             <Link
               to="/login"
@@ -91,16 +91,8 @@ export const HomePage: React.FC = () => {
 
             <Link
               to="/register"
-              className="hidden sm:inline-flex px-4 py-2 text-xs sm:text-sm font-bold text-[#062326] bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-300 transition-all"
-              id="btn-register-nav"
-            >
-              Đăng ký
-            </Link>
-
-            <Link
-              to="/register"
               className="px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-[#062326] via-[#0b4840] to-[#047857] hover:opacity-95 rounded-xl shadow-md shadow-[#062326]/20 transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5"
-              id="btn-register-now-nav"
+              id="btn-register-nav"
             >
               <span>Đăng ký ngay</span>
               <ArrowRight size={15} />

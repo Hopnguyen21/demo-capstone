@@ -169,12 +169,38 @@ export const tenantService = {
 
   /** GET /api/v1/tenants or fallback to /api/v1/tenants/me */
   getTenants: async () => {
+    const normalize = (t: any) => {
+      if (!t || typeof t !== 'object') return null;
+      return {
+        ...t,
+        tenantId: t.tenantId || t.id || '',
+        name: t.name || t.companyName || 'Hợp tác xã',
+        code: t.code || t.subdomain || t.taxCode || 'TENANT',
+        email: t.email || '',
+        phone: t.phone || '',
+        address: t.address || '',
+        status: (t.status === 1 || t.status === 'Active' || t.status === 'ACTIVE') ? 'ACTIVE' : (t.status === 2 ? 'SUSPENDED' : (t.status || 'ACTIVE')),
+        createdAt: t.createdAtUtc || t.createdAt || '',
+        updatedAt: t.updatedAtUtc || t.updatedAt || '',
+        farmsCount: t.stats?.totalFarms ?? t.farmsCount ?? 0,
+        usersCount: t.stats?.activeUsers ?? t.usersCount ?? 0,
+      };
+    };
+
     try {
       const res = await apiClient.get('/api/v1/tenants');
-      return res.data?.value ?? res.data ?? [];
+      const raw = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      return list.map(normalize).filter(Boolean);
     } catch {
-      const res = await apiClient.get('/api/v1/tenants/me');
-      return [res.data];
+      try {
+        const res = await apiClient.get('/api/v1/tenants/me');
+        if (!res.data) return [];
+        const norm = normalize(res.data);
+        return norm ? [norm] : [];
+      } catch {
+        return [];
+      }
     }
   },
 

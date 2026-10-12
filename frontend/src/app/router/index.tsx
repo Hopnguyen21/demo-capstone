@@ -43,29 +43,35 @@ import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
 import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
+import { RouteErrorBoundary } from '../../components/ui/RouteErrorBoundary';
 
 export const router = createBrowserRouter([
   // Public Landing Homepage (Opens by default on root '/')
   {
     path: '/',
     element: <HomePage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/home',
     element: <HomePage />,
+    errorElement: <RouteErrorBoundary />,
   },
   // Public Auth Pages
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: '/register',
     element: <RegisterPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   // Authenticated Portal Layout (Protected by Shell)
   {
     element: <Shell />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       // Admin Routes
       { path: '/admin/dashboard', element: <AdminDashboard /> },
