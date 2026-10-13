@@ -6,6 +6,7 @@ import {
   FileText, Award, Phone, Mail, Sparkles, ExternalLink, Play,
   BarChart3, Check, Globe, HelpCircle, Users, ArrowUpRight
 } from 'lucide-react';
+import { DraggableAIChatBubble } from '../../components/ui/DraggableAIChatBubble';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -241,19 +242,6 @@ export const HomePage: React.FC = () => {
                       <span className="text-[10px] text-sky-600 font-medium">Van #1 (12p)</span>
                     </div>
                   </div>
-                </div>
-
-                {/* Floating Widget 1: AI Recommendation */}
-                <div className="absolute -bottom-6 -left-4 sm:-left-8 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl shadow-xl border border-emerald-200/90 max-w-xs text-left animate-bounce-subtle hidden sm:block">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[#062326]">
-                      <Bot size={14} />
-                    </div>
-                    <span className="text-xs font-bold text-[#062326]">Trợ lý AI Nông học VietGAP</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-tight">
-                    "Thời tiết chiều nay hanh khô, hệ thống đã tự động bù ẩm 15 phút bảo vệ rễ non."
-                  </p>
                 </div>
 
                 {/* Floating Widget 2: LoRa Signal */}
@@ -834,6 +822,9 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Draggable AI Chat Bubble (VietGAP AI Assistant) */}
+      <DraggableAIChatBubble onOpenConsult={() => setConsultModal(true)} />
     </div>
   );
 };
