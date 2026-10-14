@@ -8,7 +8,7 @@ using SmartFarm.Domain.Enums;
 
 namespace SmartFarm.Api.Controllers;
 
-[ApiController, Authorize(Roles = "FarmOwner,Farmer")]
+[ApiController, Authorize(Roles = "FarmOwner")]
 public sealed class AiAdvisoryController(IAiAdvisoryService service) : ControllerBase
 {
     // API catalog #84

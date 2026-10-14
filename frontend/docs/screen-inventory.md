@@ -98,6 +98,5 @@ This document defines the 100% complete screen inventory across all 4 roles in t
 | FAR-05 | Farmer | `/farmer/alerts` | Urgent Field Alerts | Real-time alert notifications with single-tap acknowledgement button |
 | FAR-06 | Farmer | `/farmer/tasks` | My Task List | Daily task checklist, task detail modal, mark task in-progress/completed with photo/notes |
 | FAR-07 | Farmer | `/farmer/irrigation` | Irrigation Control & Log | Permitted manual pump trigger button & history of recent irrigations |
-| FAR-08 | Farmer | `/farmer/ai` | Farmer AI Assistant | Quick Voice/Text AI assistant to ask farming questions restricted to assigned zone data |
-| FAR-09 | Farmer | `/farmer/notifications` | Notification List | In-app notification inbox |
-| FAR-10 | Farmer | `/farmer/profile` | Worker Profile | Employee badge info, contact settings |
+| FAR-08 | Farmer | `/farmer/notifications` | Notification List | In-app notification inbox |
+| FAR-09 | Farmer | `/farmer/profile` | Worker Profile | Employee badge info, contact settings |

@@ -1203,6 +1203,16 @@ export const supportService = {
     return res.data;
   },
 
+  /** POST /api/v1/service-requests/{id}/replacement (Technician only) */
+  replaceDevice: async (id: string, newDeviceId: string, notes?: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${id}/replacement`, {
+      serviceRequestId: id,
+      newDeviceId,
+      notes,
+    });
+    return res.data;
+  },
+
   /** POST /api/v1/service-requests/{id}/close  (Technician only) */
   completeByTechnician: async (id: string) => {
     const res = await apiClient.post(`/api/v1/service-requests/${id}/close`);
@@ -1396,6 +1406,8 @@ export const supportService = {
   },
 };
 
+export const technicianService = supportService;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 15. FARMER SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1419,3 +1431,50 @@ export const farmerService = {
     return res.data?.value ?? res.data ?? [];
   },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 16. NOTIFICATION SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface NotificationItem {
+  notificationId: string;
+  userId: string;
+  tenantId?: string | null;
+  title: string;
+  message: string;
+  type: 'System' | 'Alert' | 'Task' | 'IoT' | 'Inventory' | 'Advice';
+  severity: 'Info' | 'Warning' | 'Critical';
+  isRead: boolean;
+  readAtUtc?: string | null;
+  targetUrl?: string | null;
+  referenceId?: string | null;
+  createdAtUtc: string;
+}
+
+export const notificationService = {
+  /** GET /api/v1/notifications */
+  getNotifications: async (isRead?: boolean, page = 1, pageSize = 20): Promise<NotificationItem[]> => {
+    const res = await apiClient.get('/api/v1/notifications', {
+      params: { isRead, page, pageSize }
+    });
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/notifications/unread-count */
+  getUnreadCount: async (): Promise<number> => {
+    const res = await apiClient.get('/api/v1/notifications/unread-count');
+    return res.data?.unreadCount ?? 0;
+  },
+
+  /** PUT /api/v1/notifications/{id}/read */
+  markAsRead: async (notificationId: string): Promise<void> => {
+    await apiClient.put(`/api/v1/notifications/${notificationId}/read`);
+  },
+
+  /** PUT /api/v1/notifications/read-all */
+  markAllAsRead: async (): Promise<{ updatedCount: number }> => {
+    const res = await apiClient.put('/api/v1/notifications/read-all');
+    return res.data;
+  },
+};
+

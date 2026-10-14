@@ -9,7 +9,11 @@ using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.TelemetryAlerts;
 
-public sealed class TelemetryAlertService(SmartFarmDbContext db, TimeProvider clock, IControlService control)
+public sealed class TelemetryAlertService(
+    SmartFarmDbContext db,
+    TimeProvider clock,
+    IControlService control,
+    INotificationService notifications)
     : ITelemetryIngestionService, ITelemetryAlertService
 {
     private static readonly TimeSpan FreshnessWindow = TimeSpan.FromMinutes(5);
@@ -133,6 +137,29 @@ public sealed class TelemetryAlertService(SmartFarmDbContext db, TimeProvider cl
                 state.LastAlertAtUtc = now;
                 state.ConsecutiveViolationCount = 0;
                 alertsCreated++;
+
+                // Notify Farm Owners and Farmers of this zone
+                var userIdsToNotify = await db.AppUsers.AsNoTracking()
+                    .Where(u => u.TenantId == device.Farm.TenantId && (
+                        u.Role == UserRole.FarmOwner ||
+                        (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(za => za.ZoneId == envelope.ZoneId))
+                    ))
+                    .Select(u => u.Id)
+                    .ToListAsync(ct);
+
+                foreach (var targetUserId in userIdsToNotify)
+                {
+                    await notifications.CreateNotificationAsync(new(
+                        UserId: targetUserId,
+                        TenantId: device.Farm.TenantId,
+                        Title: $"Cảnh báo {input.ParameterCode} tại khu vực",
+                        Message: $"Giá trị đo {input.Value}{input.Unit} đã vượt ngưỡng cho phép [{rule.MinThreshold} - {rule.MaxThreshold}]",
+                        Type: NotificationType.Alert,
+                        Severity: rule.Severity,
+                        TargetUrl: $"/owner/alerts",
+                        ReferenceId: alert.Id.ToString()
+                    ), ct);
+                }
             }
         }
 

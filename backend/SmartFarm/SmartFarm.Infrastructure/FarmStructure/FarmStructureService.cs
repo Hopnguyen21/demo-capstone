@@ -11,6 +11,7 @@ using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Identity;
 using SmartFarm.Infrastructure.Persistence;
+using SmartFarm.Infrastructure.Persistence.Configurations;
 
 namespace SmartFarm.Infrastructure.FarmStructure;
 
@@ -316,6 +317,32 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         {
             throw new ResourceConflictException("A Zone with this name already exists in the Field.");
         }
+
+        // Validate boundary does not overlap with existing active zones in the same field
+        var newGeom = GeoJsonPolygonValueConverter.Parse(boundary);
+        var existingZones = await dbContext.Zones.AsNoTracking()
+            .Where(x => x.FieldId == fieldId && x.Status != ZoneStatus.Archived && x.BoundaryGeoJson != null)
+            .Select(x => new { x.Id, x.Name, x.BoundaryGeoJson })
+            .ToListAsync(cancellationToken);
+
+        foreach (var ez in existingZones)
+        {
+            if (ez.BoundaryGeoJson == null) continue;
+            var ezGeom = GeoJsonPolygonValueConverter.Parse(ez.BoundaryGeoJson);
+            if (newGeom.Intersects(ezGeom))
+            {
+                var intersection = newGeom.Intersection(ezGeom);
+                // Check if the intersection is a 2D surface (overlap), not just touching boundaries
+                if (intersection is NetTopologySuite.Geometries.Polygon or NetTopologySuite.Geometries.MultiPolygon)
+                {
+                    if (intersection.Area > 0.00000001) // Area > ~0.1 m2 in degrees
+                    {
+                        throw new ResourceConflictException($"Vùng ranh giới mới bị chồng lấn (đè) lên khu vực '{ez.Name}'. Vui lòng chỉnh sửa lại tọa độ ranh giới.");
+                    }
+                }
+            }
+        }
+
         var zone = (command with { Name = name, ZoneType = zoneType, Notes = NormalizeOptional(command.Notes, 1000) })
             .ToEntity(fieldId, boundary);
         field.AvailableAreaM2 -= zone.AreaM2;
@@ -373,6 +400,33 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         {
             throw new ResourceConflictException("A Zone with this name already exists in the Field.");
         }
+
+        if (boundary is not null)
+        {
+            var updatedGeom = GeoJsonPolygonValueConverter.Parse(boundary);
+            var otherZones = await dbContext.Zones.AsNoTracking()
+                .Where(x => x.FieldId == zone.FieldId && x.Id != zoneId && x.Status != ZoneStatus.Archived && x.BoundaryGeoJson != null)
+                .Select(x => new { x.Id, x.Name, x.BoundaryGeoJson })
+                .ToListAsync(cancellationToken);
+
+            foreach (var oz in otherZones)
+            {
+                if (oz.BoundaryGeoJson == null) continue;
+                var ozGeom = GeoJsonPolygonValueConverter.Parse(oz.BoundaryGeoJson);
+                if (updatedGeom.Intersects(ozGeom))
+                {
+                    var intersection = updatedGeom.Intersection(ozGeom);
+                    if (intersection is NetTopologySuite.Geometries.Polygon or NetTopologySuite.Geometries.MultiPolygon)
+                    {
+                        if (intersection.Area > 0.00000001)
+                        {
+                            throw new ResourceConflictException($"Vùng ranh giới cập nhật bị chồng lấn (đè) lên khu vực '{oz.Name}'. Vui lòng chỉnh sửa lại tọa độ ranh giới.");
+                        }
+                    }
+                }
+            }
+        }
+
         zone.Field.AvailableAreaM2 = capacity - requestedArea;
         (command with
         {

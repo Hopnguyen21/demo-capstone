@@ -84,13 +84,11 @@ This document maps all 103 RESTful API endpoints (from `API .docx`) to frontend 
 ## 9. Gemini AI Assistant
 | EP # | Method | Endpoint | Role | Frontend Feature | Tác dụng (Purpose) | Frontend Component / Service Call |
 |---|---|---|---|---|---|---|
-| 84 | POST | `/api/v1/ai/conversations` | All | Start AI Chat Session | Bắt đầu phiên chat mới với trợ lý ảo Gemini | `aiService.createConversation(dto)` |
-| 85 | GET | `/api/v1/ai/conversations` | All | Chat History Drawer | Lấy danh sách lịch sử chat các phiên trước đó | `aiService.getConversations()` |
-| 86 | POST | `/api/v1/ai/conversations/{id}/messages` | All | Send Message to Gemini | Gửi prompt tới Gemini và nhận phản hồi | `aiService.sendMessage(convId, dto)` |
-| 87 | GET | `/api/v1/ai/recommendations` | Owner | AI Recommendation List | Lấy danh sách các đề xuất hành động do AI gợi ý | `aiService.getRecommendations()` |
-| 88 | POST | `/api/v1/ai/recommendations/{id}/apply` | Owner | Approve & Apply AI Action | Chủ trang trại phê duyệt và thực thi tự động đề xuất của AI | `aiService.applyRecommendation(id)` |
-| 89 | POST | `/api/v1/ai/recommendations/{id}/reject` | Owner | Reject Recommendation | Bỏ qua đề xuất do AI gợi ý nếu thấy không hợp lý | `aiService.rejectRecommendation(id)` |
-| 90 | GET | `/api/v1/ai/sensor-explanation` | All | Sensor Metric AI Explain | Phân tích và diễn giải dữ liệu cảm biến thành ngôn ngữ tự nhiên | `aiService.explainSensorData(params)` |
+| 84 | GET | `/api/v1/zones/{zoneId}/ai/context` | FarmOwner | Load zone AI context | Tải bối cảnh mùa vụ, cây trồng, cảm biến và thời tiết theo Zone | `aiService.getContext(zoneId)` |
+| 85 | POST | `/api/v1/zones/{zoneId}/ai/ask` | FarmOwner | Ask AI advisory | Gửi câu hỏi nông học theo ngữ cảnh Zone | `aiService.ask(zoneId, question)` |
+| 86 | POST | `/api/v1/zones/{zoneId}/ai/apply-recommendation` | FarmOwner | Decide on recommendation | Chủ trang trại chấp nhận hoặc từ chối khuyến nghị | `aiService.applyRecommendation(zoneId, id, decision)` |
+| 87 | GET | `/api/v1/zones/{zoneId}/ai/history` | FarmOwner | View AI history | Xem lịch sử tư vấn AI của Zone | `aiService.getMessages(zoneId)` |
+| 88 | DELETE | `/api/v1/zones/{zoneId}/ai/history` | FarmOwner | Hide AI history | Ẩn lịch sử tư vấn khỏi giao diện; dữ liệu kiểm toán vẫn được giữ | AI history endpoint |
 
 ---
 

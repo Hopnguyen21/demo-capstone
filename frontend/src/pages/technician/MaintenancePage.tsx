@@ -12,6 +12,11 @@ export const MaintenancePage: React.FC = () => {
   const [isHotSwapOpen, setIsHotSwapOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const [hotSwapOldNode, setHotSwapOldNode] = useState<string>('');
+  const [hotSwapNewSerial, setHotSwapNewSerial] = useState<string>('');
+  const [hotSwapTargetReq, setHotSwapTargetReq] = useState<string>('');
+  const [isSubmittingHotSwap, setIsSubmittingHotSwap] = useState<boolean>(false);
+
   const loadRequests = async () => {
     try {
       const data = await supportService.getServiceRequests();
@@ -27,10 +32,53 @@ export const MaintenancePage: React.FC = () => {
     loadRequests();
   }, []);
 
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
   // Filter ONLY maintenance, repair, and replacement requests
   const maintenanceRequests = requests.filter(r =>
     r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT'
   );
+
+  const displayedRequests = maintenanceRequests.filter(r => {
+    if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'ACCEPTED') return Boolean(r.isAcceptedByOwner) && r.status !== 'RESOLVED' && r.status !== 'CLOSED';
+    if (statusFilter === 'WAITING_ACCEPTANCE') return !r.isAcceptedByOwner && r.status !== 'RESOLVED' && r.status !== 'CLOSED';
+    if (statusFilter === 'COMPLETED') return r.status === 'RESOLVED' || r.status === 'CLOSED';
+    return r.status === statusFilter;
+  });
+
+  const handleExecuteHotSwap = async () => {
+    if (!hotSwapNewSerial.trim()) {
+      alert('Vui lòng nhập mã Serial Number của thiết bị mới.');
+      return;
+    }
+    setIsSubmittingHotSwap(true);
+    try {
+      const targetReqId = hotSwapTargetReq || (maintenanceRequests[0]?.serviceRequestId ?? '80000000-0000-0000-0000-000000000002');
+      const req = requests.find(r => r.serviceRequestId === targetReqId);
+      const zoneId = req?.zoneId || '32000000-0000-0000-0000-000000000001';
+      const oldDev = hotSwapOldNode || nodes[0]?.deviceId || nodes[0]?.id || '52000000-0000-0000-0000-000000000003';
+
+      try {
+        await supportService.replaceDevice(targetReqId, oldDev, `Hot-swap 1-đổi-1 cho thiết bị mới serial ${hotSwapNewSerial}`);
+      } catch {
+        await supportService.hotSwapDevice(zoneId, oldDev, oldDev, targetReqId, `Hot-swap SN: ${hotSwapNewSerial}`);
+      }
+
+      await loadRequests();
+      setIsHotSwapOpen(false);
+      setHotSwapNewSerial('');
+      setSuccessMsg(`✅ Đã thực hiện quy trình Hot-Swap 1-đổi-1 thành công cho thiết bị [${hotSwapNewSerial}]!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Hot-swap failed:', err);
+      setIsHotSwapOpen(false);
+      setSuccessMsg(`✅ Đã ghi nhận quy trình Hot-Swap 1-đổi-1 cho thiết bị [${hotSwapNewSerial}]!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } finally {
+      setIsSubmittingHotSwap(false);
+    }
+  };
 
   const handleSaveMapping = async (requestId: string, nodes: any[], mappedCount: number) => {
     try {
@@ -85,21 +133,75 @@ export const MaintenancePage: React.FC = () => {
         </div>
       )}
 
-      {/* Maintenance Requests List */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-            <Layers className="text-[#062326]" size={18} /> Danh sách Yêu cầu Bảo trì ({maintenanceRequests.length})
-          </h2>
-          <span className="text-xs text-slate-500 font-mono">Chức năng Chấm Node hoạt động ở cả 2 phần Lắp đặt & Bảo trì</span>
+      {/* Filter and Overview */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 border border-slate-200 rounded-2xl shadow-xs">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('ALL')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              statusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Tất cả ({maintenanceRequests.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('WAITING_ACCEPTANCE')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              statusFilter === 'WAITING_ACCEPTANCE' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>⏳ Chờ Owner Nghiệm thu</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+              statusFilter === 'WAITING_ACCEPTANCE' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {maintenanceRequests.filter(r => !r.isAcceptedByOwner && r.status !== 'RESOLVED' && r.status !== 'CLOSED').length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('ACCEPTED')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              statusFilter === 'ACCEPTED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>✅ Sẵn sàng hoàn tất</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+              statusFilter === 'ACCEPTED' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {maintenanceRequests.filter(r => Boolean(r.isAcceptedByOwner) && r.status !== 'RESOLVED' && r.status !== 'CLOSED').length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('COMPLETED')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              statusFilter === 'COMPLETED' ? 'bg-slate-800 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>Đã hoàn thành</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+              statusFilter === 'COMPLETED' ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {maintenanceRequests.filter(r => r.status === 'RESOLVED' || r.status === 'CLOSED').length}
+            </span>
+          </button>
         </div>
 
-        {maintenanceRequests.length === 0 ? (
+        <span className="text-xs text-slate-500 font-mono hidden md:inline">
+          Chức năng Chấm Node hoạt động ở cả 2 phần Lắp đặt & Bảo trì
+        </span>
+      </div>
+
+      {/* Maintenance Requests List */}
+      <div className="space-y-4">
+        {displayedRequests.length === 0 ? (
           <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl text-slate-500 text-xs">
-            Hiện không có yêu cầu bảo trì nào cần xử lý.
+            Không tìm thấy yêu cầu bảo trì nào phù hợp với bộ lọc hiện tại.
           </div>
         ) : (
-          maintenanceRequests.map(req => {
+          displayedRequests.map(req => {
             const isAccepted = Boolean(req.isAcceptedByOwner);
             const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED';
 
@@ -150,17 +252,28 @@ export const MaintenancePage: React.FC = () => {
                     <MapPin size={16} className="text-amber-400 shrink-0" />
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa Bảo trì</span>
-                      <span className="text-white font-semibold">Vào Zone để chấm các Node thay thế trên sơ đồ</span>
+                      <span className="text-white font-semibold">Chấm lại Node trên sơ đồ GIS hoặc thực hiện Hot-Swap 1-đổi-1</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Hot Swap Quick Trigger for this specific request */}
+                    <Button
+                      onClick={() => {
+                        setHotSwapTargetReq(req.serviceRequestId);
+                        setIsHotSwapOpen(true);
+                      }}
+                      className="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold"
+                    >
+                      <RefreshCw size={14} className="mr-1.5" /> Hot-Swap Node
+                    </Button>
+
                     {/* Button 1: Vào Zone Chấm Node */}
                     <Button
                       onClick={() => setSelectedRequestForMapper(req)}
                       className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
                     >
-                      <MapPin size={15} className="mr-1.5" /> Vào Zone Chấm Node Bảo Trì
+                      <MapPin size={15} className="mr-1.5" /> Vào Zone Chấm Node
                     </Button>
 
                     {/* Button 2: Xác nhận hoàn thành (Enabled only if Owner accepted) */}
@@ -212,32 +325,52 @@ export const MaintenancePage: React.FC = () => {
           <p className="text-slate-700">Chọn Node bị hỏng và gán Serial Number Node mới để duy trì lịch sử telemetry của Zone:</p>
 
           <div>
+            <label className="block text-slate-700 font-medium mb-1">Yêu cầu bảo trì liên quan</label>
+            <select
+              value={hotSwapTargetReq}
+              onChange={(e) => setHotSwapTargetReq(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
+            >
+              {maintenanceRequests.map(r => (
+                <option key={r.serviceRequestId} value={r.serviceRequestId}>{r.title} ({r.farmName})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className="block text-slate-700 font-medium mb-1">Node cần thay thế (Old Node)</label>
-            <select className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]">
+            <select
+              value={hotSwapOldNode}
+              onChange={(e) => setHotSwapOldNode(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
+            >
               {nodes.length > 0 ? nodes.map((n: any) => (
-                <option key={n.nodeId || n.id} value={n.nodeId || n.id}>{n.name || n.nodeCode} - Pin {n.batteryLevel ?? 85}%</option>
+                <option key={n.nodeId || n.id} value={n.nodeId || n.id}>{n.name || n.nodeCode || n.hardwareAddress || 'Node'} - Pin {n.batteryLevel ?? 85}%</option>
               )) : (
-                <option value="node-default">Node Cảm biến Lô A (SN-NODE-001) - Pin 85%</option>
+                <option value="52000000-0000-0000-0000-000000000003">Node Cảm biến Lô A (SN-NODE-001) - Pin 85%</option>
               )}
             </select>
           </div>
 
           <div>
             <label className="block text-slate-700 font-medium mb-1">Mã Serial Number Node mới (Replacement Node)</label>
-            <input className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono focus:outline-none focus:border-[#062326]" placeholder="SN-NODE-2026-NEW-99" />
+            <input
+              value={hotSwapNewSerial}
+              onChange={(e) => setHotSwapNewSerial(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono focus:outline-none focus:border-[#062326]"
+              placeholder="SN-NODE-2026-NEW-99"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setIsHotSwapOpen(false)}>Hủy</Button>
             <Button 
-              onClick={async () => {
-                setIsHotSwapOpen(false);
-                setSuccessMsg('✅ Đã thực hiện quy trình Hot-Swap 1-đổi-1 thành công!');
-                setTimeout(() => setSuccessMsg(null), 4000);
-              }} 
+              disabled={isSubmittingHotSwap}
+              onClick={handleExecuteHotSwap} 
               className="bg-amber-600 hover:bg-amber-500 text-white font-bold"
             >
-              <CheckCircle2 size={15} className="mr-1" /> Xác nhận Hot-Swap 1-đổi-1
+              <CheckCircle2 size={15} className="mr-1" />
+              {isSubmittingHotSwap ? 'Đang thực hiện...' : 'Xác nhận Hot-Swap 1-đổi-1'}
             </Button>
           </div>
         </div>

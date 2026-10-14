@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { useAuth } from '../providers/AuthContext';
 import { Shell } from '../../components/layout/Shell';
 import { HomePage } from '../../pages/public/HomePage';
 import { LoginPage } from '../../pages/auth/LoginPage';
@@ -34,16 +35,30 @@ import { SchedulesAutomationPage } from '../../pages/owner/SchedulesAutomationPa
 import { FarmersPage } from '../../pages/owner/FarmersPage';
 import { TasksPage } from '../../pages/owner/TasksPage';
 import { AIAssistantPage } from '../../pages/owner/AIAssistantPage';
+import { ReportsPage } from '../../pages/owner/ReportsPage';
 import { SupportPage } from '../../pages/owner/SupportPage';
 
 import { FarmerHome } from '../../pages/farmer/FarmerHome';
 import { FarmerZonesPage } from '../../pages/farmer/FarmerZonesPage';
 import { FarmerTasksPage } from '../../pages/farmer/FarmerTasksPage';
 import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
-import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
 import { RouteErrorBoundary } from '../../components/ui/RouteErrorBoundary';
+
+const OwnerOnlyAIAssistant = () => {
+  const { user } = useAuth();
+  if (user?.role === 'FARM_OWNER') return <AIAssistantPage />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  const landingByRole = {
+    PLATFORM_ADMIN: '/admin/dashboard',
+    PLATFORM_TECHNICIAN: '/technician/dashboard',
+    FARM_OWNER: '/owner/dashboard',
+    FARMER: '/farmer/home',
+  } as const;
+  return <Navigate to={landingByRole[user.role]} replace />;
+};
 
 export const router = createBrowserRouter([
   // Public Landing Homepage (Opens by default on root '/')
@@ -108,7 +123,8 @@ export const router = createBrowserRouter([
       { path: '/owner/schedules', element: <SchedulesAutomationPage /> },
       { path: '/owner/farmers', element: <FarmersPage /> },
       { path: '/owner/tasks', element: <TasksPage /> },
-      { path: '/owner/ai', element: <AIAssistantPage /> },
+      { path: '/owner/ai', element: <OwnerOnlyAIAssistant /> },
+      { path: '/owner/reports', element: <ReportsPage /> },
       { path: '/owner/support', element: <SupportPage /> },
 
       // Farmer Routes
@@ -118,8 +134,6 @@ export const router = createBrowserRouter([
       { path: '/farmer/alerts', element: <AlertsPage /> },
       { path: '/farmer/tasks', element: <FarmerTasksPage /> },
       { path: '/farmer/irrigation', element: <FarmerIrrigationPage /> },
-      { path: '/farmer/ai', element: <FarmerAIPage /> },
-
       { path: '*', element: <Navigate to="/owner/dashboard" replace /> },
     ],
   },

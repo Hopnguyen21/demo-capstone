@@ -57,6 +57,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
     public DbSet<ServiceRequestHistory> ServiceRequestHistories => Set<ServiceRequestHistory>();
     public DbSet<DeviceReplacement> DeviceReplacements => Set<DeviceReplacement>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     // New platform-level entities
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<PlatformSetting> PlatformSettings => Set<PlatformSetting>();

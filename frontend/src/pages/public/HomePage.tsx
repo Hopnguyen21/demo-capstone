@@ -6,7 +6,6 @@ import {
   FileText, Award, Phone, Mail, Sparkles, ExternalLink, Play,
   BarChart3, Check, Globe, HelpCircle, Users, ArrowUpRight
 } from 'lucide-react';
-import { DraggableAIChatBubble } from '../../components/ui/DraggableAIChatBubble';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -823,8 +822,6 @@ export const HomePage: React.FC = () => {
         </div>
       )}
 
-      {/* Floating Draggable AI Chat Bubble (VietGAP AI Assistant) */}
-      <DraggableAIChatBubble onOpenConsult={() => setConsultModal(true)} />
     </div>
   );
 };

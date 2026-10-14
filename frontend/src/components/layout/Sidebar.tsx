@@ -52,6 +52,7 @@ export const Sidebar: React.FC = () => {
     { title: 'Quản lý Nhân công', path: '/owner/farmers', icon: <Users size={18} /> },
     { title: 'Phân công Công việc', path: '/owner/tasks', icon: <ClipboardList size={18} /> },
     { title: 'Trợ lý Nông học AI', path: '/owner/ai', icon: <Bot size={18} />, badge: 'AI' },
+    { title: 'Báo cáo & Phân tích', path: '/owner/reports', icon: <FileText size={18} /> },
     { title: 'Yêu cầu Hỗ trợ Kỹ thuật', path: '/owner/support', icon: <Headphones size={18} /> },
   ];
 
@@ -62,7 +63,6 @@ export const Sidebar: React.FC = () => {
     { title: 'Cảnh báo Nông nghiệp', path: '/farmer/alerts', icon: <ShieldAlert size={18} /> },
     { title: 'Danh sách Tác vụ', path: '/farmer/tasks', icon: <ClipboardList size={18} /> },
     { title: 'Tưới thủ công', path: '/farmer/irrigation', icon: <Sliders size={18} /> },
-    { title: 'Hỏi đáp Trợ lý AI', path: '/farmer/ai', icon: <Bot size={18} /> },
   ];
 
   const getNavItems = (): NavItem[] => {

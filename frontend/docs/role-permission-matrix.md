@@ -53,7 +53,7 @@ This document defines the RBAC security scope for SmartFarm's 4 roles based on `
 | Irrigation Schedules (Cron) | ❌ | ❌ | ✅ Full | 👁️ Read |
 | Visual Automation Rules Engine | ❌ | ❌ | ✅ Full | 👁️ Read |
 | **AI Advisory & Work Orders** | | | | |
-| Gemini AI Agronomist Chat | 👁️ Demo | 👁️ Technical | ✅ Tenant Context | 👁️ Assigned Zone Context |
+| Gemini AI Agronomist Chat | ❌ | ❌ | ✅ Tenant Context | ❌ |
 | Approve AI Recommendations | ❌ | ❌ | ✅ Full | ❌ |
 | Task / Work Order Creation | ❌ | ❌ | ✅ Full | ❌ |
 | Task Execution & Completion | ❌ | ❌ | 👁️ Manage | ✅ Assigned Tasks |

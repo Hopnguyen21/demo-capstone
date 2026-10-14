@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
-import { alertService, supportService } from '../../services';
+import { alertService, supportService, notificationService, NotificationItem } from '../../services';
 import { mockWeather } from '../../mocks/mockData';
 import {
   Sprout, Search, Bell, Sun, CloudRain, UserCheck, LogOut,
-  ChevronDown, ShieldAlert, CheckCircle2, Layers
+  ChevronDown, ShieldAlert, CheckCircle2, Layers, Check, ExternalLink, Clock
 } from 'lucide-react';
 
 export const Topbar: React.FC = () => {
@@ -15,6 +15,27 @@ export const Topbar: React.FC = () => {
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const fetchNotifications = async () => {
+    try {
+      const [list, count] = await Promise.all([
+        notificationService.getNotifications(undefined, 1, 15),
+        notificationService.getUnreadCount()
+      ]);
+      setNotifications(list);
+      setUnreadCount(count);
+    } catch {
+      // Fallback
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     alertService.getAlerts().then(res => {
@@ -156,35 +177,102 @@ export const Topbar: React.FC = () => {
           <button
             onClick={() => setShowNotificationMenu(!showNotificationMenu)}
             className="relative p-2 rounded-lg bg-[#0e8046] border border-[#14a85e] text-white hover:bg-[#0c733f] transition-colors"
+            title="Thông báo"
           >
             <Bell size={17} />
-            {activeAlerts.length > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-xs">
-                {activeAlerts.length}
+            {(unreadCount > 0 || activeAlerts.length > 0) && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-xs">
+                {unreadCount > 0 ? unreadCount : activeAlerts.length}
               </span>
             )}
           </button>
 
           {/* Notifications Dropdown */}
           {showNotificationMenu && (
-            <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-2xl p-3 z-50 text-slate-800 animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 mt-2 w-88 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl p-3 z-50 text-slate-800 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
                 <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <ShieldAlert size={14} className="text-rose-500" /> Cảnh báo Hệ thống ({activeAlerts.length})
+                  <Bell size={14} className="text-[#119653]" /> Thông báo & Cảnh báo
+                  {unreadCount > 0 && (
+                    <span className="bg-rose-100 text-rose-700 text-[10px] px-1.5 py-0.2 rounded-full font-semibold">
+                      {unreadCount} mới
+                    </span>
+                  )}
                 </span>
-                <span className="text-[10px] text-[#119653] font-semibold hover:underline cursor-pointer">Đánh dấu đã đọc</span>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={async () => {
+                      await notificationService.markAllAsRead();
+                      fetchNotifications();
+                    }}
+                    className="text-[10px] text-[#119653] font-semibold hover:underline flex items-center gap-1"
+                  >
+                    <Check size={11} /> Đã đọc tất cả
+                  </button>
+                )}
               </div>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {alerts.map(a => (
-                  <div key={a.alertId} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
-                    <div className="flex items-center justify-between font-semibold text-rose-600">
-                      <span>{a.title}</span>
-                      <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-medium">{a.severity}</span>
+
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
+                {/* Real Notifications from Backend */}
+                {notifications.length > 0 ? (
+                  notifications.map((n) => (
+                    <div
+                      key={n.notificationId}
+                      onClick={async () => {
+                        if (!n.isRead) {
+                          await notificationService.markAsRead(n.notificationId);
+                          fetchNotifications();
+                        }
+                        if (n.targetUrl) navigate(n.targetUrl);
+                      }}
+                      className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                        n.isRead
+                          ? 'bg-slate-50/70 border-slate-200/60 opacity-80'
+                          : 'bg-emerald-50/50 border-emerald-200 font-medium'
+                      } hover:bg-emerald-50`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-900 line-clamp-1">{n.title}</span>
+                        <span
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                            n.severity === 'Critical'
+                              ? 'bg-rose-100 text-rose-700'
+                              : n.severity === 'Warning'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {n.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">{n.message}</p>
+                      <div className="flex items-center justify-between text-[9px] text-slate-400 mt-1.5">
+                        <span className="flex items-center gap-1">
+                          <Clock size={10} />
+                          {new Date(n.createdAtUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{' '}
+                          {new Date(n.createdAtUtc).toLocaleDateString()}
+                        </span>
+                        {!n.isRead && <span className="text-[#119653] font-semibold text-[9px]">• Mới</span>}
+                      </div>
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">{a.message}</p>
-                    <span className="text-[9px] text-slate-400 block mt-1">{a.triggeredAt}</span>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  /* Fallback to system alerts if notifications table has no items yet */
+                  alerts.length > 0 ? (
+                    alerts.map((a) => (
+                      <div key={a.alertId} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs">
+                        <div className="flex items-center justify-between font-semibold text-rose-600">
+                          <span>{a.title}</span>
+                          <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-medium">{a.severity}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1 leading-snug">{a.message}</p>
+                        <span className="text-[9px] text-slate-400 block mt-1">{a.triggeredAt}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-6 text-slate-400 text-xs">Không có thông báo nào</div>
+                  )
+                )}
               </div>
             </div>
           )}

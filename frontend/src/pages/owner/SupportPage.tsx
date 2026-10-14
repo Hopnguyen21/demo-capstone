@@ -63,6 +63,8 @@ export const SupportPage: React.FC = () => {
 
   // Modal Owner Create Support / Maintenance Request
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'INSTALLATION' | 'MAINTENANCE'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [newReq, setNewReq] = useState({
     farmId: '30000000-0000-0000-0000-000000000001',
     zoneId: '32000000-0000-0000-0000-000000000001',
@@ -256,9 +258,84 @@ export const SupportPage: React.FC = () => {
         </div>
       )}
 
+      {/* Filter Tabs & Search / Filter Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 border border-slate-200 rounded-2xl shadow-xs">
+        {/* Type Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setActiveTabFilter('ALL')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeTabFilter === 'ALL'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Tất cả ({requests.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTabFilter('INSTALLATION')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTabFilter === 'INSTALLATION'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>⚡ Lắp đặt mới</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+              activeTabFilter === 'INSTALLATION' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {requests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP').length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTabFilter('MAINTENANCE')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTabFilter === 'MAINTENANCE'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>🛠️ Bảo trì & Thay thế</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+              activeTabFilter === 'MAINTENANCE' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {requests.filter(r => r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT').length}
+            </span>
+          </button>
+        </div>
+
+        {/* Status Filter */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 font-medium">Trạng thái:</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-semibold focus:outline-none focus:border-emerald-600"
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            <option value="OPEN">Chờ tiếp nhận (Open)</option>
+            <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
+            <option value="ACCEPTED_BY_OWNER">Đã nghiệm thu (Accepted)</option>
+            <option value="RESOLVED">Đã hoàn tất (Resolved)</option>
+          </select>
+        </div>
+      </div>
+
       {/* Requests List */}
       <div className="space-y-6">
-        {requests.map(req => {
+        {requests
+          .filter(req => {
+            const isInst = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
+            const isMaint = req.requestType === 'MAINTENANCE' || req.requestType === 'REPAIR' || req.requestType === 'REPLACEMENT';
+            if (activeTabFilter === 'INSTALLATION' && !isInst) return false;
+            if (activeTabFilter === 'MAINTENANCE' && !isMaint) return false;
+            if (statusFilter !== 'ALL' && req.status !== statusFilter) return false;
+            return true;
+          })
+          .map(req => {
           const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
           const contract = req.contractDetails;
           const isContractSigned = Boolean(contract?.isSignedByOwner && contract?.is30PercentPaid);
