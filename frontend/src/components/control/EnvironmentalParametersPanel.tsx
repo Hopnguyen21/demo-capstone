@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Sliders, Droplets, Thermometer, Wind, Sun, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Sliders, Droplets, Thermometer, Wind, Sun, CheckCircle2, RefreshCw, AlertCircle, Lock } from 'lucide-react';
 import { Button, CropRangeBand } from '../ui/BaseUI';
 import { EnvironmentalTargetConfig } from '../../types';
+import { useAuth } from '../../app/providers/AuthContext';
 
 interface EnvironmentalParametersPanelProps {
   configs: EnvironmentalTargetConfig[];
@@ -9,15 +10,18 @@ interface EnvironmentalParametersPanelProps {
 }
 
 export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanelProps> = ({ configs, onUpdateConfig }) => {
+  const { role } = useAuth();
+  const isOwner = role === 'FARM_OWNER';
+
   const fallbackConfig: EnvironmentalTargetConfig = {
     zoneId: '32000000-0000-0000-0000-000000000001',
-    zoneName: 'Nhà màng Z01 - Cà chua Beefsteak',
-    targetSoilMoisture: 70,
-    minSoilMoisture: 60,
-    maxSoilMoisture: 80,
-    maxTemperature: 32,
-    targetHumidity: 75,
-    targetLux: 25000,
+    zoneName: 'Luong 00 - Canh Tac Dat Dua Leo Mau',
+    targetSoilMoisture: 72,
+    minSoilMoisture: 65,
+    maxSoilMoisture: 82,
+    maxTemperature: 30,
+    targetHumidity: 70,
+    targetLux: 30000,
     powerWatts: 750,
   };
 
@@ -37,6 +41,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
   const activeConfig = currentConfigs.find(c => c.zoneId === selectedZoneId) || currentConfigs[0] || fallbackConfig;
 
   const handleParamChange = (field: keyof EnvironmentalTargetConfig, val: number) => {
+    if (!isOwner) return;
     setCurrentConfigs(prev => prev.map(c => {
       if (c.zoneId === selectedZoneId) {
         return { ...c, [field]: val };
@@ -152,9 +157,10 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
               type="range"
               min={40}
               max={90}
+              disabled={!isOwner}
               value={activeConfig.targetSoilMoisture}
               onChange={(e) => handleParamChange('targetSoilMoisture', Number(e.target.value))}
-              className="w-full accent-emerald-600"
+              className={`w-full accent-emerald-600 ${!isOwner ? 'cursor-not-allowed opacity-60' : ''}`}
             />
             <div className="flex justify-between text-[10px] text-slate-500">
               <span>Tưới khi &lt; {activeConfig.minSoilMoisture}%</span>
@@ -174,9 +180,10 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
               type="range"
               min={22}
               max={35}
+              disabled={!isOwner}
               value={activeConfig.maxTemperature}
               onChange={(e) => handleParamChange('maxTemperature', Number(e.target.value))}
-              className="w-full accent-amber-600"
+              className={`w-full accent-amber-600 ${!isOwner ? 'cursor-not-allowed opacity-60' : ''}`}
             />
             <div className="text-[10px] text-slate-500">
               Tự động bật Quạt đối lưu khi T &gt; {activeConfig.maxTemperature}°C
@@ -195,9 +202,10 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
               type="range"
               min={50}
               max={90}
+              disabled={!isOwner}
               value={activeConfig.targetHumidity}
               onChange={(e) => handleParamChange('targetHumidity', Number(e.target.value))}
-              className="w-full accent-emerald-600"
+              className={`w-full accent-emerald-600 ${!isOwner ? 'cursor-not-allowed opacity-60' : ''}`}
             />
             <div className="text-[10px] text-slate-500">
               Duy trì độ ẩm không khí tối ưu cho thụ phấn
@@ -217,9 +225,10 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
               min={2000}
               max={10000}
               step={500}
+              disabled={!isOwner}
               value={activeConfig.targetLux}
               onChange={(e) => handleParamChange('targetLux', Number(e.target.value))}
-              className="w-full accent-purple-600"
+              className={`w-full accent-purple-600 ${!isOwner ? 'cursor-not-allowed opacity-60' : ''}`}
             />
             <div className="text-[10px] text-slate-500">
               Bổ sung đèn khi ánh sáng tự nhiên &lt; {activeConfig.targetLux} Lux
@@ -227,11 +236,23 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
           </div>
         </div>
 
-        <div className="flex justify-end pt-2">
-          <Button variant="primary" size="sm" onClick={handleSave}>
-            <CheckCircle2 size={14} className="mr-1.5" />
-            Lưu Ngưỡng Tham Số Vi Khí Hậu
-          </Button>
+        <div className="flex items-center justify-between pt-2">
+          {!isOwner ? (
+            <span className="text-xs text-amber-700 font-semibold flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+              <Lock size={13} /> Chỉ Chủ trang trại (FarmOwner) mới có quyền chỉnh sửa & lưu ngưỡng tham số vi khí hậu.
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-500 font-medium">
+              💡 Tham số vi khí hậu sau khi lưu sẽ tự động đồng bộ sang Rule Engine và các trạm điều khiển tự động.
+            </span>
+          )}
+
+          {isOwner && (
+            <Button variant="primary" size="sm" onClick={handleSave}>
+              <CheckCircle2 size={14} className="mr-1.5" />
+              Lưu Ngưỡng Tham Số Vi Khí Hậu
+            </Button>
+          )}
         </div>
       </div>
     </div>

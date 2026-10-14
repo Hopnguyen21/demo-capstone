@@ -61,7 +61,7 @@ export const Topbar: React.FC = () => {
   }, [selectedFarmId]);
 
   const prevRainProb = (w: any) => {
-    if (w.weatherDescription?.toLowerCase().includes('mưa')) return 100;
+    if (String(w?.weatherDescription || '').toLowerCase().includes('mưa')) return 100;
     return 0;
   };
 

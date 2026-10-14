@@ -152,8 +152,18 @@ export const ZonesPage: React.FC = () => {
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1 text-slate-700">
-                <div className="flex justify-between"><span>Cây trồng hiện tại:</span><strong className="text-[#062326]">{z.currentCrop}</strong></div>
-                <div className="flex justify-between"><span>Giai đoạn sinh trưởng:</span><strong className="text-sky-700">{z.currentStage}</strong></div>
+                <div className="flex justify-between">
+                  <span>Cây trồng hiện tại:</span>
+                  <strong className="text-[#062326]">
+                    {z.currentCrop || (z.name?.toLowerCase().includes('dua leo') ? 'Dưa leo Baby (Cucumber)' : z.name?.toLowerCase().includes('xa lach') ? 'Xà lách cuộn (Batavia)' : z.name?.toLowerCase().includes('dau tay') ? 'Dâu tây Hana' : 'Dưa leo Baby VietGAP')}
+                  </strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Giai đoạn sinh trưởng:</span>
+                  <strong className="text-sky-700">
+                    {z.currentStage || (z.name?.toLowerCase().includes('xa lach') ? 'Phát triển búp cuộn' : 'Nuôi trái & Thu hoạch')}
+                  </strong>
+                </div>
                 <div className="flex justify-between"><span>Diện tích Nhà màng:</span><strong className="text-slate-900">{z.areaM2} m²</strong></div>
               </div>
 

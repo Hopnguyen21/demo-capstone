@@ -15,16 +15,17 @@ export const AuditLogsPage: React.FC = () => {
   }, []);
 
   const filteredLogs = logs.filter(l => {
-    const name = l.actorName || l.userName || '';
-    const action = l.action || '';
-    const details = l.details || '';
-    const ip = l.ipAddress || '';
-    const s = search.toLowerCase();
+    const s = String(search || '').toLowerCase().trim();
+    if (!s) return true;
+    const name = String(l.actorName || l.userName || '').toLowerCase();
+    const action = String(l.action || '').toLowerCase();
+    const details = String(l.details || '').toLowerCase();
+    const ip = String(l.ipAddress || '').toLowerCase();
     return (
-      name.toLowerCase().includes(s) ||
-      action.toLowerCase().includes(s) ||
-      details.toLowerCase().includes(s) ||
-      ip.toLowerCase().includes(s)
+      name.includes(s) ||
+      action.includes(s) ||
+      details.includes(s) ||
+      ip.includes(s)
     );
   });
 

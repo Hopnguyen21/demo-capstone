@@ -434,11 +434,36 @@ public sealed class WeatherService(SmartFarmDbContext db, HttpClient httpClient,
 // ─── Farmer Service ───────────────────────────────────────────────────────────
 public sealed class FarmerService(SmartFarmDbContext db) : IFarmerService
 {
-    public async Task<IReadOnlyList<object>> GetMyTasksAsync(Guid farmerId, CancellationToken ct) =>
-        (await db.FarmTasks.AsNoTracking().Include(x => x.Zone).Where(x => x.AssignedFarmerId == farmerId && x.Status != FarmTaskStatus.Cancelled)
-            .OrderBy(x => x.DueAtUtc).ToListAsync(ct))
-        .Select(x => (object)new { x.Id, x.Title, x.Description, x.Status, DueDate = x.DueAtUtc, ZoneName = x.Zone != null ? x.Zone.Name : null, x.CreatedAtUtc })
-        .ToList();
+    public async Task<IReadOnlyList<object>> GetMyTasksAsync(Guid farmerId, CancellationToken ct)
+    {
+        var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == farmerId, ct);
+        var query = db.FarmTasks.AsNoTracking().Include(x => x.Zone).AsQueryable();
+
+        if (caller != null && caller.Role != UserRole.Farmer)
+        {
+            if (caller.TenantId.HasValue)
+                query = query.Where(x => x.TenantId == caller.TenantId.Value && x.Status != FarmTaskStatus.Cancelled);
+            else
+                query = query.Where(x => x.Status != FarmTaskStatus.Cancelled);
+        }
+        else
+        {
+            query = query.Where(x => x.AssignedFarmerId == farmerId && x.Status != FarmTaskStatus.Cancelled);
+        }
+
+        var list = await query.OrderBy(x => x.DueAtUtc).ToListAsync(ct);
+        return list.Select(x => (object)new {
+            Id = x.Id,
+            TaskId = x.Id,
+            Title = x.Title,
+            Description = x.Description,
+            Status = x.Status.ToString(),
+            DueDate = x.DueAtUtc,
+            DueAtUtc = x.DueAtUtc,
+            ZoneName = x.Zone != null ? x.Zone.Name : null,
+            CreatedAtUtc = x.CreatedAtUtc
+        }).ToList();
+    }
 
     public async Task CompleteTaskAsync(Guid farmerId, Guid taskId, FarmerCompleteTaskCommand command, CancellationToken ct)
     {
@@ -463,11 +488,24 @@ public sealed class FarmerService(SmartFarmDbContext db) : IFarmerService
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<FarmerZoneView>> GetMyZonesAsync(Guid farmerId, CancellationToken ct) =>
-        await db.UserZoneAccesses.AsNoTracking().Include(x => x.Zone).ThenInclude(z => z.Field)
+    public async Task<IReadOnlyList<FarmerZoneView>> GetMyZonesAsync(Guid farmerId, CancellationToken ct)
+    {
+        var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == farmerId, ct);
+        if (caller != null && caller.Role != UserRole.Farmer)
+        {
+            var zones = await db.Zones.AsNoTracking().Include(z => z.Field)
+                .Where(z => z.ArchivedAtUtc == null && (caller.TenantId == null || z.Field.Farm.TenantId == caller.TenantId.Value))
+                .OrderBy(z => z.Name)
+                .Select(z => new FarmerZoneView(z.Id, z.Name, z.FieldId, z.Field.FarmId, true, z.CreatedAtUtc))
+                .ToListAsync(ct);
+            return zones;
+        }
+
+        return await db.UserZoneAccesses.AsNoTracking().Include(x => x.Zone).ThenInclude(z => z.Field)
             .Where(x => x.AppUserId == farmerId).OrderBy(x => x.Zone.Name)
             .Select(x => new FarmerZoneView(x.ZoneId, x.Zone.Name, x.Zone.FieldId, x.Zone.Field.FarmId, x.CanControl, x.AssignedAtUtc))
             .ToListAsync(ct);
+    }
 
     public async Task<IReadOnlyList<PlatformHardwareItemView>> GetMySparePartsAsync(Guid technicianId, CancellationToken ct) =>
         await db.PlatformHardwareItems.AsNoTracking().Where(x => x.AssignedTechnicianId == technicianId)
@@ -483,14 +521,29 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
     {
         // Find growth profile for crop
         var profile = await db.GrowthProfiles.Include(x => x.Stages).AsNoTracking()
-            .FirstOrDefaultAsync(x => x.CropId == cropId, ct);
-        if (profile is null) return [];
+            .FirstOrDefaultAsync(x => x.CropId == cropId, ct)
+            ?? await db.GrowthProfiles.Include(x => x.Stages).AsNoTracking().FirstOrDefaultAsync(ct);
 
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).SingleOrDefaultAsync(z => z.Id == zoneId, ct)
             ?? throw new ResourceNotFoundException("Zone not found.");
 
-        var actuator = await db.DeviceActuators.SingleOrDefaultAsync(x => x.Id == actuatorId, ct)
-            ?? throw new ResourceNotFoundException("Actuator not found.");
+        // Find actuator: use provided actuatorId if exists, otherwise pick first actuator in this zone or in the farm
+        var actuator = await db.DeviceActuators.Include(a => a.Device).SingleOrDefaultAsync(x => x.Id == actuatorId, ct);
+        if (actuator is null)
+        {
+            actuator = await db.DeviceActuators.Include(a => a.Device)
+                .FirstOrDefaultAsync(x => x.Device.ZoneId == zoneId, ct)
+                ?? await db.DeviceActuators.Include(a => a.Device)
+                .FirstOrDefaultAsync(x => x.Device.FarmId == zone.Field.FarmId, ct)
+                ?? await db.DeviceActuators.FirstOrDefaultAsync(ct);
+        }
+
+        if (actuator is null)
+        {
+            throw new ResourceNotFoundException("No actuator available for this zone or farm.");
+        }
+
+        actuatorId = actuator.Id;
 
         // Remove old synced schedules for this zone+actuator
         var existing = await db.ControlSchedules.Where(x => x.ZoneId == zoneId && x.ActuatorId == actuatorId && x.Name.StartsWith("[AutoSync]")).ToListAsync(ct);
@@ -507,7 +560,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
                 FarmId = zone.Field.FarmId,
                 ZoneId = zoneId,
                 ActuatorId = actuatorId,
-                Name = $"[AutoSync] {profile.Name} {h:D2}:{m:D2}",
+                Name = $"[AutoSync] {profile?.Name ?? "Lịch tưới Chuẩn"} {h:D2}:{m:D2}",
                 CronExpression = $"0 {m} {h} * * *",
                 DurationSeconds = dur * 60,
                 EnableRainDelay = true,

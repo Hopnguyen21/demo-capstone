@@ -191,14 +191,14 @@ public sealed class PlatformFeaturesController(
 
     // ─── 11. Farmer Tasks & Assigned Zones ────────────────────────────────────
     [HttpGet("api/v1/farmer/my-tasks")]
-    [Authorize(Roles = "Farmer")]
+    [Authorize(Roles = "Farmer,FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<object>>> GetFarmerTasks(CancellationToken ct)
     {
         return Ok(await farmerService.GetMyTasksAsync(User.GetUserId(), ct));
     }
 
     [HttpPut("api/v1/farmer/tasks/{taskId:guid}/complete")]
-    [Authorize(Roles = "Farmer")]
+    [Authorize(Roles = "Farmer,FarmOwner")]
     public async Task<IActionResult> CompleteFarmerTask(
         Guid taskId,
         [FromBody] FarmerCompleteTaskCommand command,
@@ -209,7 +209,7 @@ public sealed class PlatformFeaturesController(
     }
 
     [HttpGet("api/v1/farmer/my-zones")]
-    [Authorize(Roles = "Farmer")]
+    [Authorize(Roles = "Farmer,FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<FarmerZoneView>>> GetFarmerZones(CancellationToken ct)
     {
         return Ok(await farmerService.GetMyZonesAsync(User.GetUserId(), ct));
@@ -217,7 +217,7 @@ public sealed class PlatformFeaturesController(
 
     // ─── 12. Schedule Sync from Crop Profile ──────────────────────────────────
     [HttpPost("api/v1/zones/{zoneId:guid}/schedules/sync-from-crop")]
-    [Authorize(Roles = "FarmOwner")]
+    [Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<object>>> SyncCropSchedule(
         Guid zoneId,
         [FromBody] SyncCropScheduleRequest request,

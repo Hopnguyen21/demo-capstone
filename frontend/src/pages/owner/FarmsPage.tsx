@@ -91,6 +91,10 @@ export const FarmsPage: React.FC = () => {
     [11.9402, 108.4572],
   ]);
 
+  // GIS Validation Errors (e.g. overlap or outside parent)
+  const [fieldGisError, setFieldGisError] = useState<string | null>(null);
+  const [zoneGisError, setZoneGisError] = useState<string | null>(null);
+
   // Compute remaining unallocated capacity for selected Farm & Field
   const currentFarmAllocated = React.useMemo(() => {
     if (!selectedFarm) return 0;
@@ -126,9 +130,33 @@ export const FarmsPage: React.FC = () => {
     return extractPolygonPoints((selectedFarm as any)?.boundaryGeoJson || selectedFarm?.boundary);
   }, [selectedFarm]);
 
+  const existingOtherFields = React.useMemo(() => {
+    if (!selectedFarm) return [];
+    return fields
+      .filter(f => f.farmId === selectedFarm.farmId)
+      .map(f => ({
+        name: f.name,
+        polygon: extractPolygonPoints((f as any)?.boundaryGeoJson || f?.boundary),
+        areaM2: Number(f.areaM2) || 0,
+      }))
+      .filter(item => item.polygon.length >= 3);
+  }, [fields, selectedFarm]);
+
   const currentFieldPolygon = React.useMemo(() => {
     return extractPolygonPoints((selectedField as any)?.boundaryGeoJson || selectedField?.boundary);
   }, [selectedField]);
+
+  const existingOtherZones = React.useMemo(() => {
+    if (!selectedField) return [];
+    return zones
+      .filter(z => z.fieldId === selectedField.fieldId)
+      .map(z => ({
+        name: z.name,
+        polygon: extractPolygonPoints((z as any)?.boundaryGeoJson || z?.boundary),
+        areaM2: Number(z.areaM2) || 0,
+      }))
+      .filter(item => item.polygon.length >= 3);
+  }, [zones, selectedField]);
 
   const currentZonePoints = React.useMemo(() => {
     return extractPolygonPoints((selectedZone as any)?.boundaryGeoJson || selectedZone?.boundary);
@@ -171,12 +199,17 @@ export const FarmsPage: React.FC = () => {
     ];
     setFieldCenter(cent);
     const d = 0.0015;
-    setFieldPolygon([
+    const initialFieldPoly: [number, number][] = [
       [cent[0] + d, cent[1] - d],
       [cent[0] + d, cent[1] + d],
       [cent[0] - d, cent[1] + d],
       [cent[0] - d, cent[1] - d],
-    ]);
+    ];
+    setFieldPolygon(initialFieldPoly);
+    const initialArea = Math.round(calculatePolygonAreaM2(initialFieldPoly));
+    if (initialArea > 0) {
+      setNewFieldArea(initialArea.toString());
+    }
   };
 
   const handleSelectField = (field: Field) => {
@@ -188,12 +221,17 @@ export const FarmsPage: React.FC = () => {
       : [Number((field as any).latitude) || 11.9404, Number((field as any).longitude) || 108.4583];
     setZoneCenter(cent);
     const d = 0.0006;
-    setZonePolygon([
+    const initialZonePoly: [number, number][] = [
       [cent[0] + d, cent[1] - d],
       [cent[0] + d, cent[1] + d],
       [cent[0] - d, cent[1] + d],
       [cent[0] - d, cent[1] - d],
-    ]);
+    ];
+    setZonePolygon(initialZonePoly);
+    const initialArea = Math.round(calculatePolygonAreaM2(initialZonePoly));
+    if (initialArea > 0) {
+      setNewZoneArea(initialArea.toString());
+    }
   };
 
   const handleSelectZone = (zone: Zone) => {
@@ -210,6 +248,12 @@ export const FarmsPage: React.FC = () => {
       return;
     }
     if (!selectedFarm) return;
+
+    if (fieldGisError) {
+      alert(`Không thể lưu Lô đất: ${fieldGisError}. Vui lòng chỉnh sửa lại ranh giới trên bản đồ để không bị trùng lấn!`);
+      return;
+    }
+
     const computedArea = Number(newFieldArea) || 5000;
     if (farmAvailableArea > 0 && computedArea > farmAvailableArea) {
       alert(`Diện tích Lô đất (${computedArea.toLocaleString()} m²) vượt quá diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại.`);
@@ -260,6 +304,11 @@ export const FarmsPage: React.FC = () => {
       return;
     }
     if (!selectedField) return;
+
+    if (zoneGisError) {
+      alert(`Không thể lưu Nhà màng / Zone: ${zoneGisError}. Vui lòng chỉnh sửa lại ranh giới trên bản đồ!`);
+      return;
+    }
 
     const computedArea = Number(newZoneArea) || 1000;
     if (fieldAvailableArea > 0 && computedArea > fieldAvailableArea) {
@@ -1000,7 +1049,9 @@ export const FarmsPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Diện tích quy hoạch (m²) *</label>
+            <label className="block text-slate-700 font-bold mb-1">
+              Diện tích quy hoạch (m²) * <span className="text-emerald-700 font-normal">(Tự động đồng bộ từ bản đồ GIS)</span>
+            </label>
             <Input
               type="number"
               value={newFieldArea}
@@ -1011,20 +1062,47 @@ export const FarmsPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Xác định Tọa độ GIS Lô đất (Lồng trong Farm)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-slate-700 font-bold">Xác định Tọa độ GIS Lô đất (Lồng trong Farm)</label>
+              <span className="text-[10px] text-slate-500">
+                (Kéo ghim tâm điểm hoặc ghim #1..#4 để di chuyển vị trí Lô đất)
+              </span>
+            </div>
             <GISLocationPicker
               level="FIELD"
               center={fieldCenter}
               onCenterChange={setFieldCenter}
               polygon={fieldPolygon}
-              onPolygonChange={setFieldPolygon}
-              height="280px"
+              onPolygonChange={p => {
+                setFieldPolygon(p);
+                const area = Math.round(calculatePolygonAreaM2(p));
+                if (area > 0) {
+                  setNewFieldArea(area.toString());
+                }
+              }}
+              parentFarmPolygon={currentFarmPolygon.length >= 3 ? currentFarmPolygon : undefined}
+              otherPolygons={existingOtherFields}
+              onValidationChange={(isValid, err) => setFieldGisError(isValid ? null : err)}
+              hideAddressSearch={false}
+              height="300px"
             />
           </div>
 
+          {fieldGisError && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+              <span className="text-base">🚫</span>
+              <span>{fieldGisError}</span>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
             <Button variant="outline" onClick={() => setShowAddFieldModal(false)} disabled={isSubmittingField}>Hủy</Button>
-            <Button onClick={handleAddFieldSubmit} disabled={isSubmittingField}>
+            <Button
+              onClick={handleAddFieldSubmit}
+              disabled={isSubmittingField || !!fieldGisError}
+              className={fieldGisError ? 'opacity-50 cursor-not-allowed bg-red-600 hover:bg-red-600' : ''}
+              title={fieldGisError ? fieldGisError : undefined}
+            >
               {isSubmittingField ? 'Đang lưu vào DB...' : 'Thêm Lô đất vào Farm'}
             </Button>
           </div>
@@ -1050,7 +1128,9 @@ export const FarmsPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Diện tích quy hoạch Nhà màng (m²) *</label>
+            <label className="block text-slate-700 font-bold mb-1">
+              Diện tích quy hoạch Nhà màng (m²) * <span className="text-emerald-700 font-normal">(Tự động đồng bộ từ bản đồ GIS)</span>
+            </label>
             <Input
               type="number"
               value={newZoneArea}
@@ -1072,15 +1152,35 @@ export const FarmsPage: React.FC = () => {
               center={zoneCenter}
               onCenterChange={setZoneCenter}
               polygon={zonePolygon}
-              onPolygonChange={setZonePolygon}
+              onPolygonChange={p => {
+                setZonePolygon(p);
+                const area = Math.round(calculatePolygonAreaM2(p));
+                if (area > 0) {
+                  setNewZoneArea(area.toString());
+                }
+              }}
               parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
+              otherPolygons={existingOtherZones}
+              onValidationChange={(isValid, err) => setZoneGisError(isValid ? null : err)}
               height="280px"
             />
           </div>
 
+          {zoneGisError && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+              <span className="text-base">🚫</span>
+              <span>{zoneGisError}</span>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
             <Button variant="outline" onClick={() => setShowAddZoneModal(false)} disabled={isSubmittingZone}>Hủy</Button>
-            <Button onClick={handleAddZoneSubmit} disabled={isSubmittingZone}>
+            <Button
+              onClick={handleAddZoneSubmit}
+              disabled={isSubmittingZone || !!zoneGisError}
+              className={zoneGisError ? 'opacity-50 cursor-not-allowed bg-red-600 hover:bg-red-600' : ''}
+              title={zoneGisError ? zoneGisError : undefined}
+            >
               {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Field'}
             </Button>
           </div>

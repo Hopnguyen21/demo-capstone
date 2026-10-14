@@ -69,6 +69,8 @@ interface GISLocationPickerProps {
   onPolygonChange: (polygon: [number, number][]) => void;
   parentFarmPolygon?: [number, number][];
   parentFieldPolygon?: [number, number][];
+  /** Other existing fields/zones within the same parent to display for context */
+  otherPolygons?: { name: string; polygon: [number, number][]; areaM2?: number }[];
   height?: string;
   readOnly?: boolean;
   hidePolygon?: boolean;
@@ -76,6 +78,8 @@ interface GISLocationPickerProps {
   hideAddressSearch?: boolean;
   /** Called when center drag completes with reverse-geocoded address (Farm only) */
   onAddressChange?: (address: string) => void;
+  /** Reports whether current polygon has validation errors (e.g. outside parent or overlapping other polygons) */
+  onValidationChange?: (isValid: boolean, errorMessage: string | null) => void;
 }
 
 // Preset Coordinates for Instant Vietnam Ag Hubs
@@ -173,6 +177,48 @@ function pointInPolygon(point: [number, number], polygon: [number, number][]): b
     if (intersect) inside = !inside;
   }
   return inside;
+}
+
+// ─── Segment Intersection & Polygon Overlap ──────────────────────────────────
+function doSegmentsIntersect(
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number],
+  p4: [number, number]
+): boolean {
+  const ccw = (a: [number, number], b: [number, number], c: [number, number]) => {
+    return (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
+  };
+  return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
+}
+
+export function doPolygonsOverlap(polyA: [number, number][], polyB: [number, number][]): boolean {
+  if (polyA.length < 3 || polyB.length < 3) return false;
+
+  // 1. Any vertex of A inside B?
+  for (const pt of polyA) {
+    if (pointInPolygon(pt, polyB)) return true;
+  }
+
+  // 2. Any vertex of B inside A?
+  for (const pt of polyB) {
+    if (pointInPolygon(pt, polyA)) return true;
+  }
+
+  // 3. Any edge of A intersects any edge of B?
+  const nA = polyA.length;
+  const nB = polyB.length;
+  for (let i = 0; i < nA; i++) {
+    const a1 = polyA[i];
+    const a2 = polyA[(i + 1) % nA];
+    for (let j = 0; j < nB; j++) {
+      const b1 = polyB[j];
+      const b2 = polyB[(j + 1) % nB];
+      if (doSegmentsIntersect(a1, a2, b1, b2)) return true;
+    }
+  }
+
+  return false;
 }
 
 function allPointsInsidePolygon(points: [number, number][], boundary: [number, number][]): boolean {
@@ -292,12 +338,14 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
   onPolygonChange,
   parentFarmPolygon,
   parentFieldPolygon,
+  otherPolygons,
   height = '420px',
   readOnly = false,
   hidePolygon = false,
   addressSearchQuery = '',
   hideAddressSearch = true,
   onAddressChange,
+  onValidationChange,
 }) => {
   const [mapCenter, setMapCenter] = useState<[number, number]>(center);
   const [mapType, setMapType] = useState<'osm' | 'street' | 'satellite'>('osm');
@@ -402,17 +450,58 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
     }
   }, [level]); // level is stable within a component instance
 
-  // ── Zone boundary check ──────────────────────────────────────────────────────
+  // Stable ref for onValidationChange
+  const onValidationChangeRef = React.useRef(onValidationChange);
+  useEffect(() => { onValidationChangeRef.current = onValidationChange; }, [onValidationChange]);
+
+  // Overlap and boundary check
+  const [overlappingNames, setOverlappingNames] = useState<string[]>([]);
+  const isOverlapping = overlappingNames.length > 0;
+  const isPolygonInvalid = zoneOutsideWarning || isOverlapping;
+
+  // ── Boundary & Overlap check ──────────────────────────────────────────────────
   useEffect(() => {
+    let hasOutside = false;
+    let outsideMsg = '';
+
+    // Check 1: Zone must be inside parentFieldPolygon
     if (level === 'ZONE' && parentFieldPolygon && parentFieldPolygon.length >= 3 && polygon.length > 0) {
       const violations = polygon.map(pt => !pointInPolygon(pt, parentFieldPolygon));
       setZoneViolations(violations);
-      setZoneOutsideWarning(violations.some(Boolean));
+      hasOutside = violations.some(Boolean);
+      setZoneOutsideWarning(hasOutside);
+      if (hasOutside) {
+        outsideMsg = 'Vị trí vượt ra ngoài ranh giới Lô đất!';
+      }
     } else {
       setZoneViolations([]);
       setZoneOutsideWarning(false);
     }
-  }, [level, polygon, parentFieldPolygon]);
+
+    // Check 2: Check overlap with other sibling polygons (Fields or Zones)
+    const overlaps: string[] = [];
+    if (otherPolygons && otherPolygons.length > 0 && polygon.length >= 3) {
+      for (const other of otherPolygons) {
+        if (other.polygon && other.polygon.length >= 3) {
+          if (doPolygonsOverlap(polygon, other.polygon)) {
+            overlaps.push(other.name);
+          }
+        }
+      }
+    }
+    setOverlappingNames(overlaps);
+
+    // Notify parent about validation state
+    if (onValidationChangeRef.current) {
+      if (hasOutside) {
+        onValidationChangeRef.current(false, outsideMsg);
+      } else if (overlaps.length > 0) {
+        onValidationChangeRef.current(false, `Bị trùng lấn lên: ${overlaps.join(', ')}`);
+      } else {
+        onValidationChangeRef.current(true, null);
+      }
+    }
+  }, [level, polygon, parentFieldPolygon, otherPolygons]);
 
   const handleOpenCoordModal = () => {
     if (polygon && polygon.length > 0) {
@@ -695,8 +784,21 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
         if (marker) {
           const pos = marker.getLatLng();
           const newCenter: [number, number] = [parseFloat(pos.lat.toFixed(6)), parseFloat(pos.lng.toFixed(6))];
+          
+          // If polygon has vertices, shift the entire polygon together with center
+          if (polygon.length > 0) {
+            const deltaLat = newCenter[0] - center[0];
+            const deltaLng = newCenter[1] - center[1];
+            const shiftedPoly = polygon.map(p => [
+              parseFloat((p[0] + deltaLat).toFixed(6)),
+              parseFloat((p[1] + deltaLng).toFixed(6)),
+            ] as [number, number]);
+            onPolygonChange(shiftedPoly);
+          }
+
           onCenterChange(newCenter);
           setMapCenter(newCenter);
+
           // Trigger reverse geocoding for FARM level via stable ref
           if (level === 'FARM') {
             reverseGeocodeRef.current(newCenter[0], newCenter[1]);
@@ -704,7 +806,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
         }
       },
     }),
-    [onCenterChange, level]
+    [onCenterChange, onPolygonChange, polygon, center, level]
   );
 
   const calculateAreaM2 = (coords: [number, number][]) => {
@@ -797,6 +899,16 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
           <span>
             <strong>⚠️ Cảnh báo:</strong> Một số đỉnh của Zone đang nằm <strong>ngoài ranh giới Lô đất (Field)</strong>!
             Hãy kéo ghim đỏ vào bên trong Lô đất hoặc dùng "📍 Nhập Tọa độ" để chỉnh lại.
+          </span>
+        </div>
+      )}
+
+      {/* Sibling Polygon Overlap warning banner */}
+      {isOverlapping && (
+        <div className="p-2.5 bg-red-50 border border-red-300 rounded-xl text-red-800 text-xs flex items-center gap-2 animate-in fade-in">
+          <AlertTriangle size={15} className="text-red-600 shrink-0" />
+          <span>
+            <strong>⚠️ Cảnh báo trùng lấn:</strong> Vị trí {level === 'FIELD' ? 'Lô đất' : 'Zone'} đang bị <strong>trùng lấn diện tích</strong> với các phân khu đã có: <strong className="underline text-red-900">{overlappingNames.join(', ')}</strong>! Vui lòng kéo điều chỉnh lại các đỉnh ranh giới để không đè lên nhau.
           </span>
         </div>
       )}
@@ -944,12 +1056,22 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
                 <span className="w-3 h-3 rounded bg-sky-500/20 border border-sky-600 border-dashed" /> Phân khu mẹ
               </div>
             )}
+            {otherPolygons && otherPolygons.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-slate-400/30 border border-slate-500 border-dashed" /> Phân khu đã có
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded" style={{ backgroundColor: levelStyle.stroke }} /> Hiện tại ({level})
+              <span className="w-3 h-3 rounded" style={{ backgroundColor: isPolygonInvalid ? '#ef4444' : levelStyle.stroke }} /> Hiện tại ({level})
             </div>
             {level === 'ZONE' && zoneOutsideWarning && (
               <div className="flex items-center gap-1.5 text-red-700 font-bold">
                 <span className="w-3 h-3 rounded bg-red-400" /> Ngoài Lô đất!
+              </div>
+            )}
+            {isOverlapping && (
+              <div className="flex items-center gap-1.5 text-red-700 font-bold">
+                <span className="w-3 h-3 rounded bg-red-500" /> Trùng lấn diện tích!
               </div>
             )}
           </div>
@@ -995,7 +1117,41 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
             </Marker>
 
 
-            {/* Parent Field Polygon */}
+            {/* Parent Farm Polygon (for FIELD level) */}
+            {parentFarmPolygon && parentFarmPolygon.length >= 3 && (
+              <Polygon
+                positions={parentFarmPolygon}
+                pathOptions={{ color: '#062326', fillColor: '#062326', fillOpacity: 0.08, weight: 2.5, dashArray: '6, 6' }}
+              />
+            )}
+
+            {/* Other Existing Sibling Fields/Zones for context */}
+            {otherPolygons && otherPolygons.map((op, oIdx) => (
+              op.polygon && op.polygon.length >= 3 && (
+                <Polygon
+                  key={`other-poly-${oIdx}`}
+                  positions={op.polygon}
+                  pathOptions={{
+                    color: '#64748b',
+                    fillColor: '#94a3b8',
+                    fillOpacity: 0.2,
+                    weight: 1.5,
+                    dashArray: '3, 3',
+                  }}
+                >
+                  <Popup>
+                    <div className="text-xs p-1">
+                      <strong className="text-slate-900 block">{op.name}</strong>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {op.areaM2 ? `${op.areaM2.toLocaleString()} m²` : 'Đã quy hoạch'}
+                      </span>
+                    </div>
+                  </Popup>
+                </Polygon>
+              )
+            ))}
+
+            {/* Parent Field Polygon (for ZONE level) */}
             {parentFieldPolygon && parentFieldPolygon.length >= 3 && (
               <Polygon
                 positions={parentFieldPolygon}
@@ -1008,11 +1164,11 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               <Polygon
                 positions={polygon}
                 pathOptions={{
-                  color: zoneOutsideWarning ? '#ef4444' : levelStyle.stroke,
-                  fillColor: zoneOutsideWarning ? '#ef4444' : levelStyle.fill,
-                  fillOpacity: 0.35,
-                  weight: zoneOutsideWarning ? 3 : 3,
-                  dashArray: zoneOutsideWarning ? '5, 5' : undefined,
+                  color: isPolygonInvalid ? '#ef4444' : levelStyle.stroke,
+                  fillColor: isPolygonInvalid ? '#ef4444' : levelStyle.fill,
+                  fillOpacity: isPolygonInvalid ? 0.45 : 0.35,
+                  weight: isPolygonInvalid ? 3.5 : 3,
+                  dashArray: isPolygonInvalid ? '5, 5' : undefined,
                 }}
               />
             )}

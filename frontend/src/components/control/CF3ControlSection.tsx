@@ -115,6 +115,9 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       setSchedules(filteredSchedules);
       setAutoRules(filteredRules);
       setCropsList(allCrops);
+      if (allCrops.length > 0 && selectedCropIdForSync === 'crop-tomato') {
+        setSelectedCropIdForSync(allCrops[0].cropId);
+      }
     } catch (err) {
       console.error('Failed to load CF3 scoped data:', err);
     } finally {
@@ -152,15 +155,26 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   };
 
   const handleSyncCropToZone = async () => {
-    const targetZoneId = zoneId || getScopedZoneIds()[0] || 'zone-01';
-    const res = await cropService.syncCropScheduleToZone(selectedCropIdForSync, targetZoneId);
-    if (res.success) {
+    const targetZoneId = zoneId || getScopedZoneIds()[0] || '32000000-0000-0000-0000-000000000001';
+    try {
+      const res = await cropService.syncCropScheduleToZone(selectedCropIdForSync, targetZoneId);
+      if (res?.success) {
+        setNotification({
+          type: 'success',
+          message: `⚡ Đã đồng bộ thành công ${res.createdSchedulesCount} ca tưới Sáng-Trưa-Chiều & Vi khí hậu từ Thư viện Cây sang Zone "${res.zoneName}"!`
+        });
+        setIsSyncModalOpen(false);
+        loadScopedData();
+      }
+    } catch (err: any) {
+      console.error('Failed to sync crop schedule to zone:', err);
+      const errMsg = err?.response?.status === 403 
+        ? 'Quyền truy cập: Chỉ tài khoản có thẩm quyền (Farm Owner / Kỹ thuật viên) mới được đồng bộ lịch sang Zone.'
+        : 'Không thể đồng bộ lịch tưới sang Zone lúc này. Vui lòng kiểm tra lại thiết bị của Zone.';
       setNotification({
-        type: 'success',
-        message: `⚡ Đã đồng bộ thành công ${res.createdSchedulesCount} ca tưới Sáng-Trưa-Chiều & Vi khí hậu từ Thư viện Cây sang Zone "${res.zoneName}"!`
+        type: 'error',
+        message: errMsg
       });
-      setIsSyncModalOpen(false);
-      loadScopedData();
     }
   };
 
@@ -365,9 +379,10 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {schedules.map(sch => {
-                      const isMorning = sch.name.toLowerCase().includes('sáng') || sch.startTime < '11:00';
-                      const isNoon = sch.name.toLowerCase().includes('trưa') || (sch.startTime >= '11:00' && sch.startTime <= '14:00');
-                      const isAfternoon = sch.name.toLowerCase().includes('chiều') || sch.startTime > '14:00';
+                      const schName = String(sch?.name || '').toLowerCase();
+                      const isMorning = schName.includes('sáng') || (sch.startTime && sch.startTime < '11:00');
+                      const isNoon = schName.includes('trưa') || (sch.startTime && sch.startTime >= '11:00' && sch.startTime <= '14:00');
+                      const isAfternoon = schName.includes('chiều') || (sch.startTime && sch.startTime > '14:00');
 
                       return (
                         <div key={sch.scheduleId} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">

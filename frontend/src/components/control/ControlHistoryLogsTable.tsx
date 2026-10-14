@@ -12,9 +12,12 @@ export const ControlHistoryLogsTable: React.FC<ControlHistoryLogsTableProps> = (
   const [selectedSource, setSelectedSource] = useState<string>('ALL');
 
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.actuatorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          log.zoneName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          log.gatewayCode.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = String(searchTerm || '').toLowerCase();
+    const actuator = String(log.actuatorName || '').toLowerCase();
+    const zone = String(log.zoneName || '').toLowerCase();
+    const gw = String(log.gatewayCode || '').toLowerCase();
+
+    const matchesSearch = !term || actuator.includes(term) || zone.includes(term) || gw.includes(term);
     const matchesSource = selectedSource === 'ALL' || log.triggerSource === selectedSource;
     return matchesSearch && matchesSource;
   });
@@ -93,8 +96,8 @@ export const ControlHistoryLogsTable: React.FC<ControlHistoryLogsTableProps> = (
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredLogs.map(log => (
-              <tr key={log.logId} className="hover:bg-slate-50/80 transition-colors">
+            {filteredLogs.map((log, index) => (
+              <tr key={log.logId || `log-${index}-${log.executedAt || Math.random()}`} className="hover:bg-slate-50/80 transition-colors">
                 <td className="py-3 px-4 font-mono text-slate-600 whitespace-nowrap">
                   {new Date(log.executedAt).toLocaleTimeString()} ({new Date(log.executedAt).toLocaleDateString()})
                 </td>
