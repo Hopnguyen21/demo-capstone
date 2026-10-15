@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
-import { alertService, supportService, notificationService, NotificationItem } from '../../services';
+import { alertService, supportService, notificationService, NotificationItem, isAuthenticated } from '../../services';
 import { mockWeather } from '../../mocks/mockData';
 import {
   Sprout, Search, Bell, Sun, CloudRain, UserCheck, LogOut,
@@ -19,6 +19,11 @@ export const Topbar: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const fetchNotifications = async () => {
+    if (!isAuthenticated()) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
     try {
       const [list, count] = await Promise.all([
         notificationService.getNotifications(undefined, 1, 15),
@@ -33,9 +38,14 @@ export const Topbar: React.FC = () => {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    const interval = setInterval(fetchNotifications, 15000);
+    const handleRefresh = () => fetchNotifications();
+    window.addEventListener('notification-refresh', handleRefresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('notification-refresh', handleRefresh);
+    };
+  }, [user]);
 
   useEffect(() => {
     alertService.getAlerts().then(res => {

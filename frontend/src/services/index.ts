@@ -710,18 +710,43 @@ export const deviceService = {
     }
   },
 
-  /** GET /api/v1/zones/{zoneId}/sensors */
+  /** GET /api/v1/zones/{zoneId}/sensors -> derived from zone devices */
   getSensors: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/zones/${targetZone}/sensors`).catch(() => ({ data: [] }));
-    return res.data?.value ?? res.data ?? [];
+    try {
+      const devices = await deviceService.getNodes(zoneId);
+      const allSensors = devices.flatMap((d: any) =>
+        (d.sensors || []).map((s: any) => ({
+          ...s,
+          deviceId: d.nodeId || d.deviceId,
+          deviceName: d.name,
+          zoneId: d.zoneId,
+          lastValue: s.lastReading?.value ?? s.currentValue ?? s.value ?? '--',
+          status: d.status || 'ONLINE',
+        }))
+      );
+      return allSensors;
+    } catch {
+      return [];
+    }
   },
 
-  /** GET /api/v1/zones/{zoneId}/actuators */
+  /** GET /api/v1/zones/{zoneId}/actuators -> derived from zone devices */
   getActuators: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/zones/${targetZone}/actuators`).catch(() => ({ data: [] }));
-    return res.data?.value ?? res.data ?? [];
+    try {
+      const devices = await deviceService.getNodes(zoneId);
+      const allActuators = devices.flatMap((d: any) =>
+        (d.actuators || []).map((a: any) => ({
+          ...a,
+          deviceId: d.nodeId || d.deviceId,
+          deviceName: d.name,
+          zoneId: d.zoneId,
+          status: a.status || d.status || 'ONLINE',
+        }))
+      );
+      return allActuators;
+    } catch {
+      return [];
+    }
   },
 
   /** IoT Requirements */

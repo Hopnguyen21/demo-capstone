@@ -5,12 +5,77 @@ import { controlService, seasonService } from '../../services';
 import { PlantingSeason, ControlSchedule, Actuator } from '../../types';
 
 export const PlantingSeasonsPage: React.FC = () => {
-  const [seasons, setSeasons] = useState<PlantingSeason[]>([]);
-  const [schedules, setSchedules] = useState<ControlSchedule[]>([]);
+  const DEFAULT_INITIAL_SEASONS: PlantingSeason[] = [
+    {
+      plantingSeasonId: 'season-demo-2026',
+      zoneId: '32000000-0000-0000-0000-000000000001',
+      zoneName: 'Demo Greenhouse Zone (Zone 1)',
+      farmId: '30000000-0000-0000-0000-000000000001',
+      cropId: 'crop-001',
+      cropName: 'Dưa leo Baby VietGAP',
+      varietyId: 'var-001',
+      varietyName: 'Giống VietGAP',
+      growthProfileId: 'gp-001',
+      name: 'Demo Season 2026',
+      startDate: '2026-09-28',
+      expectedEndDate: '2026-12-28',
+      currentGrowthStageId: 'stage-flowering',
+      currentGrowthStageName: 'Ra hoa (Flowering)',
+      status: 'ACTIVE',
+      progressPercent: 45,
+    },
+  ];
+
+  const DEFAULT_INITIAL_SCHEDULES: ControlSchedule[] = [
+    {
+      scheduleId: 'sch-season-01',
+      zoneId: '32000000-0000-0000-0000-000000000001',
+      actuatorId: 'act-01',
+      name: 'Tưới nhỏ giọt buổi sáng',
+      startTime: '06:00',
+      durationMinutes: 10,
+      daysOfWeek: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'],
+      actionType: 'TURN_ON',
+      isActive: true,
+      plantingSeasonId: 'season-demo-2026',
+      seasonName: 'Demo Season 2026',
+      growthStageName: 'Ra hoa (Flowering)',
+    },
+    {
+      scheduleId: 'sch-season-02',
+      zoneId: '32000000-0000-0000-0000-000000000001',
+      actuatorId: 'act-02',
+      name: 'Tưới phun sương hạ nhiệt chiều',
+      startTime: '14:00',
+      durationMinutes: 5,
+      daysOfWeek: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'],
+      actionType: 'TURN_ON',
+      isActive: true,
+      plantingSeasonId: 'season-demo-2026',
+      seasonName: 'Demo Season 2026',
+      growthStageName: 'Ra hoa (Flowering)',
+    },
+  ];
+
+  const [seasons, setSeasons] = useState<PlantingSeason[]>(DEFAULT_INITIAL_SEASONS);
+  const [schedules, setSchedules] = useState<ControlSchedule[]>(DEFAULT_INITIAL_SCHEDULES);
   const [selectedSeason, setSelectedSeason] = useState<PlantingSeason | null>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
+  const [isSeasonModalOpen, setIsSeasonModalOpen] = useState<boolean>(false);
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // New Planting Season Form State
+  const [seasonForm, setSeasonForm] = useState({
+    name: 'Vụ Cà Chua Vụ Đông Xuân 2026',
+    cropName: 'Cà chua Cherry Red Ruby',
+    varietyName: 'F1 Cao Sản VietGAP',
+    zoneName: 'Nhà màng Cà Chua 01',
+    growthStageName: 'Sinh trưởng (Vegetative)',
+    startDate: '2026-10-15',
+    expectedEndDate: '2027-01-15',
+    progressPercent: 15,
+  });
 
   // New Season Schedule Form State
   const [scheduleForm, setScheduleForm] = useState({
@@ -30,9 +95,9 @@ export const PlantingSeasonsPage: React.FC = () => {
         controlService.getSchedules().catch(() => []),
         controlService.getActuators().catch(() => []),
       ]);
-      if (Array.isArray(allSeasons)) setSeasons(allSeasons);
-      if (Array.isArray(allSchedules)) setSchedules(allSchedules);
-      if (Array.isArray(allActuators)) setActuators(allActuators);
+      if (Array.isArray(allSeasons) && allSeasons.length > 0) setSeasons(allSeasons);
+      if (Array.isArray(allSchedules) && allSchedules.length > 0) setSchedules(allSchedules);
+      if (Array.isArray(allActuators) && allActuators.length > 0) setActuators(allActuators);
     } catch (err) {
       console.error('Failed to load season data:', err);
     }
@@ -41,6 +106,32 @@ export const PlantingSeasonsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleCreateSeason = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newSeason: PlantingSeason = {
+      plantingSeasonId: `season-${Date.now()}`,
+      zoneId: '32000000-0000-0000-0000-000000000001',
+      zoneName: seasonForm.zoneName,
+      farmId: '30000000-0000-0000-0000-000000000001',
+      cropId: `crop-${Date.now()}`,
+      cropName: seasonForm.cropName,
+      varietyName: seasonForm.varietyName,
+      growthProfileId: `gp-${Date.now()}`,
+      name: seasonForm.name,
+      startDate: seasonForm.startDate,
+      expectedEndDate: seasonForm.expectedEndDate,
+      currentGrowthStageId: 'stage-1',
+      currentGrowthStageName: seasonForm.growthStageName,
+      status: 'ACTIVE',
+      progressPercent: Number(seasonForm.progressPercent),
+    };
+
+    setSeasons(prev => [newSeason, ...prev]);
+    setIsSeasonModalOpen(false);
+    setSuccessToast(`Đã kích hoạt thành công Vụ mùa mới: [${newSeason.name}]!`);
+    setTimeout(() => setSuccessToast(null), 4000);
+  };
 
   const handleOpenSetupSchedule = (season: PlantingSeason) => {
     setSelectedSeason(season);
@@ -105,7 +196,7 @@ export const PlantingSeasonsPage: React.FC = () => {
           </p>
         </div>
 
-        <Button className="font-bold">
+        <Button className="font-bold" onClick={() => setIsSeasonModalOpen(true)}>
           <Plus size={16} className="mr-1.5" /> Kích hoạt Vụ mùa Mới
         </Button>
       </div>
@@ -172,14 +263,27 @@ export const PlantingSeasonsPage: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {seasonSchedules.map(sch => (
-                      <div key={sch.scheduleId} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 text-xs">
+                      <div key={sch.scheduleId} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5 text-xs shadow-xs hover:border-emerald-300 transition-colors">
                         <div className="flex items-center justify-between font-bold text-slate-900">
-                          <span className="flex items-center gap-1.5">
-                            <Clock size={13} className="text-emerald-600" /> {sch.name}
+                          <span className="flex items-center gap-1.5 text-sm">
+                            <Clock size={14} className="text-emerald-600" /> {sch.name}
                           </span>
                           <StatusBadge status={sch.isActive ? 'ACTIVE' : 'INACTIVE'} />
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono flex justify-between pt-1">
+
+                        {/* Zone & Actuator information */}
+                        <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5 pb-1 border-b border-slate-100 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                            Khu vực: <strong className="text-slate-800">{s.zoneName || 'Demo Greenhouse Zone (Zone 1)'}</strong>
+                          </span>
+                          <span className="text-slate-400">•</span>
+                          <span>
+                            Thiết bị: <strong className="text-emerald-700">{sch.actuatorName || (sch.actuatorId === 'act-01' ? 'Máy bơm tưới nhỏ giọt P-01' : 'Hệ thống phun sương F-02')}</strong>
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500 font-mono flex justify-between items-center pt-0.5">
                           <span>Giờ chạy: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
                           <span>Thứ: <strong className="text-sky-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>
                         </div>
@@ -233,11 +337,20 @@ export const PlantingSeasonsPage: React.FC = () => {
                   onChange={e => setScheduleForm({ ...scheduleForm, actuatorId: e.target.value })}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-emerald-500"
                 >
-                  {actuators.filter(a => a.zoneId === selectedSeason.zoneId).map(a => (
-                    <option key={a.actuatorId} value={a.actuatorId}>
-                      {a.name} ({a.actuatorCode})
-                    </option>
-                  ))}
+                  {actuators.filter(a => a.zoneId === selectedSeason.zoneId).length === 0 ? (
+                    <option value="default-pump">Máy bơm tưới nhỏ giọt tiêu chuẩn (Mặc định)</option>
+                  ) : (
+                    actuators
+                      .filter(a => a.zoneId === selectedSeason.zoneId)
+                      .map((a, idx) => {
+                        const actKey = a.actuatorId || (a as any).id || (a as any).code || `actuator-${idx}`;
+                        return (
+                          <option key={actKey} value={actKey}>
+                            {a.name || 'Thiết bị chấp hành'} ({a.actuatorCode || actKey})
+                          </option>
+                        );
+                      })
+                  )}
                 </select>
               </div>
             </div>
@@ -301,6 +414,99 @@ export const PlantingSeasonsPage: React.FC = () => {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Modal Kích hoạt Vụ mùa Mới */}
+      <Modal isOpen={isSeasonModalOpen} onClose={() => setIsSeasonModalOpen(false)} title="Kích hoạt Vụ mùa Canh tác Mới">
+        <form onSubmit={handleCreateSeason} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Tên Vụ mùa (Season Name) *</label>
+            <Input
+              required
+              value={seasonForm.name}
+              onChange={e => setSeasonForm({ ...seasonForm, name: e.target.value })}
+              placeholder="VD: Demo Season 2026, Vụ Cà Chua Đông Xuân..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Cây trồng *</label>
+              <Input
+                required
+                value={seasonForm.cropName}
+                onChange={e => setSeasonForm({ ...seasonForm, cropName: e.target.value })}
+                placeholder="VD: Dưa leo Baby, Cà chua Cherry..."
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Giống cây (Variety)</label>
+              <Input
+                value={seasonForm.varietyName}
+                onChange={e => setSeasonForm({ ...seasonForm, varietyName: e.target.value })}
+                placeholder="VD: Giống VietGAP, F1 Thái Lan..."
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Khu vực / Nhà kính *</label>
+              <Input
+                required
+                value={seasonForm.zoneName}
+                onChange={e => setSeasonForm({ ...seasonForm, zoneName: e.target.value })}
+                placeholder="VD: Demo Greenhouse Zone (Zone 1)"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Giai đoạn ban đầu *</label>
+              <select
+                value={seasonForm.growthStageName}
+                onChange={e => setSeasonForm({ ...seasonForm, growthStageName: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-emerald-500"
+              >
+                <option value="Cây non (Seedling)">Cây non (Seedling)</option>
+                <option value="Sinh trưởng (Vegetative)">Sinh trưởng (Vegetative)</option>
+                <option value="Ra hoa (Flowering)">Ra hoa (Flowering)</option>
+                <option value="Nuôi trái (Fruit Development)">Nuôi trái (Fruit Development)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Ngày bắt đầu *</label>
+              <Input
+                type="date"
+                required
+                value={seasonForm.startDate}
+                onChange={e => setSeasonForm({ ...seasonForm, startDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Dự kiến thu hoạch *</label>
+              <Input
+                type="date"
+                required
+                value={seasonForm.expectedEndDate}
+                onChange={e => setSeasonForm({ ...seasonForm, expectedEndDate: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1 text-emerald-950">
+            <strong className="block font-bold">Tự động cấu hình vi khí hậu & Failsafe:</strong>
+            <p className="text-[11px] leading-tight">
+              Khi kích hoạt vụ mùa mới, hệ thống tự động gắn hồ sơ sinh trưởng tiêu chuẩn và sẵn sàng đồng bộ các lịch tưới mùa vụ tự động theo giai đoạn.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="ghost" type="button" onClick={() => setIsSeasonModalOpen(false)}>Hủy</Button>
+            <Button variant="primary" type="submit">Kích hoạt Vụ mùa</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

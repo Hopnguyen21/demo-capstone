@@ -95,13 +95,14 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
 
       {/* Grid of Actuator Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {actuators.map(act => {
+        {actuators.map((act, index) => {
+          const actKey = act.actuatorId || (act as any).id || (act as any).code || `actuator-${index}`;
           const isOn = act.status === 'ON';
           const isError = act.status === 'ERROR';
 
           return (
             <div
-              key={act.actuatorId}
+              key={actKey}
               className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
                 isOn
                   ? 'bg-emerald-50/40 border-emerald-300 shadow-md ring-1 ring-emerald-400'
