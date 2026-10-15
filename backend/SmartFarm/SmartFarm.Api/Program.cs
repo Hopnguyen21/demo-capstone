@@ -56,6 +56,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddHostedService<ControlAutomationWorker>();
+builder.Services.AddHostedService<SimulatedIotTelemetryWorker>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>

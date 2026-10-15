@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sliders, Droplets, Thermometer, Wind, Sun, CheckCircle2, RefreshCw, AlertCircle, Lock } from 'lucide-react';
 import { Button, CropRangeBand } from '../ui/BaseUI';
 import { EnvironmentalTargetConfig } from '../../types';
 import { useAuth } from '../../app/providers/AuthContext';
+import { telemetryService } from '../../services';
 
 interface EnvironmentalParametersPanelProps {
   configs: EnvironmentalTargetConfig[];
@@ -28,6 +29,62 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
   const [selectedZoneId, setSelectedZoneId] = useState<string>(configs[0]?.zoneId || '32000000-0000-0000-0000-000000000001');
   const [currentConfigs, setCurrentConfigs] = useState<EnvironmentalTargetConfig[]>(configs.length > 0 ? configs : [fallbackConfig]);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [realtimeTelemetry, setRealtimeTelemetry] = useState<{
+    soilMoisture: number;
+    temperature: number;
+    humidity: number;
+    light: number;
+  }>({
+    soilMoisture: 68.4,
+    temperature: 24.8,
+    humidity: 71.5,
+    light: 740,
+  });
+
+  // Tự động load dữ liệu thực tế từ Backend ngầm mỗi 10 giây
+  useEffect(() => {
+    if (!selectedZoneId) return;
+
+    let isMounted = true;
+    const fetchLatest = async () => {
+      try {
+        const data = await telemetryService.getRealtime(selectedZoneId);
+        if (data && data.metrics && Array.isArray(data.metrics)) {
+          let sm = 68.4;
+          let temp = 24.8;
+          let hum = 71.5;
+          let lux = 740;
+
+          data.metrics.forEach((m: any) => {
+            const code = m.parameterCode?.toString();
+            const val = Number(m.value);
+            if (code === 'SoilMoisture' || code === '0') sm = val;
+            else if (code === 'Temperature' || code === '1') temp = val;
+            else if (code === 'AirHumidity' || code === '2') hum = val;
+            else if (code === 'LightIntensity' || code === '3') lux = val;
+          });
+
+          if (isMounted) {
+            setRealtimeTelemetry({
+              soilMoisture: sm,
+              temperature: temp,
+              humidity: hum,
+              light: lux,
+            });
+          }
+        }
+      } catch {
+        // Giữ giá trị hiện tại
+      }
+    };
+
+    fetchLatest();
+    const timer = setInterval(fetchLatest, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, [selectedZoneId]);
 
   React.useEffect(() => {
     if (configs && configs.length > 0) {
@@ -102,7 +159,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
           min={activeConfig.minSoilMoisture}
           max={activeConfig.maxSoilMoisture}
           target={activeConfig.targetSoilMoisture}
-          current={68.4}
+          current={realtimeTelemetry.soilMoisture}
           unit="%"
         />
         <CropRangeBand
@@ -110,7 +167,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
           min={18}
           max={activeConfig.maxTemperature}
           target={activeConfig.maxTemperature - 3}
-          current={24.8}
+          current={realtimeTelemetry.temperature}
           unit="°C"
         />
         <CropRangeBand
@@ -118,15 +175,15 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
           min={60}
           max={85}
           target={activeConfig.targetHumidity}
-          current={71.5}
+          current={realtimeTelemetry.humidity}
           unit="%"
         />
         <CropRangeBand
           label="Cường độ Ánh sáng (Lux)"
           min={2000}
-          max={10000}
+          max={activeConfig.targetLux ? Math.max(activeConfig.targetLux * 1.5, 60000) : 60000}
           target={activeConfig.targetLux}
-          current={740}
+          current={realtimeTelemetry.light}
           unit="lux"
         />
       </div>
@@ -218,20 +275,21 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
               <span className="flex items-center gap-1 text-purple-700">
                 <Sun size={14} /> Ánh sáng GrowLight
               </span>
-              <span className="text-purple-700 font-mono text-sm">{activeConfig.targetLux} Lux</span>
+              <span className="text-purple-700 font-mono text-sm">{activeConfig.targetLux.toLocaleString()} Lux</span>
             </div>
             <input
               type="range"
-              min={2000}
-              max={10000}
-              step={500}
+              min={5000}
+              max={50000}
+              step={1000}
               disabled={!isOwner}
               value={activeConfig.targetLux}
               onChange={(e) => handleParamChange('targetLux', Number(e.target.value))}
               className={`w-full accent-purple-600 ${!isOwner ? 'cursor-not-allowed opacity-60' : ''}`}
             />
-            <div className="text-[10px] text-slate-500">
-              Bổ sung đèn khi ánh sáng tự nhiên &lt; {activeConfig.targetLux} Lux
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>Bổ sung đèn khi &lt; {activeConfig.targetLux.toLocaleString()} Lux</span>
+              <span>Tối đa: 50.000 Lux</span>
             </div>
           </div>
         </div>

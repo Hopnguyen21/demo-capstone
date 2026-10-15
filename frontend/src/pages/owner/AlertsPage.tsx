@@ -263,7 +263,21 @@ export const AlertsPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Button size="sm" variant="outline"><Bot size={14} className="mr-1" /> Hỏi AI</Button>
-                {a.status === 'OPEN' && <Button size="sm" onClick={() => setHistoricAlerts(p => p.map((x: any) => x.alertId === a.alertId ? { ...x, status: 'ACKNOWLEDGED' } : x))}><CheckCircle2 size={14} className="mr-1" /> Xác nhận</Button>}
+                {a.status === 'OPEN' && (
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await alertService.acknowledgeAlert(a.alertId, 'Đã tiếp nhận xử lý từ giao diện');
+                      } catch (err) {
+                        console.error('Failed to acknowledge alert on backend:', err);
+                      }
+                      setHistoricAlerts(p => p.map((x: any) => x.alertId === a.alertId ? { ...x, status: 'ACKNOWLEDGED' } : x));
+                    }}
+                  >
+                    <CheckCircle2 size={14} className="mr-1" /> Xác nhận
+                  </Button>
+                )}
               </div>
             </div>
           ))}
