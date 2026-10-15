@@ -99,15 +99,31 @@ export const CropsPage: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingCropId) {
-      await cropService.updateCrop(editingCropId, formData);
-      setNotification({ type: 'success', message: `Đã cập nhật cây trồng [${formData.name}]!` });
-    } else {
-      await cropService.createCrop(formData);
-      setNotification({ type: 'success', message: `Đã thêm cây trồng [${formData.name}] với Lịch tưới Sáng-Trưa-Chiều thành công!` });
+    if (!formData.name?.trim()) {
+      setActiveModalTab('INFO');
+      setNotification({ type: 'error', message: 'Vui lòng nhập Tên cây trồng (Bước 1) trước khi lưu!' });
+      return;
     }
-    setIsModalOpen(false);
-    loadData();
+    try {
+      const payload = {
+        ...formData,
+        name: formData.name.trim(),
+        scientificName: formData.scientificName?.trim() || formData.name.trim(),
+      };
+      if (editingCropId) {
+        await cropService.updateCrop(editingCropId, payload);
+        setNotification({ type: 'success', message: `Đã cập nhật cây trồng [${payload.name}]!` });
+      } else {
+        await cropService.createCrop(payload);
+        setNotification({ type: 'success', message: `Đã thêm cây trồng [${payload.name}] vào Thư viện thành công!` });
+      }
+      setIsModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      const msg = err?.response?.data?.detail || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi lưu cây trồng.';
+      setNotification({ type: 'error', message: `Lỗi: ${msg}` });
+    }
   };
 
   const handleSyncToZone = async (cropId?: string, targetZoneId?: string) => {
@@ -116,13 +132,19 @@ export const CropsPage: React.FC = () => {
 
     if (!cId || !zId) return;
 
-    const res = await cropService.syncCropScheduleToZone(cId, zId);
-    if (res.success) {
-      setNotification({
-        type: 'success',
-        message: `⚡ Đã đồng bộ thành công ${res.createdSchedulesCount} lịch tưới Sáng-Trưa-Chiều & Ngưỡng Vi khí hậu sang Zone "${res.zoneName}"!`
-      });
-      loadData();
+    try {
+      const res = await cropService.syncCropScheduleToZone(cId, zId);
+      if (res.success) {
+        setNotification({
+          type: 'success',
+          message: `⚡ Đã đồng bộ thành công ${res.createdSchedulesCount} lịch tưới Sáng-Trưa-Chiều & Ngưỡng Vi khí hậu sang Zone "${res.zoneName}"!`
+        });
+        await loadData();
+      }
+    } catch (err: any) {
+      console.error(err);
+      const msg = err?.response?.data?.detail || err?.response?.data?.message || err?.message || 'Có lỗi khi đồng bộ sang Zone.';
+      setNotification({ type: 'error', message: `Lỗi: ${msg}` });
     }
   };
 

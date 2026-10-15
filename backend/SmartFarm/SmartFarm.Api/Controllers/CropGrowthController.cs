@@ -16,38 +16,47 @@ public sealed class CropGrowthController(ICropGrowthService service) : Controlle
     public async Task<ActionResult<IReadOnlyList<CropView>>> Crops([FromQuery] bool? systemDefined, CancellationToken ct) => Ok(await service.ListCropsAsync(User.GetUserId(), User.GetOptionalTenantId(), systemDefined, ct));
 
     // API catalog #34
-    [HttpPost("api/v1/crops"), Authorize(Roles = "FarmOwner")]
+    [HttpPost("api/v1/crops"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<CropView>> CreateCrop(CreateCropRequest request, CancellationToken ct)
-    { var result = await service.CreateCropAsync(User.GetUserId(), User.GetTenantId(), new(request.Name, request.ScientificName, request.Description), ct); return Created($"/api/v1/crops/{result.CropId}", result); }
+    { var result = await service.CreateCropAsync(User.GetUserId(), User.GetOptionalTenantId(), new(request.Name, request.ScientificName, request.Description), ct); return Created($"/api/v1/crops/{result.CropId}", result); }
+
+    [HttpPut("api/v1/crops/{cropId:guid}"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
+    public async Task<ActionResult<CropView>> UpdateCrop(Guid cropId, UpdateCropRequest request, CancellationToken ct)
+    { var result = await service.UpdateCropAsync(User.GetUserId(), User.GetOptionalTenantId(), cropId, new(request.Name, request.ScientificName, request.Description), ct); return Ok(result); }
+
+    [HttpDelete("api/v1/crops/{cropId:guid}"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
+    public async Task<IActionResult> DeleteCrop(Guid cropId, CancellationToken ct)
+    { await service.DeleteCropAsync(User.GetUserId(), User.GetOptionalTenantId(), cropId, ct); return NoContent(); }
 
     // API catalog #35
     [HttpGet("api/v1/crops/{cropId:guid}/varieties")]
     public async Task<ActionResult<IReadOnlyList<VarietyView>>> Varieties(Guid cropId, CancellationToken ct) => Ok(await service.ListVarietiesAsync(User.GetUserId(), User.GetOptionalTenantId(), cropId, ct));
 
     // API catalog #36
-    [HttpPost("api/v1/crops/{cropId:guid}/varieties"), Authorize(Roles = "FarmOwner")]
+    [HttpPost("api/v1/crops/{cropId:guid}/varieties"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<VarietyView>> CreateVariety(Guid cropId, CreateVarietyRequest request, CancellationToken ct)
-    { var result = await service.CreateVarietyAsync(User.GetUserId(), User.GetTenantId(), cropId, new(request.Name, request.Description), ct); return Created($"/api/v1/crops/{cropId}/varieties/{result.VarietyId}", result); }
+    { var result = await service.CreateVarietyAsync(User.GetUserId(), User.GetOptionalTenantId(), cropId, new(request.Name, request.Description), ct); return Created($"/api/v1/crops/{cropId}/varieties/{result.VarietyId}", result); }
 
     // API catalog #37
     [HttpGet("api/v1/crops/{cropId:guid}/growth-profiles")]
     public async Task<ActionResult<IReadOnlyList<GrowthProfileView>>> Profiles(Guid cropId, [FromQuery] Guid? varietyId, CancellationToken ct) => Ok(await service.ListProfilesAsync(User.GetUserId(), User.GetOptionalTenantId(), cropId, varietyId, ct));
 
     // API catalog #38
-    [HttpPost("api/v1/growth-profiles"), Authorize(Roles = "FarmOwner")]
+    [HttpPost("api/v1/growth-profiles"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<GrowthProfileView>> CreateProfile(CreateGrowthProfileRequest request, CancellationToken ct)
-    { var result = await service.CreateProfileAsync(User.GetUserId(), User.GetTenantId(), request.ToCommand(), ct); return Created($"/api/v1/growth-profiles/{result.ProfileId}/stages", result); }
+    { var result = await service.CreateProfileAsync(User.GetUserId(), User.GetOptionalTenantId(), request.ToCommand(), ct); return Created($"/api/v1/growth-profiles/{result.ProfileId}/stages", result); }
 
     // API catalog #39
     [HttpGet("api/v1/growth-profiles/{profileId:guid}/stages")]
     public async Task<ActionResult<IReadOnlyList<GrowthStageView>>> Stages(Guid profileId, CancellationToken ct) => Ok((await service.GetProfileAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, ct)).Stages);
 
     // API catalog #40
-    [HttpPut("api/v1/growth-stages/{stageId:guid}/requirements"), Authorize(Roles = "FarmOwner")]
-    public async Task<ActionResult<RequirementUpdateView>> Requirements(Guid stageId, UpdateRequirementsRequest request, CancellationToken ct) => Ok(await service.UpdateRequirementsAsync(User.GetUserId(), User.GetTenantId(), stageId, request.Requirements.Select(x => x.ToInput()).ToList(), ct));
+    [HttpPut("api/v1/growth-stages/{stageId:guid}/requirements"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
+    public async Task<ActionResult<RequirementUpdateView>> Requirements(Guid stageId, UpdateRequirementsRequest request, CancellationToken ct) => Ok(await service.UpdateRequirementsAsync(User.GetUserId(), User.GetOptionalTenantId(), stageId, request.Requirements.Select(x => x.ToInput()).ToList(), ct));
 }
 
-public sealed class CreateCropRequest { [Required, StringLength(150, MinimumLength = 2)] public string Name { get; init; } = ""; [Required, StringLength(200)] public string ScientificName { get; init; } = ""; [StringLength(1000)] public string? Description { get; init; } }
+public sealed class CreateCropRequest { [Required, StringLength(150, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(200)] public string? ScientificName { get; init; } [StringLength(1000)] public string? Description { get; init; } }
+public sealed class UpdateCropRequest { [Required, StringLength(150, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(200)] public string? ScientificName { get; init; } [StringLength(1000)] public string? Description { get; init; } }
 public sealed class CreateVarietyRequest { [Required, StringLength(150, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(1000)] public string? Description { get; init; } }
 public sealed class RequirementRequest { [Required] public EnvironmentalParameterCode ParameterCode { get; init; } public decimal MinValue { get; init; } public decimal MaxValue { get; init; } public decimal TargetValue { get; init; } [Required, StringLength(30)] public string Unit { get; init; } = ""; internal RequirementInput ToInput() => new(ParameterCode, MinValue, MaxValue, TargetValue, Unit); }
 public sealed class StageRequest { [Required, StringLength(150)] public string Name { get; init; } = ""; [Range(1, 100)] public int StageOrder { get; init; } [Range(1, 1000)] public int DurationDays { get; init; } [Required, MinLength(1)] public List<RequirementRequest> Requirements { get; init; } = []; internal StageInput ToInput() => new(Name, StageOrder, DurationDays, Requirements.Select(x => x.ToInput()).ToList()); }

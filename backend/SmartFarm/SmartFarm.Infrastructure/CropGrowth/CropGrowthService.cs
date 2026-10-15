@@ -23,17 +23,47 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         return (await query.OrderBy(x => x.Name).ToListAsync(ct)).Select(x => x.ToView()).ToList();
     }
 
-    public async Task<CropView> CreateCropAsync(Guid userId, Guid tenantId, CreateCropCommand command, CancellationToken ct)
+    public async Task<CropView> CreateCropAsync(Guid userId, Guid? tenantId, CreateCropCommand command, CancellationToken ct)
     {
-        await EnsureUserAsync(userId, tenantId, true, ct);
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
         var name = Required(command.Name, nameof(command.Name), 150);
-        var scientific = Required(command.ScientificName, nameof(command.ScientificName), 200);
-        if (!ScientificNameRegex().IsMatch(scientific)) throw new RequestValidationException(nameof(command.ScientificName), "Scientific name must be binomial, for example 'Solanum lycopersicum'.");
+        var scientific = command.ScientificName?.Trim();
+        if (string.IsNullOrWhiteSpace(scientific))
+        {
+            scientific = name;
+        }
         var normalized = Normalize(name);
         if (await dbContext.Crops.AnyAsync(x => (x.TenantId == null || x.TenantId == tenantId) && x.NormalizedName == normalized, ct))
             throw new ResourceConflictException("A Crop with this name already exists in the visible catalog.");
-        var crop = new Crop { TenantId = tenantId, CreatedByUserId = userId, Name = name, NormalizedName = normalized, ScientificName = scientific, Description = Optional(command.Description, 1000) };
+        var isSystemDefined = user.Role == UserRole.PlatformAdmin || tenantId == null;
+        var crop = new Crop { TenantId = isSystemDefined ? null : tenantId, CreatedByUserId = userId, Name = name, NormalizedName = normalized, ScientificName = scientific, Description = Optional(command.Description, 1000), IsSystemDefined = isSystemDefined };
         dbContext.Crops.Add(crop); await dbContext.SaveChangesAsync(ct); return crop.ToView();
+    }
+
+    public async Task<CropView> UpdateCropAsync(Guid userId, Guid? tenantId, Guid cropId, UpdateCropCommand command, CancellationToken ct)
+    {
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
+        var crop = await dbContext.Crops.SingleOrDefaultAsync(x => x.Id == cropId && (user.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), ct)
+            ?? throw new ResourceNotFoundException("Crop was not found.");
+        var name = Required(command.Name, nameof(command.Name), 150);
+        var normalized = Normalize(name);
+        if (await dbContext.Crops.AnyAsync(x => x.Id != cropId && (x.TenantId == null || x.TenantId == tenantId) && x.NormalizedName == normalized, ct))
+            throw new ResourceConflictException("A Crop with this name already exists in the visible catalog.");
+        crop.Name = name;
+        crop.NormalizedName = normalized;
+        if (!string.IsNullOrWhiteSpace(command.ScientificName)) crop.ScientificName = command.ScientificName.Trim();
+        crop.Description = Optional(command.Description, 1000);
+        await dbContext.SaveChangesAsync(ct);
+        return crop.ToView();
+    }
+
+    public async Task DeleteCropAsync(Guid userId, Guid? tenantId, Guid cropId, CancellationToken ct)
+    {
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
+        var crop = await dbContext.Crops.SingleOrDefaultAsync(x => x.Id == cropId && (user.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), ct)
+            ?? throw new ResourceNotFoundException("Crop was not found.");
+        dbContext.Crops.Remove(crop);
+        await dbContext.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyList<VarietyView>> ListVarietiesAsync(Guid userId, Guid? tenantId, Guid cropId, CancellationToken ct)
@@ -43,13 +73,14 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         return rows.Select(x => x.ToView()).ToList();
     }
 
-    public async Task<VarietyView> CreateVarietyAsync(Guid userId, Guid tenantId, Guid cropId, CreateVarietyCommand command, CancellationToken ct)
+    public async Task<VarietyView> CreateVarietyAsync(Guid userId, Guid? tenantId, Guid cropId, CreateVarietyCommand command, CancellationToken ct)
     {
-        await EnsureUserAsync(userId, tenantId, true, ct); await VisibleCropAsync(cropId, tenantId, ct);
+        var user = await EnsureUserAsync(userId, tenantId, true, ct); await VisibleCropAsync(cropId, tenantId, ct);
         var name = Required(command.Name, nameof(command.Name), 150); var normalized = Normalize(name);
         if (await dbContext.CropVarieties.AnyAsync(x => x.CropId == cropId && (x.TenantId == null || x.TenantId == tenantId) && x.NormalizedName == normalized, ct))
             throw new ResourceConflictException("A Variety with this name already exists for the Crop.");
-        var variety = new CropVariety { CropId = cropId, TenantId = tenantId, CreatedByUserId = userId, Name = name, NormalizedName = normalized, Description = Optional(command.Description, 1000) };
+        var isSystemDefined = user.Role == UserRole.PlatformAdmin || tenantId == null;
+        var variety = new CropVariety { CropId = cropId, TenantId = isSystemDefined ? null : tenantId, CreatedByUserId = userId, Name = name, NormalizedName = normalized, Description = Optional(command.Description, 1000), IsSystemDefined = isSystemDefined };
         dbContext.CropVarieties.Add(variety); await dbContext.SaveChangesAsync(ct); return variety.ToView();
     }
 
@@ -61,9 +92,9 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         return (await query.AsNoTracking().OrderByDescending(x => x.IsDefault).ThenBy(x => x.Name).ToListAsync(ct)).Select(x => x.ToView()).ToList();
     }
 
-    public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid tenantId, CreateGrowthProfileCommand command, CancellationToken ct)
+    public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenantId, CreateGrowthProfileCommand command, CancellationToken ct)
     {
-        await EnsureUserAsync(userId, tenantId, true, ct); await VisibleCropAsync(command.CropId, tenantId, ct);
+        var user = await EnsureUserAsync(userId, tenantId, true, ct); await VisibleCropAsync(command.CropId, tenantId, ct);
         if (command.VarietyId.HasValue) await VisibleVarietyAsync(command.VarietyId.Value, command.CropId, tenantId, ct);
         if (command.SourceProfileId.HasValue == (command.Stages is { Count: > 0 }))
             throw new RequestValidationException("sourceProfileId", "Provide exactly one of sourceProfileId or stages.");
@@ -71,21 +102,23 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         if (await dbContext.GrowthProfiles.AnyAsync(x => x.TenantId == tenantId && x.CropId == command.CropId && x.VarietyId == command.VarietyId && x.NormalizedName == normalized, ct))
             throw new ResourceConflictException("A Growth Profile with this name already exists.");
         GrowthProfile profile;
+        var isSystemDefined = user.Role == UserRole.PlatformAdmin || tenantId == null;
         if (command.SourceProfileId.HasValue)
         {
             var source = await ProfileQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.SourceProfileId && x.TenantId == null, ct)
                 ?? throw new ResourceNotFoundException("System Growth Profile was not found.");
             if (source.CropId != command.CropId || source.VarietyId != command.VarietyId) throw new RequestValidationException("sourceProfileId", "Source Profile does not match Crop and Variety.");
-            profile = Clone(source, userId, tenantId, name, command.Description, command.IsDefault);
+            profile = Clone(source, userId, isSystemDefined ? Guid.Empty : tenantId!.Value, name, command.Description, command.IsDefault);
+            if (isSystemDefined) { profile.TenantId = null; profile.IsSystemDefined = true; }
         }
         else
         {
             ValidateStages(command.Stages!);
-            profile = new GrowthProfile { CropId = command.CropId, VarietyId = command.VarietyId, TenantId = tenantId, CreatedByUserId = userId, Name = name, NormalizedName = normalized, Description = Optional(command.Description, 1000), IsDefault = command.IsDefault };
+            profile = new GrowthProfile { CropId = command.CropId, VarietyId = command.VarietyId, TenantId = isSystemDefined ? null : tenantId, CreatedByUserId = userId, Name = name, NormalizedName = normalized, Description = Optional(command.Description, 1000), IsDefault = command.IsDefault, IsSystemDefined = isSystemDefined };
             AddStages(profile, command.Stages!);
         }
         await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        if (profile.IsDefault) await UnsetDefaultsAsync(tenantId, profile.CropId, profile.VarietyId, ct);
+        if (profile.IsDefault) await UnsetDefaultsAsync(profile.TenantId, profile.CropId, profile.VarietyId, ct);
         dbContext.GrowthProfiles.Add(profile); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return profile.ToView();
     }
 
@@ -97,20 +130,27 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         return profile.ToView();
     }
 
-    public async Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken ct)
+    public async Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken ct)
     {
-        await EnsureUserAsync(userId, tenantId, true, ct); ValidateRequirements(requirements, false);
+        var user = await EnsureUserAsync(userId, tenantId, true, ct); ValidateRequirements(requirements, false);
         var stage = await dbContext.GrowthStages.Include(x => x.Requirements).Include(x => x.GrowthProfile).SingleOrDefaultAsync(x => x.Id == stageId, ct)
             ?? throw new ResourceNotFoundException("Growth Stage was not found.");
         var cloned = false;
         if (stage.GrowthProfile.IsSystemDefined)
         {
-            var source = await ProfileQuery().AsNoTracking().SingleAsync(x => x.Id == stage.GrowthProfileId, ct);
-            var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SourceProfileId == source.Id, ct);
-            if (profile is null) { profile = Clone(source, userId, tenantId, source.Name + " - Custom", source.Description, false); dbContext.GrowthProfiles.Add(profile); await dbContext.SaveChangesAsync(ct); cloned = true; }
-            stage = profile.Stages.Single(x => x.StageOrder == stage.StageOrder);
+            if (user.Role == UserRole.PlatformAdmin)
+            {
+                // PlatformAdmin directly updates system profile requirements
+            }
+            else
+            {
+                var source = await ProfileQuery().AsNoTracking().SingleAsync(x => x.Id == stage.GrowthProfileId, ct);
+                var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SourceProfileId == source.Id, ct);
+                if (profile is null) { profile = Clone(source, userId, tenantId!.Value, source.Name + " - Custom", source.Description, false); dbContext.GrowthProfiles.Add(profile); await dbContext.SaveChangesAsync(ct); cloned = true; }
+                stage = profile.Stages.Single(x => x.StageOrder == stage.StageOrder);
+            }
         }
-        else if (stage.GrowthProfile.TenantId != tenantId) throw new ResourceNotFoundException("Growth Stage was not found in the current Tenant.");
+        else if (user.Role != UserRole.PlatformAdmin && stage.GrowthProfile.TenantId != tenantId) throw new ResourceNotFoundException("Growth Stage was not found in the current Tenant.");
         foreach (var input in requirements)
         {
             var item = stage.Requirements.SingleOrDefault(x => x.ParameterCode == input.ParameterCode);
@@ -180,11 +220,13 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
 
     private IQueryable<GrowthProfile> ProfileQuery() => dbContext.GrowthProfiles.Include(x => x.Stages).ThenInclude(x => x.Requirements);
     private IQueryable<PlantingSeason> SeasonQuery() => dbContext.PlantingSeasons.Include(x => x.Zone).ThenInclude(x => x.Field).ThenInclude(x => x.Farm).Include(x => x.AppliedRequirements).Include(x => x.StageTransitions);
-    private async Task EnsureUserAsync(Guid id, Guid? tenantId, bool ownerRequired, CancellationToken ct)
+    private async Task<AppUser> EnsureUserAsync(Guid id, Guid? tenantId, bool ownerRequired, CancellationToken ct)
     {
         var user = await dbContext.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new AuthorizationException();
+        if (user.Role == UserRole.PlatformAdmin) return user;
         if (ownerRequired && (user.Role != UserRole.FarmOwner || user.TenantId != tenantId)) throw new AuthorizationException("FarmOwner role in the current Tenant is required.");
         if (user.Role is UserRole.FarmOwner or UserRole.Farmer && user.TenantId != tenantId) throw new AuthorizationException("Token Tenant scope is stale.");
+        return user;
     }
     private async Task EnsureZoneOwnerAsync(Guid tenantId, Guid zoneId, CancellationToken ct) { if (!await dbContext.Zones.AnyAsync(x => x.Id == zoneId && x.Field.Farm.TenantId == tenantId, ct)) throw new ResourceNotFoundException("Zone was not found in the current Tenant."); }
     private async Task EnsureZoneReadAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
@@ -205,7 +247,7 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
     private static void ValidateStages(IReadOnlyList<StageInput> stages) { if (stages.Count == 0 || stages.Select(x => x.StageOrder).Order().Where((x, i) => x != i + 1).Any()) throw new RequestValidationException("stages", "Stage orders must be contiguous and start at 1."); if (stages.Select(x => Normalize(x.Name)).Distinct().Count() != stages.Count) throw new RequestValidationException("stages", "Stage names must be unique."); foreach (var s in stages) { Required(s.Name, "stage.name", 150); if (s.DurationDays <= 0) throw new RequestValidationException("durationDays", "Duration must be positive."); ValidateRequirements(s.Requirements, true); } }
     private static void ValidateRequirements(IReadOnlyList<RequirementInput> requirements, bool requireCore) { if (requirements.Count == 0 || requirements.Select(x => x.ParameterCode).Distinct().Count() != requirements.Count) throw new RequestValidationException("requirements", "Requirements must be non-empty and parameter codes unique."); foreach (var r in requirements) { if (r.MinValue > r.TargetValue || r.TargetValue > r.MaxValue) throw new RequestValidationException("requirements", "Each range must satisfy min <= target <= max."); Required(r.Unit, "unit", 30); } if (requireCore && CoreParameters.Except(requirements.Select(x => x.ParameterCode)).Any()) throw new RequestValidationException("requirements", "Every stage requires Temperature, SoilMoisture, AirHumidity and Ph thresholds."); }
     private static void ApplyRequirements(PlantingSeason season, GrowthStage stage) { foreach (var r in stage.Requirements) season.AppliedRequirements.Add(new SeasonAppliedRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit }); }
-    private async Task UnsetDefaultsAsync(Guid tenant, Guid crop, Guid? variety, CancellationToken ct) { var rows = await dbContext.GrowthProfiles.Where(x => x.TenantId == tenant && x.CropId == crop && x.VarietyId == variety && x.IsDefault).ToListAsync(ct); foreach (var x in rows) x.IsDefault = false; }
+    private async Task UnsetDefaultsAsync(Guid? tenant, Guid crop, Guid? variety, CancellationToken ct) { var rows = await dbContext.GrowthProfiles.Where(x => x.TenantId == tenant && x.CropId == crop && x.VarietyId == variety && x.IsDefault).ToListAsync(ct); foreach (var x in rows) x.IsDefault = false; }
     private static string Required(string? value, string field, int max) { var result = value?.Trim(); if (string.IsNullOrWhiteSpace(result) || result.Length > max) throw new RequestValidationException(field, $"Value is required and limited to {max} characters."); return result; }
     private static string? Optional(string? value, int max) { if (string.IsNullOrWhiteSpace(value)) return null; var result = value.Trim(); if (result.Length > max) throw new RequestValidationException("value", $"Value is limited to {max} characters."); return result; }
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();

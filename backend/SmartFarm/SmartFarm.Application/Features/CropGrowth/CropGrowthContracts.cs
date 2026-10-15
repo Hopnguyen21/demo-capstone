@@ -2,7 +2,8 @@ using SmartFarm.Domain.Enums;
 
 namespace SmartFarm.Application.Features.CropGrowth;
 
-public sealed record CreateCropCommand(string Name, string ScientificName, string? Description);
+public sealed record CreateCropCommand(string Name, string? ScientificName, string? Description);
+public sealed record UpdateCropCommand(string Name, string? ScientificName, string? Description);
 public sealed record CropView(Guid CropId, string Name, string ScientificName, string? Description, bool IsSystemDefined, Guid? TenantId);
 public sealed record CreateVarietyCommand(string Name, string? Description);
 public sealed record VarietyView(Guid VarietyId, Guid CropId, string Name, string? Description, bool IsSystemDefined, Guid? TenantId);

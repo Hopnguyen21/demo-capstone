@@ -184,9 +184,10 @@ public sealed class PlatformFeaturesController(
 
     // ─── 10. Farm Weather Forecast ────────────────────────────────────────────
     [HttpGet("api/v1/farms/{farmId:guid}/weather")]
+    [Authorize(Roles = "Farmer,FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<FarmWeatherView>> GetFarmWeather(Guid farmId, CancellationToken ct)
     {
-        return Ok(await weatherService.GetFarmWeatherAsync(User.GetUserId(), User.GetTenantId(), farmId, ct));
+        return Ok(await weatherService.GetFarmWeatherAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, ct));
     }
 
     // ─── 11. Farmer Tasks & Assigned Zones ────────────────────────────────────
@@ -223,7 +224,7 @@ public sealed class PlatformFeaturesController(
         [FromBody] SyncCropScheduleRequest request,
         CancellationToken ct)
     {
-        var result = await scheduleSyncService.SyncFromCropAsync(User.GetUserId(), User.GetTenantId(), zoneId, request.CropId, request.ActuatorId, ct);
+        var result = await scheduleSyncService.SyncFromCropAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, request.CropId, request.ActuatorId, ct);
         return Ok(result);
     }
 
@@ -245,16 +246,16 @@ public sealed class PlatformFeaturesController(
         [FromQuery] Guid? zoneId = null,
         CancellationToken ct = default)
     {
-        return Ok(await controlAutomationService.GetEnvironmentalConfigsAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
+        return Ok(await controlAutomationService.GetEnvironmentalConfigsAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, ct));
     }
 
     [HttpPut("api/v1/control/environmental-configs")]
-    [Authorize(Roles = "FarmOwner")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<EnvironmentalTargetConfigView>> UpdateEnvironmentalConfig(
         [FromBody] UpdateEnvironmentalTargetConfigCommand command,
         CancellationToken ct)
     {
-        return Ok(await controlAutomationService.UpdateEnvironmentalConfigAsync(User.GetUserId(), User.GetTenantId(), command, ct));
+        return Ok(await controlAutomationService.UpdateEnvironmentalConfigAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, command, ct));
     }
 }
 
