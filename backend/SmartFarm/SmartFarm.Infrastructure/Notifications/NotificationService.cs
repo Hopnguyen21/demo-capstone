@@ -95,6 +95,31 @@ public sealed class NotificationService(SmartFarmDbContext dbContext) : INotific
         return unreadItems.Count;
     }
 
+    public async Task<bool> DeleteNotificationAsync(Guid userId, Guid notificationId, CancellationToken ct = default)
+    {
+        var notification = await dbContext.Notifications
+            .FirstOrDefaultAsync(x => x.Id == notificationId && x.UserId == userId, ct);
+
+        if (notification == null) return false;
+
+        dbContext.Notifications.Remove(notification);
+        await dbContext.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<int> DeleteAllReadAsync(Guid userId, CancellationToken ct = default)
+    {
+        var readItems = await dbContext.Notifications
+            .Where(x => x.UserId == userId && x.IsRead)
+            .ToListAsync(ct);
+
+        if (readItems.Count == 0) return 0;
+
+        dbContext.Notifications.RemoveRange(readItems);
+        await dbContext.SaveChangesAsync(ct);
+        return readItems.Count;
+    }
+
     public async Task<NotificationView> CreateNotificationAsync(CreateNotificationCommand command, CancellationToken ct = default)
     {
         var notification = new Notification

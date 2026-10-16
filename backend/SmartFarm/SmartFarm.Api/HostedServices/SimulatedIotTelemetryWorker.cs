@@ -533,33 +533,34 @@ public sealed class SimulatedIotTelemetryWorker(
                     {
                         db.Alerts.Add(alert);
                         await db.SaveChangesAsync(ct);
+
+                        // Gửi Notification cho cả Owner và Farmer phụ trách (chỉ sau khi lưu alert thành công)
+                        var targets = await db.AppUsers.AsNoTracking()
+                            .Where(u => u.TenantId == farm.TenantId && (
+                                u.Role == UserRole.FarmOwner ||
+                                (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(za => za.ZoneId == zone.Id))
+                            ))
+                            .Select(u => new { u.Id, u.Role })
+                            .ToListAsync(ct);
+
+                        foreach (var target in targets)
+                        {
+                            var targetUrl = target.Role == UserRole.Farmer ? "/farmer/alerts" : "/owner/alerts";
+                            await notifService.CreateNotificationAsync(new(
+                                UserId: target.Id,
+                                TenantId: farm.TenantId,
+                                Title: $"[CẢNH BÁO MÔI TRƯỜNG] {cfg.Label} bất thường tại {zone.Name}",
+                                Message: $"{cfg.Label} ghi nhận mức {reading.Value}{reading.Unit} (vượt ngưỡng cho phép {min} - {max}{reading.Unit}). Vui lòng kiểm tra hệ thống điều hòa & tưới tiêu.",
+                                Type: NotificationType.Alert,
+                                Severity: sev,
+                                TargetUrl: targetUrl,
+                                ReferenceId: alert.Id.ToString()
+                            ), ct);
+                        }
+
+                        logger.LogWarning("Dispatched Environmental Alert: {Label} in {Zone} ({Val}{Unit}) to {Count} users.", cfg.Label, zone.Name, reading.Value, reading.Unit, targets.Count);
                     }
 
-                    // Gửi Notification cho cả Owner và Farmer phụ trách
-                    var targets = await db.AppUsers.AsNoTracking()
-                        .Where(u => u.TenantId == farm.TenantId && (
-                            u.Role == UserRole.FarmOwner ||
-                            (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(za => za.ZoneId == zone.Id))
-                        ))
-                        .Select(u => new { u.Id, u.Role })
-                        .ToListAsync(ct);
-
-                    foreach (var target in targets)
-                    {
-                        var targetUrl = target.Role == UserRole.Farmer ? "/farmer/alerts" : "/owner/alerts";
-                        await notifService.CreateNotificationAsync(new(
-                            UserId: target.Id,
-                            TenantId: farm.TenantId,
-                            Title: $"[CẢNH BÁO MÔI TRƯỜNG] {cfg.Label} bất thường tại {zone.Name}",
-                            Message: $"{cfg.Label} ghi nhận mức {reading.Value}{reading.Unit} (vượt ngưỡng cho phép {min} - {max}{reading.Unit}). Vui lòng kiểm tra hệ thống điều hòa & tưới tiêu.",
-                            Type: NotificationType.Alert,
-                            Severity: sev,
-                            TargetUrl: targetUrl,
-                            ReferenceId: alert.Id.ToString()
-                        ), ct);
-                    }
-
-                    logger.LogWarning("Dispatched Environmental Alert: {Label} in {Zone} ({Val}{Unit}) to {Count} users.", cfg.Label, zone.Name, reading.Value, reading.Unit, targets.Count);
                 }
             }
         }

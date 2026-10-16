@@ -8,5 +8,7 @@ public interface INotificationService
     Task<UnreadNotificationCountView> GetUnreadCountAsync(Guid userId, CancellationToken ct = default);
     Task<bool> MarkAsReadAsync(Guid userId, Guid notificationId, CancellationToken ct = default);
     Task<int> MarkAllAsReadAsync(Guid userId, CancellationToken ct = default);
+    Task<bool> DeleteNotificationAsync(Guid userId, Guid notificationId, CancellationToken ct = default);
+    Task<int> DeleteAllReadAsync(Guid userId, CancellationToken ct = default);
     Task<NotificationView> CreateNotificationAsync(CreateNotificationCommand command, CancellationToken ct = default);
 }
