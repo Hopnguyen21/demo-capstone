@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Field, Farm, Zone } from '../../types';
 import { fieldService, farmService, zoneService, extractApiError } from '../../services';
-import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers, Wrench } from 'lucide-react';
+import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { useNavigate } from 'react-router-dom';
-import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
 export const FieldsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,10 +57,25 @@ export const FieldsPage: React.FC = () => {
       alert('Vui lòng chọn Trang trại Mẹ!');
       return;
     }
+    const targetFarm = farms.find(f => f.farmId === farmId);
+    const computedArea = Number(areaM2) || calculatePolygonAreaM2(polygon) || 5000;
+    if (targetFarm) {
+      const currentAllocated = fields
+        .filter(f => f.farmId === farmId)
+        .reduce((sum, f) => sum + (Number(f.areaM2) || 0), 0);
+      const farmAvail = Math.max(0, (Number(targetFarm.totalAreaM2) || 25000) - currentAllocated);
+      if (farmAvail <= 0) {
+        alert(`Trang trại "${targetFarm.name}" đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Lô đất mới!`);
+        return;
+      }
+      if (computedArea > farmAvail) {
+        alert(`Diện tích Lô đất (${computedArea.toLocaleString()} m²) vượt quá diện tích còn lại của Trang trại (${farmAvail.toLocaleString()} m²)!`);
+        return;
+      }
+    }
     setIsSubmitting(true);
     try {
       const geoJson = toGeoJsonPolygon(polygon);
-      const computedArea = Number(areaM2) || calculatePolygonAreaM2(polygon) || 5000;
       await fieldService.createField(farmId, {
         name: fieldName.trim(),
         areaM2: computedArea,
@@ -96,7 +110,7 @@ export const FieldsPage: React.FC = () => {
             <MapPin className="text-[#062326]" size={22} /> Phân khu Đất canh tác (Level 2: Fields)
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            Các phân khu lô đất lớn được quy hoạch lồng bên trong <strong>Trang trại Mẹ (Level 1: Farm)</strong> và chứa các <strong>Nhà màng (Level 3: Zone)</strong>.
+            Các phân khu lô đất lớn được quy hoạch lồng bên trong <strong>Trang trại Mẹ (Level 1: Farm)</strong> và chứa các <strong>Zone (Level 3: Zone)</strong>.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -135,21 +149,12 @@ export const FieldsPage: React.FC = () => {
                   <strong className="text-[#062326]">{(field.areaM2/10000).toFixed(1)} ha ({field.areaM2.toLocaleString()} m²)</strong>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Số Nhà màng con</span>
+                  <span className="text-slate-500 block text-[10px]">Số Zone con</span>
                   <strong className="text-amber-700 font-bold">{childZones.length} Zones</strong>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/owner/support')}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs"
-                  title="Gửi yêu cầu lắp đặt thiết bị cho Lô đất này"
-                >
-                  <Wrench size={13} className="text-emerald-700" />
-                  <span>Gửi yêu cầu thiết bị</span>
-                </button>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-end text-xs gap-2">
                 <Button size="sm" variant="ghost" onClick={() => navigate('/owner/zones')}>
                   Xem Zones <ArrowUpRight size={13} className="ml-1" />
                 </Button>
@@ -157,15 +162,6 @@ export const FieldsPage: React.FC = () => {
             </div>
           );
         })}
-      </div>
-
-      {/* Standardized CF3 Control Hub for Fields */}
-      <div className="pt-4">
-        <CF3ControlSection
-          scopeLevel="FIELD"
-          title="Điều khiển & Lịch tưới Vi khí hậu cho Phân khu Lô đất (Field Control)"
-          subtitle="Quản lý dải chỉ số môi trường, cài đặt lịch tưới Cron và kích hoạt thiết bị rơ-le cho các Lô đất."
-        />
       </div>
 
       {/* Modal create Field with GIS Location Picker */}

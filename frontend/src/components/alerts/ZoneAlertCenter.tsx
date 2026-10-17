@@ -236,14 +236,14 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner Alert Center Summary */}
-      <div className="p-5 bg-gradient-to-r from-[#062326] via-slate-900 to-[#0b383d] rounded-2xl text-white shadow-lg border border-emerald-900/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] rounded-2xl text-white shadow-lg border border-emerald-400/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono tracking-wide flex items-center gap-1">
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-white/20 text-white border border-white/30 font-mono tracking-wide flex items-center gap-1">
               <ShieldAlert size={12} /> TRUNG TÂM CẢNH BÁO NÔNG NGHIỆP
             </span>
             {targetZone && (
-              <span className="text-xs text-emerald-400 font-semibold font-mono bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+              <span className="text-xs text-white font-semibold font-mono bg-black/20 px-2 py-0.5 rounded border border-white/25">
                 {targetZone.name} {targetZone.currentCrop ? `(${targetZone.currentCrop})` : ''}
               </span>
             )}
@@ -252,7 +252,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
             Hệ thống Cảnh báo & Quy tắc Tự động Vi khí hậu
           </h2>
-          <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+          <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
             Giám sát thời gian thực các vi phạm ngưỡng vi khí hậu (Độ ẩm đất, Nhiệt độ, Độ ẩm KK, Ánh sáng, CO₂, Pin node) và kích hoạt rơ-le tự động bảo vệ cây trồng.
           </p>
         </div>

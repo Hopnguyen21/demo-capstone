@@ -118,10 +118,33 @@ apiClient.interceptors.response.use(
 export function extractApiError(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const d = err.response?.data as { title?: string; detail?: string; errors?: Record<string, string[]> } | undefined;
+    let raw = '';
     if (d?.errors) {
-      return Object.values(d.errors).flat().join(' | ');
+      raw = Object.values(d.errors).flat().join(' | ');
+    } else {
+      raw = d?.detail ?? d?.title ?? err.message ?? 'Unknown API error';
     }
-    return d?.detail ?? d?.title ?? err.message ?? 'Unknown API error';
+
+    // Friendly Vietnamese mapping
+    if (raw.includes('Zone area exceeds the Field available area')) {
+      return 'Diện tích Zone vượt quá diện tích còn trống của Lô đất!';
+    }
+    if (raw.includes('Field area exceeds the Farm available area')) {
+      return 'Diện tích Lô đất vượt quá diện tích còn trống của Trang trại!';
+    }
+    if (raw.includes('A Zone with this name already exists in the Field')) {
+      return 'Tên Zone này đã tồn tại trong Lô đất. Vui lòng đặt tên khác!';
+    }
+    if (raw.includes('A Field with this name already exists in the Farm')) {
+      return 'Tên Lô đất này đã tồn tại trong Trang trại. Vui lòng đặt tên khác!';
+    }
+    if (raw.includes('An Operating Zone cannot change area or boundary')) {
+      return 'Zone đang hoạt động không thể thay đổi diện tích hoặc ranh giới!';
+    }
+    if (raw.includes('Cannot add a Zone to an archived parent')) {
+      return 'Không thể thêm Zone vào Lô đất đã lưu trữ/xóa!';
+    }
+    return raw;
   }
   return String(err);
 }

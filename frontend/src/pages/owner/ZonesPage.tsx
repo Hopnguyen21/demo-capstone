@@ -51,11 +51,11 @@ export const ZonesPage: React.FC = () => {
 
   const handleCreateZone = async () => {
     if (!zoneName.trim()) {
-      alert('Vui lòng nhập tên Nhà màng / Zone!');
+      alert('Vui lòng nhập tên Zone!');
       return;
     }
     if (zoneName.trim().length < 2) {
-      alert('Tên Nhà màng / Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      alert('Tên Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
       return;
     }
     const fieldId = selectedFieldId || (fields.length > 0 ? fields[0].fieldId : '');
@@ -63,10 +63,22 @@ export const ZonesPage: React.FC = () => {
       alert('Vui lòng chọn Lô đất (Field) Mẹ!');
       return;
     }
+    const targetField = fields.find(f => f.fieldId === fieldId);
+    const computedArea = calculatePolygonAreaM2(polygon) || 2000;
+    if (targetField && targetField.availableAreaM2 !== undefined && targetField.availableAreaM2 !== null) {
+      const avail = Number(targetField.availableAreaM2);
+      if (avail <= 0) {
+        alert(`Lô đất "${targetField.name}" đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Zone mới!`);
+        return;
+      }
+      if (computedArea > avail) {
+        alert(`Diện tích Zone (${computedArea.toLocaleString()} m²) vượt quá diện tích còn trống của Lô đất (${avail.toLocaleString()} m²)!`);
+        return;
+      }
+    }
     setIsSubmitting(true);
     try {
       const geoJson = toGeoJsonPolygon(polygon);
-      const computedArea = calculatePolygonAreaM2(polygon) || 2000;
       await zoneService.createZone(fieldId, {
         name: zoneName.trim(),
         areaM2: computedArea,
@@ -78,7 +90,7 @@ export const ZonesPage: React.FC = () => {
       setShowCreateModal(false);
       setZoneName('');
       setDescription('');
-      alert('Đã lưu Nhà màng mới cùng tọa độ GIS vào PostgreSQL thành công!');
+      alert('Đã lưu Zone mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi tạo Zone:', err);
       const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
@@ -97,7 +109,7 @@ export const ZonesPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Sprout className="text-[#062326]" size={22} /> Quản lý & Cảnh báo Nhà màng / Khu vực Canh tác (Level 3: Zones)
+            <Sprout className="text-[#062326]" size={22} /> Quản lý & Cảnh báo Khu vực Canh tác (Level 3: Zones)
           </h1>
           <p className="text-xs text-slate-600 mt-1">
             Các Zone khép kín lồng bên trong <strong>Phân khu Lô đất (Level 2: Field)</strong> thuộc <strong>Trang trại (Level 1: Farm)</strong> được tích hợp Trung tâm Cảnh báo Nông nghiệp thời gian thực.
@@ -164,7 +176,7 @@ export const ZonesPage: React.FC = () => {
                     {z.currentStage || (z.name?.toLowerCase().includes('xa lach') ? 'Phát triển búp cuộn' : 'Nuôi trái & Thu hoạch')}
                   </strong>
                 </div>
-                <div className="flex justify-between"><span>Diện tích Nhà màng:</span><strong className="text-slate-900">{z.areaM2} m²</strong></div>
+                <div className="flex justify-between"><span>Diện tích Zone:</span><strong className="text-slate-900">{z.areaM2} m²</strong></div>
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs gap-2 flex-wrap">
@@ -175,7 +187,7 @@ export const ZonesPage: React.FC = () => {
                     navigate('/owner/support');
                   }}
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs"
-                  title="Gửi yêu cầu lắp đặt thiết bị cho Nhà màng này"
+                  title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
                 >
                   <Wrench size={13} className="text-emerald-700" />
                   <span>Gửi yêu cầu thiết bị</span>
@@ -208,13 +220,13 @@ export const ZonesPage: React.FC = () => {
           scopeLevel="ZONE"
           zoneId={selectedZoneId}
           defaultTab={activeTabMode}
-          title={`Trung tâm Cảnh báo & Điều khiển Vi khí hậu cho [${zones.find((z: any) => z.zoneId === selectedZoneId)?.name || 'Nhà màng'}]`}
+          title={`Trung tâm Cảnh báo & Điều khiển Vi khí hậu cho [${zones.find((z: any) => z.zoneId === selectedZoneId)?.name || 'Zone'}]`}
           subtitle="Tích hợp cảnh báo an toàn thời gian thực, dải tham số vi khí hậu, kích hoạt rơ-le và lịch tưới tự động."
         />
       </div>
 
       {/* Modal create Zone with GIS map picker */}
-      <Modal isOpen={showCreateModal} title="Khởi tạo Khu vực Nhà màng Mới (Level 3 Zone) bằng GIS Map" onClose={() => setShowCreateModal(false)}>
+      <Modal isOpen={showCreateModal} title="Khởi tạo Khu vực Canh tác Mới (Level 3 Zone) bằng GIS Map" onClose={() => setShowCreateModal(false)}>
         <div className="space-y-4 text-xs">
           <div>
             <label className="block text-slate-700 font-bold mb-1">Chọn Lô đất Mẹ sở hữu (Level 2 Field) *</label>
@@ -235,8 +247,8 @@ export const ZonesPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Tên Nhà màng / Zone *</label>
-            <Input value={zoneName} onChange={e => setZoneName(e.target.value)} placeholder="Ví dụ: Nhà màng 05 - Dưa lưới Nhật Bản" />
+            <label className="block text-slate-700 font-bold mb-1">Tên Zone *</label>
+            <Input value={zoneName} onChange={e => setZoneName(e.target.value)} placeholder="Ví dụ: Zone 05 - Dưa lưới Nhật Bản" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -245,8 +257,8 @@ export const ZonesPage: React.FC = () => {
               <Input value={crop} onChange={e => setCrop(e.target.value)} placeholder="Cà chua, Ớt ngọt, Dưa leo..." />
             </div>
             <div>
-              <label className="block text-slate-700 font-bold mb-1">Mô tả Nhà màng</label>
-              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ví dụ: Nhà màng khép kín 3000 m²" />
+              <label className="block text-slate-700 font-bold mb-1">Mô tả Zone</label>
+              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ví dụ: Zone khép kín 3000 m²" />
             </div>
           </div>
 

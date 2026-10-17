@@ -81,8 +81,12 @@ public sealed class PlantingSeasonsController(ICropGrowthService service) : Cont
     // API catalog #45
     [HttpPut("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/close"), Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<PlantingSeasonView>> Close(Guid zoneId, Guid seasonId, CloseSeasonRequest request, CancellationToken ct) => Ok(await service.CloseSeasonAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, new(request.ActualEndDate, request.ActualYieldKg, request.Notes), ct));
+    // Yield entry endpoint
+    [HttpPut("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/yield"), Authorize(Roles = "FarmOwner,Farmer")]
+    public async Task<ActionResult<PlantingSeasonView>> RecordYield(Guid zoneId, Guid seasonId, RecordYieldRequest request, CancellationToken ct) => Ok(await service.RecordSeasonYieldAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, new(request.ActualYieldKg, request.ActualEndDate, request.Notes, request.MarkCompleted), ct));
 }
 
 public sealed class CreateSeasonRequest { public Guid CropId { get; init; } public Guid? VarietyId { get; init; } public Guid GrowthProfileId { get; init; } [Required, StringLength(200)] public string Name { get; init; } = ""; public DateOnly StartDate { get; init; } public DateOnly ExpectedEndDate { get; init; } internal CreatePlantingSeasonCommand ToCommand() => new(CropId, VarietyId, GrowthProfileId, Name, StartDate, ExpectedEndDate); }
 public sealed class TransitionStageRequest { public Guid GrowthStageId { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class CloseSeasonRequest { public DateOnly ActualEndDate { get; init; } [Range(typeof(decimal), "0", "999999999")] public decimal? ActualYieldKg { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
+public sealed class RecordYieldRequest { [Range(typeof(decimal), "0", "999999999")] public decimal ActualYieldKg { get; init; } public DateOnly? ActualEndDate { get; init; } [StringLength(1000)] public string? Notes { get; init; } public bool MarkCompleted { get; init; } }

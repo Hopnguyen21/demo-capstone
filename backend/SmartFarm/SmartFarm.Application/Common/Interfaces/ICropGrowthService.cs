@@ -19,4 +19,5 @@ public interface ICropGrowthService
     Task<PlantingSeasonView> GetSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CancellationToken cancellationToken);
     Task<PlantingSeasonView> TransitionStageAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, TransitionStageCommand command, CancellationToken cancellationToken);
     Task<PlantingSeasonView> CloseSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CloseSeasonCommand command, CancellationToken cancellationToken);
+    Task<PlantingSeasonView> RecordSeasonYieldAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, RecordSeasonYieldCommand command, CancellationToken cancellationToken);
 }
