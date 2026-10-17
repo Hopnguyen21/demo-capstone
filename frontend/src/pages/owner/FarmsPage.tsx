@@ -1251,7 +1251,7 @@ export const FarmsPage: React.FC = () => {
               value={installCategory}
               onChange={e => setInstallCategory(e.target.value)}
             >
-              <option value="SENSOR_LORA">📡 Trạm Cảm biến Vi khí hậu LoRaWAN (Nhiệt/Ẩm không khí, Ánh sáng, CO2)</option>
+              <option value="SENSOR_LORA">📡 Trạm Cảm biến Vi khí hậu LoRa (Nhiệt/Ẩm không khí, Ánh sáng, CO2)</option>
               <option value="SOIL_PH_EC">🌱 Cụm Cảm biến Đất & Dung dịch (Độ ẩm đất, EC, pH, NPK luống cây)</option>
               <option value="ACTUATOR_VALVE">⚡ Tủ điều khiển Actuator & Van điện từ Solenoid tưới tự động (Relay LoRa Gateway)</option>
               <option value="DRIP_IRRIGATION">💧 Hệ thống Châm phân & Tưới nhỏ giọt tự động áp lực cao</option>

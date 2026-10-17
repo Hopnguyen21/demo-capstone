@@ -856,7 +856,7 @@ export const CreateFarmWizard: React.FC = () => {
                     <div className="space-y-0.5">
                       <div className="font-bold text-[11px]">⚠️ Lưu ý: Ước tính giá có thể lệch với đơn giá của Kỹ thuật viên</div>
                       <p className="text-[11px] text-amber-800 leading-relaxed">
-                        Chi phí trên chỉ mang tính <strong>tham khảo</strong> dựa trên mật độ thiết bị tiêu chuẩn. Đơn giá thực tế sẽ do <strong>Kỹ thuật viên Platform</strong> xác nhận sau khi khảo sát hiện trường, thương lượng hợp đồng và kiểm tra khả năng tích hợp LoRaWAN của khu vực.
+                        Chi phí trên chỉ mang tính <strong>tham khảo</strong> dựa trên mật độ thiết bị tiêu chuẩn. Đơn giá thực tế sẽ do <strong>Kỹ thuật viên Platform</strong> xác nhận sau khi khảo sát hiện trường, thương lượng hợp đồng và kiểm tra khả năng tích hợp LoRa của khu vực.
                       </p>
                     </div>
                   </div>
@@ -936,7 +936,7 @@ export const CreateFarmWizard: React.FC = () => {
               <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
                 <li>Kỹ thuật viên sẽ nạp Whitelist MAC Address trạm LoRa Gateway <strong>ESP32</strong>.</li>
                 <li>Cấu hình các Sensor Node cảm biến Độ ẩm đất, Nhiệt độ, Độ ẩm không khí & Ánh sáng.</li>
-                <li>Ánh xạ Node vào <strong>"{zoneData.name}"</strong> và kiểm tra kết nối MQTT/LoRaWAN.</li>
+                <li>Ánh xạ Node vào <strong>"{zoneData.name}"</strong> và kiểm tra kết nối MQTT/LoRa.</li>
               </ul>
             </div>
           </div>
@@ -1034,7 +1034,7 @@ export const CreateFarmWizard: React.FC = () => {
                     },
                     initialDeploymentRequest: {
                       requiredParameters: ['SoilMoisture', 'Temperature', 'AirHumidity'],
-                      ownerNotes: `Cần ${cropData.gatewaysNeeded || 1} Gateway LoRaWAN và ${cropData.nodesNeeded || 4} Sensor Node.`,
+                      ownerNotes: `Cần ${cropData.gatewaysNeeded || 1} Gateway LoRa và ${cropData.nodesNeeded || 4} Sensor Node.`,
                     },
                   });
 
