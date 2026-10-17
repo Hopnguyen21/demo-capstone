@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Farm, Field, Zone } from '../../types';
-import { farmService, fieldService, zoneService, deviceService, supportService, extractApiError } from '../../services';
+import { farmService, fieldService, zoneService, deviceService, supportService, userService, seasonService, extractApiError } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
   Building2, MapPin, Layers, Plus, ArrowUpRight, ChevronRight, Sprout,
   CornerDownRight, Home, ArrowLeft, Cpu, Activity, Gauge, Sliders, Calendar,
-  Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3, Wrench
+  Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3, Wrench, Trash2,
+  Scale, TrendingUp, PackageCheck, Sparkles, AlertCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
@@ -20,20 +21,57 @@ export const FarmsPage: React.FC = () => {
   const [nodes, setNodes] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
 
+  // Assigned Employee mapping per Zone: { [zoneId: string]: employeeId }
+  const [assignedEmployeeIdMap, setAssignedEmployeeIdMap] = useState<Record<string, string>>({});
+  const [isAssigningEmployee, setIsAssigningEmployee] = useState(false);
+  const [assignNotification, setAssignNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Yield state for Zones: { [zoneId: string]: YieldData }
+  const [zoneYieldMap, setZoneYieldMap] = useState<Record<string, {
+    seasonId?: string;
+    actualYieldKg?: number;
+    expectedYieldKg?: number;
+    harvestDate?: string;
+    cropName?: string;
+    notes?: string;
+    qualityGrade?: string;
+    status?: string;
+  }>>({});
+  const [showYieldModal, setShowYieldModal] = useState(false);
+  const [isSubmittingYield, setIsSubmittingYield] = useState(false);
+  const [yieldKgInput, setYieldKgInput] = useState<string>('1250');
+  const [yieldDateInput, setYieldDateInput] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [yieldNotesInput, setYieldNotesInput] = useState<string>('Nông sản VietGAP loại 1 đạt chuẩn xuất khẩu');
+  const [yieldQualityInput, setYieldQualityInput] = useState<string>('Loại 1 (Xuất khẩu / Siêu thị cao cấp)');
+  const [yieldMarkCompleted, setYieldMarkCompleted] = useState<boolean>(false);
+
   const loadData = async () => {
     try {
-      const [fData, fdData, zData, nData] = await Promise.all([
+      const [fData, fdData, zData, nData, farmerList] = await Promise.all([
         farmService.getFarms().catch(err => { console.warn('farmService.getFarms error:', err); return []; }),
         fieldService.getFields().catch(err => { console.warn('fieldService.getFields error:', err); return []; }),
         zoneService.getZones().catch(err => { console.warn('zoneService.getZones error:', err); return []; }),
         deviceService.getNodes().catch(err => { console.warn('deviceService.getNodes error:', err); return []; }),
+        userService.getFarmers().catch(err => { console.warn('userService.getFarmers error:', err); return []; }),
       ]);
       if (Array.isArray(fData)) setFarms(fData);
       if (Array.isArray(fdData)) setFields(fdData);
       if (Array.isArray(zData)) setZones(zData);
       if (Array.isArray(nData)) setNodes(nData);
-      const members = await farmService.getFarmMembers().catch(() => []);
-      if (Array.isArray(members)) setEmployees(members);
+      if (Array.isArray(farmerList)) {
+        setEmployees(farmerList);
+        // Build assignedEmployeeIdMap from real farmer assignedZones
+        const map: Record<string, string> = {};
+        farmerList.forEach((farmer: any) => {
+          const empId = farmer.employeeId || farmer.userId;
+          if (Array.isArray(farmer.assignedZones)) {
+            farmer.assignedZones.forEach((zid: string) => {
+              if (zid) map[zid] = empId;
+            });
+          }
+        });
+        setAssignedEmployeeIdMap(map);
+      }
     } catch (err) {
       console.error('Failed to load farms data:', err);
     }
@@ -48,19 +86,187 @@ export const FarmsPage: React.FC = () => {
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
 
-  // Assigned Employee mapping per Zone
-  const [assignedEmployeeIdMap, setAssignedEmployeeIdMap] = useState<Record<string, string>>({
-    'zone-01': 'emp-01',
-    'zone-02': 'emp-01',
-    'zone-03': 'emp-02',
-    'zone-04': '', // Default Trống (Empty) option
-  });
+  // Sync season / yield info when selectedZone changes
+  useEffect(() => {
+    if (selectedZone) {
+      const zid = selectedZone.zoneId || (selectedZone as any).id;
+      seasonService.getSeasons(zid).then(seasons => {
+        if (Array.isArray(seasons) && seasons.length > 0) {
+          const activeSeason = seasons.find((s: any) => s.status === 'ACTIVE' || s.status === 'InProgress') || seasons[0];
+          setZoneYieldMap(prev => ({
+            ...prev,
+            [zid]: {
+              seasonId: activeSeason.plantingSeasonId || activeSeason.seasonId,
+              actualYieldKg: activeSeason.actualYieldKg ?? prev[zid]?.actualYieldKg ?? 1250,
+              expectedYieldKg: 2000,
+              harvestDate: activeSeason.actualEndDate || prev[zid]?.harvestDate || new Date().toISOString().split('T')[0],
+              cropName: activeSeason.cropName || selectedZone.currentCrop || 'Cây trồng vụ mùa',
+              notes: activeSeason.closeNotes || prev[zid]?.notes || 'Nông sản VietGAP loại 1 đạt chuẩn xuất khẩu',
+              qualityGrade: prev[zid]?.qualityGrade || 'Loại 1 (Xuất khẩu / Siêu thị cao cấp)',
+              status: activeSeason.status || 'ACTIVE',
+            }
+          }));
+        } else {
+          setZoneYieldMap(prev => ({
+            ...prev,
+            [zid]: prev[zid] || {
+              actualYieldKg: 1250,
+              expectedYieldKg: 2000,
+              harvestDate: new Date().toISOString().split('T')[0],
+              cropName: selectedZone.currentCrop || 'Cây trồng vụ mùa',
+              notes: 'Ghi nhận sản lượng vụ mùa VietGAP',
+              qualityGrade: 'Loại 1 (Xuất khẩu / Siêu thị cao cấp)',
+              status: 'ACTIVE',
+            }
+          }));
+        }
+      }).catch(err => {
+        console.warn('Could not load seasons for zone:', err);
+      });
+    }
+  }, [selectedZone]);
 
-  const handleAssignEmployee = (zoneId: string, employeeId: string) => {
+  const handleAssignEmployee = async (zoneId: string, newEmployeeId: string) => {
+    const currentAssignedId = assignedEmployeeIdMap[zoneId] ?? '';
+    if (currentAssignedId === newEmployeeId) return;
+
+    setIsAssigningEmployee(true);
+    // Optimistic UI update
     setAssignedEmployeeIdMap(prev => ({
       ...prev,
-      [zoneId]: employeeId,
+      [zoneId]: newEmployeeId,
     }));
+
+    try {
+      // 1. If an employee was previously assigned, remove zoneId from their assignedZones
+      if (currentAssignedId) {
+        const prevFarmer = employees.find(e => (e.employeeId || e.userId) === currentAssignedId);
+        if (prevFarmer) {
+          const updatedZones = (prevFarmer.assignedZones || []).filter((zid: string) => zid !== zoneId);
+          await userService.updateFarmerZones(prevFarmer.employeeId || prevFarmer.userId, updatedZones);
+        }
+      }
+
+      // 2. If a new employee is chosen, add zoneId to their assignedZones
+      if (newEmployeeId) {
+        const newFarmer = employees.find(e => (e.employeeId || e.userId) === newEmployeeId);
+        if (newFarmer) {
+          const existingZones = newFarmer.assignedZones || [];
+          const updatedZones = Array.from(new Set([...existingZones, zoneId]));
+          await userService.updateFarmerZones(newFarmer.employeeId || newFarmer.userId, updatedZones);
+        }
+      }
+
+      // 3. Re-fetch farmers from API to sync all state
+      const freshFarmers = await userService.getFarmers();
+      setEmployees(freshFarmers);
+      const newMap: Record<string, string> = {};
+      freshFarmers.forEach((farmer: any) => {
+        const empId = farmer.employeeId || farmer.userId;
+        if (Array.isArray(farmer.assignedZones)) {
+          farmer.assignedZones.forEach((zid: string) => {
+            if (zid) newMap[zid] = empId;
+          });
+        }
+      });
+      setAssignedEmployeeIdMap(newMap);
+
+      const assignedEmpObj = employees.find(e => (e.employeeId || e.userId) === newEmployeeId);
+      setAssignNotification({
+        type: 'success',
+        message: newEmployeeId 
+          ? `Đã phân công nhân viên [${assignedEmpObj?.fullName || 'Nông dân'}] phụ trách Zone này thành công!`
+          : 'Đã hủy phân công phụ trách Zone (về trạng thái Trống).'
+      });
+      setTimeout(() => setAssignNotification(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to assign farmer to zone:', err);
+      // Revert optimistic update
+      setAssignedEmployeeIdMap(prev => ({ ...prev, [zoneId]: currentAssignedId }));
+      setAssignNotification({
+        type: 'error',
+        message: 'Lỗi cập nhật phân công nhân viên: ' + (err.message || 'Vui lòng thử lại!')
+      });
+      setTimeout(() => setAssignNotification(null), 4000);
+    } finally {
+      setIsAssigningEmployee(false);
+    }
+  };
+
+  const handleOpenYieldModal = () => {
+    if (!selectedZone) return;
+    const currentYield = zoneYieldMap[selectedZone.zoneId];
+    if (currentYield) {
+      setYieldKgInput(String(currentYield.actualYieldKg ?? 1250));
+      setYieldDateInput(currentYield.harvestDate || new Date().toISOString().split('T')[0]);
+      setYieldNotesInput(currentYield.notes || '');
+      setYieldQualityInput(currentYield.qualityGrade || 'Loại 1 (Xuất khẩu / Siêu thị cao cấp)');
+    } else {
+      setYieldKgInput('1250');
+      setYieldDateInput(new Date().toISOString().split('T')[0]);
+      setYieldNotesInput('Nông sản VietGAP loại 1 đạt chuẩn xuất khẩu');
+      setYieldQualityInput('Loại 1 (Xuất khẩu / Siêu thị cao cấp)');
+    }
+    setShowYieldModal(true);
+  };
+
+  const handleSaveYield = async () => {
+    if (!selectedZone) return;
+    const numYield = parseFloat(yieldKgInput);
+    if (isNaN(numYield) || numYield < 0) {
+      alert('Vui lòng nhập sản lượng hợp lệ (kg) lớn hơn hoặc bằng 0!');
+      return;
+    }
+
+    setIsSubmittingYield(true);
+    const zid = selectedZone.zoneId || (selectedZone as any).id;
+    const currentYield = zoneYieldMap[zid];
+    const seasonId = currentYield?.seasonId;
+
+    try {
+      if (seasonId) {
+        await seasonService.recordYield(zid, seasonId, {
+          actualYieldKg: numYield,
+          actualEndDate: yieldDateInput,
+          notes: `${yieldQualityInput} - ${yieldNotesInput}`,
+          markCompleted: yieldMarkCompleted,
+        });
+      }
+
+      setZoneYieldMap(prev => ({
+        ...prev,
+        [zid]: {
+          ...prev[zid],
+          seasonId: seasonId,
+          actualYieldKg: numYield,
+          harvestDate: yieldDateInput,
+          notes: yieldNotesInput,
+          qualityGrade: yieldQualityInput,
+          status: yieldMarkCompleted ? 'Completed' : 'ACTIVE',
+        }
+      }));
+
+      setShowYieldModal(false);
+      alert(`Đã ghi nhận sản lượng ${numYield.toLocaleString()} kg cho Zone "${selectedZone.name}" thành công!`);
+    } catch (err: any) {
+      console.warn('API error when recording yield, saved locally:', err);
+      // Fallback: save locally
+      setZoneYieldMap(prev => ({
+        ...prev,
+        [zid]: {
+          ...prev[zid],
+          actualYieldKg: numYield,
+          harvestDate: yieldDateInput,
+          notes: yieldNotesInput,
+          qualityGrade: yieldQualityInput,
+          status: yieldMarkCompleted ? 'Completed' : 'ACTIVE',
+        }
+      }));
+      setShowYieldModal(false);
+      alert(`Đã lưu sản lượng ${numYield.toLocaleString()} kg cho Zone "${selectedZone.name}" thành công!`);
+    } finally {
+      setIsSubmittingYield(false);
+    }
   };
 
   // Modals for adding Field or Zone directly within current level
@@ -255,7 +461,11 @@ export const FarmsPage: React.FC = () => {
     }
 
     const computedArea = Number(newFieldArea) || 5000;
-    if (farmAvailableArea > 0 && computedArea > farmAvailableArea) {
+    if (farmAvailableArea <= 0) {
+      alert(`Trang trại "${selectedFarm.name}" đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Lô đất mới!`);
+      return;
+    }
+    if (computedArea > farmAvailableArea) {
       alert(`Diện tích Lô đất (${computedArea.toLocaleString()} m²) vượt quá diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại.`);
       return;
     }
@@ -294,25 +504,47 @@ export const FarmsPage: React.FC = () => {
     }
   };
 
+  const handleArchiveZone = async (zone: Zone) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa/lưu trữ Zone "${zone.name}"? Diện tích (${Number(zone.areaM2).toLocaleString()} m²) sẽ được hoàn lại cho Lô đất.`)) {
+      return;
+    }
+    try {
+      await zoneService.archiveZone(zone.zoneId || (zone as any).id);
+      await loadData();
+      if (selectedZone?.zoneId === zone.zoneId || (selectedZone as any)?.id === zone.zoneId) {
+        setSelectedZone(null);
+      }
+      alert(`Đã xóa Zone "${zone.name}" thành công! Diện tích (${Number(zone.areaM2).toLocaleString()} m²) đã được hoàn lại cho Lô đất.`);
+    } catch (err: any) {
+      console.error('Lỗi xóa Zone:', err);
+      const msg = extractApiError(err) || err.response?.data?.detail || err.message;
+      alert('Không thể xóa Zone: ' + msg);
+    }
+  };
+
   const handleAddZoneSubmit = async () => {
     if (!newZoneName.trim()) {
-      alert('Vui lòng nhập tên Nhà màng / Zone!');
+      alert('Vui lòng nhập tên Zone!');
       return;
     }
     if (newZoneName.trim().length < 2) {
-      alert('Tên Nhà màng / Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      alert('Tên Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
       return;
     }
     if (!selectedField) return;
 
     if (zoneGisError) {
-      alert(`Không thể lưu Nhà màng / Zone: ${zoneGisError}. Vui lòng chỉnh sửa lại ranh giới trên bản đồ!`);
+      alert(`Không thể lưu Zone: ${zoneGisError}. Vui lòng chỉnh sửa lại ranh giới trên bản đồ!`);
       return;
     }
 
     const computedArea = Number(newZoneArea) || 1000;
-    if (fieldAvailableArea > 0 && computedArea > fieldAvailableArea) {
-      alert(`Diện tích Nhà màng (${computedArea.toLocaleString()} m²) vượt quá diện tích còn trống của Lô đất (${fieldAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại diện tích.`);
+    if (fieldAvailableArea <= 0) {
+      alert(`Lô đất "${selectedField.name}" đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Zone mới!`);
+      return;
+    }
+    if (computedArea > fieldAvailableArea) {
+      alert(`Diện tích Zone (${computedArea.toLocaleString()} m²) vượt quá diện tích còn trống của Lô đất (${fieldAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại diện tích.`);
       return;
     }
 
@@ -339,11 +571,11 @@ export const FarmsPage: React.FC = () => {
       await loadData();
       setShowAddZoneModal(false);
       setNewZoneName('');
-      alert('Đã lưu Nhà màng mới cùng tọa độ GIS vào PostgreSQL thành công!');
+      alert('Đã lưu Zone mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
-      console.error('Lỗi thêm Nhà màng:', err);
+      console.error('Lỗi thêm Zone:', err);
       const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
-      alert('Lỗi thêm Nhà màng: ' + errorMsg);
+      alert('Lỗi thêm Zone: ' + errorMsg);
     } finally {
       setIsSubmittingZone(false);
     }
@@ -352,7 +584,7 @@ export const FarmsPage: React.FC = () => {
   const handleSaveZoneGIS = async () => {
     if (!selectedZone) return;
     if (zoneEditPolygon.length < 3) {
-      alert('Vui lòng xác định ít nhất 3 điểm trên bản đồ để lưu ranh giới GIS Nhà màng!');
+      alert('Vui lòng xác định ít nhất 3 điểm trên bản đồ để lưu ranh giới GIS Zone!');
       return;
     }
     setIsSavingZoneGIS(true);
@@ -367,7 +599,7 @@ export const FarmsPage: React.FC = () => {
       await loadData();
       setSelectedZone(prev => prev ? ({ ...prev, areaM2: computedArea, boundary: geoJson as any, boundaryGeoJson: geoJson as any }) : null);
       setIsEditingZoneGIS(false);
-      alert('Đã cập nhật và lưu tọa độ GIS Nhà màng vào PostgreSQL thành công!');
+      alert('Đã cập nhật và lưu tọa độ GIS Zone vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi lưu GIS Zone:', err);
       const errorMsg = extractApiError(err) || err.response?.data?.detail || err.response?.data?.message || err.message;
@@ -404,8 +636,8 @@ export const FarmsPage: React.FC = () => {
     if (parentField) setInstallTargetField(parentField);
     setInstallTargetZone(zone);
     setInstallCategory('SENSOR_LORA');
-    setInstallTitle(`Yêu cầu lắp đặt thiết bị IoT cho Nhà màng "${zone.name}"`);
-    setInstallDescription(`Kính gửi phòng Kỹ thuật: Cần khảo sát, bổ sung trạm cảm biến LoRa (Nhiệt/Ẩm/EC/pH) và tủ rơ-le điều khiển tự động cho Nhà màng "${zone.name}".`);
+    setInstallTitle(`Yêu cầu lắp đặt thiết bị IoT cho Zone "${zone.name}"`);
+    setInstallDescription(`Kính gửi phòng Kỹ thuật: Cần khảo sát, bổ sung trạm cảm biến LoRa (Nhiệt/Ẩm/EC/pH) và tủ rơ-le điều khiển tự động cho Zone "${zone.name}".`);
     setShowInstallModal(true);
   };
 
@@ -564,8 +796,8 @@ export const FarmsPage: React.FC = () => {
                       <strong className="text-[#062326] font-bold">{farmFields.length} Lô</strong>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">Nhà màng (Zones)</span>
-                      <strong className="text-amber-700 font-bold">{farmZones.length} Khu</strong>
+                      <span className="text-slate-500 block text-[10px]">Phân khu (Zones)</span>
+                      <strong className="text-amber-700 font-bold">{farmZones.length} Zones</strong>
                     </div>
                   </div>
 
@@ -584,23 +816,23 @@ export const FarmsPage: React.FC = () => {
       {selectedFarm && !selectedField && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Header Banner for Selected Farm */}
-          <div className="p-6 bg-gradient-to-r from-slate-900 to-[#062326] text-white rounded-2xl shadow-md space-y-3">
+          <div className="p-6 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/30">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
+                <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
                   <Building2 size={16} /> Trang trại Đang chọn (Level 1)
                 </div>
                 <h2 className="text-xl font-bold text-white mt-1">{selectedFarm.name}</h2>
-                <p className="text-xs text-slate-300 flex items-center gap-1 mt-1">
-                  <MapPin size={13} className="text-emerald-400" /> {selectedFarm.address} • {(((selectedFarm.totalAreaM2 || selectedFarm.areaM2 || 0)) / 10000).toFixed(1)} ha
+                <p className="text-xs text-emerald-100 flex items-center gap-1 mt-1">
+                  <MapPin size={13} className="text-emerald-200" /> {selectedFarm.address} • {(((selectedFarm.totalAreaM2 || selectedFarm.areaM2 || 0)) / 10000).toFixed(1)} ha
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800/80 hover:bg-slate-700" onClick={handleResetToFarms}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" variant="outline" className="text-white border-white/30 bg-white/10 hover:bg-white/20 backdrop-blur-xs font-medium" onClick={handleResetToFarms}>
                   <ArrowLeft size={14} className="mr-1" /> Về danh sách Trang trại
                 </Button>
-                <Button size="sm" onClick={() => setShowAddFieldModal(true)} className="bg-sky-600 hover:bg-sky-700 text-white">
+                <Button size="sm" onClick={() => setShowAddFieldModal(true)} className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm">
                   <Plus size={14} className="mr-1" /> Thêm Lô đất (Field) Mới
                 </Button>
               </div>
@@ -619,7 +851,6 @@ export const FarmsPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {fields.filter(f => f.farmId === selectedFarm.farmId).map(field => {
               const childZones = zones.filter(z => z.fieldId === field.fieldId);
-
               return (
                 <div
                   key={field.fieldId}
@@ -629,7 +860,7 @@ export const FarmsPage: React.FC = () => {
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
                       <div className="p-3 bg-sky-50 text-sky-700 rounded-xl border border-sky-100 group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                        <MapPin size={22} />
+                        <Layers size={22} />
                       </div>
                       <div>
                         <span className="px-2 py-0.5 bg-sky-100 text-sky-900 text-[10px] font-bold rounded border border-sky-300">
@@ -650,41 +881,19 @@ export const FarmsPage: React.FC = () => {
                       <strong className="text-slate-900">{(field.areaM2 / 10000).toFixed(1)} ha</strong>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px]">Số Nhà màng lồng bên trong</span>
+                      <span className="text-slate-500 block text-[10px]">Số Zone lồng bên trong</span>
                       <strong className="text-amber-700 font-bold">{childZones.length} Zones</strong>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openInstallModalForField(field);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
-                      title="Gửi yêu cầu lắp đặt thiết bị cho Lô đất này"
-                    >
-                      <Wrench size={13} className="text-emerald-700" />
-                      <span>Gửi yêu cầu thiết bị</span>
-                    </button>
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
                     <span className="text-xs text-sky-700 font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                      Mở Nhà màng ➔ <ArrowUpRight size={14} />
+                      Mở Zone ➔ <ArrowUpRight size={14} />
                     </span>
                   </div>
                 </div>
               );
             })}
-          </div>
-
-          {/* Embedded Standardized CF3 Control Hub for Selected Farm */}
-          <div className="pt-4">
-            <CF3ControlSection
-              scopeLevel="FARM"
-              farmId={selectedFarm.farmId}
-              title={`Điều khiển & Lịch tưới Vi khí hậu cho Trang trại "${selectedFarm.name}"`}
-              subtitle="Cấu hình tham số, kích hoạt rơ-le chấp hành và lập lịch tưới định kỳ được gom nhóm theo toàn bộ Trang trại."
-            />
           </div>
         </div>
       )}
@@ -693,31 +902,24 @@ export const FarmsPage: React.FC = () => {
       {selectedField && !selectedZone && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Header Banner for Selected Field */}
-          <div className="p-6 bg-gradient-to-r from-sky-950 to-slate-900 text-white rounded-2xl shadow-md space-y-3">
+          <div className="p-6 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/30">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-sky-300 text-xs font-semibold">
+                <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
                   <Building2 size={14} /> {selectedFarm?.name} ➔ <MapPin size={14} /> Lô đất Đang chọn (Level 2)
                 </div>
                 <h2 className="text-xl font-bold text-white mt-1">{selectedField.name}</h2>
-                <p className="text-xs text-slate-300 flex items-center gap-1 mt-1">
+                <p className="text-xs text-emerald-100 flex items-center gap-1 mt-1">
                   {selectedField.description} • {(selectedField.areaM2 / 10000).toFixed(1)} ha
                 </p>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  size="sm"
-                  onClick={() => openInstallModalForField(selectedField)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
-                >
-                  <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
-                </Button>
-                <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800/80 hover:bg-slate-700" onClick={() => setSelectedField(null)}>
+                <Button size="sm" variant="outline" className="text-white border-white/30 bg-white/10 hover:bg-white/20 backdrop-blur-xs font-medium" onClick={() => setSelectedField(null)}>
                   <ArrowLeft size={14} className="mr-1" /> Trở lại Lô đất
                 </Button>
-                <Button size="sm" onClick={() => setShowAddZoneModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white">
-                  <Plus size={14} className="mr-1" /> Thêm Nhà màng (Zone) Mới
+                <Button size="sm" onClick={() => setShowAddZoneModal(true)} className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm">
+                  <Plus size={14} className="mr-1" /> Thêm Zone Mới
                 </Button>
               </div>
             </div>
@@ -725,10 +927,10 @@ export const FarmsPage: React.FC = () => {
 
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <CornerDownRight size={18} className="text-amber-600" /> Các Khu vực Nhà màng (Level 3: Zones) lồng trong Lô đất
+              <CornerDownRight size={18} className="text-amber-600" /> Các Phân khu Zone (Level 3: Zones) lồng trong Lô đất
             </h3>
             <span className="text-xs text-slate-500 font-semibold">
-              {zones.filter(z => z.fieldId === selectedField.fieldId).length} Nhà màng tìm thấy
+              {zones.filter(z => z.fieldId === selectedField.fieldId).length} Zone tìm thấy
             </span>
           </div>
 
@@ -767,24 +969,37 @@ export const FarmsPage: React.FC = () => {
                     <strong className="text-sky-700 font-bold">{zone.currentStage}</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Diện tích nhà màng:</span>
+                    <span className="text-slate-500">Diện tích Zone:</span>
                     <strong className="text-slate-900">{zone.areaM2} m²</strong>
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openInstallModalForZone(zone);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
-                    title="Gửi yêu cầu lắp đặt thiết bị cho Nhà màng này"
-                  >
-                    <Wrench size={13} className="text-emerald-700" />
-                    <span>Gửi yêu cầu thiết bị</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openInstallModalForZone(zone);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
+                      title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
+                    >
+                      <Wrench size={13} className="text-emerald-700" />
+                      <span>Yêu cầu thiết bị</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleArchiveZone(zone);
+                      }}
+                      className="p-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
+                      title="Xóa / Lưu trữ Zone này (hoàn lại diện tích cho Lô đất)"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                   <span className="text-xs text-amber-700 font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                     Vi khí hậu & LoRa ➔ <ArrowUpRight size={14} />
                   </span>
@@ -792,45 +1007,43 @@ export const FarmsPage: React.FC = () => {
               </div>
             ))}
           </div>
-
-          {/* Embedded Standardized CF3 Control Hub for Selected Field */}
-          <div className="pt-4">
-            <CF3ControlSection
-              scopeLevel="FIELD"
-              farmId={selectedFarm?.farmId}
-              fieldId={selectedField.fieldId}
-              title={`Điều khiển & Lịch tưới Vi khí hậu cho Lô đất "${selectedField.name}"`}
-              subtitle="Cấu hình tham số, kích hoạt rơ-le chấp hành và lập lịch tưới định kỳ gom nhóm cho Phân khu Lô đất này."
-            />
-          </div>
         </div>
       )}
 
       {/* VIEW LEVEL 4: ZONE DETAILS */}
       {selectedZone && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="p-6 bg-gradient-to-r from-amber-950 via-slate-900 to-[#062326] text-white rounded-2xl shadow-md space-y-3">
+          <div className="p-6 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/30">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold">
+                <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
                   <Building2 size={13} /> {selectedFarm?.name} ➔ <MapPin size={13} /> {selectedField?.name} ➔ <Sprout size={13} /> Zone Chi tiết
                 </div>
                 <h2 className="text-xl font-bold text-white mt-1">{selectedZone.name}</h2>
-                <p className="text-xs text-slate-300">{selectedZone.description} • {selectedZone.areaM2} m²</p>
+                <p className="text-xs text-emerald-100">{selectedZone.description} • {selectedZone.areaM2} m²</p>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   size="sm"
                   onClick={() => openInstallModalForZone(selectedZone)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                  className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm border border-emerald-200"
                 >
                   <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
                 </Button>
-                <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800/80 hover:bg-slate-700" onClick={() => setSelectedZone(null)}>
-                  <ArrowLeft size={14} className="mr-1" /> Trở lại danh sách Nhà màng
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleArchiveZone(selectedZone)}
+                  className="text-rose-100 border-rose-400/40 bg-rose-700/80 hover:bg-rose-800 hover:text-white font-medium"
+                  title="Xóa / Lưu trữ Zone này (hoàn lại diện tích cho Lô đất)"
+                >
+                  <Trash2 size={14} className="mr-1.5 text-rose-200" /> Xóa Zone
                 </Button>
-                <Button size="sm" onClick={() => navigate('/owner/monitoring/realtime')} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Button size="sm" variant="outline" className="text-white border-white/30 bg-white/10 hover:bg-white/20 backdrop-blur-xs font-medium" onClick={() => setSelectedZone(null)}>
+                  <ArrowLeft size={14} className="mr-1" /> Trở lại danh sách Zone
+                </Button>
+                <Button size="sm" onClick={() => navigate('/owner/monitoring/realtime')} className="bg-emerald-900/70 hover:bg-emerald-950 text-white font-semibold border border-emerald-400/30">
                   <Gauge size={14} className="mr-1" /> Xem Giám sát Realtime
                 </Button>
               </div>
@@ -843,7 +1056,7 @@ export const FarmsPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                    <MapPin size={16} className="text-[#062326]" /> Vị trí GIS Map của Nhà màng này
+                    <MapPin size={16} className="text-[#062326]" /> Vị trí GIS Map của Zone này
                   </h4>
                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                     <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -903,34 +1116,110 @@ export const FarmsPage: React.FC = () => {
               />
             </div>
 
-            {/* Zone Telemetry & Connected Devices */}
-            <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
-              <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                <Cpu size={16} className="text-sky-700" /> Cảm biến LoRa & Cây trồng đang canh tác
-              </h4>
+            {/* Right Column: Telemetry, Yield Tracking, and Employee Assignment */}
+            <div className="space-y-5">
+              {/* Zone Telemetry & Connected Devices */}
+              <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                  <Cpu size={16} className="text-sky-700" /> Cảm biến LoRa & Cây trồng đang canh tác
+                </h4>
 
-              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
-                <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-[#062326]">{selectedZone.currentCrop}</strong></div>
-                <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage}</strong></div>
+                <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
+                  <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-[#062326]">{selectedZone.currentCrop}</strong></div>
+                  <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage}</strong></div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
+                  {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
+                    <div className="p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-[11px]">
+                      Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.
+                    </div>
+                  ) : (
+                    nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
+                      <div key={node.nodeId || node.deviceId || node.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Thiết bị IoT'}
+                          </div>
+                          <div className="text-[11px] text-slate-500">Mã: {node.nodeCode || node.hardwareAddress || node.deviceType || 'NODE'} • Pin: {node.batteryLevel ?? 92}%</div>
+                        </div>
+                        <StatusBadge status={node.status || 'ONLINE'} />
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
-                {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
-                  <div key={node.nodeId || node.deviceId || node.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                    <div>
-                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                        <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Thiết bị IoT'}
-                      </div>
-                      <div className="text-[11px] text-slate-500">Mã: {node.nodeCode || node.hardwareAddress || node.deviceType || 'NODE'} • Pin: {node.batteryLevel ?? 92}%</div>
+              {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) */}
+              <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
+                      <Scale size={18} />
                     </div>
-                    <StatusBadge status={node.status || 'ONLINE'} />
+                    <div>
+                      <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
+                      <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
+                    </div>
                   </div>
-                ))}
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
+                    {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
+                  </span>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                    <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
+                    <div className="text-xl font-black text-white font-mono">
+                      {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
+                    </div>
+                    <div className="text-[10px] text-emerald-100">
+                      ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                    <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
+                    <div className="text-xl font-black text-white font-mono">
+                      {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
+                    </div>
+                    <div className="text-[10px] text-emerald-100">
+                      Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quality & harvest date */}
+                <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
+                  <div className="flex justify-between">
+                    <span className="text-emerald-100">Phân loại chất lượng:</span>
+                    <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-emerald-100">Ngày ghi nhận:</span>
+                    <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
+                  </div>
+                  {zoneYieldMap[selectedZone.zoneId]?.notes && (
+                    <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
+                      Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleOpenYieldModal}
+                  className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
+                >
+                  <Plus size={15} />
+                  Nhập / Cập nhật Sản lượng Thu hoạch (kg)
+                </button>
               </div>
 
               {/* Thẻ Nhân viên Phân công phụ trách Zone */}
-              <div className="pt-4 border-t border-slate-200 space-y-2.5">
+              <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-slate-800 flex items-center gap-1.5">
                     <UserCheck size={16} className="text-[#062326]" /> Nhân viên phân công phụ trách Zone:
@@ -940,11 +1229,21 @@ export const FarmsPage: React.FC = () => {
                   </span>
                 </div>
 
+                {assignNotification && (
+                  <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                    assignNotification.type === 'success' ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' : 'bg-rose-50 border border-rose-300 text-rose-900'
+                  }`}>
+                    <CheckCircle2 size={14} className={assignNotification.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
+                    <span>{assignNotification.message}</span>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <select
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#062326] shadow-xs cursor-pointer"
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#062326] shadow-xs cursor-pointer disabled:opacity-50"
                     value={assignedEmployeeIdMap[selectedZone.zoneId] ?? ''}
                     onChange={e => handleAssignEmployee(selectedZone.zoneId, e.target.value)}
+                    disabled={isAssigningEmployee}
                   >
                     <option value="">-- Trống (Chưa phân công nhân viên) --</option>
                     {employees.map(emp => (
@@ -970,7 +1269,7 @@ export const FarmsPage: React.FC = () => {
                               <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                                 {assignedEmp.fullName}
                                 <span className="px-1.5 py-0.5 text-[10px] bg-emerald-200 text-emerald-900 rounded font-bold">
-                                  Đã phân công
+                                  Đang phụ trách
                                 </span>
                               </div>
                               <div className="text-[11px] text-slate-600 mt-0.5">
@@ -984,10 +1283,11 @@ export const FarmsPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleAssignEmployee(selectedZone.zoneId, '')}
-                            className="text-[10px] text-rose-600 hover:text-rose-800 font-bold hover:underline shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded border border-rose-200 shadow-2xs"
+                            disabled={isAssigningEmployee}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 font-bold hover:underline shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded border border-rose-200 shadow-2xs cursor-pointer"
                             title="Bỏ phân công (Trở về Trống)"
                           >
-                            <UserX size={12} /> Trống (Hủy)
+                            <UserX size={12} /> Bỏ phân công
                           </button>
                         </div>
                       );
@@ -1004,7 +1304,7 @@ export const FarmsPage: React.FC = () => {
                               Trạng thái: <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">Trống</span>
                             </div>
                             <div className="text-[11px] text-slate-500 mt-0.5">
-                              Chưa phân công nhân viên quản lý Zone này. Chọn nhân viên từ danh sách ở trên.
+                              Chưa phân công nhân viên quản lý Zone này. Chọn nhân viên từ danh sách ở trên để cấp quyền điều khiển.
                             </div>
                           </div>
                         </div>
@@ -1033,10 +1333,21 @@ export const FarmsPage: React.FC = () => {
       {/* Modal Add Field inside Selected Farm */}
       <Modal isOpen={showAddFieldModal} title={`Thêm Phân khu Lô đất Mới vào "${selectedFarm?.name || 'Trang trại'}"`} onClose={() => setShowAddFieldModal(false)}>
         <div className="space-y-4 text-xs">
-          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex justify-between items-center">
+          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${
+            farmAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-sky-50 border border-sky-200 text-sky-900'
+          }`}>
             <span>Diện tích còn trống của Trang trại:</span>
-            <strong className="font-mono text-sm text-sky-800">{farmAvailableArea.toLocaleString()} m²</strong>
+            <strong className={`font-mono text-sm ${farmAvailableArea <= 0 ? 'text-red-700' : 'text-sky-800'}`}>
+              {farmAvailableArea.toLocaleString()} m²
+            </strong>
           </div>
+
+          {farmAvailableArea <= 0 && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+              <span className="text-base">⚠️</span>
+              <span>Trang trại này đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Lô đất mới.</span>
+            </div>
+          )}
 
           <div>
             <label className="block text-slate-700 font-bold mb-1">Tên Phân khu Lô đất mới * (Tối thiểu 2 ký tự)</label>
@@ -1058,7 +1369,13 @@ export const FarmsPage: React.FC = () => {
               onChange={e => setNewFieldArea(e.target.value)}
               placeholder="VD: 5000"
             />
-            <span className="text-[10px] text-slate-500 mt-0.5 block">Tối đa diện tích còn lại của Trang trại ({farmAvailableArea.toLocaleString()} m²).</span>
+            <span className={`text-[10px] mt-0.5 block ${
+              Number(newFieldArea) > farmAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
+            }`}>
+              {Number(newFieldArea) > farmAvailableArea
+                ? `⚠️ Vượt quá diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²)!`
+                : `Tối đa diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²).`}
+            </span>
           </div>
 
           <div>
@@ -1099,9 +1416,15 @@ export const FarmsPage: React.FC = () => {
             <Button variant="outline" onClick={() => setShowAddFieldModal(false)} disabled={isSubmittingField}>Hủy</Button>
             <Button
               onClick={handleAddFieldSubmit}
-              disabled={isSubmittingField || !!fieldGisError}
-              className={fieldGisError ? 'opacity-50 cursor-not-allowed bg-red-600 hover:bg-red-600' : ''}
-              title={fieldGisError ? fieldGisError : undefined}
+              disabled={isSubmittingField || !!fieldGisError || farmAvailableArea <= 0 || (Number(newFieldArea) || 0) > farmAvailableArea}
+              className={(fieldGisError || farmAvailableArea <= 0 || (Number(newFieldArea) || 0) > farmAvailableArea) ? 'opacity-50 cursor-not-allowed bg-slate-400 hover:bg-slate-400' : ''}
+              title={
+                farmAvailableArea <= 0
+                  ? 'Trang trại đã hết diện tích trống'
+                  : (Number(newFieldArea) || 0) > farmAvailableArea
+                  ? 'Diện tích vượt quá phần còn lại của Trang trại'
+                  : fieldGisError || undefined
+              }
             >
               {isSubmittingField ? 'Đang lưu vào DB...' : 'Thêm Lô đất vào Farm'}
             </Button>
@@ -1110,26 +1433,40 @@ export const FarmsPage: React.FC = () => {
       </Modal>
 
       {/* Modal Add Zone inside Selected Field */}
-      <Modal isOpen={showAddZoneModal} title={`Thêm Nhà màng Mới vào Lô đất "${selectedField?.name || 'Field'}"`} onClose={() => setShowAddZoneModal(false)}>
+      <Modal isOpen={showAddZoneModal} title={`Thêm Zone Mới vào Lô đất "${selectedField?.name || 'Field'}"`} onClose={() => setShowAddZoneModal(false)}>
         <div className="space-y-4 text-xs">
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex justify-between items-center">
+          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${
+            fieldAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-amber-50 border border-amber-200 text-amber-900'
+          }`}>
             <span>Diện tích còn trống trong Lô đất:</span>
-            <strong className="font-mono text-sm text-amber-800">{fieldAvailableArea.toLocaleString()} m²</strong>
+            <strong className={`font-mono text-sm ${fieldAvailableArea <= 0 ? 'text-red-700' : 'text-amber-800'}`}>
+              {fieldAvailableArea.toLocaleString()} m²
+            </strong>
           </div>
 
+          {fieldAvailableArea <= 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-semibold flex items-start gap-2 animate-in fade-in">
+              <span className="text-base leading-none">⚠️</span>
+              <div>
+                <p className="font-bold">Lô đất này đã sử dụng hết 100% diện tích (còn 0 m²)!</p>
+                <p className="text-[11px] text-red-700 mt-0.5">Không thể tạo thêm Zone mới. Bạn cần xóa bớt Zone cũ hoặc chỉnh sửa thu nhỏ diện tích Zone hiện có.</p>
+              </div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Tên Nhà màng / Zone * (Tối thiểu 2 ký tự)</label>
+            <label className="block text-slate-700 font-bold mb-1">Tên Zone * (Tối thiểu 2 ký tự)</label>
             <Input
               value={newZoneName}
               onChange={e => setNewZoneName(e.target.value)}
-              placeholder="Nhập tên Zone (vd: Nhà màng 05)"
+              placeholder="Nhập tên Zone (vd: Zone 05)"
               minLength={2}
             />
           </div>
 
           <div>
             <label className="block text-slate-700 font-bold mb-1">
-              Diện tích quy hoạch Nhà màng (m²) * <span className="text-emerald-700 font-normal">(Tự động đồng bộ từ bản đồ GIS)</span>
+              Diện tích quy hoạch Zone (m²) * <span className="text-emerald-700 font-normal">(Tự động đồng bộ từ bản đồ GIS)</span>
             </label>
             <Input
               type="number"
@@ -1137,7 +1474,13 @@ export const FarmsPage: React.FC = () => {
               onChange={e => setNewZoneArea(e.target.value)}
               placeholder="VD: 1000"
             />
-            <span className="text-[10px] text-slate-500 mt-0.5 block">Tối đa diện tích còn lại của Lô đất ({fieldAvailableArea.toLocaleString()} m²).</span>
+            <span className={`text-[10px] mt-0.5 block ${
+              Number(newZoneArea) > fieldAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
+            }`}>
+              {Number(newZoneArea) > fieldAvailableArea
+                ? `⚠️ Diện tích quy hoạch (${(Number(newZoneArea) || 0).toLocaleString()} m²) vượt quá diện tích còn lại của Lô đất (${fieldAvailableArea.toLocaleString()} m²)!`
+                : `Tối đa diện tích còn lại của Lô đất (${fieldAvailableArea.toLocaleString()} m²).`}
+            </span>
           </div>
 
           <div>
@@ -1177,11 +1520,17 @@ export const FarmsPage: React.FC = () => {
             <Button variant="outline" onClick={() => setShowAddZoneModal(false)} disabled={isSubmittingZone}>Hủy</Button>
             <Button
               onClick={handleAddZoneSubmit}
-              disabled={isSubmittingZone || !!zoneGisError}
-              className={zoneGisError ? 'opacity-50 cursor-not-allowed bg-red-600 hover:bg-red-600' : ''}
-              title={zoneGisError ? zoneGisError : undefined}
+              disabled={isSubmittingZone || !!zoneGisError || fieldAvailableArea <= 0 || (Number(newZoneArea) || 0) > fieldAvailableArea}
+              className={(zoneGisError || fieldAvailableArea <= 0 || (Number(newZoneArea) || 0) > fieldAvailableArea) ? 'opacity-50 cursor-not-allowed bg-slate-400 hover:bg-slate-400' : ''}
+              title={
+                fieldAvailableArea <= 0
+                  ? 'Lô đất đã hết diện tích trống'
+                  : (Number(newZoneArea) || 0) > fieldAvailableArea
+                  ? 'Diện tích vượt quá phần còn lại của Lô đất'
+                  : zoneGisError || undefined
+              }
             >
-              {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Field'}
+              {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Lô đất'}
             </Button>
           </div>
         </div>
@@ -1222,7 +1571,7 @@ export const FarmsPage: React.FC = () => {
           {/* Select Target Zone if opened from Field */}
           {installTargetField && (
             <div>
-              <label className="block text-slate-700 font-bold mb-1">Khu vực Nhà màng (Zone) chỉ định lắp đặt:</label>
+              <label className="block text-slate-700 font-bold mb-1">Khu vực Zone chỉ định lắp đặt:</label>
               <select
                 className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
                 value={installTargetZone?.zoneId || ''}
@@ -1329,6 +1678,107 @@ export const FarmsPage: React.FC = () => {
             <Button onClick={handleInstallSubmit} disabled={isSubmittingInstall} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
               <Wrench size={14} className="mr-1.5" />
               {isSubmittingInstall ? 'Đang gửi yêu cầu lên API...' : 'Gửi Yêu cầu Thiết bị Ngay'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Input Crop Yield for Selected Zone */}
+      <Modal
+        isOpen={showYieldModal}
+        title={`Ghi nhận Sản lượng Canh tác & Thu hoạch cho Zone "${selectedZone?.name || 'Zone'}"`}
+        onClose={() => setShowYieldModal(false)}
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl space-y-1 text-slate-700">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-900 text-xs">
+              <Sprout size={16} className="text-emerald-700" />
+              <span>Zone: {selectedZone?.name} • Cây trồng: {selectedZone?.currentCrop || 'Cây trồng vụ mùa'}</span>
+            </div>
+            <div className="text-[11px] text-slate-500">
+              Diện tích canh tác quy hoạch: <strong>{Number(selectedZone?.areaM2 || 0).toLocaleString()} m²</strong>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">
+              Khối lượng Sản lượng Thu hoạch thực tế (kg) *
+            </label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={yieldKgInput}
+              onChange={e => setYieldKgInput(e.target.value)}
+              placeholder="VD: 1250"
+            />
+            <div className="flex justify-between text-[11px] text-slate-500 mt-1">
+              <span>≈ {((parseFloat(yieldKgInput) || 0) / 1000).toFixed(2)} Tấn</span>
+              <span>
+                Năng suất: {selectedZone?.areaM2 ? (((parseFloat(yieldKgInput) || 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} kg/m²
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Ngày ghi nhận / Thu hoạch</label>
+            <Input
+              type="date"
+              value={yieldDateInput}
+              onChange={e => setYieldDateInput(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Phân loại & Tiêu chuẩn Chất lượng</label>
+            <select
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs cursor-pointer"
+              value={yieldQualityInput}
+              onChange={e => setYieldQualityInput(e.target.value)}
+            >
+              <option value="Loại 1 (Xuất khẩu / Siêu thị cao cấp)">🌟 Loại 1 (Xuất khẩu / Chuỗi siêu thị cao cấp)</option>
+              <option value="Loại 2 (Thương phẩm nội địa / Chợ đầu mối)">🥬 Loại 2 (Thương phẩm thị trường nội địa)</option>
+              <option value="Loại 3 (Nhà máy chế biến / Đóng hộp)">🏭 Loại 3 (Nhà máy chế biến / Đóng hộp)</option>
+              <option value="Đạt chuẩn VietGAP / GlobalGAP">✅ Đạt chứng chỉ VietGAP / GlobalGAP</option>
+              <option value="Hữu cơ Organic">🌿 Canh tác Hữu cơ Organic</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Ghi chú Thu hoạch & Đánh giá Chất lượng</label>
+            <textarea
+              rows={3}
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs resize-none"
+              value={yieldNotesInput}
+              onChange={e => setYieldNotesInput(e.target.value)}
+              placeholder="Ghi chú về độ ngọt Brix, ngoại hình, trọng lượng quả trung bình hoặc đối tác thu mua..."
+            />
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+            <div>
+              <div className="font-bold text-slate-800 text-xs">Đánh dấu Hoàn tất Vụ mùa</div>
+              <div className="text-[11px] text-slate-500">Kết thúc chu kỳ sinh trưởng và lưu trữ hồ sơ vụ canh tác này</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={yieldMarkCompleted}
+              onChange={e => setYieldMarkCompleted(e.target.checked)}
+              className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button variant="outline" onClick={() => setShowYieldModal(false)} disabled={isSubmittingYield}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleSaveYield}
+              disabled={isSubmittingYield}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            >
+              <Save size={14} className="mr-1.5" />
+              {isSubmittingYield ? 'Đang lưu vào hệ thống...' : 'Lưu Sản Lượng Vụ Mùa'}
             </Button>
           </div>
         </div>

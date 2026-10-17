@@ -277,7 +277,7 @@ export interface Sensor {
 export interface Actuator {
   actuatorId: string;
   nodeId?: string;
-  farmId: string;
+  farmId?: string;
   zoneId?: string;
   zoneName?: string;
   name: string;
@@ -285,6 +285,8 @@ export interface Actuator {
   actuatorType: 'PUMP' | 'VALVE' | 'FAN' | 'GROW_LIGHT';
   status: 'OFF' | 'ON' | 'ERROR' | 'MAINTENANCE';
   lastStateChangeAt?: string;
+  relayChannel?: number;
+  ratedPowerWatt?: number;
 }
 
 export interface TelemetryReading {

@@ -580,7 +580,7 @@ export const cropService = {
       return {
         success: true,
         createdSchedulesCount: schedules.length || 3,
-        zoneName: res.data?.zoneName || 'Nhà màng canh tác',
+        zoneName: res.data?.zoneName || 'Zone canh tác',
         schedules: schedules
       };
     } catch (err: any) {
@@ -608,7 +608,7 @@ export const seasonService = {
         plantingSeasonId: s.plantingSeasonId || s.seasonId,
         seasonId: s.plantingSeasonId || s.seasonId,
         cropName: s.cropName || 'Dưa leo Baby VietGAP',
-        zoneName: s.zoneName || 'Demo Greenhouse Zone (Zone 1)',
+        zoneName: s.zoneName || 'Zone Canh tác',
         currentGrowthStageName: s.currentGrowthStageName || 'Ra hoa (Flowering)',
         progressPercent: s.progressPercent ?? 45,
         status: (s.status === 'InProgress' || s.status === 'IN_PROGRESS') ? 'ACTIVE' : (s.status || 'ACTIVE'),
@@ -631,6 +631,35 @@ export const seasonService = {
     }
   ) => {
     const res = await apiClient.post(`/api/v1/zones/${zoneId}/planting-seasons`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/yield */
+  recordYield: async (
+    zoneId: string,
+    seasonId: string,
+    data: {
+      actualYieldKg: number;
+      actualEndDate?: string;
+      notes?: string;
+      markCompleted?: boolean;
+    }
+  ) => {
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}/planting-seasons/${seasonId}/yield`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/close */
+  closeSeason: async (
+    zoneId: string,
+    seasonId: string,
+    data: {
+      actualEndDate: string;
+      actualYieldKg?: number;
+      notes?: string;
+    }
+  ) => {
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}/planting-seasons/${seasonId}/close`, data);
     return res.data;
   },
 };

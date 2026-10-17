@@ -218,6 +218,23 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         await dbContext.SaveChangesAsync(ct); return season.ToView();
     }
 
+    public async Task<PlantingSeasonView> RecordSeasonYieldAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, RecordSeasonYieldCommand command, CancellationToken ct)
+    {
+        await EnsureUserAsync(userId, tenantId, false, ct);
+        var season = await SeasonQuery().SingleOrDefaultAsync(x => x.Id == seasonId && x.ZoneId == zoneId && x.Zone.Field.Farm.TenantId == tenantId, ct) ?? throw new ResourceNotFoundException("Planting Season was not found under this Zone in the current Tenant.");
+        if (command.ActualYieldKg < 0) throw new RequestValidationException(nameof(command.ActualYieldKg), "Yield cannot be negative.");
+        season.ActualYieldKg = command.ActualYieldKg;
+        if (command.ActualEndDate.HasValue) season.ActualEndDate = command.ActualEndDate.Value;
+        if (!string.IsNullOrWhiteSpace(command.Notes)) season.CloseNotes = Optional(command.Notes, 1000);
+        if (command.MarkCompleted && season.Status == PlantingSeasonStatus.InProgress)
+        {
+            season.Status = PlantingSeasonStatus.Completed;
+            if (!season.ActualEndDate.HasValue) season.ActualEndDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+        await dbContext.SaveChangesAsync(ct);
+        return season.ToView();
+    }
+
     private IQueryable<GrowthProfile> ProfileQuery() => dbContext.GrowthProfiles.Include(x => x.Stages).ThenInclude(x => x.Requirements);
     private IQueryable<PlantingSeason> SeasonQuery() => dbContext.PlantingSeasons.Include(x => x.Zone).ThenInclude(x => x.Field).ThenInclude(x => x.Farm).Include(x => x.AppliedRequirements).Include(x => x.StageTransitions);
     private async Task<AppUser> EnsureUserAsync(Guid id, Guid? tenantId, bool ownerRequired, CancellationToken ct)

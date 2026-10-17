@@ -194,7 +194,7 @@ export const FarmersPage: React.FC = () => {
 
             <div>
               <label className="block text-slate-700 font-bold mb-2">
-                Đánh dấu các Khu vực Nhà màng mà công nhân được phép điều khiển:
+                Đánh dấu các Khu vực Zone mà công nhân được phép điều khiển:
               </label>
 
               <div className="space-y-2 p-3 bg-white border border-slate-200 rounded-xl">

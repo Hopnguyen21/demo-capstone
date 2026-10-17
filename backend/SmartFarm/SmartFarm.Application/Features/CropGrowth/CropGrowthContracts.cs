@@ -19,5 +19,6 @@ public sealed record RequirementUpdateView(Guid EffectiveProfileId, Guid Effecti
 public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate);
 public sealed record TransitionStageCommand(Guid GrowthStageId, string? Notes);
 public sealed record CloseSeasonCommand(DateOnly ActualEndDate, decimal? ActualYieldKg, string? Notes);
+public sealed record RecordSeasonYieldCommand(decimal ActualYieldKg, DateOnly? ActualEndDate, string? Notes, bool MarkCompleted);
 public sealed record StageTransitionView(Guid TransitionId, Guid PreviousStageId, Guid CurrentStageId, DateTime ChangedAtUtc, string? Notes);
 public sealed record PlantingSeasonView(Guid SeasonId, Guid ZoneId, Guid CropId, Guid? VarietyId, Guid GrowthProfileId, Guid CurrentGrowthStageId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, DateOnly? ActualEndDate, decimal? ActualYieldKg, PlantingSeasonStatus Status, IReadOnlyList<RequirementView> AppliedRequirements, IReadOnlyList<StageTransitionView> StageTransitions);

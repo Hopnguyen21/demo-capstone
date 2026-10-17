@@ -179,7 +179,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   };
 
   const scopeLabel = 
-    scopeLevel === 'ZONE' ? 'Cấp Zone / Nhà màng' :
+    scopeLevel === 'ZONE' ? 'Cấp Zone' :
     scopeLevel === 'FIELD' ? 'Cấp Phân khu Lô đất (Field)' :
     scopeLevel === 'FARM' ? 'Cấp Trang trại (Farm)' :
     scopeLevel === 'FARMER' ? 'Quyền Nông dân Thực địa' : 'Toàn Hệ thống';
@@ -196,102 +196,167 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
     ]
   };
 
+  const activeRelaysCount = actuators.filter(a => a.status === 'ON').length;
+
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
       {notification && (
-        <div className={`p-4 rounded-xl border flex items-center justify-between text-xs font-medium ${
-          notification.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
-          notification.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-sky-50 border-sky-200 text-sky-900'
+        <div className={`p-4 rounded-2xl border flex items-center justify-between text-xs font-medium shadow-xs ${
+          notification.type === 'success' ? 'bg-emerald-50 border-emerald-300 text-emerald-900' :
+          notification.type === 'error' ? 'bg-rose-50 border-rose-300 text-rose-900' : 'bg-sky-50 border-sky-300 text-sky-900'
         }`}>
           <span className="flex items-center gap-2">
             <CheckCircle2 size={16} className={notification.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
             {notification.message}
           </span>
-          <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+          <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-slate-600 text-sm">✕</button>
         </div>
       )}
 
-      {/* Control Section Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="bg-[#062326] text-white font-mono text-[10px] font-bold px-2 py-0.5 rounded">
-              TIÊU CHUẨN CF3 ({scopeLabel})
-            </span>
-            <h2 className="text-lg font-bold text-slate-900">
-              {title || `Điều khiển & Lịch tưới Vi khí hậu cho ${scopeLabel}`}
-            </h2>
-          </div>
-          <p className="text-xs text-slate-600 mt-1">
-            {subtitle || 'Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này.'}
-          </p>
-        </div>
+      {/* Modern High-End Executive Control Section Header */}
+      <div className="relative bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] p-6 rounded-3xl border border-emerald-400/30 text-white shadow-lg overflow-hidden">
+        {/* Subtle decorative glow */}
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-300/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadScopedData} disabled={isLoading}>
-            <RefreshCw size={14} className={`mr-1.5 ${isLoading ? 'animate-spin' : ''}`} /> Làm mới
-          </Button>
-          <Button variant="danger" size="sm" onClick={handleEmergencyStop}>
-            <AlertOctagon size={14} className="mr-1.5" /> HỦY KHẨN (STOP ALL)
-          </Button>
+        <div className="relative z-10 space-y-4">
+          {/* Top metadata pill bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="bg-white/20 text-white font-mono text-[10px] font-bold px-2.5 py-1 rounded-full border border-white/30 flex items-center gap-1.5 tracking-wider uppercase">
+                <Sparkles size={11} className="text-white" /> TIÊU CHUẨN CF3 ({scopeLabel})
+              </span>
+              <span className="text-[11px] text-emerald-100 font-mono hidden sm:inline-block">
+                • IOT SMART CONTROL HUB
+              </span>
+            </div>
+
+            {/* Live indicators */}
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-black/20 text-white border border-white/25 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" /> LoRa Gateway Online
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-black/20 text-white border border-white/25">
+                Failsafe 30m Active
+              </span>
+            </div>
+          </div>
+
+          {/* Main Title & Action Buttons Row */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
+            <div className="space-y-1">
+              <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                {title || `Điều khiển & Lịch tưới Vi khí hậu cho ${scopeLabel}`}
+              </h2>
+              <p className="text-xs md:text-sm text-emerald-100 max-w-2xl leading-relaxed">
+                {subtitle || 'Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={loadScopedData}
+                disabled={isLoading}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                Làm mới
+              </button>
+
+              <button
+                type="button"
+                onClick={handleEmergencyStop}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 border border-rose-500/50 shadow-md shadow-rose-950/50 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Ngắt toàn bộ rơ-le ngay lập tức"
+              >
+                <AlertOctagon size={15} className="animate-pulse" />
+                HỦY KHẨN (STOP ALL)
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Sub Tabs Bar */}
-      <div className="flex items-center gap-1 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200 overflow-x-auto">
+      {/* Sub Tabs Bar: High-contrast modern tabs */}
+      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
         <button
+          type="button"
           onClick={() => setActiveSubTab('ALERTS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            activeSubTab === 'ALERTS' ? 'bg-rose-700 text-white shadow-xs font-bold' : 'text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100'
+          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+            activeSubTab === 'ALERTS'
+              ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-700'
+              : 'text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/60'
           }`}
         >
-          <ShieldAlert size={14} className={activeSubTab === 'ALERTS' ? 'text-white' : 'text-rose-600'} /> Trung tâm Cảnh báo Zone
+          <ShieldAlert size={14} className={activeSubTab === 'ALERTS' ? 'text-white' : 'text-rose-600'} />
+          <span>Cảnh báo Zone</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('ACTUATORS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            activeSubTab === 'ACTUATORS' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+            activeSubTab === 'ACTUATORS'
+              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          <Power size={14} /> Kích hoạt Rơ-le ({actuators.length})
+          <Power size={14} className={activeSubTab === 'ACTUATORS' ? 'text-emerald-600' : 'text-slate-500'} />
+          <span>Rơ-le Chấp hành ({actuators.length})</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('ENV_PARAMS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            activeSubTab === 'ENV_PARAMS' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+            activeSubTab === 'ENV_PARAMS'
+              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          <Sliders size={14} /> Dải Tham số Vi khí hậu
+          <Sliders size={14} className={activeSubTab === 'ENV_PARAMS' ? 'text-sky-600' : 'text-slate-500'} />
+          <span>Dải Vi khí hậu</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('SCHEDULES')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            activeSubTab === 'SCHEDULES' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+            activeSubTab === 'SCHEDULES'
+              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          <Calendar size={14} /> Lịch tưới & Auto Rules ({schedules.length + autoRules.length})
+          <Calendar size={14} className={activeSubTab === 'SCHEDULES' ? 'text-amber-600' : 'text-slate-500'} />
+          <span>Lịch tưới & Auto ({schedules.length + autoRules.length})</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('SAFETY')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            activeSubTab === 'SAFETY' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+            activeSubTab === 'SAFETY'
+              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          <ShieldAlert size={14} /> An toàn Interlock
+          <ShieldAlert size={14} className={activeSubTab === 'SAFETY' ? 'text-teal-600' : 'text-slate-500'} />
+          <span>An toàn Interlock</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveSubTab('LOGS')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-            activeSubTab === 'LOGS' ? 'bg-white text-[#062326] shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+            activeSubTab === 'LOGS'
+              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
-          <FileText size={14} /> Nhật ký Log ({logs.length})
+          <FileText size={14} className={activeSubTab === 'LOGS' ? 'text-purple-600' : 'text-slate-500'} />
+          <span>Nhật ký ({logs.length})</span>
         </button>
       </div>
 
