@@ -739,18 +739,43 @@ export const deviceService = {
     }
   },
 
-  /** GET /api/v1/zones/{zoneId}/sensors */
+  /** GET /api/v1/zones/{zoneId}/sensors -> derived from zone devices */
   getSensors: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/zones/${targetZone}/sensors`).catch(() => ({ data: [] }));
-    return res.data?.value ?? res.data ?? [];
+    try {
+      const devices = await deviceService.getNodes(zoneId);
+      const allSensors = devices.flatMap((d: any) =>
+        (d.sensors || []).map((s: any) => ({
+          ...s,
+          deviceId: d.nodeId || d.deviceId,
+          deviceName: d.name,
+          zoneId: d.zoneId,
+          lastValue: s.lastReading?.value ?? s.currentValue ?? s.value ?? '--',
+          status: d.status || 'ONLINE',
+        }))
+      );
+      return allSensors;
+    } catch {
+      return [];
+    }
   },
 
-  /** GET /api/v1/zones/{zoneId}/actuators */
+  /** GET /api/v1/zones/{zoneId}/actuators -> derived from zone devices */
   getActuators: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/zones/${targetZone}/actuators`).catch(() => ({ data: [] }));
-    return res.data?.value ?? res.data ?? [];
+    try {
+      const devices = await deviceService.getNodes(zoneId);
+      const allActuators = devices.flatMap((d: any) =>
+        (d.actuators || []).map((a: any) => ({
+          ...a,
+          deviceId: d.nodeId || d.deviceId,
+          deviceName: d.name,
+          zoneId: d.zoneId,
+          status: a.status || d.status || 'ONLINE',
+        }))
+      );
+      return allActuators;
+    } catch {
+      return [];
+    }
   },
 
   /** IoT Requirements */
@@ -832,13 +857,37 @@ export const alertService = {
     const res = await apiClient.get(`/api/v1/farms/${farmId}/alerts`, {
       params: { status, severity },
     });
-    return res.data?.value ?? res.data ?? [];
+    const list = res.data?.value ?? res.data ?? [];
+    return (Array.isArray(list) ? list : []).map((a: any) => ({
+      ...a,
+      alertId: a.alertId || a.id,
+      title: a.title || `Cảnh báo ${a.parameterCode}`,
+      message: a.message || `Chỉ số ${a.parameterCode} đo được ${a.observedValue}${a.unit} nằm ngoài dải an toàn [${a.minThreshold} - ${a.maxThreshold}${a.unit}]`,
+      triggeredValue: a.observedValue ?? a.triggeredValue ?? 0,
+      targetRange: a.targetRange || `${a.minThreshold} - ${a.maxThreshold} ${a.unit || ''}`.trim(),
+      zoneName: a.zoneName || `Zone ${a.zoneId?.slice?.(0, 8) || ''}`,
+      status: (a.status || 'OPEN').toUpperCase(),
+      severity: (a.severity || 'WARNING').toUpperCase(),
+      triggeredAt: a.createdAtUtc || a.triggeredAt || new Date().toISOString(),
+    }));
   },
 
   /** GET /api/v1/zones/{zoneId}/alerts */
   getZoneAlerts: async (zoneId: string, status?: string) => {
     const res = await apiClient.get(`/api/v1/zones/${zoneId}/alerts`, { params: { status } });
-    return res.data?.value ?? res.data ?? [];
+    const list = res.data?.value ?? res.data ?? [];
+    return (Array.isArray(list) ? list : []).map((a: any) => ({
+      ...a,
+      alertId: a.alertId || a.id,
+      title: a.title || `Cảnh báo ${a.parameterCode}`,
+      message: a.message || `Chỉ số ${a.parameterCode} đo được ${a.observedValue}${a.unit} nằm ngoài dải an toàn [${a.minThreshold} - ${a.maxThreshold}${a.unit}]`,
+      triggeredValue: a.observedValue ?? a.triggeredValue ?? 0,
+      targetRange: a.targetRange || `${a.minThreshold} - ${a.maxThreshold} ${a.unit || ''}`.trim(),
+      zoneName: a.zoneName || `Zone ${a.zoneId?.slice?.(0, 8) || ''}`,
+      status: (a.status || 'OPEN').toUpperCase(),
+      severity: (a.severity || 'WARNING').toUpperCase(),
+      triggeredAt: a.createdAtUtc || a.triggeredAt || new Date().toISOString(),
+    }));
   },
 
   /** Alias for legacy getAlerts calls */

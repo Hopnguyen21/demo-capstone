@@ -750,6 +750,111 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
             await db.SaveChangesAsync(ct);
         }
 
+        // Đồng bộ trực tiếp vào bảng alert_rules để Alert Worker quét cảnh báo theo đúng ngưỡng cài đặt ở đây
+        var existingRules = await db.AlertRules.Where(r => r.ZoneId == command.ZoneId && r.ArchivedAtUtc == null).ToListAsync(ct);
+
+        // 1. Độ ẩm đất (Tưới khi < Min, Dừng khi > Max)
+        var soilRule = existingRules.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.SoilMoisture);
+        if (soilRule != null)
+        {
+            soilRule.MinThreshold = command.MinSoilMoisture;
+            soilRule.MaxThreshold = command.MaxSoilMoisture;
+            soilRule.IsActive = true;
+        }
+        else
+        {
+            db.AlertRules.Add(new AlertRule
+            {
+                Id = Guid.NewGuid(),
+                ZoneId = command.ZoneId,
+                GrowthStageId = activeSeason?.CurrentGrowthStageId ?? Guid.Empty,
+                ParameterCode = EnvironmentalParameterCode.SoilMoisture,
+                MinThreshold = command.MinSoilMoisture,
+                MaxThreshold = command.MaxSoilMoisture,
+                Severity = AlertSeverity.Warning,
+                CooldownMinutes = 15,
+                IsActive = true,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        // 2. Nhiệt độ tối đa
+        var tempRule = existingRules.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.Temperature);
+        if (tempRule != null)
+        {
+            tempRule.MaxThreshold = command.MaxTemperature;
+            tempRule.MinThreshold = 18m;
+            tempRule.IsActive = true;
+        }
+        else
+        {
+            db.AlertRules.Add(new AlertRule
+            {
+                Id = Guid.NewGuid(),
+                ZoneId = command.ZoneId,
+                GrowthStageId = activeSeason?.CurrentGrowthStageId ?? Guid.Empty,
+                ParameterCode = EnvironmentalParameterCode.Temperature,
+                MinThreshold = 18m,
+                MaxThreshold = command.MaxTemperature,
+                Severity = AlertSeverity.Critical,
+                CooldownMinutes = 15,
+                IsActive = true,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        // 3. Độ ẩm không khí
+        var humRule = existingRules.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.AirHumidity);
+        if (humRule != null)
+        {
+            humRule.MinThreshold = 55m;
+            humRule.MaxThreshold = Math.Max(command.TargetHumidity + 15m, 85m);
+            humRule.IsActive = true;
+        }
+        else
+        {
+            db.AlertRules.Add(new AlertRule
+            {
+                Id = Guid.NewGuid(),
+                ZoneId = command.ZoneId,
+                GrowthStageId = activeSeason?.CurrentGrowthStageId ?? Guid.Empty,
+                ParameterCode = EnvironmentalParameterCode.AirHumidity,
+                MinThreshold = 55m,
+                MaxThreshold = Math.Max(command.TargetHumidity + 15m, 85m),
+                Severity = AlertSeverity.Warning,
+                CooldownMinutes = 15,
+                IsActive = true,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        // 4. Cường độ ánh sáng
+        var luxRule = existingRules.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.LightIntensity);
+        if (luxRule != null)
+        {
+            luxRule.MinThreshold = Math.Max(command.TargetLux - 5000m, 2000m);
+            luxRule.MaxThreshold = 65000m;
+            luxRule.IsActive = true;
+        }
+        else
+        {
+            db.AlertRules.Add(new AlertRule
+            {
+                Id = Guid.NewGuid(),
+                ZoneId = command.ZoneId,
+                GrowthStageId = activeSeason?.CurrentGrowthStageId ?? Guid.Empty,
+                ParameterCode = EnvironmentalParameterCode.LightIntensity,
+                MinThreshold = Math.Max(command.TargetLux - 5000m, 2000m),
+                MaxThreshold = 65000m,
+                Severity = AlertSeverity.Warning,
+                CooldownMinutes = 15,
+                IsActive = true,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
+
         return new EnvironmentalTargetConfigView(
             zone.Id,
             zone.Name,

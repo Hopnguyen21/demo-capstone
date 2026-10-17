@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
-import { alertService, supportService, notificationService, NotificationItem } from '../../services';
+import { alertService, supportService, notificationService, NotificationItem, isAuthenticated } from '../../services';
 import { mockWeather } from '../../mocks/mockData';
 import {
   Sprout, Search, Bell, Sun, CloudRain, UserCheck, LogOut,
@@ -19,6 +19,11 @@ export const Topbar: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const fetchNotifications = async () => {
+    if (!isAuthenticated()) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
     try {
       const [list, count] = await Promise.all([
         notificationService.getNotifications(undefined, 1, 15),
@@ -33,9 +38,14 @@ export const Topbar: React.FC = () => {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    const interval = setInterval(fetchNotifications, 15000);
+    const handleRefresh = () => fetchNotifications();
+    window.addEventListener('notification-refresh', handleRefresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('notification-refresh', handleRefresh);
+    };
+  }, [user]);
 
   useEffect(() => {
     alertService.getAlerts().then(res => {
@@ -189,12 +199,15 @@ export const Topbar: React.FC = () => {
 
           {/* Notifications Dropdown */}
           {showNotificationMenu && (
-            <div className="absolute right-0 mt-2 w-88 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl p-3 z-50 text-slate-800 animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
-                <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <Bell size={14} className="text-[#119653]" /> Thông báo & Cảnh báo
+            <div className="absolute right-0 mt-2 w-[420px] sm:w-[460px] max-w-[92vw] bg-white border border-slate-200/90 rounded-2xl shadow-2xl p-4 z-50 text-slate-800 animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                <span className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <div className="p-1 rounded-lg bg-emerald-50 text-[#119653]">
+                    <Bell size={16} />
+                  </div>
+                  Thông báo & Cảnh báo
                   {unreadCount > 0 && (
-                    <span className="bg-rose-100 text-rose-700 text-[10px] px-1.5 py-0.2 rounded-full font-semibold">
+                    <span className="bg-rose-100 text-rose-700 text-xs px-2 py-0.5 rounded-full font-bold ml-1">
                       {unreadCount} mới
                     </span>
                   )}
@@ -205,14 +218,14 @@ export const Topbar: React.FC = () => {
                       await notificationService.markAllAsRead();
                       fetchNotifications();
                     }}
-                    className="text-[10px] text-[#119653] font-semibold hover:underline flex items-center gap-1"
+                    className="text-xs text-[#119653] font-semibold hover:underline flex items-center gap-1 hover:text-[#0c733f] transition-colors"
                   >
-                    <Check size={11} /> Đã đọc tất cả
+                    <Check size={13} /> Đã đọc tất cả
                   </button>
                 )}
               </div>
 
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
+              <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                 {/* Real Notifications from Backend */}
                 {notifications.length > 0 ? (
                   notifications.map((n) => (
@@ -225,34 +238,34 @@ export const Topbar: React.FC = () => {
                         }
                         if (n.targetUrl) navigate(n.targetUrl);
                       }}
-                      className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-all hover:shadow-sm ${
                         n.isRead
                           ? 'bg-slate-50/70 border-slate-200/60 opacity-80'
-                          : 'bg-emerald-50/50 border-emerald-200 font-medium'
-                      } hover:bg-emerald-50`}
+                          : 'bg-emerald-50/40 border-emerald-200/90 font-medium'
+                      } hover:bg-emerald-50/80`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-900 line-clamp-1">{n.title}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold text-slate-900 text-[13px] leading-snug">{n.title}</span>
                         <span
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 uppercase tracking-wider ${
                             n.severity === 'Critical'
-                              ? 'bg-rose-100 text-rose-700'
+                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
                               : n.severity === 'Warning'
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-slate-100 text-slate-700'
+                              ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                              : 'bg-slate-100 text-slate-700 border border-slate-200'
                           }`}
                         >
                           {n.type}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">{n.message}</p>
-                      <div className="flex items-center justify-between text-[9px] text-slate-400 mt-1.5">
-                        <span className="flex items-center gap-1">
-                          <Clock size={10} />
+                      <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">{n.message}</p>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 pt-1 border-t border-slate-100/80">
+                        <span className="flex items-center gap-1.5">
+                          <Clock size={12} className="text-slate-400" />
                           {new Date(n.createdAtUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{' '}
                           {new Date(n.createdAtUtc).toLocaleDateString()}
                         </span>
-                        {!n.isRead && <span className="text-[#119653] font-semibold text-[9px]">• Mới</span>}
+                        {!n.isRead && <span className="text-[#119653] font-bold text-[10px] flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#119653]"></span>Mới</span>}
                       </div>
                     </div>
                   ))

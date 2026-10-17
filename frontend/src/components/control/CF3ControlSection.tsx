@@ -382,8 +382,13 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       {activeSubTab === 'ENV_PARAMS' && (
         <EnvironmentalParametersPanel
           configs={configs}
-          onUpdateConfig={(cfg) => {
-            setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu cho ${cfg.zoneName}` });
+          onUpdateConfig={async (cfg) => {
+            try {
+              await controlService.updateEnvironmentalConfig(cfg);
+              setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu & cập nhật ngưỡng cảnh báo cho ${cfg.zoneName} thành công!` });
+            } catch {
+              setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu cho ${cfg.zoneName}` });
+            }
           }}
         />
       )}

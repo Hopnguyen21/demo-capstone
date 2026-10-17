@@ -38,9 +38,11 @@ public sealed class TelemetryAlertService(
             throw new ResourceConflictException("Device is not active in a Zone.");
 
         var season = await db.PlantingSeasons
+            .Include(x => x.Zone)
             .Include(x => x.AppliedRequirements)
             .SingleOrDefaultAsync(x => x.ZoneId == envelope.ZoneId && x.Status == PlantingSeasonStatus.InProgress, ct)
             ?? throw new ResourceConflictException("Zone has no in-progress Planting Season.");
+        var zone = season.Zone;
         var requirements = season.AppliedRequirements.ToDictionary(x => x.ParameterCode);
         foreach (var reading in envelope.Readings)
         {
@@ -139,24 +141,38 @@ public sealed class TelemetryAlertService(
                 alertsCreated++;
 
                 // Notify Farm Owners and Farmers of this zone
-                var userIdsToNotify = await db.AppUsers.AsNoTracking()
+                var targetUsers = await db.AppUsers.AsNoTracking()
                     .Where(u => u.TenantId == device.Farm.TenantId && (
                         u.Role == UserRole.FarmOwner ||
                         (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(za => za.ZoneId == envelope.ZoneId))
                     ))
-                    .Select(u => u.Id)
+                    .Select(u => new { u.Id, u.Role })
                     .ToListAsync(ct);
 
-                foreach (var targetUserId in userIdsToNotify)
+                var zoneName = zone.Name;
+                var paramLabel = input.ParameterCode switch
                 {
+                    EnvironmentalParameterCode.SoilMoisture => "Độ ẩm đất",
+                    EnvironmentalParameterCode.Temperature => "Nhiệt độ không khí",
+                    EnvironmentalParameterCode.AirHumidity => "Độ ẩm không khí",
+                    EnvironmentalParameterCode.LightIntensity => "Ánh sáng quang hợp",
+                    EnvironmentalParameterCode.Ph => "Độ pH",
+                    EnvironmentalParameterCode.Ec => "Dinh dưỡng EC",
+                    _ => input.ParameterCode.ToString()
+                };
+
+                foreach (var target in targetUsers)
+                {
+                    var targetUrl = target.Role == UserRole.Farmer ? "/farmer/alerts" : "/owner/alerts";
+
                     await notifications.CreateNotificationAsync(new(
-                        UserId: targetUserId,
+                        UserId: target.Id,
                         TenantId: device.Farm.TenantId,
-                        Title: $"Cảnh báo {input.ParameterCode} tại khu vực",
-                        Message: $"Giá trị đo {input.Value}{input.Unit} đã vượt ngưỡng cho phép [{rule.MinThreshold} - {rule.MaxThreshold}]",
+                        Title: $"Cảnh báo {paramLabel} vượt ngưỡng ({zoneName})",
+                        Message: $"{paramLabel} đo được {input.Value}{input.Unit} nằm ngoài phạm vi an toàn [{rule.MinThreshold} - {rule.MaxThreshold}{input.Unit}]. Vui lòng kiểm tra và xử lý.",
                         Type: NotificationType.Alert,
                         Severity: rule.Severity,
-                        TargetUrl: $"/owner/alerts",
+                        TargetUrl: targetUrl,
                         ReferenceId: alert.Id.ToString()
                     ), ct);
                 }

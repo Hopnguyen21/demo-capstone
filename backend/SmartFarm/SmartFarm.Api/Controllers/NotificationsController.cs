@@ -50,4 +50,24 @@ public sealed class NotificationsController(INotificationService notificationSer
         var count = await notificationService.MarkAllAsReadAsync(userId, ct);
         return Ok(new { updatedCount = count });
     }
-}
+
+    [HttpDelete("{notificationId:guid}")]
+    public async Task<IActionResult> Delete(Guid notificationId, CancellationToken ct = default)
+    {
+        var userId = User.GetUserId();
+        var success = await notificationService.DeleteNotificationAsync(userId, notificationId, ct);
+        if (!success)
+        {
+            return NotFound(new { message = "Thông báo không tồn tại hoặc bạn không có quyền truy cập." });
+        }
+        return NoContent();
+    }
+
+    [HttpDelete("read")]
+    public async Task<ActionResult<object>> DeleteAllRead(CancellationToken ct = default)
+    {
+        var userId = User.GetUserId();
+        var count = await notificationService.DeleteAllReadAsync(userId, ct);
+        return Ok(new { deletedCount = count });
+    }
+
