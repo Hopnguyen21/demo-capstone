@@ -70,4 +70,4 @@ public sealed class NotificationsController(INotificationService notificationSer
         var count = await notificationService.DeleteAllReadAsync(userId, ct);
         return Ok(new { deletedCount = count });
     }
-
+}

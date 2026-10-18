@@ -126,19 +126,19 @@ export const FarmGISMap: React.FC<{
         <div className="bg-white/95 backdrop-blur-md p-1 rounded-lg border border-slate-200 text-xs flex items-center gap-1 shadow-md">
           <button
             onClick={() => setMapType('osm')}
-            className={`px-2 py-1 rounded transition-colors ${mapType === 'osm' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2 py-1 rounded transition-colors ${mapType === 'osm' ? 'bg-[#119653] text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
           >
             OSM
           </button>
           <button
             onClick={() => setMapType('street')}
-            className={`px-2 py-1 rounded transition-colors ${mapType === 'street' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2 py-1 rounded transition-colors ${mapType === 'street' ? 'bg-[#119653] text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
           >
             Đường phố
           </button>
           <button
             onClick={() => setMapType('satellite')}
-            className={`px-2 py-1 rounded transition-colors ${mapType === 'satellite' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2 py-1 rounded transition-colors ${mapType === 'satellite' ? 'bg-[#119653] text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
           >
             Vệ tinh
           </button>

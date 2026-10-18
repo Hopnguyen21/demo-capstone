@@ -984,11 +984,11 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
                 type="button"
                 onClick={handleOpenCoordModal}
                 title="Nhập điểm ranh giới bằng Tọa độ (Lat, Lng) - Tối thiểu 3 điểm"
-                className="bg-[#062326] hover:bg-emerald-800 text-white px-2.5 py-1 rounded-lg border border-emerald-500/50 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                className="bg-[#119653] hover:bg-[#0e8046] text-white px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                <MapPin size={13} className="text-emerald-400" />
+                <MapPin size={13} className="text-white" />
                 <span>📍 Nhập Tọa độ (Lat/Lng)</span>
-                <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-1 py-0.5 rounded font-mono">Min 3 điểm</span>
+                <span className="text-[10px] bg-white/20 text-white px-1 py-0.5 rounded font-mono">Min 3 điểm</span>
               </button>
             )}
 
@@ -997,16 +997,16 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               type="button"
               onClick={toggleFullscreen}
               title={isFullscreen ? "Thu nhỏ lại như ban đầu (Esc)" : "Mở rộng bản đồ toàn màn hình"}
-              className="bg-[#062326] hover:bg-[#062326]/90 text-white px-2.5 py-1 rounded-lg border border-slate-700 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="bg-[#119653] hover:bg-[#0e8046] text-white px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
             >
               {isFullscreen ? (
                 <>
-                  <Minimize2 size={13} className="text-amber-400" />
+                  <Minimize2 size={13} className="text-amber-200" />
                   <span>Thu nhỏ</span>
                 </>
               ) : (
                 <>
-                  <Maximize2 size={13} className="text-emerald-400" />
+                  <Maximize2 size={13} className="text-white" />
                   <span>Mở rộng Map</span>
                 </>
               )}
@@ -1028,21 +1028,21 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               <button
                 type="button"
                 onClick={() => setMapType('osm')}
-                className={`px-2 py-1 rounded transition-colors ${mapType === 'osm' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                className={`px-2 py-1 rounded transition-colors ${mapType === 'osm' ? 'bg-[#119653] text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
               >
                 OSM
               </button>
               <button
                 type="button"
                 onClick={() => setMapType('street')}
-                className={`px-2 py-1 rounded transition-colors ${mapType === 'street' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                className={`px-2 py-1 rounded transition-colors ${mapType === 'street' ? 'bg-[#119653] text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
               >
                 Đường phố
               </button>
               <button
                 type="button"
                 onClick={() => setMapType('satellite')}
-                className={`px-2 py-1 rounded transition-colors ${mapType === 'satellite' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                className={`px-2 py-1 rounded transition-colors ${mapType === 'satellite' ? 'bg-[#119653] text-white font-bold' : 'text-slate-700 hover:bg-slate-100'}`}
               >
                 Vệ tinh
               </button>
@@ -1251,7 +1251,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               onClick={() => setCoordModeTab('rows')}
               className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors ${
                 coordModeTab === 'rows'
-                  ? 'bg-[#062326] text-white shadow-xs'
+                  ? 'bg-[#119653] text-white shadow-xs'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -1262,7 +1262,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               onClick={() => setCoordModeTab('bulk')}
               className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-colors ${
                 coordModeTab === 'bulk'
-                  ? 'bg-[#062326] text-white shadow-xs'
+                  ? 'bg-[#119653] text-white shadow-xs'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >

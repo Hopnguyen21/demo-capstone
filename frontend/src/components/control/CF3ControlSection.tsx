@@ -7,8 +7,6 @@ import { Button, Modal, StatusBadge } from '../ui/BaseUI';
 import { controlService, cropService } from '../../services';
 import { EnvironmentalParametersPanel } from './EnvironmentalParametersPanel';
 import { ActuatorControlGrid } from './ActuatorControlGrid';
-import { SafetyInterlockRulesCard } from './SafetyInterlockRulesCard';
-import { ControlHistoryLogsTable } from './ControlHistoryLogsTable';
 import { CropCalendarView } from '../crops/CropCalendarView';
 import { ZoneAlertCenter } from '../alerts/ZoneAlertCenter';
 import { 
@@ -24,7 +22,7 @@ export interface CF3ControlSectionProps {
   zoneId?: string;
   title?: string;
   subtitle?: string;
-  defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS';
+  defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS';
 }
 
 export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
@@ -37,7 +35,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   defaultTab = 'ACTUATORS',
 }) => {
   const { zones: authZones } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>(defaultTab);
+  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS'>(defaultTab);
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [configs, setConfigs] = useState<EnvironmentalTargetConfig[]>([]);
   const [logs, setLogs] = useState<ControlExecutionLog[]>([]);
@@ -280,7 +278,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       </div>
 
       {/* Sub Tabs Bar: High-contrast modern tabs */}
-      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
+      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-1.5">
         <button
           type="button"
           onClick={() => setActiveSubTab('ALERTS')}
@@ -299,7 +297,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           onClick={() => setActiveSubTab('ACTUATORS')}
           className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
             activeSubTab === 'ACTUATORS'
-              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              ? 'bg-white text-[#119653] shadow-sm ring-1 ring-slate-200 font-extrabold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
@@ -312,7 +310,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           onClick={() => setActiveSubTab('ENV_PARAMS')}
           className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
             activeSubTab === 'ENV_PARAMS'
-              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              ? 'bg-white text-[#119653] shadow-sm ring-1 ring-slate-200 font-extrabold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
@@ -325,38 +323,12 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           onClick={() => setActiveSubTab('SCHEDULES')}
           className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
             activeSubTab === 'SCHEDULES'
-              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
+              ? 'bg-white text-[#119653] shadow-sm ring-1 ring-slate-200 font-extrabold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
           <Calendar size={14} className={activeSubTab === 'SCHEDULES' ? 'text-amber-600' : 'text-slate-500'} />
           <span>Lịch tưới & Auto ({schedules.length + autoRules.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('SAFETY')}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
-            activeSubTab === 'SAFETY'
-              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <ShieldAlert size={14} className={activeSubTab === 'SAFETY' ? 'text-teal-600' : 'text-slate-500'} />
-          <span>An toàn Interlock</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('LOGS')}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
-            activeSubTab === 'LOGS'
-              ? 'bg-white text-[#062326] shadow-sm ring-1 ring-slate-200 font-extrabold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <FileText size={14} className={activeSubTab === 'LOGS' ? 'text-purple-600' : 'text-slate-500'} />
-          <span>Nhật ký ({logs.length})</span>
         </button>
       </div>
 
@@ -400,7 +372,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
                 <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                  <Clock size={16} className="text-[#062326]" /> Lịch Tưới Định kỳ (Cron Schedules) cho {scopeLabel}
+                  <Clock size={16} className="text-[#119653]" /> Lịch Tưới Định kỳ (Cron Schedules) cho {scopeLabel}
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Lịch tưới tự động 3 ca (Sáng - Trưa - Chiều) được đồng bộ từ Thư viện Cây trồng Chuẩn.
@@ -420,7 +392,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                   <button
                     onClick={() => setScheduleViewMode('CALENDAR')}
                     className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                      scheduleViewMode === 'CALENDAR' ? 'bg-[#062326] text-white' : 'text-slate-600 hover:bg-slate-100'
+                      scheduleViewMode === 'CALENDAR' ? 'bg-[#119653] text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
                     🗓️ Cuốn Lịch Tưới Zone
@@ -502,7 +474,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                         <StatusBadge status={rule.isActive ? 'ACTIVE' : 'INACTIVE'} />
                       </div>
                       <div className="text-[11px] font-mono text-slate-600 mt-1">
-                        KHI <strong className="text-[#062326]">{rule.parameterCode}</strong> {rule.operator} <strong className="text-amber-700">{rule.thresholdValue}</strong> THÌ KÍCH HOẠT <strong className="text-sky-700">{rule.actuatorName}</strong> TRONG {rule.actionDurationMinutes} PHÚT
+                        KHI <strong className="text-[#119653]">{rule.parameterCode}</strong> {rule.operator} <strong className="text-amber-700">{rule.thresholdValue}</strong> THÌ KÍCH HOẠT <strong className="text-sky-700">{rule.actuatorName}</strong> TRONG {rule.actionDurationMinutes} PHÚT
                       </div>
                     </div>
                   </div>
@@ -513,17 +485,6 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
         </div>
       )}
 
-      {activeSubTab === 'SAFETY' && (
-        <SafetyInterlockRulesCard
-          onEmergencyStopAll={handleEmergencyStop}
-        />
-      )}
-
-      {activeSubTab === 'LOGS' && (
-        <ControlHistoryLogsTable
-          logs={logs}
-        />
-      )}
 
       {/* MODAL: Sync Schedule from Crop Library */}
       <Modal

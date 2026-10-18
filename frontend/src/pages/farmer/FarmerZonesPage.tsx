@@ -11,7 +11,7 @@ export const FarmerZonesPage: React.FC = () => {
   const [selectedZoneId, setSelectedZoneId] = useState<string>(zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001');
   const [selectedCropDetailZone, setSelectedCropDetailZone] = useState<Zone | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [activeControlTab, setActiveControlTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>('ALERTS');
+  const [activeControlTab, setActiveControlTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS'>('ALERTS');
 
   useEffect(() => {
     alertService.getAlerts().then(res => {
@@ -30,11 +30,11 @@ export const FarmerZonesPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#062326] text-emerald-400 font-mono">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono">
               FARMER ZONE CONTROL HUB
             </span>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Sprout className="text-[#062326]" size={22} /> Điều khiển & Cảnh báo Nhà màng được Phân công
+              <Sprout className="text-[#119653]" size={22} /> Điều khiển & Cảnh báo Nhà màng được Phân công
             </h1>
           </div>
           <p className="text-xs text-slate-600 mt-1">Danh sách khu vực nhà màng thuộc phạm vi phụ trách kỹ thuật & tích hợp Trung tâm Cảnh báo Nông nghiệp.</p>

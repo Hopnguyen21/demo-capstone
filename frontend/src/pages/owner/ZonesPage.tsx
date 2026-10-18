@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Zone, Field, Farm } from '../../types';
 import { zoneService, fieldService, farmService, extractApiError } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
-import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers, Wrench } from 'lucide-react';
+import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers, Wrench, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
@@ -15,7 +15,16 @@ export const ZonesPage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState('31000000-0000-0000-0000-000000000001');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('32000000-0000-0000-0000-000000000001');
-  const [activeTabMode, setActiveTabMode] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | 'SAFETY' | 'LOGS'>('ALERTS');
+  const [activeTabMode, setActiveTabMode] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS'>('ALERTS');
+  const [createdZoneSuccessData, setCreatedZoneSuccessData] = useState<{
+    zoneName: string;
+    areaM2: number;
+    crop: string;
+    fieldName: string;
+    farmName: string;
+    pointCount: number;
+    zoneId?: string;
+  } | null>(null);
   const [zoneName, setZoneName] = useState('');
   const [description, setDescription] = useState('');
   const [crop, setCrop] = useState('Cà chua (Tomato)');
@@ -79,7 +88,7 @@ export const ZonesPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       const geoJson = toGeoJsonPolygon(polygon);
-      await zoneService.createZone(fieldId, {
+      const createdRes = await zoneService.createZone(fieldId, {
         name: zoneName.trim(),
         areaM2: computedArea,
         zoneType: 'Greenhouse',
@@ -88,9 +97,17 @@ export const ZonesPage: React.FC = () => {
       });
       await loadData();
       setShowCreateModal(false);
+      setCreatedZoneSuccessData({
+        zoneName: zoneName.trim(),
+        areaM2: computedArea,
+        crop: crop || 'Rau màu VietGAP',
+        fieldName: targetField?.name || 'Phân khu Lô đất',
+        farmName: farms.find(f => f.farmId === targetField?.farmId)?.name || 'Trang trại',
+        pointCount: polygon.length,
+        zoneId: createdRes?.zoneId,
+      });
       setZoneName('');
       setDescription('');
-      alert('Đã lưu Zone mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi tạo Zone:', err);
       const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
@@ -109,7 +126,7 @@ export const ZonesPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Sprout className="text-[#062326]" size={22} /> Quản lý & Cảnh báo Khu vực Canh tác (Level 3: Zones)
+            <Sprout className="text-[#119653]" size={22} /> Quản lý & Cảnh báo Khu vực Canh tác (Level 3: Zones)
           </h1>
           <p className="text-xs text-slate-600 mt-1">
             Các Zone khép kín lồng bên trong <strong>Phân khu Lô đất (Level 2: Field)</strong> thuộc <strong>Trang trại (Level 1: Farm)</strong> được tích hợp Trung tâm Cảnh báo Nông nghiệp thời gian thực.
@@ -155,7 +172,7 @@ export const ZonesPage: React.FC = () => {
                   </div>
                   <h3 className="text-base font-bold text-slate-900 mt-1">{z.name}</h3>
                   <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                    <span className="flex items-center gap-1"><Building2 size={12} className="text-[#062326]" /> {parentFarm?.name}</span>
+                    <span className="flex items-center gap-1"><Building2 size={12} className="text-[#119653]" /> {parentFarm?.name}</span>
                     <span>➔</span>
                     <span className="flex items-center gap-1 font-semibold text-sky-800"><MapPin size={12} /> {parentField?.name}</span>
                   </div>
@@ -166,7 +183,7 @@ export const ZonesPage: React.FC = () => {
               <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1 text-slate-700">
                 <div className="flex justify-between">
                   <span>Cây trồng hiện tại:</span>
-                  <strong className="text-[#062326]">
+                  <strong className="text-[#119653]">
                     {z.currentCrop || (z.name?.toLowerCase().includes('dua leo') ? 'Dưa leo Baby (Cucumber)' : z.name?.toLowerCase().includes('xa lach') ? 'Xà lách cuộn (Batavia)' : z.name?.toLowerCase().includes('dau tay') ? 'Dâu tây Hana' : 'Dưa leo Baby VietGAP')}
                   </strong>
                 </div>
@@ -231,7 +248,7 @@ export const ZonesPage: React.FC = () => {
           <div>
             <label className="block text-slate-700 font-bold mb-1">Chọn Lô đất Mẹ sở hữu (Level 2 Field) *</label>
             <select
-              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-emerald-500"
               value={selectedFieldId}
               onChange={e => setSelectedFieldId(e.target.value)}
             >
@@ -285,6 +302,107 @@ export const ZonesPage: React.FC = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Giao diện Hoàn thành Tạo Zone (Thay thế Alert) */}
+      <Modal
+        isOpen={!!createdZoneSuccessData}
+        onClose={() => setCreatedZoneSuccessData(null)}
+        title="Thông Báo Hoàn Tất Thiết Lập"
+      >
+        {createdZoneSuccessData && (
+          <div className="text-center py-2 space-y-5 animate-in zoom-in-95 duration-200">
+            {/* Success Icon with glowing badge */}
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-emerald-100 animate-ping opacity-30" />
+              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-600 to-green-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                <CheckCircle2 size={44} strokeWidth={2.5} />
+              </div>
+            </div>
+
+            <div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                ✓ Khởi tạo thành công
+              </span>
+              <h3 className="text-xl font-black text-slate-900 mt-2">
+                Đã Lưu Phân Khu (Zone) Vào Hệ Thống!
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Zone mới đã được lưu thành công cùng dữ liệu tọa độ GIS vào cơ sở dữ liệu PostgreSQL.
+              </p>
+            </div>
+
+            {/* Zone summary card */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 text-left text-xs space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Sprout size={15} className="text-emerald-600" /> Tên Phân khu (Zone):
+                </span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {createdZoneSuccessData.zoneName}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Building2 size={15} className="text-sky-600" /> Thuộc Lô đất:
+                </span>
+                <span className="font-semibold text-sky-800">
+                  {createdZoneSuccessData.fieldName} ({createdZoneSuccessData.farmName})
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Layers size={15} className="text-amber-600" /> Diện tích quy hoạch:
+                </span>
+                <span className="font-bold font-mono text-emerald-700">
+                  {createdZoneSuccessData.areaM2.toLocaleString()} m² ({(createdZoneSuccessData.areaM2 / 10000).toFixed(2)} ha)
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  🌱 Cây trồng canh tác:
+                </span>
+                <span className="font-semibold text-slate-800">
+                  {createdZoneSuccessData.crop}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <MapPin size={15} className="text-teal-600" /> Tọa độ GIS:
+                </span>
+                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                  ✓ Đã đồng bộ Polygon GIS ({createdZoneSuccessData.pointCount} đỉnh)
+                </span>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setCreatedZoneSuccessData(null)}
+                className="w-full sm:w-auto font-medium"
+              >
+                Đóng
+              </Button>
+              <Button
+                onClick={() => {
+                  if (createdZoneSuccessData.zoneId) {
+                    setSelectedZoneId(createdZoneSuccessData.zoneId);
+                  }
+                  setCreatedZoneSuccessData(null);
+                }}
+                className="w-full sm:w-auto bg-[#119653] hover:bg-[#0e8046] text-white font-bold shadow-md shadow-emerald-500/20"
+              >
+                <span>Xem Chi Tiết Zone Vừa Tạo ➔</span>
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

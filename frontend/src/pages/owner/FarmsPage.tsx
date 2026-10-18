@@ -44,7 +44,15 @@ export const FarmsPage: React.FC = () => {
   const [yieldNotesInput, setYieldNotesInput] = useState<string>('Nông sản VietGAP loại 1 đạt chuẩn xuất khẩu');
   const [yieldQualityInput, setYieldQualityInput] = useState<string>('Loại 1 (Xuất khẩu / Siêu thị cao cấp)');
   const [yieldMarkCompleted, setYieldMarkCompleted] = useState<boolean>(false);
-
+  const [createdZoneSuccessData, setCreatedZoneSuccessData] = useState<{
+    zoneName: string;
+    areaM2: number;
+    crop: string;
+    fieldName: string;
+    farmName: string;
+    pointCount: number;
+    zoneId?: string;
+  } | null>(null);
   const loadData = async () => {
     try {
       const [fData, fdData, zData, nData, farmerList] = await Promise.all([
@@ -561,7 +569,7 @@ export const FarmsPage: React.FC = () => {
         ]);
       }
 
-      await zoneService.createZone(selectedField.fieldId, {
+      const createdRes = await zoneService.createZone(selectedField.fieldId, {
         name: newZoneName.trim(),
         areaM2: computedArea,
         zoneType: 'Greenhouse',
@@ -570,8 +578,16 @@ export const FarmsPage: React.FC = () => {
       });
       await loadData();
       setShowAddZoneModal(false);
+      setCreatedZoneSuccessData({
+        zoneName: newZoneName.trim(),
+        areaM2: computedArea,
+        crop: newZoneCrop || 'Rau màu VietGAP',
+        fieldName: selectedField.name,
+        farmName: selectedFarm?.name || 'Trang trại',
+        pointCount: zonePolygon.length >= 3 ? zonePolygon.length : 4,
+        zoneId: createdRes?.zoneId,
+      });
       setNewZoneName('');
-      alert('Đã lưu Zone mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi thêm Zone:', err);
       const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
@@ -681,7 +697,7 @@ export const FarmsPage: React.FC = () => {
           <button
             onClick={handleResetToFarms}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${!selectedFarm
-                ? 'bg-[#062326] text-white shadow-xs'
+                ? 'bg-[#119653] text-white shadow-xs font-bold'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
           >
@@ -695,8 +711,8 @@ export const FarmsPage: React.FC = () => {
               <button
                 onClick={() => { setSelectedField(null); setSelectedZone(null); }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${selectedFarm && !selectedField
-                    ? 'bg-[#062326] text-white shadow-xs'
-                    : 'bg-emerald-50 text-[#062326] border border-emerald-200 hover:bg-emerald-100'
+                    ? 'bg-[#119653] text-white shadow-xs font-bold'
+                    : 'bg-emerald-50 text-[#119653] border border-emerald-200 hover:bg-emerald-100'
                   }`}
               >
                 <Building2 size={14} /> {selectedFarm.name}
@@ -745,7 +761,7 @@ export const FarmsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Building2 className="text-[#062326]" size={22} /> Danh sách Trang trại Sở hữu (Level 1: Farms)
+                <Building2 className="text-[#119653]" size={22} /> Danh sách Trang trại Sở hữu (Level 1: Farms)
               </h1>
               <p className="text-xs text-slate-600 mt-1">
                 Nhấn vào thẻ Trang trại bất kỳ để mở danh sách Phân khu Lô đất (Fields) lồng bên trong.
@@ -762,22 +778,22 @@ export const FarmsPage: React.FC = () => {
                 <div
                   key={farm.farmId}
                   onClick={() => handleSelectFarm(farm)}
-                  className="p-5 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-xs hover:border-[#062326] hover:shadow-md transition-all cursor-pointer group"
+                  className="p-5 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
-                      <div className="p-3 bg-emerald-50 text-[#062326] rounded-xl border border-emerald-100 group-hover:bg-[#062326] group-hover:text-white transition-colors">
+                      <div className="p-3 bg-emerald-50 text-[#119653] rounded-xl border border-emerald-100 group-hover:bg-[#119653] group-hover:text-white transition-colors">
                         <Building2 size={24} />
                       </div>
                       <div>
                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 text-[10px] font-bold rounded border border-emerald-300">
                           LEVEL 1: FARM
                         </span>
-                        <h3 className="text-base font-bold text-slate-900 mt-1 group-hover:text-[#062326] transition-colors">
+                        <h3 className="text-base font-bold text-slate-900 mt-1 group-hover:text-[#119653] transition-colors">
                           {farm.name}
                         </h3>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <MapPin size={13} className="text-[#062326]" /> {farm.address}
+                          <MapPin size={13} className="text-[#119653]" /> {farm.address}
                         </p>
                       </div>
                     </div>
@@ -793,7 +809,7 @@ export const FarmsPage: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[10px]">Lô đất (Fields)</span>
-                      <strong className="text-[#062326] font-bold">{farmFields.length} Lô</strong>
+                      <strong className="text-[#119653] font-bold">{farmFields.length} Lô</strong>
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[10px]">Phân khu (Zones)</span>
@@ -801,7 +817,7 @@ export const FarmsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-[#062326] font-bold group-hover:translate-x-1 transition-transform">
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-[#119653] font-bold group-hover:translate-x-1 transition-transform">
                     <span>Xem các Lô đất (Fields) thuộc Trang trại ➔</span>
                     <ArrowUpRight size={16} />
                   </div>
@@ -816,7 +832,7 @@ export const FarmsPage: React.FC = () => {
       {selectedFarm && !selectedField && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Header Banner for Selected Farm */}
-          <div className="p-6 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/30">
+          <div className="p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/40">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
@@ -902,7 +918,7 @@ export const FarmsPage: React.FC = () => {
       {selectedField && !selectedZone && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Header Banner for Selected Field */}
-          <div className="p-6 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/30">
+          <div className="p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/40">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
@@ -962,7 +978,7 @@ export const FarmsPage: React.FC = () => {
                 <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1.5 text-slate-700">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Cây trồng hiện tại:</span>
-                    <strong className="text-[#062326] font-bold">{zone.currentCrop}</strong>
+                    <strong className="text-[#119653] font-bold">{zone.currentCrop}</strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Giai đoạn sinh trưởng:</span>
@@ -1013,7 +1029,7 @@ export const FarmsPage: React.FC = () => {
       {/* VIEW LEVEL 4: ZONE DETAILS */}
       {selectedZone && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="p-6 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/30">
+          <div className="p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/40">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
@@ -1534,6 +1550,109 @@ export const FarmsPage: React.FC = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Giao diện Hoàn thành Tạo Zone (Thay thế Alert) */}
+      <Modal
+        isOpen={!!createdZoneSuccessData}
+        onClose={() => setCreatedZoneSuccessData(null)}
+        title="Thông Báo Hoàn Tất Thiết Lập"
+      >
+        {createdZoneSuccessData && (
+          <div className="text-center py-2 space-y-5 animate-in zoom-in-95 duration-200">
+            {/* Success Icon with glowing badge */}
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-emerald-100 animate-ping opacity-30" />
+              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-600 to-green-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                <CheckCircle2 size={44} strokeWidth={2.5} />
+              </div>
+            </div>
+
+            <div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                ✓ Khởi tạo thành công
+              </span>
+              <h3 className="text-xl font-black text-slate-900 mt-2">
+                Đã Lưu Phân Khu (Zone) Vào Hệ Thống!
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Zone mới đã được lưu thành công cùng dữ liệu tọa độ GIS vào cơ sở dữ liệu PostgreSQL.
+              </p>
+            </div>
+
+            {/* Zone summary card */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 text-left text-xs space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Sprout size={15} className="text-emerald-600" /> Tên Phân khu (Zone):
+                </span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {createdZoneSuccessData.zoneName}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Building2 size={15} className="text-sky-600" /> Thuộc Lô đất:
+                </span>
+                <span className="font-semibold text-sky-800">
+                  {createdZoneSuccessData.fieldName} ({createdZoneSuccessData.farmName})
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <Layers size={15} className="text-amber-600" /> Diện tích quy hoạch:
+                </span>
+                <span className="font-bold font-mono text-emerald-700">
+                  {createdZoneSuccessData.areaM2.toLocaleString()} m² ({(createdZoneSuccessData.areaM2 / 10000).toFixed(2)} ha)
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  🌱 Cây trồng canh tác:
+                </span>
+                <span className="font-semibold text-slate-800">
+                  {createdZoneSuccessData.crop}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  <MapPin size={15} className="text-teal-600" /> Tọa độ GIS:
+                </span>
+                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                  ✓ Đã đồng bộ Polygon GIS ({createdZoneSuccessData.pointCount} đỉnh)
+                </span>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setCreatedZoneSuccessData(null)}
+                className="w-full sm:w-auto font-medium"
+              >
+                Đóng
+              </Button>
+              <Button
+                onClick={() => {
+                  const targetZone = zones.find(z => z.name === createdZoneSuccessData.zoneName) ||
+                                     (createdZoneSuccessData.zoneId ? zones.find(z => z.zoneId === createdZoneSuccessData.zoneId) : null);
+                  setCreatedZoneSuccessData(null);
+                  if (targetZone) {
+                    handleSelectZone(targetZone);
+                  }
+                }}
+                className="w-full sm:w-auto bg-[#119653] hover:bg-[#0e8046] text-white font-bold shadow-md shadow-emerald-500/20"
+              >
+                <span>Xem Chi Tiết Zone Vừa Tạo ➔</span>
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal Submit Device Installation Request for Field or Zone */}
