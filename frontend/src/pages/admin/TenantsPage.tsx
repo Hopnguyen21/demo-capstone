@@ -54,7 +54,7 @@ export const TenantsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Building2 className="text-[#062326]" size={22} /> Quản lý Tổ chức Người thuê (SaaS Tenants)
+            <Building2 className="text-[#119653]" size={22} /> Quản lý Tổ chức Người thuê (SaaS Tenants)
           </h1>
           <p className="text-xs text-slate-600 mt-1">Danh sách các Hợp tác xã, Doanh nghiệp Nông nghiệp đăng ký sử dụng nền tảng SmartFarm.</p>
         </div>
@@ -92,10 +92,10 @@ export const TenantsPage: React.FC = () => {
             const farmCount = t.farmsCount ?? (t as any).stats?.totalFarms ?? 0;
             const userCount = t.usersCount ?? (t as any).stats?.activeUsers ?? 0;
             return (
-              <div key={t.tenantId || idx} className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-xs hover:border-[#062326]/30 transition-all">
+              <div key={t.tenantId || idx} className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-xs hover:border-[#119653]/40 transition-all">
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-[#062326] border border-slate-200">
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
                       {tenantCode}
                     </span>
                     <h3 className="text-base font-bold text-slate-900 mt-1.5">{tenantName}</h3>
@@ -105,7 +105,7 @@ export const TenantsPage: React.FC = () => {
 
                 <div className="space-y-1.5 text-xs text-slate-600">
                   <div className="flex items-center gap-2 text-slate-600">
-                    <MapPin size={14} className="text-[#062326] shrink-0" />
+                    <MapPin size={14} className="text-[#119653] shrink-0" />
                     <span className="truncate">{t.address || 'Chưa cập nhật địa chỉ'}</span>
                   </div>
                   <div className="flex items-center gap-4 text-slate-600">
@@ -119,7 +119,7 @@ export const TenantsPage: React.FC = () => {
                     <span className="text-slate-500">Trang trại: <strong className="text-slate-900">{farmCount}</strong></span>
                     <span className="text-slate-500">Tài khoản: <strong className="text-slate-900">{userCount}</strong></span>
                   </div>
-                  <button className="text-[#062326] hover:underline font-semibold flex items-center gap-1">
+                  <button className="text-[#119653] hover:underline font-semibold flex items-center gap-1">
                     Chi tiết & Cấu hình <ExternalLink size={12} />
                   </button>
                 </div>

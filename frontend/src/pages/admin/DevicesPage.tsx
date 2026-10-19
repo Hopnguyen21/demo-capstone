@@ -271,29 +271,29 @@ export const DevicesPage: React.FC = () => {
       case 'PUMP':
         return <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 font-bold text-[10px]">⚡ Bơm Dinh dưỡng</span>;
       default:
-        return <span className="px-2 py-0.5 rounded bg-[#062326]/10 text-[#062326] font-bold text-[10px]">📟 Sensor Node</span>;
+        return <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">📟 Sensor Node</span>;
     }
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Top Banner Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-2xl shadow-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2 border border-emerald-500/30">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
             <Package size={14} /> Quản trị Platform Admin & Kho Vật tư
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
             Quản lý Kho Vật tư, Thiết bị & Linh kiện IoT (Hardware Inventory Stock)
           </h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-emerald-100 mt-1">
             Admin nhập linh kiện mới vào kho, xem tồn kho trạm Gateway, Sensor Node, Van solenoid và cấp phát cho các dự án nông nghiệp.
           </p>
         </div>
 
         <Button
           onClick={() => setIsAddModalOpen(true)}
-          className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shrink-0 flex items-center gap-1.5 shadow-lg"
+          className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shrink-0 flex items-center gap-1.5 shadow-sm"
         >
           <Plus size={16} /> Thêm Thiết bị / Linh kiện mới vào Kho
         </Button>
@@ -310,8 +310,8 @@ export const DevicesPage: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
         <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
           <span className="text-slate-500 block text-[11px]">Tổng Tồn kho Vật tư</span>
-          <div className="text-xl font-bold text-[#062326] flex items-center gap-2">
-            <Package size={20} className="text-emerald-600" />
+          <div className="text-xl font-bold text-[#119653] flex items-center gap-2">
+            <Package size={20} className="text-[#119653]" />
             <span>{totalAvailableStock} sản phẩm</span>
           </div>
           <span className="text-[10px] text-emerald-700 font-semibold block">Sẵn sàng cấp phát thực địa</span>
@@ -338,7 +338,7 @@ export const DevicesPage: React.FC = () => {
         <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
           <span className="text-slate-500 block text-[11px]">Danh mục Mã Linh kiện</span>
           <div className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Cpu size={20} className="text-[#062326]" />
+            <Cpu size={20} className="text-[#119653]" />
             <span>{devices.length} mã loại</span>
           </div>
           <span className="text-[10px] text-slate-500 block">Đã đăng ký trong hệ thống</span>
@@ -354,7 +354,7 @@ export const DevicesPage: React.FC = () => {
               placeholder="🔍 Tìm theo Tên thiết bị, Mã (vd: GW-ESP32, SN-SOIL), MAC hoặc S/N..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#062326]"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#119653]"
             />
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
@@ -375,7 +375,7 @@ export const DevicesPage: React.FC = () => {
                 onClick={() => setSelectedCategory(tab.id)}
                 className={`px-2.5 py-1 rounded-lg transition-colors shrink-0 text-xs ${
                   selectedCategory === tab.id
-                    ? 'bg-[#062326] text-white font-bold'
+                    ? 'bg-[#119653] text-white font-bold'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
@@ -390,7 +390,7 @@ export const DevicesPage: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-            <Layers size={17} className="text-[#062326]" /> Danh sách Tồn kho Vật tư ({filteredDevices.length})
+            <Layers size={17} className="text-[#119653]" /> Danh sách Tồn kho Vật tư ({filteredDevices.length})
           </h3>
           <span className="text-xs text-slate-500 font-mono">Quản lý kho dành cho Admin Platform</span>
         </div>
@@ -420,7 +420,7 @@ export const DevicesPage: React.FC = () => {
                 filteredDevices.map(item => (
                   <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="p-3.5">
-                      <div className="font-bold text-[#062326] font-mono text-xs">{item.code}</div>
+                      <div className="font-bold text-emerald-800 font-mono text-xs">{item.code}</div>
                       <div className="font-medium text-slate-900 text-xs mt-0.5">{item.name}</div>
                     </td>
                     <td className="p-3.5">{getCategoryLabel(item.category)}</td>
@@ -510,7 +510,7 @@ export const DevicesPage: React.FC = () => {
               <select
                 value={newItem.category}
                 onChange={e => setNewItem({ ...newItem, category: e.target.value as any })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653]"
               >
                 <option value="GATEWAY">📡 Gateway Central Station (ESP32)</option>
                 <option value="SOIL_SENSOR">🌱 Node Cảm biến Đất (RS485 / NPK)</option>

@@ -29,7 +29,7 @@ export const HomePage: React.FC = () => {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 1. TOP ANNOUNCEMENT BAR                                     */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-[#062326] via-[#093d39] to-[#062326] text-emerald-200 text-xs py-2 px-4 border-b border-emerald-900/50">
+      <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 text-emerald-100 text-xs py-2 px-4 border-b border-emerald-600/50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950 uppercase tracking-wider">
@@ -39,7 +39,7 @@ export const HomePage: React.FC = () => {
               Khởi tạo Nông trang số hóa chuẩn VietGAP & Tích hợp Trợ lý AI Gemini Nông học chuyên sâu.
             </span>
           </div>
-          <div className="hidden md:flex items-center gap-4 text-[11px] text-emerald-300">
+          <div className="hidden md:flex items-center gap-4 text-[11px] text-emerald-200">
             <span className="flex items-center gap-1"><Phone size={12} /> Hotline hỗ trợ: 1900 6899</span>
             <span>•</span>
             <span className="flex items-center gap-1"><ShieldCheck size={12} /> Bảo hành phần cứng LoRa 24 tháng</span>
@@ -54,13 +54,13 @@ export const HomePage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Logo Brand */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#062326] to-[#0d5045] flex items-center justify-center text-emerald-400 shadow-md shadow-[#062326]/20 group-hover:scale-105 transition-transform">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#119653] to-emerald-700 flex items-center justify-center text-white shadow-md shadow-emerald-700/20 group-hover:scale-105 transition-transform">
               <Sprout size={24} className="stroke-[2.2]" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xl font-black tracking-tight text-[#062326]">SmartFarm</span>
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-[#062326] border border-emerald-300">
+                <span className="text-xl font-black tracking-tight text-[#119653]">SmartFarm</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-[#119653] border border-emerald-300">
                   IoT
                 </span>
               </div>
@@ -72,18 +72,18 @@ export const HomePage: React.FC = () => {
 
           {/* Nav Links */}
           <nav className="hidden lg:flex items-center gap-8 text-sm font-semibold text-slate-700">
-            <a href="#solutions" className="hover:text-[#062326] transition-colors">Giải pháp</a>
-            <a href="#hardware" className="hover:text-[#062326] transition-colors">Thiết bị LoRa</a>
-            <a href="#vietgap" className="hover:text-[#062326] transition-colors">Quy trình VietGAP</a>
-            <a href="#workflow" className="hover:text-[#062326] transition-colors">Triển khai GIS</a>
-            <a href="#testimonials" className="hover:text-[#062326] transition-colors">Khách hàng</a>
+            <a href="#solutions" className="hover:text-[#119653] transition-colors">Giải pháp</a>
+            <a href="#hardware" className="hover:text-[#119653] transition-colors">Thiết bị LoRa</a>
+            <a href="#vietgap" className="hover:text-[#119653] transition-colors">Quy trình VietGAP</a>
+            <a href="#workflow" className="hover:text-[#119653] transition-colors">Triển khai GIS</a>
+            <a href="#testimonials" className="hover:text-[#119653] transition-colors">Khách hàng</a>
           </nav>
 
           {/* Action Buttons: Đăng nhập, Đăng ký */}
           <div className="flex items-center gap-2.5 sm:gap-3">
             <Link
               to="/login"
-              className="px-3.5 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-[#062326] hover:bg-slate-100 rounded-xl transition-all border border-transparent"
+              className="px-3.5 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-[#119653] hover:bg-slate-100 rounded-xl transition-all border border-transparent"
               id="btn-login-nav"
             >
               Đăng nhập
@@ -91,7 +91,7 @@ export const HomePage: React.FC = () => {
 
             <Link
               to="/register"
-              className="px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-[#062326] via-[#0b4840] to-[#047857] hover:opacity-95 rounded-xl shadow-md shadow-[#062326]/20 transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5"
+              className="px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 hover:opacity-95 rounded-xl shadow-md shadow-emerald-700/20 transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5"
               id="btn-register-nav"
             >
               <span>Đăng ký ngay</span>
@@ -115,7 +115,7 @@ export const HomePage: React.FC = () => {
               {/* Asian Cultural & High-Tech Badge */}
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-emerald-200/90 shadow-xs">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse" />
-                <span className="text-xs font-bold text-[#062326] tracking-wide">
+                <span className="text-xs font-bold text-[#119653] tracking-wide">
                   HỆ THỐNG QUẢN TRỊ NÔNG NGHIỆP THÔNG MINH SỐ 1
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
@@ -126,7 +126,7 @@ export const HomePage: React.FC = () => {
               {/* Main Headline */}
               <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black text-slate-900 leading-[1.18] tracking-tight">
                 Kiến tạo Nông trang số{' '}
-                <span className="bg-gradient-to-r from-[#062326] via-[#047857] to-emerald-600 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-[#119653] via-emerald-600 to-teal-600 bg-clip-text text-transparent">
                   Tự động hóa Vi khí hậu
                 </span>{' '}
                 & Quản trị IoT Thực địa
@@ -141,7 +141,7 @@ export const HomePage: React.FC = () => {
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <Link
                   to="/register"
-                  className="px-7 py-3.5 text-sm sm:text-base font-bold text-white bg-gradient-to-r from-[#062326] via-[#09433d] to-[#047857] hover:brightness-110 rounded-2xl shadow-lg shadow-[#062326]/25 transition-all transform hover:-translate-y-0.5 flex items-center gap-2"
+                  className="px-7 py-3.5 text-sm sm:text-base font-bold text-white bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 hover:brightness-110 rounded-2xl shadow-lg shadow-emerald-700/25 transition-all transform hover:-translate-y-0.5 flex items-center gap-2"
                   id="btn-hero-register-now"
                 >
                   <Sparkles size={18} className="text-amber-300" />
@@ -151,7 +151,7 @@ export const HomePage: React.FC = () => {
 
                 <Link
                   to="/login"
-                  className="px-6 py-3.5 text-sm sm:text-base font-bold text-[#062326] bg-white hover:bg-emerald-50 rounded-2xl border-2 border-[#062326]/20 transition-all flex items-center gap-2"
+                  className="px-6 py-3.5 text-sm sm:text-base font-bold text-[#119653] bg-white hover:bg-emerald-50 rounded-2xl border-2 border-[#119653]/30 transition-all flex items-center gap-2 shadow-xs"
                   id="btn-hero-login"
                 >
                   <span>Đăng nhập</span>
@@ -161,7 +161,7 @@ export const HomePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setConsultModal(true)}
-                  className="px-5 py-3.5 text-sm font-semibold text-emerald-800 hover:text-[#062326] hover:bg-emerald-100/60 rounded-2xl transition-all flex items-center gap-2"
+                  className="px-5 py-3.5 text-sm font-semibold text-emerald-800 hover:text-[#119653] hover:bg-emerald-100/60 rounded-2xl transition-all flex items-center gap-2"
                 >
                   <Phone size={16} />
                   <span>Yêu cầu tư vấn thiết bị</span>
@@ -171,15 +171,15 @@ export const HomePage: React.FC = () => {
               {/* Trust Indicators */}
               <div className="pt-4 border-t border-slate-200/80 grid grid-cols-3 gap-4 max-w-xl text-left">
                 <div>
-                  <div className="text-2xl font-black text-[#062326] font-mono">500+</div>
+                  <div className="text-2xl font-black text-[#119653] font-mono">500+</div>
                   <div className="text-xs font-medium text-slate-500">Hecta chuẩn hóa</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-[#062326] font-mono">99.9%</div>
+                  <div className="text-2xl font-black text-[#119653] font-mono">99.9%</div>
                   <div className="text-xs font-medium text-slate-500">Thời gian Uptime</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-[#062326] font-mono">-35%</div>
+                  <div className="text-2xl font-black text-[#119653] font-mono">-35%</div>
                   <div className="text-xs font-medium text-slate-500">Chi phí nước & phân</div>
                 </div>
               </div>
@@ -200,11 +200,11 @@ export const HomePage: React.FC = () => {
                       className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
                     />
                     {/* Asian-themed emerald gradient overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#062326]/90 via-[#062326]/20 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-emerald-950/80 via-emerald-900/20 to-transparent" />
 
                     {/* Badge on top of image */}
                     <div className="absolute top-4 left-4 flex items-center gap-2">
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#062326]/80 text-white backdrop-blur-md border border-emerald-400/30 flex items-center gap-1.5">
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-900/80 text-white backdrop-blur-md border border-emerald-400/30 flex items-center gap-1.5">
                         <Droplets size={14} className="text-emerald-400" /> Hệ thống tưới nhỏ giọt tự động
                       </span>
                     </div>
@@ -247,7 +247,7 @@ export const HomePage: React.FC = () => {
                 <div className="absolute -top-4 -right-2 sm:-right-6 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xl border border-emerald-200/90 text-left hidden sm:flex items-center gap-2.5">
                   <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
                   <div>
-                    <div className="text-[11px] font-bold text-[#062326]">LoRa Mesh Gateway</div>
+                    <div className="text-[11px] font-bold text-[#119653]">LoRa Mesh Gateway</div>
                     <div className="text-[10px] text-slate-500 font-mono">Bán kính phủ sóng 2.5km</div>
                   </div>
                 </div>
@@ -260,28 +260,28 @@ export const HomePage: React.FC = () => {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 4. KEY METRICS HIGHLIGHT RIBBON                              */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <section className="bg-[#062326] text-white py-10 border-y border-[#0c3c38]">
+      <section className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 text-white py-10 border-y border-emerald-600/60 shadow-inner">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-emerald-800/60">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-emerald-600/50">
             <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono">1,200+</div>
+              <div className="text-3xl sm:text-4xl font-black text-white font-mono">1,200+</div>
               <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Trạm Cảm Biến & Node LoRa</div>
-              <div className="text-[11px] text-emerald-400/80 mt-0.5">Thời lượng pin 3 năm liên tục</div>
+              <div className="text-[11px] text-emerald-200 mt-0.5">Thời lượng pin 3 năm liên tục</div>
             </div>
             <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-amber-400 font-mono">150+</div>
+              <div className="text-3xl sm:text-4xl font-black text-amber-300 font-mono">150+</div>
               <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Hợp Tác Xã & Doanh Nghiệp</div>
-              <div className="text-[11px] text-emerald-400/80 mt-0.5">Trên 18 tỉnh thành toàn quốc</div>
+              <div className="text-[11px] text-emerald-200 mt-0.5">Trên 18 tỉnh thành toàn quốc</div>
             </div>
             <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-teal-300 font-mono">1.4M+</div>
+              <div className="text-3xl sm:text-4xl font-black text-emerald-200 font-mono">1.4M+</div>
               <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Bản Ghi Vi Khí Hậu / Ngày</div>
-              <div className="text-[11px] text-emerald-400/80 mt-0.5">Xử lý TimescaleDB Hypertable</div>
+              <div className="text-[11px] text-emerald-200 mt-0.5">Xử lý TimescaleDB Hypertable</div>
             </div>
             <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-emerald-300 font-mono">100%</div>
+              <div className="text-3xl sm:text-4xl font-black text-white font-mono">100%</div>
               <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Hợp Đồng & Nghiệm Thu Số</div>
-              <div className="text-[11px] text-emerald-400/80 mt-0.5">Tạm ứng 30% - Hoàn tất 70%</div>
+              <div className="text-[11px] text-emerald-200 mt-0.5">Tạm ứng 30% - Hoàn tất 70%</div>
             </div>
           </div>
         </div>
@@ -293,7 +293,7 @@ export const HomePage: React.FC = () => {
       <section id="solutions" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="max-w-3xl mx-auto mb-14">
-            <span className="text-xs font-bold font-mono text-[#062326] uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300">
+            <span className="text-xs font-bold font-mono text-[#119653] uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300">
               Hệ sinh thái Nông nghiệp Toàn diện
             </span>
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mt-3">
@@ -306,22 +306,22 @@ export const HomePage: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
             {/* Feature 1: GIS Map */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#062326] hover:shadow-lg transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-[#062326] text-emerald-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#119653] hover:shadow-lg transition-all group">
+              <div className="w-12 h-12 rounded-xl bg-[#119653] text-white flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <MapPin size={24} />
               </div>
               <h3 className="text-lg font-bold text-slate-900 mb-2">Bản đồ Vệ tinh GIS Đa tầng</h3>
               <p className="text-xs text-slate-600 leading-relaxed mb-4">
                 Phân cấp không gian chính xác từ Nông trang ➔ Thửa đất (Field) ➔ Khu vực (Zone). Vẽ ranh giới Polygon thực địa và tự động tính toán diện tích m².
               </p>
-              <div className="flex items-center text-xs font-bold text-[#062326] group-hover:translate-x-1 transition-transform">
+              <div className="flex items-center text-xs font-bold text-[#119653] group-hover:translate-x-1 transition-transform">
                 <span>Khám phá tính năng GIS</span>
                 <ChevronRight size={14} />
               </div>
             </div>
 
             {/* Feature 2: LoRa IoT & Hardware */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#062326] hover:shadow-lg transition-all group">
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#119653] hover:shadow-lg transition-all group">
               <div className="w-12 h-12 rounded-xl bg-emerald-800 text-white flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Radio size={24} />
               </div>
@@ -336,7 +336,7 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* Feature 3: Auto Microclimate CF3 */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#062326] hover:shadow-lg transition-all group">
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#119653] hover:shadow-lg transition-all group">
               <div className="w-12 h-12 rounded-xl bg-teal-800 text-white flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Droplets size={24} />
               </div>
@@ -351,7 +351,7 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* Feature 4: Crop-Aware Growth Profiles */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#062326] hover:shadow-lg transition-all group">
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#119653] hover:shadow-lg transition-all group">
               <div className="w-12 h-12 rounded-xl bg-amber-700 text-white flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Sprout size={24} />
               </div>
@@ -366,7 +366,7 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* Feature 5: AI Agronomist Gemini */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#062326] hover:shadow-lg transition-all group">
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#119653] hover:shadow-lg transition-all group">
               <div className="w-12 h-12 rounded-xl bg-indigo-900 text-emerald-300 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Bot size={24} />
               </div>
@@ -381,7 +381,7 @@ export const HomePage: React.FC = () => {
             </div>
 
             {/* Feature 6: Electronic Quotation & Contract */}
-            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#062326] hover:shadow-lg transition-all group">
+            <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-white border border-emerald-200/80 shadow-xs hover:border-[#119653] hover:shadow-lg transition-all group">
               <div className="w-12 h-12 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <FileText size={24} />
               </div>
@@ -418,7 +418,7 @@ export const HomePage: React.FC = () => {
 
               <div className="space-y-4">
                 <div className="flex items-start gap-3.5 p-4 rounded-xl bg-white border border-slate-200">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-[#062326] flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-[#119653] flex items-center justify-center shrink-0">
                     <Radio size={18} />
                   </div>
                   <div>
@@ -428,7 +428,7 @@ export const HomePage: React.FC = () => {
                 </div>
 
                 <div className="flex items-start gap-3.5 p-4 rounded-xl bg-white border border-slate-200">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-[#062326] flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-[#119653] flex items-center justify-center shrink-0">
                     <Droplets size={18} />
                   </div>
                   <div>
@@ -438,7 +438,7 @@ export const HomePage: React.FC = () => {
                 </div>
 
                 <div className="flex items-start gap-3.5 p-4 rounded-xl bg-white border border-slate-200">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-[#062326] flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-[#119653] flex items-center justify-center shrink-0">
                     <Sun size={18} />
                   </div>
                   <div>
@@ -451,46 +451,46 @@ export const HomePage: React.FC = () => {
 
             {/* Right Interactive Hardware Display */}
             <div className="lg:col-span-6">
-              <div className="p-6 rounded-3xl bg-[#062326] text-white shadow-2xl border border-emerald-900/60 relative overflow-hidden">
-                <div className="flex items-center justify-between pb-4 border-b border-emerald-800/60">
+              <div className="p-6 rounded-3xl bg-gradient-to-br from-emerald-800 via-emerald-700 to-green-800 text-white shadow-2xl border border-emerald-600/60 relative overflow-hidden">
+                <div className="flex items-center justify-between pb-4 border-b border-emerald-600/60">
                   <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="w-3 h-3 rounded-full bg-emerald-300 animate-pulse" />
                     <span className="text-sm font-bold font-mono">BẢNG TỔNG QUAN THỰC ĐỊA LORA</span>
                   </div>
-                  <span className="text-xs font-mono text-emerald-300">ESP32 Firmware v2.6</span>
+                  <span className="text-xs font-mono text-emerald-200">ESP32 Firmware v2.6</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 my-6">
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-xs text-emerald-300">RSSI Tín hiệu sóng</div>
-                    <div className="text-2xl font-bold font-mono mt-1">-68 dBm</div>
-                    <span className="text-[10px] text-emerald-400 font-semibold">Tín hiệu Cực mạnh</span>
+                  <div className="p-4 rounded-xl bg-white/10 border border-white/20">
+                    <div className="text-xs text-emerald-200">RSSI Tín hiệu sóng</div>
+                    <div className="text-2xl font-bold font-mono mt-1 text-white">-68 dBm</div>
+                    <span className="text-[10px] text-emerald-300 font-semibold">Tín hiệu Cực mạnh</span>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-xs text-emerald-300">Pin Lithium dự phòng</div>
-                    <div className="text-2xl font-bold font-mono mt-1">94%</div>
-                    <span className="text-[10px] text-emerald-400 font-semibold">Năng lượng mặt trời</span>
+                  <div className="p-4 rounded-xl bg-white/10 border border-white/20">
+                    <div className="text-xs text-emerald-200">Pin Lithium dự phòng</div>
+                    <div className="text-2xl font-bold font-mono mt-1 text-white">94%</div>
+                    <span className="text-[10px] text-emerald-300 font-semibold">Năng lượng mặt trời</span>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-xs text-emerald-300">Chu kỳ gửi dữ liệu</div>
-                    <div className="text-2xl font-bold font-mono mt-1">60s</div>
-                    <span className="text-[10px] text-emerald-400 font-semibold">Realtime TimescaleDB</span>
+                  <div className="p-4 rounded-xl bg-white/10 border border-white/20">
+                    <div className="text-xs text-emerald-200">Chu kỳ gửi dữ liệu</div>
+                    <div className="text-2xl font-bold font-mono mt-1 text-white">60s</div>
+                    <span className="text-[10px] text-emerald-300 font-semibold">Realtime TimescaleDB</span>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-xs text-emerald-300">Rơ-le đóng ngắt</div>
-                    <div className="text-2xl font-bold font-mono mt-1">4 Cổng</div>
-                    <span className="text-[10px] text-emerald-400 font-semibold">Bảo vệ Optocoupler</span>
+                  <div className="p-4 rounded-xl bg-white/10 border border-white/20">
+                    <div className="text-xs text-emerald-200">Rơ-le đóng ngắt</div>
+                    <div className="text-2xl font-bold font-mono mt-1 text-white">4 Cổng</div>
+                    <span className="text-[10px] text-emerald-300 font-semibold">Bảo vệ Optocoupler</span>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-emerald-800/60 flex items-center justify-between text-xs">
-                  <span className="text-emerald-300">Cần tư vấn triển khai phần cứng cho nông trang?</span>
+                <div className="pt-4 border-t border-emerald-600/60 flex items-center justify-between text-xs">
+                  <span className="text-emerald-100">Cần tư vấn triển khai phần cứng cho nông trang?</span>
                   <button
                     onClick={() => setConsultModal(true)}
-                    className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-[#062326] font-bold transition-colors"
+                    className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-800 font-bold transition-colors shadow-sm"
                   >
                     Báo giá ngay
                   </button>
@@ -507,7 +507,7 @@ export const HomePage: React.FC = () => {
       <section id="workflow" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="max-w-3xl mx-auto mb-16">
-            <span className="text-xs font-bold font-mono text-[#062326] uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300">
+            <span className="text-xs font-bold font-mono text-[#119653] uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300">
               Quy trình vận hành chuẩn mực
             </span>
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mt-3">
@@ -549,7 +549,7 @@ export const HomePage: React.FC = () => {
             {/* Step 4 */}
             <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-400 relative">
               <span className="text-3xl font-black text-emerald-600 font-mono">04</span>
-              <h3 className="text-base font-bold text-[#062326] mt-2 mb-1.5">Nghiệm thu & Vận hành 70%</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-2 mb-1.5">Nghiệm thu & Vận hành 70%</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Chủ trang trại kiểm tra hệ thống tưới tự động hoạt động ổn định, ký biên bản nghiệm thu và thanh toán 70% còn lại.
               </p>
@@ -561,10 +561,13 @@ export const HomePage: React.FC = () => {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 8. TESTIMONIALS (KHÁCH HÀNG & HTX VIỆT NAM)                  */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <section id="testimonials" className="py-20 bg-emerald-950 text-white border-t border-emerald-900">
+      {/* ─────────────────────────────────────────────────────────── */}
+      {/* 8. TESTIMONIALS (KHÁCH HÀNG & HTX VIỆT NAM)                  */}
+      {/* ─────────────────────────────────────────────────────────── */}
+      <section id="testimonials" className="py-20 bg-gradient-to-br from-emerald-900 via-emerald-800 to-emerald-900 text-white border-t border-emerald-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="max-w-3xl mx-auto mb-14">
-            <span className="text-xs font-bold font-mono text-emerald-300 uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-900/80 border border-emerald-700">
+            <span className="text-xs font-bold font-mono text-emerald-100 uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-800/80 border border-emerald-600">
               Niềm tin từ các Nhà vườn & HTX
             </span>
             <h2 className="text-3xl sm:text-4xl font-black text-white mt-3">
@@ -573,56 +576,56 @@ export const HomePage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4">
-              <div className="flex items-center gap-1 text-amber-400">
+            <div className="p-6 rounded-2xl bg-white/10 border border-white/20 space-y-4 backdrop-blur-xs">
+              <div className="flex items-center gap-1 text-amber-300">
                 {'★★★★★'.split('').map((s, i) => <span key={i}>{s}</span>)}
               </div>
               <p className="text-xs text-emerald-100 leading-relaxed">
                 "Nhờ hệ thống tự động tưới nhỏ giọt kết hợp cảm biến đất LoRa, 8ha cà chua của chúng tôi tại Đơn Dương tiết kiệm được 40% chi phí nhân công và năng suất tăng 22%."
               </p>
-              <div className="pt-3 border-t border-white/10 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-800 flex items-center justify-center font-bold text-emerald-300">
+              <div className="pt-3 border-t border-white/15 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-white shadow-xs">
                   NA
                 </div>
                 <div>
                   <div className="text-xs font-bold text-white">Ông Nguyễn Văn An</div>
-                  <div className="text-[11px] text-emerald-400">Giám đốc HTX Nông nghiệp Công nghệ cao Đà Lạt</div>
+                  <div className="text-[11px] text-emerald-200">Giám đốc HTX Nông nghiệp Công nghệ cao Đà Lạt</div>
                 </div>
               </div>
             </div>
 
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4">
-              <div className="flex items-center gap-1 text-amber-400">
+            <div className="p-6 rounded-2xl bg-white/10 border border-white/20 space-y-4 backdrop-blur-xs">
+              <div className="flex items-center gap-1 text-amber-300">
                 {'★★★★★'.split('').map((s, i) => <span key={i}>{s}</span>)}
               </div>
               <p className="text-xs text-emerald-100 leading-relaxed">
                 "Quy trình số hóa bản đồ GIS và hồ sơ sinh trưởng rất chuẩn mực. Kỹ thuật viên hỗ trợ tận tình từ khâu khảo sát đến khi ký nghiệm thu hợp đồng điện tử."
               </p>
-              <div className="pt-3 border-t border-white/10 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-800 flex items-center justify-center font-bold text-emerald-300">
+              <div className="pt-3 border-t border-white/15 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-white shadow-xs">
                   TH
                 </div>
                 <div>
                   <div className="text-xs font-bold text-white">Bà Trần Thị Hoa</div>
-                  <div className="text-[11px] text-emerald-400">Chủ trang trại Dưa lưới Organic Mộc Châu</div>
+                  <div className="text-[11px] text-emerald-200">Chủ trang trại Dưa lưới Organic Mộc Châu</div>
                 </div>
               </div>
             </div>
 
-            <div className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4">
-              <div className="flex items-center gap-1 text-amber-400">
+            <div className="p-6 rounded-2xl bg-white/10 border border-white/20 space-y-4 backdrop-blur-xs">
+              <div className="flex items-center gap-1 text-amber-300">
                 {'★★★★★'.split('').map((s, i) => <span key={i}>{s}</span>)}
               </div>
               <p className="text-xs text-emerald-100 leading-relaxed">
                 "Trợ lý AI Nông học Gemini trả lời chẩn đoán bệnh lá và lịch tưới cực kỳ chính xác. Chúng tôi hoàn toàn yên tâm quản lý trang trại từ xa qua điện thoại."
               </p>
-              <div className="pt-3 border-t border-white/10 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-800 flex items-center justify-center font-bold text-emerald-300">
+              <div className="pt-3 border-t border-white/15 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-white shadow-xs">
                   LM
                 </div>
                 <div>
                   <div className="text-xs font-bold text-white">Kỹ sư Lê Minh Tuấn</div>
-                  <div className="text-[11px] text-emerald-400">Quản lý Kỹ thuật Farm Đức Trọng FarmTech</div>
+                  <div className="text-[11px] text-emerald-200">Quản lý Kỹ thuật Farm Đức Trọng FarmTech</div>
                 </div>
               </div>
             </div>
@@ -633,10 +636,10 @@ export const HomePage: React.FC = () => {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 9. BOTTOM CALL TO ACTION BANNER                             */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <section className="py-16 bg-gradient-to-r from-[#062326] via-[#093e38] to-[#047857] text-white relative overflow-hidden">
+      <section className="py-16 bg-gradient-to-r from-emerald-800 via-emerald-700 to-green-700 text-white relative overflow-hidden">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10 space-y-6">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-900/60 text-emerald-300 text-xs font-semibold border border-emerald-700/50">
-            <Sparkles size={14} className="text-amber-400" /> Sẵn sàng bắt đầu mùa vụ thắng lợi mới?
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-900/60 text-emerald-100 text-xs font-semibold border border-emerald-500/50">
+            <Sparkles size={14} className="text-amber-300" /> Sẵn sàng bắt đầu mùa vụ thắng lợi mới?
           </div>
 
           <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
@@ -650,7 +653,7 @@ export const HomePage: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
             <Link
               to="/register"
-              className="px-8 py-4 text-base font-bold text-[#062326] bg-amber-400 hover:bg-amber-300 rounded-2xl shadow-xl transition-all transform hover:-translate-y-0.5 flex items-center gap-2"
+              className="px-8 py-4 text-base font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-2xl shadow-xl transition-all transform hover:-translate-y-0.5 flex items-center gap-2"
               id="btn-footer-register-now"
             >
               <span>Đăng ký ngay</span>
@@ -671,20 +674,20 @@ export const HomePage: React.FC = () => {
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 10. FOOTER                                                  */}
       {/* ─────────────────────────────────────────────────────────── */}
-      <footer className="bg-[#031315] text-slate-400 text-xs py-12 border-t border-[#092e2c]">
+      <footer className="bg-[#064e3b] text-emerald-100 text-xs py-12 border-t border-emerald-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8 text-left">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center text-white font-bold shadow-xs">
                   <Sprout size={18} />
                 </div>
                 <span className="text-base font-bold text-white">SmartFarm IoT</span>
               </div>
-              <p className="text-slate-400 text-xs leading-relaxed">
+              <p className="text-emerald-100/90 text-xs leading-relaxed">
                 Nền tảng Quản trị Nông nghiệp Thông minh & Tự động hóa Vi khí hậu chuẩn VietGAP hàng đầu Việt Nam.
               </p>
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-emerald-200/70">
                 © 2026 SmartFarm Platform. Bản quyền thuộc về Đội ngũ Kỹ sư Công nghệ Nông nghiệp.
               </div>
             </div>
@@ -692,20 +695,20 @@ export const HomePage: React.FC = () => {
             <div>
               <h4 className="text-sm font-bold text-white mb-3">Sản phẩm & Giải pháp</h4>
               <ul className="space-y-2 text-xs">
-                <li><a href="#solutions" className="hover:text-emerald-400 transition-colors">Bản đồ vệ tinh GIS Nông trang</a></li>
-                <li><a href="#hardware" className="hover:text-emerald-400 transition-colors">Trạm LoRa Gateway & Sensor Nodes</a></li>
-                <li><a href="#solutions" className="hover:text-emerald-400 transition-colors">Bộ luật Tự động hóa CF3</a></li>
-                <li><a href="#solutions" className="hover:text-emerald-400 transition-colors">Trợ lý AI Nông học Gemini</a></li>
+                <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Bản đồ vệ tinh GIS Nông trang</a></li>
+                <li><a href="#hardware" className="hover:text-emerald-300 transition-colors">Trạm LoRa Gateway & Sensor Nodes</a></li>
+                <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Bộ luật Tự động hóa CF3</a></li>
+                <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Trợ lý AI Nông học Gemini</a></li>
               </ul>
             </div>
 
             <div>
               <h4 className="text-sm font-bold text-white mb-3">Cổng Dịch vụ</h4>
               <ul className="space-y-2 text-xs">
-                <li><Link to="/login" className="hover:text-emerald-400 transition-colors">Cổng Chủ Trang Trại (Owner Portal)</Link></li>
-                <li><Link to="/login" className="hover:text-emerald-400 transition-colors">Cổng Kỹ Thuật Viên (Technician)</Link></li>
-                <li><Link to="/login" className="hover:text-emerald-400 transition-colors">Cổng Quản Trị Hệ Thống (Admin)</Link></li>
-                <li><Link to="/register" className="hover:text-emerald-400 transition-colors">Đăng ký Nông trang Mới</Link></li>
+                <li><Link to="/login" className="hover:text-emerald-300 transition-colors">Cổng Chủ Trang Trại (Owner Portal)</Link></li>
+                <li><Link to="/login" className="hover:text-emerald-300 transition-colors">Cổng Kỹ Thuật Viên (Technician)</Link></li>
+                <li><Link to="/login" className="hover:text-emerald-300 transition-colors">Cổng Quản Trị Hệ Thống (Admin)</Link></li>
+                <li><Link to="/register" className="hover:text-emerald-300 transition-colors">Đăng ký Nông trang Mới</Link></li>
               </ul>
             </div>
 
@@ -713,15 +716,15 @@ export const HomePage: React.FC = () => {
               <h4 className="text-sm font-bold text-white mb-3">Liên hệ & Hỗ trợ</h4>
               <div className="space-y-2 text-xs">
                 <div className="flex items-center gap-2">
-                  <Phone size={14} className="text-emerald-400" />
+                  <Phone size={14} className="text-emerald-300" />
                   <span>1900 6899 (8:00 - 20:00)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Mail size={14} className="text-emerald-400" />
+                  <Mail size={14} className="text-emerald-300" />
                   <span>hotro@smartfarm.vn</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <MapPin size={14} className="text-emerald-400" />
+                  <MapPin size={14} className="text-emerald-300" />
                   <span>Đà Lạt, Lâm Đồng & TP. Hồ Chí Minh</span>
                 </div>
               </div>
@@ -743,7 +746,7 @@ export const HomePage: React.FC = () => {
               ✕
             </button>
 
-            <div className="flex items-center gap-2 mb-2 text-[#062326]">
+            <div className="flex items-center gap-2 mb-2 text-[#119653]">
               <Sprout size={22} />
               <h3 className="text-lg font-bold">Đăng ký Tư vấn & Khảo sát Thực địa</h3>
             </div>
@@ -764,7 +767,7 @@ export const HomePage: React.FC = () => {
                   <input
                     required
                     placeholder="VD: Nguyễn Văn Nam"
-                    className="w-full h-10 px-3.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#062326] outline-hidden"
+                    className="w-full h-10 px-3.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#119653] outline-hidden"
                     value={consultForm.name}
                     onChange={e => setConsultForm({ ...consultForm, name: e.target.value })}
                   />
@@ -775,7 +778,7 @@ export const HomePage: React.FC = () => {
                   <input
                     required
                     placeholder="VD: 0988 123 456"
-                    className="w-full h-10 px-3.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#062326] outline-hidden"
+                    className="w-full h-10 px-3.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#119653] outline-hidden"
                     value={consultForm.phone}
                     onChange={e => setConsultForm({ ...consultForm, phone: e.target.value })}
                   />
@@ -786,7 +789,7 @@ export const HomePage: React.FC = () => {
                     <label className="block text-slate-700 font-semibold mb-1">Diện tích trang trại</label>
                     <input
                       placeholder="VD: 2.5 Hecta"
-                      className="w-full h-10 px-3.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#062326] outline-hidden"
+                      className="w-full h-10 px-3.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#119653] outline-hidden"
                       value={consultForm.farmArea}
                       onChange={e => setConsultForm({ ...consultForm, farmArea: e.target.value })}
                     />
@@ -794,7 +797,7 @@ export const HomePage: React.FC = () => {
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">Tỉnh / Thành phố</label>
                     <select
-                      className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#062326] outline-hidden bg-white"
+                      className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#119653] outline-hidden bg-white"
                       value={consultForm.province}
                       onChange={e => setConsultForm({ ...consultForm, province: e.target.value })}
                     >
@@ -811,7 +814,7 @@ export const HomePage: React.FC = () => {
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-[#062326] to-[#047857] text-white font-bold text-xs hover:opacity-95 shadow-md shadow-[#062326]/20 transition-all"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-[#119653] to-emerald-600 text-white font-bold text-xs hover:opacity-95 shadow-md shadow-emerald-700/20 transition-all"
                   >
                     Xác nhận gửi thông tin khảo sát
                   </button>

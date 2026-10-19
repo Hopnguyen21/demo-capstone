@@ -75,10 +75,10 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl grid md:grid-cols-2 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden text-slate-800">
         {/* Left column: Branding & Feature summary */}
-        <div className="p-8 bg-[#062326] text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-[#0d3b40]">
+        <div className="p-8 bg-gradient-to-br from-[#119653] via-emerald-700 to-emerald-800 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-emerald-600/40">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300">
+              <div className="p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs">
                 <Sprout size={28} />
               </div>
               <span className="font-bold text-xl tracking-tight text-white">SmartFarm SaaS</span>
@@ -87,27 +87,27 @@ export const LoginPage: React.FC = () => {
             <h1 className="mt-8 text-2xl font-bold text-white leading-tight">
               Nền tảng Quản lý Nông nghiệp Thông minh Tích hợp AI
             </h1>
-            <p className="mt-3 text-xs text-emerald-100/70 leading-relaxed">
+            <p className="mt-3 text-xs text-emerald-100/90 leading-relaxed">
               Giải pháp SaaS đa người thuê (Multi-tenant) kết hợp viễn thám LoRa 433MHz, tự động hóa điều khiển vi khí hậu thích ứng theo thời kỳ sinh trưởng và Trợ lý AI Nông học Gemini.
             </p>
 
             <div className="mt-8 space-y-3">
-              <div className="flex items-center gap-2.5 text-xs text-emerald-100/90">
-                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+              <div className="flex items-center gap-2.5 text-xs text-emerald-100">
+                <ShieldCheck size={16} className="text-emerald-300 shrink-0" />
                 <span>Bảo mật Tenant Isolation chuẩn PostgreSQL RLS</span>
               </div>
-              <div className="flex items-center gap-2.5 text-xs text-emerald-100/90">
-                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+              <div className="flex items-center gap-2.5 text-xs text-emerald-100">
+                <ShieldCheck size={16} className="text-emerald-300 shrink-0" />
                 <span>Cơ chế Crop-aware điều khiển vi khí hậu thông minh</span>
               </div>
-              <div className="flex items-center gap-2.5 text-xs text-emerald-100/90">
-                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+              <div className="flex items-center gap-2.5 text-xs text-emerald-100">
+                <ShieldCheck size={16} className="text-emerald-300 shrink-0" />
                 <span>Tư vấn Nông học AI RAG chuẩn VietGAP/GlobalGAP</span>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 pt-4 border-t border-[#0d3b40] text-[11px] text-emerald-200/50">
+          <div className="mt-8 pt-4 border-t border-emerald-600/40 text-[11px] text-emerald-200/80">
             SmartFarm Enterprise Platform &copy; 2026. All rights reserved.
           </div>
         </div>
@@ -182,7 +182,7 @@ export const LoginPage: React.FC = () => {
 
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" defaultChecked className="rounded bg-slate-100 border-slate-300 text-[#062326] focus:ring-0" />
+                  <input type="checkbox" defaultChecked className="rounded bg-slate-100 border-slate-300 text-[#119653] focus:ring-0" />
                   <span>Ghi nhớ đăng nhập</span>
                 </label>
                 <Link to="/register" className="text-[#119653] font-medium hover:underline">
@@ -190,7 +190,7 @@ export const LoginPage: React.FC = () => {
                 </Link>
               </div>
 
-              <Button type="submit" disabled={loading} className="w-full mt-2 bg-[#062326] hover:bg-[#093539] flex items-center justify-center gap-2 py-2.5">
+              <Button type="submit" disabled={loading} className="w-full mt-2 bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 py-2.5 shadow-md shadow-emerald-700/20">
                 {loading ? (
                   <>
                     <Loader2 size={16} className="animate-spin" /> Đang xác thực...
@@ -207,7 +207,7 @@ export const LoginPage: React.FC = () => {
           {/* Quick Role Selection for Frontend Evaluation */}
           <div className="mt-8 pt-6 border-t border-slate-100">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-3">
-              <UserCheck size={14} className="text-[#062326]" /> Chuyển nhanh 4 Vai trò (Quick Dev Switch)
+              <UserCheck size={14} className="text-[#119653]" /> Chuyển nhanh 4 Vai trò (Quick Dev Switch)
             </span>
             <div className="grid grid-cols-2 gap-2">
               <button

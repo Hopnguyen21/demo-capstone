@@ -223,7 +223,7 @@ export const TasksPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <ClipboardList className="text-[#062326]" size={22} /> Phân công Công việc Thực địa (Work Orders & Tasks)
+            <ClipboardList className="text-[#119653]" size={22} /> Phân công Công việc Thực địa (Work Orders & Tasks)
           </h1>
           <p className="text-xs text-slate-600 mt-1">Giao task kiểm tra, bón phân, thu hoạch cho công nhân và theo dõi trạng thái hoàn thành.</p>
         </div>
@@ -245,7 +245,7 @@ export const TasksPage: React.FC = () => {
             onClick={() => setStatusFilter(tab.key)}
             className={`px-3 py-1.5 rounded-lg transition-colors ${
               statusFilter === tab.key
-                ? 'bg-[#062326] text-white font-semibold'
+                ? 'bg-[#119653] text-white font-semibold shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -283,7 +283,7 @@ export const TasksPage: React.FC = () => {
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-[#062326] font-mono">#{id?.substring(0, 8)}</span>
+                    <span className="text-xs font-bold text-emerald-800 font-mono">#{id?.substring(0, 8)}</span>
                     <StatusBadge
                       status={
                         isDone
@@ -313,8 +313,8 @@ export const TasksPage: React.FC = () => {
                       Khu vực: <strong className="text-slate-800">{zoneDisplay}</strong>
                     </span>
                     <span className="flex items-center gap-1">
-                      <User size={12} className="text-[#062326]" />
-                      Người thực hiện: <strong className="text-[#062326]">{farmerDisplay}</strong>
+                      <User size={12} className="text-[#119653]" />
+                      Người thực hiện: <strong className="text-slate-900">{farmerDisplay}</strong>
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar size={12} className="text-slate-500" />
@@ -366,7 +366,7 @@ export const TasksPage: React.FC = () => {
                 required
                 value={newTask.zoneId}
                 onChange={e => setNewTask({ ...newTask, zoneId: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
               >
                 {zones.length === 0 ? (
                   <option value="">(Chưa có zone nào)</option>
@@ -386,7 +386,7 @@ export const TasksPage: React.FC = () => {
                 required
                 value={newTask.assignedFarmerId}
                 onChange={e => setNewTask({ ...newTask, assignedFarmerId: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
               >
                 {farmers.length === 0 ? (
                   <option value="">(Đang tải danh sách công nhân...)</option>
@@ -404,7 +404,7 @@ export const TasksPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-700 font-medium mb-1">Độ ưu tiên</label>
-              <select value={newTask.priority} onChange={e => setNewTask({ ...newTask, priority: e.target.value as any })} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs">
+              <select value={newTask.priority} onChange={e => setNewTask({ ...newTask, priority: e.target.value as any })} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs">
                 <option value="LOW">Thấp</option>
                 <option value="MEDIUM">Trung bình</option>
                 <option value="HIGH">Cao</option>

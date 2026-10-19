@@ -38,7 +38,7 @@ export const RouteErrorBoundary: React.FC = () => {
           </button>
           <Link
             to="/"
-            className="px-4 py-2 text-xs font-semibold text-white bg-[#062326] hover:bg-[#062326]/90 rounded-xl flex items-center gap-1.5 transition-colors"
+            className="px-4 py-2 text-xs font-semibold text-white bg-[#119653] hover:bg-emerald-700 rounded-xl flex items-center gap-1.5 transition-colors font-bold shadow-xs"
           >
             <Home size={14} /> Trang chủ
           </Link>

@@ -63,11 +63,11 @@ export const FarmersPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 p-6 rounded-2xl shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#062326] text-emerald-400 font-mono">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono">
               FARM OWNER MANAGEMENT
             </span>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Users className="text-[#062326]" size={22} /> Phân công & Phân quyền Khu vực Nông dân (Zone Scope)
+              <Users className="text-[#119653]" size={22} /> Phân công & Phân quyền Khu vực Nông dân (Zone Scope)
             </h1>
           </div>
           <p className="text-xs text-slate-600 mt-1">
@@ -93,7 +93,7 @@ export const FarmersPage: React.FC = () => {
           <div key={emp.employeeId} className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4 hover:border-slate-300 transition-all">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-[#062326] border border-slate-200">
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
                   {emp.employeeCode}
                 </span>
                 <h3 className="text-base font-bold text-slate-900 mt-1">{emp.fullName}</h3>
@@ -121,7 +121,7 @@ export const FarmersPage: React.FC = () => {
                 {(emp.assignedZones || []).map(zId => {
                   const z = zones.find((x: any) => x.zoneId === zId);
                   return (
-                    <span key={zId} className="px-2.5 py-1 rounded-lg bg-emerald-100 text-[#062326] border border-emerald-300 text-[11px] font-bold flex items-center gap-1">
+                    <span key={zId} className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
                       {z?.name || zId}
                     </span>
@@ -167,7 +167,7 @@ export const FarmersPage: React.FC = () => {
                   <input
                     type="checkbox"
                     defaultChecked={z.zoneId === '32000000-0000-0000-0000-000000000001'}
-                    className="rounded bg-white border-slate-300 text-[#062326]"
+                    className="rounded bg-white border-slate-300 text-[#119653] focus:ring-[#119653]"
                   />
                   <span className="font-semibold text-slate-900">{z.name}</span>
                   <span className="text-slate-400">({z.currentCrop})</span>

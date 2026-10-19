@@ -128,21 +128,21 @@ export const ServiceRequestsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-2xl shadow-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2 border border-emerald-500/30">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
             <ShieldCheck size={14} /> Vai trò: Quản trị viên Platform (Platform Admin)
           </div>
           <h1 className="text-2xl font-bold text-white">
             Tiếp nhận & Tạo Yêu cầu Kỹ thuật (Service & Setup Requests)
           </h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-emerald-100 mt-1">
             Admin có thể chủ động **Tạo Yêu cầu Lắp đặt/Bảo trì thay cho Owner** và trực tiếp điều phối cho Kỹ thuật viên IoT triển khai chấm Node.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={() => setIsCreateModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shadow-lg">
+          <Button onClick={() => setIsCreateModalOpen(true)} className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shadow-sm">
             <Plus size={16} className="mr-1.5" /> Tạo Request Mới (Thay mặt Owner)
           </Button>
         </div>
@@ -161,7 +161,7 @@ export const ServiceRequestsPage: React.FC = () => {
           <button
             onClick={() => setActiveFilter('ALL')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              activeFilter === 'ALL' ? 'bg-[#062326] text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              activeFilter === 'ALL' ? 'bg-[#119653] text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             Tất cả Yêu cầu ({requests.length})
@@ -236,7 +236,7 @@ export const ServiceRequestsPage: React.FC = () => {
 
                     <h3 className="text-base font-bold text-slate-900 mt-1">{req.title}</h3>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
-                      <span className="flex items-center gap-1 font-semibold text-[#062326]">
+                      <span className="flex items-center gap-1 font-semibold text-emerald-800">
                         <Building2 size={13} /> {req.farmName} ({req.zoneName})
                       </span>
                       <span>•</span>
@@ -307,7 +307,7 @@ export const ServiceRequestsPage: React.FC = () => {
               <select
                 value={newRequest.requestType}
                 onChange={e => setNewRequest({ ...newRequest, requestType: e.target.value as any })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-bold focus:outline-none focus:border-[#062326]"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-bold focus:outline-none focus:border-[#119653]"
               >
                 <option value="INSTALLATION">⚡ Lắp đặt Thiết bị Mới & Chấm Node</option>
                 <option value="MAINTENANCE">🛠️ Bảo trì & Hot-Swap Phần cứng</option>
@@ -319,7 +319,7 @@ export const ServiceRequestsPage: React.FC = () => {
               <select
                 value={newRequest.priority}
                 onChange={e => setNewRequest({ ...newRequest, priority: e.target.value as any })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
               >
                 <option value="LOW">Thấp (Low)</option>
                 <option value="MEDIUM">Trung bình (Medium)</option>
@@ -334,7 +334,7 @@ export const ServiceRequestsPage: React.FC = () => {
             <select
               value={newRequest.farmId}
               onChange={e => setNewRequest({ ...newRequest, farmId: e.target.value })}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-medium focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-medium focus:outline-none focus:border-[#119653]"
             >
               {farms.map((f: any) => (
                 <option key={f.farmId} value={f.farmId}>{f.name} ({f.address || f.locationText || 'Trang trại'})</option>
@@ -347,7 +347,7 @@ export const ServiceRequestsPage: React.FC = () => {
             <select
               value={newRequest.zoneId}
               onChange={e => setNewRequest({ ...newRequest, zoneId: e.target.value })}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-medium focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-medium focus:outline-none focus:border-[#119653]"
             >
               {zones.map((z: any) => (
                 <option key={z.zoneId} value={z.zoneId}>{z.name} ({z.currentCrop || 'Chưa gán vụ'})</option>
@@ -371,7 +371,7 @@ export const ServiceRequestsPage: React.FC = () => {
               required
               rows={3}
               placeholder="Nhập nội dung yêu cầu triển khai hoặc bảo trì chi tiết để kỹ thuật viên thực hiện..."
-              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-[#062326]"
+              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-[#119653]"
               value={newRequest.description}
               onChange={e => setNewRequest({ ...newRequest, description: e.target.value })}
             />

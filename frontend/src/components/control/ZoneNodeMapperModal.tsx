@@ -49,8 +49,8 @@ const createNodePinIcon = (code: string, isSelected: boolean) => {
         <div style="
           position: absolute;
           top: -22px;
-          background: #062326;
-          color: #34d399;
+          background: #119653;
+          color: #ffffff;
           font-size: 10px;
           font-weight: 700;
           font-family: monospace;
@@ -132,7 +132,7 @@ const DraggableNodeMarker: React.FC<{
       <Popup>
         <div className="p-1.5 space-y-2 text-slate-800 text-xs min-w-[200px]">
           <div className="flex items-center justify-between border-b border-slate-200 pb-1">
-            <span className="font-bold text-[#062326] flex items-center gap-1 font-mono">
+            <span className="font-bold text-[#119653] flex items-center gap-1 font-mono">
               <Cpu size={13} /> #{index + 1} {node.nodeCode}
             </span>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-mono font-bold">
@@ -414,19 +414,19 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-sm">
       <div className="w-full max-w-5xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white flex items-center justify-between shrink-0">
+        <div className="p-4 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white flex items-center justify-between shrink-0 border-b border-emerald-400/40">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400">
+            <div className="p-2.5 bg-emerald-800/30 border border-emerald-300/40 rounded-xl text-white backdrop-blur-xs">
               <MapPin size={22} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  isMaintenance ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  isMaintenance ? 'bg-amber-400/30 text-amber-100 border border-amber-300/40' : 'bg-emerald-800/30 text-emerald-100 border border-emerald-300/40'
                 }`}>
                   {isMaintenance ? 'BẢO TRÌ & THAY THẾ NODE' : 'LẮP ĐẶT MỚI & CHẤM NODE GIS'}
                 </span>
-                <span className="text-xs text-slate-300 font-mono">Request #{request.serviceRequestId}</span>
+                <span className="text-xs text-emerald-100 font-mono">Request #{request.serviceRequestId}</span>
               </div>
               <h2 className="text-base font-bold text-white mt-0.5">
                 Chấm Node & Sửa Biểu đồ GIS Phân khu: <span className="text-emerald-300">{request.zoneName || 'Nhà màng Z01'}</span>
@@ -451,7 +451,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           <div className="lg:col-span-1 p-4 bg-slate-50 border-r border-slate-200 overflow-y-auto space-y-4">
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Cpu size={14} className="text-[#062326]" /> Thiết bị Chờ Chấm Node ({unassignedDevices.length})
+                <Cpu size={14} className="text-[#119653]" /> Thiết bị Chờ Chấm Node ({unassignedDevices.length})
               </h3>
               <p className="text-[11px] text-slate-500 mt-1">
                 Chọn thiết bị bên dưới, sau đó nhấp vào vị trí bất kỳ trên bản đồ GIS để định vị Node.
@@ -474,7 +474,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                       onClick={() => setSelectedDevice(dev)}
                       className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
                         isSelected
-                          ? 'bg-[#062326] text-white border-[#062326] shadow-md ring-2 ring-emerald-400'
+                          ? 'bg-emerald-700 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400'
                           : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500'
                       }`}
                     >
@@ -542,7 +542,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                  <Layers size={15} className="text-[#062326]" /> Bản đồ GIS Định vị Phân khu (Interactive Leaflet Map)
+                  <Layers size={15} className="text-[#119653]" /> Bản đồ GIS Định vị Phân khu (Interactive Leaflet Map)
                 </span>
                 <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-mono font-bold border border-emerald-300">
                   {nodes.length} Node Đã Định Vị
@@ -571,21 +571,21 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setMapType('osm')}
-                    className={`px-2 py-1 rounded transition-colors ${mapType === 'osm' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                    className={`px-2 py-1 rounded transition-colors ${mapType === 'osm' ? 'bg-[#119653] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
                   >
                     OSM
                   </button>
                   <button
                     type="button"
                     onClick={() => setMapType('street')}
-                    className={`px-2 py-1 rounded transition-colors ${mapType === 'street' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                    className={`px-2 py-1 rounded transition-colors ${mapType === 'street' ? 'bg-[#119653] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
                   >
                     Đường phố
                   </button>
                   <button
                     type="button"
                     onClick={() => setMapType('satellite')}
-                    className={`px-2 py-1 rounded transition-colors ${mapType === 'satellite' ? 'bg-[#062326] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
+                    className={`px-2 py-1 rounded transition-colors ${mapType === 'satellite' ? 'bg-[#119653] text-white font-semibold' : 'text-slate-700 hover:bg-slate-100'}`}
                   >
                     Vệ tinh
                   </button>

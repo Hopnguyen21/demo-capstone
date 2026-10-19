@@ -82,61 +82,61 @@ export const RegisterPage: React.FC = () => {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 py-8">
       <div className="w-full max-w-4xl grid md:grid-cols-2 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden text-slate-800">
         {/* Left column: Branding & Feature summary */}
-        <div className="p-8 bg-[#062326] text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-[#0d3b40]">
+        <div className="p-8 bg-gradient-to-br from-[#119653] via-emerald-700 to-emerald-800 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-emerald-600/40">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300">
+              <div className="p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs">
                 <Sprout size={28} />
               </div>
               <div>
                 <span className="font-bold text-xl tracking-tight text-white block">SmartFarm SaaS</span>
-                <span className="text-[10px] text-emerald-200/70 uppercase tracking-widest font-mono">Đăng ký tài khoản</span>
+                <span className="text-[10px] text-emerald-200/90 uppercase tracking-widest font-mono">Đăng ký tài khoản</span>
               </div>
             </div>
 
             <h1 className="mt-8 text-2xl font-bold text-white leading-tight">
               Khởi tạo Nông trang Công nghệ cao cùng SmartFarm
             </h1>
-            <p className="mt-3 text-xs text-emerald-100/70 leading-relaxed">
+            <p className="mt-3 text-xs text-emerald-100/90 leading-relaxed">
               Giải pháp toàn diện quản lý hạ tầng IoT nông nghiệp, tự động hóa vi khí hậu và cố vấn nông học AI chuyên sâu dành riêng cho các mô hình nông trại hiện đại.
             </p>
 
             <div className="mt-8 space-y-3.5">
-              <div className="flex items-start gap-3 text-xs text-emerald-100/90">
-                <div className="p-1 rounded bg-emerald-500/20 text-emerald-400 shrink-0 mt-0.5">
+              <div className="flex items-start gap-3 text-xs text-emerald-100">
+                <div className="p-1 rounded bg-white/20 text-white shrink-0 mt-0.5">
                   <ShieldCheck size={14} />
                 </div>
                 <div>
                   <span className="font-semibold block text-white">Kiến trúc Đa người thuê an toàn</span>
-                  <span className="text-emerald-100/60 text-[11px]">Dữ liệu nông trang của bạn được phân vùng độc lập và bảo mật tuyệt đối.</span>
+                  <span className="text-emerald-100/80 text-[11px]">Dữ liệu nông trang của bạn được phân vùng độc lập và bảo mật tuyệt đối.</span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 text-xs text-emerald-100/90">
-                <div className="p-1 rounded bg-emerald-500/20 text-emerald-400 shrink-0 mt-0.5">
+              <div className="flex items-start gap-3 text-xs text-emerald-100">
+                <div className="p-1 rounded bg-white/20 text-white shrink-0 mt-0.5">
                   <ShieldCheck size={14} />
                 </div>
                 <div>
                   <span className="font-semibold block text-white">Tự động hóa theo giai đoạn sinh trưởng</span>
-                  <span className="text-emerald-100/60 text-[11px]">Hệ thống kích hoạt máy bơm, van tưới và quạt thông gió dựa trên ngưỡng vi khí hậu thực tế.</span>
+                  <span className="text-emerald-100/80 text-[11px]">Hệ thống kích hoạt máy bơm, van tưới và quạt thông gió dựa trên ngưỡng vi khí hậu thực tế.</span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 text-xs text-emerald-100/90">
-                <div className="p-1 rounded bg-emerald-500/20 text-emerald-400 shrink-0 mt-0.5">
+              <div className="flex items-start gap-3 text-xs text-emerald-100">
+                <div className="p-1 rounded bg-white/20 text-white shrink-0 mt-0.5">
                   <ShieldCheck size={14} />
                 </div>
                 <div>
                   <span className="font-semibold block text-white">Trợ lý AI Nông học Gemini</span>
-                  <span className="text-emerald-100/60 text-[11px]">Chẩn đoán sâu bệnh, tư vấn dinh dưỡng và tối ưu chi phí phân bón theo tiêu chuẩn VietGAP.</span>
+                  <span className="text-emerald-100/80 text-[11px]">Chẩn đoán sâu bệnh, tư vấn dinh dưỡng và tối ưu chi phí phân bón theo tiêu chuẩn VietGAP.</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 pt-4 border-t border-[#0d3b40] text-[11px] text-emerald-200/50 flex items-center justify-between">
+          <div className="mt-8 pt-4 border-t border-emerald-600/40 text-[11px] text-emerald-200/80 flex items-center justify-between">
             <span>SmartFarm Enterprise Platform &copy; 2026</span>
-            <Link to="/login" className="text-emerald-300 hover:underline flex items-center gap-1">
+            <Link to="/login" className="text-emerald-200 hover:text-white hover:underline flex items-center gap-1 font-semibold">
               Đã có tài khoản? <ChevronRight size={12} />
             </Link>
           </div>
@@ -159,7 +159,7 @@ export const RegisterPage: React.FC = () => {
               <div className="pt-4">
                 <Button
                   onClick={() => navigate('/login', { state: { registeredEmail: email } })}
-                  className="w-full max-w-xs mx-auto bg-[#062326] hover:bg-[#093539] flex items-center justify-center gap-2"
+                  className="w-full max-w-xs mx-auto bg-[#119653] hover:bg-emerald-700 font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-700/20"
                 >
                   Đăng nhập ngay <ArrowRight size={16} />
                 </Button>
@@ -360,7 +360,7 @@ export const RegisterPage: React.FC = () => {
                       type="checkbox"
                       checked={agreeTerms}
                       onChange={(e) => setAgreeTerms(e.target.checked)}
-                      className="rounded mt-0.5 bg-slate-100 border-slate-300 text-[#062326] focus:ring-0"
+                      className="rounded mt-0.5 bg-slate-100 border-slate-300 text-[#119653] focus:ring-0"
                     />
                     <span>
                       Tôi đồng ý với{' '}
@@ -379,7 +379,7 @@ export const RegisterPage: React.FC = () => {
                 <Button
                   type="submit"
                   disabled={loading || !isPasswordValid || !isMatch || !agreeTerms}
-                  className="w-full mt-3 bg-[#062326] hover:bg-[#093539] flex items-center justify-center gap-2 py-2.5"
+                  className="w-full mt-3 bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 py-2.5 shadow-md shadow-emerald-700/20"
                 >
                   {loading ? (
                     <>
@@ -396,7 +396,7 @@ export const RegisterPage: React.FC = () => {
               {/* Login link */}
               <div className="mt-5 text-center text-xs text-slate-500 border-t border-slate-100 pt-3">
                 Đã có tài khoản?{' '}
-                <Link to="/login" className="font-semibold text-[#062326] hover:underline">
+                <Link to="/login" className="font-semibold text-[#119653] hover:underline">
                   Đăng nhập ngay
                 </Link>
               </div>

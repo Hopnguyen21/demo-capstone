@@ -17,7 +17,7 @@ export const GatewaysPage: React.FC = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Radio className="text-[#062326]" size={22} /> Chẩn đoán Trạm Gateway ESP32 LoRa
+          <Radio className="text-[#119653]" size={22} /> Chẩn đoán Trạm Gateway ESP32 LoRa
         </h1>
         <p className="text-xs text-slate-600 mt-1">Giám sát dải tần 433MHz, công suất RSSI/SNR và luồng gói tin MQTT từ Gateway về Cloud.</p>
       </div>
@@ -35,8 +35,8 @@ export const GatewaysPage: React.FC = () => {
 
             <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-xs font-mono space-y-1 text-slate-700">
               <div className="flex justify-between"><span>MAC:</span><span className="text-slate-900">{gw.macAddress}</span></div>
-              <div className="flex justify-between"><span>Firmware:</span><span className="text-[#062326] font-semibold">{gw.firmwareVersion}</span></div>
-              <div className="flex justify-between"><span>Sóng RSSI:</span><span className="text-[#062326] font-bold">{gw.rssi} dBm</span></div>
+              <div className="flex justify-between"><span>Firmware:</span><span className="text-emerald-800 font-semibold">{gw.firmwareVersion}</span></div>
+              <div className="flex justify-between"><span>Sóng RSSI:</span><span className="text-emerald-800 font-bold">{gw.rssi} dBm</span></div>
               <div className="flex justify-between"><span>Nodes kết nối:</span><span className="text-sky-700 font-bold">{gw.connectedNodesCount} Nodes</span></div>
             </div>
 

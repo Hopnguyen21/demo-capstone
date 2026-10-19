@@ -184,11 +184,11 @@ export const PlantingSeasonsPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 p-6 rounded-2xl shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#062326] text-emerald-400 font-mono">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono">
               CF3 CROP SEASON IRRIGATION
             </span>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Calendar className="text-[#062326]" size={22} /> Quản lý Vụ mùa & Setup Lịch tưới Mùa vụ (Planting Seasons)
+              <Calendar className="text-[#119653]" size={22} /> Quản lý Vụ mùa & Setup Lịch tưới Mùa vụ (Planting Seasons)
             </h1>
           </div>
           <p className="text-xs text-slate-600 mt-1">
@@ -217,7 +217,7 @@ export const PlantingSeasonsPage: React.FC = () => {
             <div key={s.plantingSeasonId} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4 hover:border-slate-300 transition-all">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-[#062326] border border-emerald-200">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
                     {s.cropName} ({s.varietyName || 'Giống VietGAP'})
                   </span>
                   <h3 className="text-lg font-bold text-slate-900 mt-1">{s.name}</h3>
@@ -230,17 +230,17 @@ export const PlantingSeasonsPage: React.FC = () => {
               <div>
                 <div className="flex justify-between text-xs text-slate-700 font-medium mb-1">
                   <span>Tiến độ sinh trưởng vụ mùa</span>
-                  <span className="text-[#062326] font-bold">{s.progressPercent}%</span>
+                  <span className="text-emerald-800 font-bold">{s.progressPercent}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 border border-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#062326] rounded-full transition-all duration-500" style={{ width: `${s.progressPercent}%` }} />
+                  <div className="h-full bg-[#119653] rounded-full transition-all duration-500" style={{ width: `${s.progressPercent}%` }} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
                 <div><span className="text-slate-500 block text-[10px]">Ngày bắt đầu</span><strong className="text-slate-900">{s.startDate}</strong></div>
                 <div><span className="text-slate-500 block text-[10px]">Dự kiến thu hoạch</span><strong className="text-slate-900">{s.expectedEndDate}</strong></div>
-                <div><span className="text-slate-500 block text-[10px]">Giai đoạn hiện tại</span><strong className="text-[#062326]">{s.currentGrowthStageName}</strong></div>
+                <div><span className="text-slate-500 block text-[10px]">Giai đoạn hiện tại</span><strong className="text-slate-900">{s.currentGrowthStageName}</strong></div>
                 <div className="text-right">
                   <span className="text-slate-500 block text-[10px]">Số Lịch tưới Mùa vụ</span>
                   <strong className="text-emerald-700 font-bold">{seasonSchedules.length} Lịch hoạt động</strong>

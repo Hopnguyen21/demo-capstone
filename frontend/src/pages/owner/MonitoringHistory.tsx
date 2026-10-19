@@ -24,7 +24,7 @@ export const MonitoringHistory: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Activity className="text-[#062326]" size={22} /> Biểu đồ Lịch sử Vi khí hậu (Historical Analytics)
+            <Activity className="text-[#119653]" size={22} /> Biểu đồ Lịch sử Vi khí hậu (Historical Analytics)
           </h1>
           <p className="text-xs text-slate-600 mt-1">Truy vấn biểu đồ chuỗi thời gian TimescaleDB kết hợp dải ngưỡng an toàn của cây trồng.</p>
         </div>
@@ -38,7 +38,7 @@ export const MonitoringHistory: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMetric('SOIL_MOISTURE')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${metric === 'SOIL_MOISTURE' ? 'bg-[#062326] text-white border-[#062326]' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${metric === 'SOIL_MOISTURE' ? 'bg-[#119653] text-white border-[#119653] shadow-xs' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
             >
               Độ ẩm đất (%)
             </button>
@@ -65,7 +65,7 @@ export const MonitoringHistory: React.FC = () => {
               <YAxis stroke="#64748b" fontSize={11} />
               <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
               <Legend />
-              {metric === 'SOIL_MOISTURE' && <Line type="monotone" dataKey="soilMoisture" stroke="#062326" strokeWidth={2} name="Độ ẩm đất (%)" dot={false} />}
+              {metric === 'SOIL_MOISTURE' && <Line type="monotone" dataKey="soilMoisture" stroke="#119653" strokeWidth={2.5} name="Độ ẩm đất (%)" dot={false} />}
               {metric === 'TEMPERATURE' && <Line type="monotone" dataKey="temperature" stroke="#d97706" strokeWidth={2} name="Nhiệt độ (°C)" dot={false} />}
               {metric === 'AIR_HUMIDITY' && <Line type="monotone" dataKey="humidity" stroke="#0284c7" strokeWidth={2} name="Độ ẩm không khí (%)" dot={false} />}
               <Line type="monotone" dataKey="minTarget" stroke="#e11d48" strokeDasharray="3 3" name="Ngưỡng Min" dot={false} />

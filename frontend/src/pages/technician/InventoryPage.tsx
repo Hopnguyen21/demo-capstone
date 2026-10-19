@@ -33,11 +33,11 @@ export const TechnicianInventoryPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Package className="text-[#062326]" size={22} /> Kho Vật tư & Linh kiện Dự phòng (Spare Parts Inventory)
+            <Package className="text-[#119653]" size={22} /> Kho Vật tư & Linh kiện Dự phòng (Spare Parts Inventory)
           </h1>
           <p className="text-xs text-slate-600 mt-1">Quản lý linh kiện phần cứng IoT phục vụ lắp đặt mới và bảo trì sự cố.</p>
         </div>
-        <Button><Plus size={16} className="mr-1.5" /> Nhập thêm Linh kiện</Button>
+        <Button className="bg-[#119653] hover:bg-emerald-700 text-white font-bold"><Plus size={16} className="mr-1.5" /> Nhập thêm Linh kiện</Button>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -56,10 +56,10 @@ export const TechnicianInventoryPage: React.FC = () => {
               <tr key={sp.id} className="hover:bg-slate-50/80 transition-colors">
                 <td className="p-4 font-semibold text-slate-900">{sp.name}</td>
                 <td className="p-4 font-mono text-sky-700 font-semibold">{sp.code}</td>
-                <td className="p-4 font-bold text-[#062326]">{sp.stock}</td>
+                <td className="p-4 font-bold text-emerald-800">{sp.stock}</td>
                 <td className="p-4 text-slate-500">{sp.unit}</td>
                 <td className="p-4 text-right space-x-2">
-                  <button className="text-[#062326] font-semibold hover:underline">Xuất kho</button>
+                  <button className="text-emerald-700 font-semibold hover:underline">Xuất kho</button>
                 </td>
               </tr>
             ))}

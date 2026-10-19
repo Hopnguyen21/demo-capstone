@@ -11,6 +11,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
+import { OpenMeteoWeatherWidget } from '../../components/weather/OpenMeteoWeatherWidget';
 
 export const FarmsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -855,6 +856,13 @@ export const FarmsPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Live Open-Meteo Weather for the Land */}
+          <OpenMeteoWeatherWidget
+            latitude={selectedFarm.latitude || 11.9404}
+            longitude={selectedFarm.longitude || 108.4583}
+            landName={selectedFarm.name}
+          />
+
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <CornerDownRight size={18} className="text-sky-600" /> Danh sách Các Phân khu Lô đất (Level 2: Fields) thuộc Trang trại
@@ -940,6 +948,13 @@ export const FarmsPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Live Open-Meteo Weather for Field Land */}
+          <OpenMeteoWeatherWidget
+            latitude={selectedField.latitude || selectedFarm?.latitude || 11.9404}
+            longitude={selectedField.longitude || selectedFarm?.longitude || 108.4583}
+            landName={`${selectedFarm?.name || 'Trang trại'} ➔ Lô ${selectedField.name}`}
+          />
 
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -1059,7 +1074,7 @@ export const FarmsPage: React.FC = () => {
                 <Button size="sm" variant="outline" className="text-white border-white/30 bg-white/10 hover:bg-white/20 backdrop-blur-xs font-medium" onClick={() => setSelectedZone(null)}>
                   <ArrowLeft size={14} className="mr-1" /> Trở lại danh sách Zone
                 </Button>
-                <Button size="sm" onClick={() => navigate('/owner/monitoring/realtime')} className="bg-emerald-900/70 hover:bg-emerald-950 text-white font-semibold border border-emerald-400/30">
+                <Button size="sm" onClick={() => navigate('/owner/monitoring/realtime')} className="bg-[#119653] hover:bg-emerald-700 text-white font-semibold border border-emerald-400/30 shadow-xs">
                   <Gauge size={14} className="mr-1" /> Xem Giám sát Realtime
                 </Button>
               </div>
@@ -1072,7 +1087,7 @@ export const FarmsPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                    <MapPin size={16} className="text-[#062326]" /> Vị trí GIS Map của Zone này
+                    <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
                   </h4>
                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                     <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -1141,7 +1156,7 @@ export const FarmsPage: React.FC = () => {
                 </h4>
 
                 <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
-                  <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-[#062326]">{selectedZone.currentCrop}</strong></div>
+                  <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop}</strong></div>
                   <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage}</strong></div>
                 </div>
 
@@ -1238,7 +1253,7 @@ export const FarmsPage: React.FC = () => {
               <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <UserCheck size={16} className="text-[#062326]" /> Nhân viên phân công phụ trách Zone:
+                    <UserCheck size={16} className="text-[#119653]" /> Nhân viên phân công phụ trách Zone:
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold border border-emerald-200">
                     Phân công trực tiếp
@@ -1256,7 +1271,7 @@ export const FarmsPage: React.FC = () => {
 
                 <div className="space-y-2">
                   <select
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#062326] shadow-xs cursor-pointer disabled:opacity-50"
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#119653] shadow-xs cursor-pointer disabled:opacity-50"
                     value={assignedEmployeeIdMap[selectedZone.zoneId] ?? ''}
                     onChange={e => handleAssignEmployee(selectedZone.zoneId, e.target.value)}
                     disabled={isAssigningEmployee}
@@ -1278,7 +1293,7 @@ export const FarmsPage: React.FC = () => {
                       return (
                         <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start justify-between gap-3 animate-in fade-in">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#062326] text-emerald-400 flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-emerald-500/30">
+                            <div className="w-10 h-10 rounded-full bg-[#119653] text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-emerald-400">
                               {assignedEmp.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                             </div>
                             <div>
@@ -1692,7 +1707,7 @@ export const FarmsPage: React.FC = () => {
             <div>
               <label className="block text-slate-700 font-bold mb-1">Khu vực Zone chỉ định lắp đặt:</label>
               <select
-                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653]"
                 value={installTargetZone?.zoneId || ''}
                 onChange={e => {
                   const found = zones.find(z => z.zoneId === e.target.value);
@@ -1715,7 +1730,7 @@ export const FarmsPage: React.FC = () => {
           <div>
             <label className="block text-slate-700 font-bold mb-1">Hạng mục Thiết bị IoT cần lắp đặt *</label>
             <select
-              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653]"
               value={installCategory}
               onChange={e => setInstallCategory(e.target.value)}
             >
@@ -1743,7 +1758,7 @@ export const FarmsPage: React.FC = () => {
             <label className="block text-slate-700 font-bold mb-1">Mô tả chi tiết & Ghi chú kỹ thuật *</label>
             <textarea
               rows={3}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs resize-none"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] text-xs resize-none"
               value={installDescription}
               onChange={e => setInstallDescription(e.target.value)}
               placeholder="Nhập chi tiết nhu cầu: số lượng node cảm biến, loại cây trồng, van điều khiển, vị trí kéo dây điện/nguồn pin mặt trời..."
@@ -1851,7 +1866,7 @@ export const FarmsPage: React.FC = () => {
           <div>
             <label className="block text-slate-700 font-bold mb-1">Phân loại & Tiêu chuẩn Chất lượng</label>
             <select
-              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs cursor-pointer"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] text-xs cursor-pointer"
               value={yieldQualityInput}
               onChange={e => setYieldQualityInput(e.target.value)}
             >
@@ -1867,7 +1882,7 @@ export const FarmsPage: React.FC = () => {
             <label className="block text-slate-700 font-bold mb-1">Ghi chú Thu hoạch & Đánh giá Chất lượng</label>
             <textarea
               rows={3}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs resize-none"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] text-xs resize-none"
               value={yieldNotesInput}
               onChange={e => setYieldNotesInput(e.target.value)}
               placeholder="Ghi chú về độ ngọt Brix, ngoại hình, trọng lượng quả trung bình hoặc đối tác thu mua..."

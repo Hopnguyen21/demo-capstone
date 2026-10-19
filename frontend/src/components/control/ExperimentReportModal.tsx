@@ -243,17 +243,17 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         )}
 
         {/* Header Info Banner */}
-        <div className="p-3.5 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-xl shadow-xs space-y-1">
+        <div className="p-3.5 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-xl shadow-xs space-y-1 border border-emerald-400/40">
           <div className="flex items-center justify-between">
-            <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-sm">
-              {isLocked ? <Lock size={16} className="text-amber-400" /> : <FileText size={16} />}
+            <span className="font-bold text-white flex items-center gap-1.5 text-sm">
+              {isLocked ? <Lock size={16} className="text-amber-200" /> : <FileText size={16} />}
               Hợp đồng Lắp đặt IoT #{request.serviceRequestId.toUpperCase()}
             </span>
-            <span className="text-[11px] px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30">
+            <span className="text-[11px] px-2.5 py-0.5 rounded bg-emerald-800/30 text-emerald-100 font-mono font-bold border border-emerald-300/30">
               Khách hàng: {request.assignedOwnerName || 'Lê Văn An'}
             </span>
           </div>
-          <p className="text-[11px] text-slate-300 flex items-center gap-3">
+          <p className="text-[11px] text-emerald-100 flex items-center gap-3">
             <span><strong>Trang trại:</strong> {request.farmName}</span>
             <span>•</span>
             <span><strong>Phân khu:</strong> {request.zoneName}</span>
@@ -279,7 +279,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-              <Package size={15} className="text-[#062326]" /> Bảng Báo giá Thiết bị & Vật tư IoT ({selectedItems.length}/{quotationItems.length})
+              <Package size={15} className="text-[#119653]" /> Bảng Báo giá Thiết bị & Vật tư IoT ({selectedItems.length}/{quotationItems.length})
             </h4>
             <div className="flex items-center gap-3">
               {!isLocked ? (

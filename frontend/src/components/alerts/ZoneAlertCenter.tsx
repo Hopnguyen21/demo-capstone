@@ -391,11 +391,11 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
       {/* Rules Management Engine */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-        <div className="flex items-center justify-between px-5 py-3.5 bg-[#062326] text-white">
+        <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white">
           <div className="flex items-center gap-2 font-bold text-sm">
-            <Settings size={16} className="text-emerald-400" /> Cấu hình Quy tắc Cảnh báo An toàn Zone ({rules.length} luật)
+            <Settings size={16} className="text-white" /> Cấu hình Quy tắc Cảnh báo An toàn Zone ({rules.length} luật)
           </div>
-          <Button onClick={openNewRule} size="sm" className="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-200 text-xs">
+          <Button onClick={openNewRule} size="sm" className="bg-white/20 hover:bg-white/30 border border-white/30 text-white text-xs font-semibold">
             <Plus size={13} className="mr-1" /> Thêm quy tắc mới
           </Button>
         </div>
@@ -573,7 +573,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               value={ruleForm.name || ''}
               onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })}
               placeholder="Ví dụ: Đất quá khô – Bật máy bơm nhỏ giọt"
-              className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900 focus:border-[#062326] focus:outline-none"
+              className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900 focus:border-[#119653] focus:outline-none"
             />
           </div>
 
@@ -586,7 +586,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                   const m = METRICS.find(x => x.key === e.target.value);
                   setRuleForm({ ...ruleForm, metric: e.target.value, unit: m?.unit || '%' });
                 }}
-                className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900 focus:border-[#062326] focus:outline-none"
+                className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900 focus:border-[#119653] focus:outline-none"
               >
                 {METRICS.map(m => (
                   <option key={m.key} value={m.key}>{m.label} ({m.unit})</option>
@@ -599,7 +599,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               <select
                 value={ruleForm.severity || 'WARNING'}
                 onChange={e => setRuleForm({ ...ruleForm, severity: e.target.value as any })}
-                className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900 focus:border-[#062326] focus:outline-none"
+                className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900 focus:border-[#119653] focus:outline-none"
               >
                 <option value="WARNING">Cảnh báo (WARNING)</option>
                 <option value="CRITICAL">Nguy hiểm khẩn cấp (CRITICAL)</option>

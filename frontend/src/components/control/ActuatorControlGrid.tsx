@@ -156,7 +156,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
       default:
         return (
           <div className={`p-2.5 rounded-xl border transition-all ${
-            isOn ? 'bg-[#062326] text-emerald-400 border-emerald-500' : 'bg-slate-100 text-slate-700 border-slate-200'
+            isOn ? 'bg-[#119653] text-white border-emerald-600' : 'bg-slate-100 text-slate-700 border-slate-200'
           }`}>
             <Sliders size={22} />
           </div>
@@ -218,7 +218,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs">
         <div>
           <h3 className="text-sm md:text-base font-bold text-slate-900 flex items-center gap-2">
-            <Power className="text-[#062326]" size={18} />
+            <Power className="text-[#119653]" size={18} />
             Điều khiển Trực tiếp Thiết bị Chấp hành (Actuators Control Grid)
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -253,9 +253,9 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
           <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
             <Button
               onClick={handleInitDemoActuators}
-              className="bg-[#062326] text-emerald-400 hover:bg-[#0a3539] font-bold shadow-md text-xs py-2.5 px-4"
+              className="bg-[#119653] text-white hover:bg-emerald-700 font-bold shadow-md text-xs py-2.5 px-4"
             >
-              <Sparkles size={15} className="mr-1.5 text-emerald-400" />
+              <Sparkles size={15} className="mr-1.5 text-emerald-100" />
               Kích hoạt 3 Rơ-le Thử nghiệm (Demo Relays)
             </Button>
           </div>
@@ -371,7 +371,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
         {selectedActuator && (
           <div className="space-y-4 text-xs">
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
-              <div className="p-2.5 rounded-lg bg-[#062326] text-emerald-400 font-bold font-mono text-xs">
+              <div className="p-2.5 rounded-lg bg-[#119653] text-white font-bold font-mono text-xs">
                 {selectedActuator.actuatorCode}
               </div>
               <div>

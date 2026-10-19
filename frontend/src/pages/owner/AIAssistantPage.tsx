@@ -231,7 +231,7 @@ export const AIAssistantPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Bot className="text-[#062326]" size={24} /> Trợ lý AI Nông học VietGAP (Gemini 2.5 Flash + RAG)
+            <Bot className="text-[#119653]" size={24} /> Trợ lý AI Nông học VietGAP (Gemini 2.5 Flash + RAG)
           </h1>
           <p className="text-xs text-slate-600 mt-1">Phân tích vi khí hậu thời gian thực, chẩn đoán sâu bệnh và đề xuất tưới thông minh theo từng Khu vực trồng (Zone).</p>
         </div>
@@ -269,7 +269,7 @@ export const AIAssistantPage: React.FC = () => {
                 </strong>
               </span>
             </div>
-            <span className="text-[10px] font-mono bg-emerald-50 text-[#062326] px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+            <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
               {loadingContext ? 'Đang cập nhật...' : `Context Loaded (${aiContext?.telemetry?.length || 4} Sensors + Thời tiết)`}
             </span>
           </div>
@@ -282,12 +282,12 @@ export const AIAssistantPage: React.FC = () => {
               return (
                 <div key={msg.messageId} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
                   {!isUser && (
-                    <div className="w-8 h-8 rounded-full bg-[#062326] text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <div className="w-8 h-8 rounded-full bg-[#119653] text-white flex items-center justify-center shrink-0 shadow-xs">
                       <Bot size={18} />
                     </div>
                   )}
 
-                  <div className={`max-w-[85%] p-4 rounded-xl space-y-2 ${isUser ? 'bg-[#062326] text-white rounded-br-none shadow-xs' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs'}`}>
+                  <div className={`max-w-[85%] p-4 rounded-xl space-y-2 ${isUser ? 'bg-[#119653] text-white rounded-br-none shadow-xs' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs'}`}>
                     <p className="leading-relaxed whitespace-pre-wrap">{textContent}</p>
 
                   {/* Embedded Recommendation Card inside AI message */}
@@ -397,7 +397,7 @@ export const AIAssistantPage: React.FC = () => {
           {/* AI Thinking Indicator */}
           {isSending && (
             <div className="flex gap-3 justify-start">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-[#062326] text-white">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-[#119653] text-white">
                 <Bot size={14} className="animate-pulse" />
               </div>
               <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center gap-2 text-slate-500 text-xs">

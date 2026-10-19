@@ -44,7 +44,7 @@ export const SettingsPage: React.FC = () => {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Settings className="text-[#062326]" size={22} /> Cấu hình Nền tảng SaaS (Platform Settings)
+          <Settings className="text-[#119653]" size={22} /> Cấu hình Nền tảng SaaS (Platform Settings)
         </h1>
         <p className="text-xs text-slate-600 mt-1">Thiết lập các tham số kết nối API bên thứ ba, cấu hình AI Gemini và Weather API.</p>
       </div>

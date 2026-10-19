@@ -108,20 +108,20 @@ export const MaintenancePage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-2xl shadow-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-semibold mb-2 border border-amber-500/30">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
             <Wrench size={14} /> Vai trò: Kỹ thuật viên IoT Platform
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
             Quản lý Yêu cầu Bảo trì & Thay thế Hot-Swap (Maintenance Requests)
           </h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-emerald-100 mt-1">
             Kỹ thuật viên xử lý yêu cầu bảo trì ➔ Vào Zone để chấm/định vị lại các Node thay thế ➔ Chờ Owner bấm **"Đã nghiệm thu"** ➔ Bấm **"Xác nhận hoàn thành"**.
           </p>
         </div>
 
-        <Button onClick={() => setIsHotSwapOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold shrink-0">
+        <Button onClick={() => setIsHotSwapOpen(true)} className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shrink-0 shadow-sm">
           <RefreshCw size={16} className="mr-1.5" /> Hot-Swap Thay 1-Đổi-1
         </Button>
       </div>
@@ -228,7 +228,7 @@ export const MaintenancePage: React.FC = () => {
 
                     <h3 className="text-base font-bold text-slate-900 mt-1">{req.title}</h3>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
-                      <span className="font-semibold text-[#062326] flex items-center gap-1">
+                      <span className="font-semibold text-emerald-800 flex items-center gap-1">
                         <Building2 size={13} /> {req.farmName} ({req.zoneName})
                       </span>
                       <span>•</span>
@@ -329,7 +329,7 @@ export const MaintenancePage: React.FC = () => {
             <select
               value={hotSwapTargetReq}
               onChange={(e) => setHotSwapTargetReq(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
             >
               {maintenanceRequests.map(r => (
                 <option key={r.serviceRequestId} value={r.serviceRequestId}>{r.title} ({r.farmName})</option>
@@ -342,7 +342,7 @@ export const MaintenancePage: React.FC = () => {
             <select
               value={hotSwapOldNode}
               onChange={(e) => setHotSwapOldNode(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
             >
               {nodes.length > 0 ? nodes.map((n: any) => (
                 <option key={n.nodeId || n.id} value={n.nodeId || n.id}>{n.name || n.nodeCode || n.hardwareAddress || 'Node'} - Pin {n.batteryLevel ?? 85}%</option>
@@ -357,7 +357,7 @@ export const MaintenancePage: React.FC = () => {
             <input
               value={hotSwapNewSerial}
               onChange={(e) => setHotSwapNewSerial(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-mono focus:outline-none focus:border-[#119653]"
               placeholder="SN-NODE-2026-NEW-99"
             />
           </div>

@@ -192,15 +192,15 @@ export const SupportPage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-2xl shadow-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2 border border-emerald-500/30">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
             <Headphones size={14} /> Quản lý Yêu cầu • Hợp đồng & Nghiệm thu Công trình
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-white">
             Quản lý Yêu cầu Dịch vụ, Ký Hợp đồng & Nghiệm thu (Owner Portal)
           </h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-emerald-100 mt-1">
             Chủ trang trại nhận Hợp đồng báo giá, ký tên & cọc 30% tiền mặt/chuyển khoản để cho phép Kỹ thuật viên chấm Node, sau đó ký Nghiệm thu và thanh toán 70% còn lại.
           </p>
         </div>
@@ -210,13 +210,13 @@ export const SupportPage: React.FC = () => {
             variant="outline"
             onClick={() => loadRequests()}
             disabled={isLoading}
-            className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs flex items-center gap-1.5"
+            className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-xs flex items-center gap-1.5"
           >
             <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
             <span>Làm mới API</span>
           </Button>
 
-          <Button onClick={() => setIsModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shrink-0">
+          <Button onClick={() => setIsModalOpen(true)} className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shrink-0 shadow-sm">
             <Plus size={16} className="mr-1.5" /> Gửi Yêu cầu Hỗ trợ Mới
           </Button>
         </div>
@@ -374,7 +374,7 @@ export const SupportPage: React.FC = () => {
 
                   <h3 className="text-base font-bold text-slate-900 mt-1">{req.title}</h3>
                   <p className="text-xs text-slate-500 flex items-center gap-2">
-                    <span className="font-semibold text-[#062326] flex items-center gap-1">
+                    <span className="font-semibold text-emerald-800 flex items-center gap-1">
                       <Building2 size={13} /> {req.farmName} ({req.zoneName})
                     </span>
                     <span>•</span>
@@ -757,7 +757,7 @@ export const SupportPage: React.FC = () => {
             <select
               value={newReq.requestType}
               onChange={e => setNewReq({ ...newReq, requestType: e.target.value as any })}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-bold focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-bold focus:outline-none focus:border-[#119653]"
             >
               <option value="INSTALLATION">⚡ Lắp đặt Thiết bị Mới & Chấm Node</option>
               <option value="MAINTENANCE">🛠️ Bảo trì & Thay thế Phần cứng</option>
@@ -769,7 +769,7 @@ export const SupportPage: React.FC = () => {
             <select
               value={newReq.zoneId}
               onChange={e => setNewReq({ ...newReq, zoneId: e.target.value })}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#062326]"
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
             >
               {zones.map(z => (
                 <option key={z.zoneId} value={z.zoneId}>{z.name} ({z.currentCrop})</option>
@@ -793,7 +793,7 @@ export const SupportPage: React.FC = () => {
               required
               rows={3}
               placeholder="Nhập chi tiết thông tin hiện trạng phần cứng hoặc khu vực cần triển khai..."
-              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-[#062326]"
+              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-[#119653]"
               value={newReq.description}
               onChange={e => setNewReq({ ...newReq, description: e.target.value })}
             />

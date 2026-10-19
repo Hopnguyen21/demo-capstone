@@ -43,7 +43,7 @@ export const AdminDashboard: React.FC = () => {
       {/* Top Banner */}
       <div className="flex items-center justify-between p-6 bg-gradient-to-r from-emerald-50 via-white to-slate-50 border border-emerald-200/80 rounded-2xl shadow-xs">
         <div>
-          <span className="text-xs font-mono font-semibold text-[#062326] uppercase tracking-wider">Bảng điều khiển Bổn mạng</span>
+          <span className="text-xs font-mono font-semibold text-[#119653] uppercase tracking-wider">Bảng điều khiển Bổn mạng</span>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">Platform Admin Management Console</h1>
           <p className="text-xs text-slate-600 mt-1">Quản trị toàn bộ hạ tầng SaaS Cloud, người thuê (Tenants) và thư viện Nông học hệ thống.</p>
         </div>
@@ -100,7 +100,7 @@ export const AdminDashboard: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-900">Tăng trưởng Người thuê & Trang trại</h3>
               <p className="text-xs text-slate-500">Số lượng SaaS Tenants và Trang trại kích hoạt theo tháng</p>
             </div>
-            <span className="text-xs text-[#062326] font-mono font-semibold">+185% YOY</span>
+            <span className="text-xs text-[#119653] font-mono font-semibold">+185% YOY</span>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -108,7 +108,7 @@ export const AdminDashboard: React.FC = () => {
                 <XAxis dataKey="month" stroke="#64748b" fontSize={11} />
                 <YAxis stroke="#64748b" fontSize={11} />
                 <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                <Area type="monotone" dataKey="farms" stroke="#062326" fill="#062326" fillOpacity={0.15} name="Trang trại" />
+                <Area type="monotone" dataKey="farms" stroke="#119653" fill="#119653" fillOpacity={0.15} name="Trang trại" />
                 <Area type="monotone" dataKey="tenants" stroke="#0284c7" fill="#0284c7" fillOpacity={0.15} name="Tenants" />
               </AreaChart>
             </ResponsiveContainer>
@@ -126,10 +126,10 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <div className="flex justify-between text-xs text-slate-700 mb-1 font-medium">
                 <span>EMQX MQTT Broker</span>
-                <span className="text-[#062326] font-mono font-bold">1,240 msg/s</span>
+                <span className="text-emerald-800 font-mono font-bold">1,240 msg/s</span>
               </div>
               <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                <div className="h-full bg-[#062326] w-[42%]" />
+                <div className="h-full bg-[#119653] w-[42%]" />
               </div>
             </div>
 
@@ -156,7 +156,7 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <div className="flex justify-between text-xs text-slate-700 mb-1 font-medium">
                 <span>Gemini API Rate Limit</span>
-                <span className="text-[#062326] font-mono font-bold">14/60 RPM</span>
+                <span className="text-emerald-800 font-mono font-bold">14/60 RPM</span>
               </div>
               <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                 <div className="h-full bg-emerald-500 w-[23%]" />
@@ -172,7 +172,7 @@ export const AdminDashboard: React.FC = () => {
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <ShieldAlert size={16} className="text-rose-600" /> Nhật ký Hoạt động Toàn sàn (Platform Audit Log)
           </h3>
-          <a href="/admin/audit-logs" className="text-xs text-[#062326] font-semibold hover:underline flex items-center gap-1">
+          <a href="/admin/audit-logs" className="text-xs text-[#119653] font-semibold hover:underline flex items-center gap-1">
             Xem tất cả <ArrowUpRight size={13} />
           </a>
         </div>
@@ -193,7 +193,7 @@ export const AdminDashboard: React.FC = () => {
               return (
                 <div key={logId} className="py-3 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-[#062326] border border-slate-200">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center font-bold text-[#119653] border border-emerald-200">
                       {initial}
                     </div>
                     <div>

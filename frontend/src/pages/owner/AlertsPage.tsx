@@ -154,7 +154,7 @@ export const AlertsPage: React.FC = () => {
           </h1>
           <p className="text-xs text-slate-600 mt-1">Danh sách các vi phạm dải vi khí hậu an toàn và thông báo sự cố phần cứng.</p>
         </div>
-        <Button onClick={openNew} className="bg-[#062326] hover:bg-[#062326]/90 text-white">
+        <Button onClick={openNew} className="bg-[#119653] hover:bg-emerald-700 text-white font-bold shadow-xs">
           <Plus size={16} className="mr-1.5" /> Cấu hình Luật Cảnh báo
         </Button>
       </div>
@@ -199,11 +199,11 @@ export const AlertsPage: React.FC = () => {
 
       {/* Rules table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-        <div className="flex items-center justify-between px-5 py-3 bg-[#062326] text-white">
+        <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white">
           <div className="flex items-center gap-2 font-bold text-sm">
-            <Settings size={15} className="text-emerald-400" /> Cấu hình Luật Cảnh báo ({rules.length} luật)
+            <Settings size={15} className="text-white" /> Cấu hình Luật Cảnh báo ({rules.length} luật)
           </div>
-          <button onClick={openNew} className="text-[11px] flex items-center gap-1 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 px-2.5 py-1 rounded-lg transition-colors">
+          <button onClick={openNew} className="text-[11px] flex items-center gap-1 bg-white/20 hover:bg-white/30 border border-white/30 text-white px-2.5 py-1 rounded-lg transition-colors font-semibold">
             <Plus size={12} /> Thêm luật mới
           </button>
         </div>
@@ -287,12 +287,12 @@ export const AlertsPage: React.FC = () => {
       {/* ═══ FLOATING SENSOR WIDGET ═══ */}
       <div className="fixed bottom-6 right-6 z-[9999] w-80 shadow-2xl rounded-2xl overflow-hidden border border-slate-700">
         {/* Widget header */}
-        <div className="flex items-center justify-between px-3 py-2.5 bg-[#062326] text-white cursor-pointer select-none" onClick={() => setSimExpanded(p => !p)}>
+        <div className="flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white cursor-pointer select-none" onClick={() => setSimExpanded(p => !p)}>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${simRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-            <Cpu size={13} className="text-emerald-400" />
+            <div className={`w-2 h-2 rounded-full ${simRunning ? 'bg-emerald-200 animate-pulse' : 'bg-slate-300'}`} />
+            <Cpu size={13} className="text-white" />
             <span className="text-xs font-bold">IoT Sensor Live Feed</span>
-            <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded font-mono">5s/tick</span>
+            <span className="text-[10px] bg-white/20 border border-white/30 text-white px-1.5 py-0.5 rounded font-mono">5s/tick</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button onClick={e => { e.stopPropagation(); setSimRunning(p => !p); }} className="p-1 rounded hover:bg-white/10" title={simRunning ? 'Tạm dừng' : 'Chạy'}>
@@ -412,27 +412,27 @@ export const AlertsPage: React.FC = () => {
         <div className="space-y-4 text-xs">
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Tên luật *</label>
-            <input type="text" value={ruleForm.name || ''} onChange={e => setRuleForm(p => ({ ...p, name: e.target.value }))} placeholder="Ví dụ: Đất khô - Tưới nước" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]" />
+            <input type="text" value={ruleForm.name || ''} onChange={e => setRuleForm(p => ({ ...p, name: e.target.value }))} placeholder="Ví dụ: Đất khô - Tưới nước" className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]" />
           </div>
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Thông số giám sát *</label>
-            <select value={ruleForm.metric || 'soil_moisture'} onChange={e => { const m = METRICS.find(x => x.key === e.target.value); setRuleForm(p => ({ ...p, metric: e.target.value, unit: m?.unit || '' })); }} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]">
+            <select value={ruleForm.metric || 'soil_moisture'} onChange={e => { const m = METRICS.find(x => x.key === e.target.value); setRuleForm(p => ({ ...p, metric: e.target.value, unit: m?.unit || '' })); }} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]">
               {METRICS.map(m => <option key={m.key} value={m.key}>{m.label} ({m.unit})</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Ngưỡng MIN *</label>
-              <input type="number" value={ruleForm.minThreshold ?? ''} onChange={e => setRuleForm(p => ({ ...p, minThreshold: parseFloat(e.target.value) }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]" />
+              <input type="number" value={ruleForm.minThreshold ?? ''} onChange={e => setRuleForm(p => ({ ...p, minThreshold: parseFloat(e.target.value) }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]" />
             </div>
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Ngưỡng MAX *</label>
-              <input type="number" value={ruleForm.maxThreshold ?? ''} onChange={e => setRuleForm(p => ({ ...p, maxThreshold: parseFloat(e.target.value) }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]" />
+              <input type="number" value={ruleForm.maxThreshold ?? ''} onChange={e => setRuleForm(p => ({ ...p, maxThreshold: parseFloat(e.target.value) }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]" />
             </div>
           </div>
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Khu vực áp dụng</label>
-            <select value={ruleForm.zone || ZONES[0]} onChange={e => setRuleForm(p => ({ ...p, zone: e.target.value }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]">
+            <select value={ruleForm.zone || ZONES[0]} onChange={e => setRuleForm(p => ({ ...p, zone: e.target.value }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]">
               <option value="Tất cả">Tất cả khu vực</option>
               {ZONES.map(z => <option key={z}>{z}</option>)}
             </select>
@@ -440,14 +440,14 @@ export const AlertsPage: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Mức độ nghiêm trọng</label>
-              <select value={ruleForm.severity || 'WARNING'} onChange={e => setRuleForm(p => ({ ...p, severity: e.target.value as any }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]">
+              <select value={ruleForm.severity || 'WARNING'} onChange={e => setRuleForm(p => ({ ...p, severity: e.target.value as any }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]">
                 <option value="WARNING">⚠️ WARNING</option>
                 <option value="CRITICAL">🔴 CRITICAL</option>
               </select>
             </div>
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Trạng thái</label>
-              <select value={ruleForm.enabled ? 'true' : 'false'} onChange={e => setRuleForm(p => ({ ...p, enabled: e.target.value === 'true' }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]">
+              <select value={ruleForm.enabled ? 'true' : 'false'} onChange={e => setRuleForm(p => ({ ...p, enabled: e.target.value === 'true' }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]">
                 <option value="true">✅ Bật ngay</option>
                 <option value="false">⏸ Tắt</option>
               </select>
@@ -455,7 +455,7 @@ export const AlertsPage: React.FC = () => {
           </div>
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Hành động tự động khi vi phạm</label>
-            <select value={ruleForm.action || 'Bật máy bơm tưới'} onChange={e => setRuleForm(p => ({ ...p, action: e.target.value }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#062326]">
+            <select value={ruleForm.action || 'Bật máy bơm tưới'} onChange={e => setRuleForm(p => ({ ...p, action: e.target.value }))} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#119653]">
               {['Bật máy bơm tưới','Tắt máy bơm tưới','Bật quạt thông gió','Tắt quạt thông gió','Bật phun sương','Bật đèn chiếu sáng bổ sung','Tắt đèn UV','Gửi thông báo kỹ thuật viên','Thay pin / sạc thiết bị','Đóng mái che','Mở cửa thông gió'].map(a => <option key={a}>{a}</option>)}
             </select>
           </div>
@@ -466,7 +466,7 @@ export const AlertsPage: React.FC = () => {
           </div>
           <div className="flex justify-between pt-2 border-t border-slate-200">
             <Button variant="outline" onClick={() => setShowRuleModal(false)}>Hủy</Button>
-            <Button disabled={!ruleForm.name} onClick={saveRule} className="bg-[#062326] hover:bg-[#062326]/90 text-white">
+            <Button disabled={!ruleForm.name} onClick={saveRule} className="bg-[#119653] hover:bg-emerald-700 text-white font-bold shadow-xs">
               <Check size={14} className="mr-1" /> {editingRule ? 'Cập nhật' : 'Tạo Luật mới'}
             </Button>
           </div>

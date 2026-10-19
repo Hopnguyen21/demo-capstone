@@ -176,7 +176,7 @@ export const CropsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Sprout className="text-[#062326]" size={24} /> Thư viện Cây trồng Chuẩn (System Crop Library)
+            <Sprout className="text-[#119653]" size={24} /> Thư viện Cây trồng Chuẩn (System Crop Library)
           </h1>
           <p className="text-xs text-slate-600 mt-1">
             Danh mục các loài cây mẫu VietGAP tích hợp Lịch tưới dạng Cuốn Lịch (Sáng - Trưa - Chiều) và tự động đồng bộ sang Zone của Owner.
@@ -264,7 +264,7 @@ export const CropsPage: React.FC = () => {
 
               {/* Action Footer */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
-                <button onClick={() => openEditModal(c)} className="text-[#062326] hover:underline font-semibold flex items-center gap-1">
+                <button onClick={() => openEditModal(c)} className="text-[#119653] hover:underline font-semibold flex items-center gap-1">
                   ✏️ Xem / Chỉnh sửa Lịch
                 </button>
                 <button
@@ -295,7 +295,7 @@ export const CropsPage: React.FC = () => {
               type="button"
               onClick={() => setActiveModalTab('INFO')}
               className={`py-2 px-3 border-b-2 transition-all flex items-center gap-1.5 ${
-                activeModalTab === 'INFO' ? 'border-[#062326] text-[#062326]' : 'border-transparent text-slate-500 hover:text-slate-800'
+                activeModalTab === 'INFO' ? 'border-[#119653] text-[#119653]' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
               <Sprout size={14} /> 1. Thông tin & Vi Khí Hậu
@@ -304,7 +304,7 @@ export const CropsPage: React.FC = () => {
               type="button"
               onClick={() => setActiveModalTab('CALENDAR')}
               className={`py-2 px-3 border-b-2 transition-all flex items-center gap-1.5 ${
-                activeModalTab === 'CALENDAR' ? 'border-[#062326] text-[#062326]' : 'border-transparent text-slate-500 hover:text-slate-800'
+                activeModalTab === 'CALENDAR' ? 'border-[#119653] text-[#119653]' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
               <CalendarIcon size={14} /> 2. Cuốn Lịch Tưới (Sáng-Trưa-Chiều)
@@ -313,7 +313,7 @@ export const CropsPage: React.FC = () => {
               type="button"
               onClick={() => setActiveModalTab('SYNC')}
               className={`py-2 px-3 border-b-2 transition-all flex items-center gap-1.5 ${
-                activeModalTab === 'SYNC' ? 'border-[#062326] text-[#062326]' : 'border-transparent text-slate-500 hover:text-slate-800'
+                activeModalTab === 'SYNC' ? 'border-[#119653] text-[#119653]' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
               <RefreshCw size={14} /> 3. Đồng bộ với Zone Owner

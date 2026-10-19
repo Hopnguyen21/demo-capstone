@@ -80,7 +80,7 @@ export const FarmerAIPage: React.FC = () => {
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Bot className="text-[#062326]" size={22} /> Trợ lý Nông nghiệp Thực địa
+          <Bot className="text-[#119653]" size={22} /> Trợ lý Nông nghiệp Thực địa
         </h1>
         <p className="text-xs text-slate-500 mt-1">Hỏi nhanh AI về bối cảnh Nhà màng được phân quyền.</p>
       </div>
@@ -124,7 +124,7 @@ export const FarmerAIPage: React.FC = () => {
           {messages.map(m => (
             <div key={m.id} className={`p-3 rounded-lg max-w-[85%] leading-relaxed ${
               m.sender === 'USER'
-                ? 'ml-auto bg-[#062326] text-white shadow-xs'
+                ? 'ml-auto bg-[#119653] text-white shadow-xs'
                 : 'bg-slate-50 text-slate-800 border border-slate-200 shadow-xs'
             }`}>
               {m.text}
@@ -132,7 +132,7 @@ export const FarmerAIPage: React.FC = () => {
           ))}
           {loading && (
             <div className="flex items-center gap-2 text-slate-400 text-xs italic p-2">
-              <Loader2 size={14} className="animate-spin text-[#062326]" /> Trợ lý AI đang phân tích dữ liệu vi khí hậu...
+              <Loader2 size={14} className="animate-spin text-[#119653]" /> Trợ lý AI đang phân tích dữ liệu vi khí hậu...
             </div>
           )}
         </div>

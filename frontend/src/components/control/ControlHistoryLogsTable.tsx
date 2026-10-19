@@ -45,7 +45,7 @@ export const ControlHistoryLogsTable: React.FC<ControlHistoryLogsTableProps> = (
               STEP 10 OF CF3
             </span>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <FileText className="text-[#062326]" size={18} />
+              <FileText className="text-[#119653]" size={18} />
               Nhật ký Lịch sử Điều khiển & Vận hành (Control History Audit Log)
             </h3>
           </div>

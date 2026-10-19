@@ -151,23 +151,23 @@ export const DraggableAIChatBubble: React.FC<DraggableAIChatBubbleProps> = ({ on
       {isExpanded ? (
         <div className="w-80 sm:w-88 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border-2 border-emerald-300/80 overflow-hidden ring-1 ring-emerald-500/20 text-left animate-in fade-in zoom-in-95 duration-200">
           {/* Header Bar / Drag Handle */}
-          <div className="bg-gradient-to-r from-[#062326] via-[#093d39] to-[#0d5045] text-white px-3.5 py-2.5 flex items-center justify-between border-b border-emerald-800/50 cursor-grab active:cursor-grabbing">
+          <div className="bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white px-3.5 py-2.5 flex items-center justify-between border-b border-emerald-400/40 cursor-grab active:cursor-grabbing">
             <div className="flex items-center gap-2">
-              <div className="text-emerald-400/80 hover:text-white" title="Kéo để di chuyển khắp màn hình">
+              <div className="text-emerald-100 hover:text-white" title="Kéo để di chuyển khắp màn hình">
                 <GripVertical size={16} />
               </div>
               <div className="relative">
-                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300">
+                <div className="w-7 h-7 rounded-lg bg-white/20 border border-white/30 flex items-center justify-center text-white">
                   <Bot size={16} />
                 </div>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#062326] animate-pulse" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-200 ring-2 ring-[#119653] animate-pulse" />
               </div>
               <div>
                 <div className="text-xs font-bold leading-none flex items-center gap-1.5">
                   <span>Trợ lý AI Nông học VietGAP</span>
                 </div>
-                <div className="text-[10px] text-emerald-300/90 font-mono mt-0.5 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                <div className="text-[10px] text-emerald-100 font-mono mt-0.5 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-200 inline-block" />
                   Gemini 2.5 • Trực tuyến 24/7
                 </div>
               </div>
@@ -188,7 +188,7 @@ export const DraggableAIChatBubble: React.FC<DraggableAIChatBubbleProps> = ({ on
           <div className="p-3.5 space-y-3 bg-gradient-to-b from-emerald-50/30 to-white">
             {/* Live Recommendation Speech Bubble */}
             <div className="p-3 rounded-xl bg-white border border-emerald-200/90 shadow-xs relative">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#062326] mb-1">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-900 mb-1">
                 <Sparkles size={13} className="text-amber-500" />
                 <span>Khuyến nghị vi khí hậu mới nhất:</span>
               </div>
@@ -209,7 +209,7 @@ export const DraggableAIChatBubble: React.FC<DraggableAIChatBubbleProps> = ({ on
                     key={idx}
                     className={`p-2 rounded-lg leading-tight ${
                       msg.startsWith('Bạn:')
-                        ? 'bg-emerald-100/70 text-[#062326] ml-4 text-right'
+                        ? 'bg-emerald-100 text-emerald-900 ml-4 text-right font-medium'
                         : 'bg-slate-100 text-slate-800 mr-4'
                     }`}
                   >
@@ -230,7 +230,7 @@ export const DraggableAIChatBubble: React.FC<DraggableAIChatBubbleProps> = ({ on
               />
               <button
                 type="submit"
-                className="absolute right-1.5 w-6 h-6 rounded-lg bg-[#062326] text-emerald-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                className="absolute right-1.5 w-6 h-6 rounded-lg bg-[#119653] hover:bg-emerald-700 text-white flex items-center justify-center transition-colors cursor-pointer"
                 title="Gửi câu hỏi"
               >
                 <Send size={12} />
@@ -246,7 +246,7 @@ export const DraggableAIChatBubble: React.FC<DraggableAIChatBubbleProps> = ({ on
                 <button
                   type="button"
                   onClick={onOpenConsult}
-                  className="no-drag px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-[#062326] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  className="no-drag px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-[#119653] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <span>Tư vấn kỹ thuật</span>
                   <ArrowRight size={11} />
@@ -261,18 +261,18 @@ export const DraggableAIChatBubble: React.FC<DraggableAIChatBubbleProps> = ({ on
         /* ───────────────────────────────────────────────────────────── */
         <div
           onClick={handleBubbleClick}
-          className="group relative flex items-center gap-2 p-2.5 rounded-full bg-gradient-to-r from-[#062326] via-[#09433d] to-[#047857] text-white shadow-2xl border-2 border-emerald-300/80 hover:brightness-110 transition-all transform hover:scale-105 cursor-grab active:cursor-grabbing active:scale-95"
+          className="group relative flex items-center gap-2 p-2.5 rounded-full bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white shadow-2xl border-2 border-emerald-300/80 hover:brightness-110 transition-all transform hover:scale-105 cursor-grab active:cursor-grabbing active:scale-95"
           title="Nhấn để mở / Kéo để di chuyển khắp màn hình"
         >
           {/* Pulsing ring aura */}
           <span className="absolute -inset-1 rounded-full bg-emerald-400/30 blur-sm animate-pulse pointer-events-none" />
 
           {/* Bot Avatar Icon */}
-          <div className="relative w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-300/40 flex items-center justify-center text-emerald-300 shadow-inner">
+          <div className="relative w-9 h-9 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white shadow-inner">
             <Bot size={20} />
             {/* Live green dot badge */}
-            <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#062326] animate-ping" />
-            <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#062326]" />
+            <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-200 ring-2 ring-[#119653] animate-ping" />
+            <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-200 ring-2 ring-[#119653]" />
           </div>
 
           {/* Bubble Pill Text */}

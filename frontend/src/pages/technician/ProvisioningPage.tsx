@@ -73,20 +73,20 @@ export const ProvisioningPage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-2xl shadow-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2 border border-emerald-500/30">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
             <CpuIcon size={14} /> Quy trình Triển khai & Chấm Node IoT
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-white">
             Quản lý Báo giá, Hợp đồng & Chấm vị trí Node Thực địa
           </h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-emerald-100 mt-1">
             Kỹ thuật viên lập Báo giá & Hợp đồng gửi Owner &rarr; Sau khi Owner Ký & Thanh toán 30% Cọc &rarr; Kỹ thuật viên tiến hành Vào Zone Chấm Node.
           </p>
         </div>
 
-        <Button onClick={() => setIsQrModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shrink-0">
+        <Button onClick={() => setIsQrModalOpen(true)} className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shrink-0 shadow-sm">
           <QrCode size={16} className="mr-1.5" /> Quét QR Cấp phát Nhanh
         </Button>
       </div>
@@ -175,7 +175,7 @@ export const ProvisioningPage: React.FC = () => {
 
                     <h3 className="text-base font-bold text-slate-900 mt-1">{req.title}</h3>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
-                      <span className="font-semibold text-[#062326] flex items-center gap-1">
+                      <span className="font-semibold text-emerald-800 flex items-center gap-1">
                         <Building2 size={13} /> {req.farmName} ({req.zoneName})
                       </span>
                       <span>•</span>
@@ -265,9 +265,9 @@ export const ProvisioningPage: React.FC = () => {
                     {is30Paid ? (
                       <Button
                         onClick={() => setSelectedRequestForMapper(req)}
-                        className="bg-[#062326] hover:bg-emerald-950 text-white font-bold flex items-center gap-1.5 shadow-md border border-emerald-500/50 ring-2 ring-emerald-500/30 animate-pulse"
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex items-center gap-1.5 shadow-md border border-emerald-500/50 ring-2 ring-emerald-500/30 animate-pulse"
                       >
-                        <MapPin size={15} className="text-emerald-400" />
+                        <MapPin size={15} className="text-emerald-300" />
                         <span>🚀 Vào Thực địa Chấm Node</span>
                       </Button>
                     ) : (

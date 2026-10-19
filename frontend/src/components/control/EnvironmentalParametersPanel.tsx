@@ -126,7 +126,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
               STEP 1 OF CF3
             </span>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Sliders className="text-[#062326]" size={18} />
+              <Sliders className="text-[#119653]" size={18} />
               Set / Confirm Environmental Control Parameters
             </h3>
           </div>
@@ -192,7 +192,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
       <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-            <Sliders size={14} className="text-[#062326]" /> Điều chỉnh Ngưỡng Tham số {activeConfig.zoneName}
+            <Sliders size={14} className="text-[#119653]" /> Điều chỉnh Ngưỡng Tham số {activeConfig.zoneName}
           </h4>
           {isSaved && (
             <span className="text-xs font-bold text-emerald-700 flex items-center gap-1 animate-in fade-in duration-200">

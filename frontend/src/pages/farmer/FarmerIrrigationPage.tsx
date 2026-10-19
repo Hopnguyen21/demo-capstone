@@ -7,11 +7,11 @@ export const FarmerIrrigationPage: React.FC = () => {
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       <div>
         <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#062326] text-emerald-400 font-mono">
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono">
             TIÊU CHUẨN CF3 - FARM WORKER HUB
           </span>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Sliders className="text-[#062326]" size={22} /> Kích hoạt Bơm Tưới Thực địa & Quản lý Vi khí hậu
+            <Sliders className="text-[#119653]" size={22} /> Kích hoạt Bơm Tưới Thực địa & Quản lý Vi khí hậu
           </h1>
         </div>
         <p className="text-xs text-slate-600 mt-1">

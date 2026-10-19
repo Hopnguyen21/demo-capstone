@@ -11,7 +11,7 @@ export const FarmerZonesPage: React.FC = () => {
   const [selectedZoneId, setSelectedZoneId] = useState<string>(zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001');
   const [selectedCropDetailZone, setSelectedCropDetailZone] = useState<Zone | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [activeControlTab, setActiveControlTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS'>('ALERTS');
+  const [activeControlTab, setActiveControlTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null>(null);
 
   useEffect(() => {
     alertService.getAlerts().then(res => {
@@ -92,7 +92,7 @@ export const FarmerZonesPage: React.FC = () => {
               <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-100 font-mono">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-600">Cây trồng:</span>
-                  <strong className="text-[#062326] font-bold">
+                  <strong className="text-emerald-900 font-bold">
                     {z.currentCrop || (z.name?.toLowerCase().includes('dua leo') ? 'Dưa leo Baby (Cucumber)' : z.name?.toLowerCase().includes('xa lach') ? 'Xà lách cuộn (Batavia)' : z.name?.toLowerCase().includes('dau tay') ? 'Dâu tây Hana' : 'Dưa leo Baby VietGAP')}
                   </strong>
                 </div>
@@ -280,7 +280,7 @@ export const FarmerZonesPage: React.FC = () => {
                   </div>
                   <div className="text-right sm:border-l sm:pl-4 border-emerald-200">
                     <span className="text-[10px] text-slate-500 block">Chu kỳ vụ trồng:</span>
-                    <span className="text-base font-extrabold text-[#062326] font-mono">{cropProfile.cycleDays} Ngày vụ</span>
+                    <span className="text-base font-extrabold text-emerald-800 font-mono">{cropProfile.cycleDays} Ngày vụ</span>
                     <span className="text-[10px] text-emerald-800 font-semibold block mt-0.5">Giống: {cropProfile.variety}</span>
                   </div>
                 </div>
@@ -373,7 +373,7 @@ export const FarmerZonesPage: React.FC = () => {
                       <div className="flex items-center gap-1 text-slate-500 text-[10px]">
                         <Calendar size={12} className="text-blue-600" /> Định mức tưới
                       </div>
-                      <div className="text-[11px] font-bold text-[#062326] leading-tight">{cropProfile.waterDemand}</div>
+                      <div className="text-[11px] font-bold text-emerald-800 leading-tight">{cropProfile.waterDemand}</div>
                     </div>
                   </div>
                 </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Sliders, Power, ShieldAlert, CheckCircle2, RefreshCw, 
-  Activity, Radio, FileText, Cpu, AlertOctagon, Sparkles, Calendar, Clock, Sprout, Sunrise, Sun, Sunset
+  Activity, Radio, FileText, Cpu, AlertOctagon, Sparkles, Calendar, Clock, Sprout, Sunrise, Sun, Sunset,
+  X, ChevronRight, Info, ExternalLink
 } from 'lucide-react';
 import { Button, Modal, StatusBadge } from '../ui/BaseUI';
 import { controlService, cropService } from '../../services';
@@ -9,6 +10,7 @@ import { EnvironmentalParametersPanel } from './EnvironmentalParametersPanel';
 import { ActuatorControlGrid } from './ActuatorControlGrid';
 import { CropCalendarView } from '../crops/CropCalendarView';
 import { ZoneAlertCenter } from '../alerts/ZoneAlertCenter';
+import { OpenMeteoWeatherWidget } from '../weather/OpenMeteoWeatherWidget';
 import { 
   Actuator, ControlExecutionLog, EnvironmentalTargetConfig, 
   ControlSchedule, AutomationRule, Zone, Field, Farm, Crop 
@@ -22,7 +24,7 @@ export interface CF3ControlSectionProps {
   zoneId?: string;
   title?: string;
   subtitle?: string;
-  defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS';
+  defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null;
 }
 
 export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
@@ -32,10 +34,28 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   zoneId,
   title,
   subtitle,
-  defaultTab = 'ACTUATORS',
+  defaultTab = null,
 }) => {
   const { zones: authZones } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS'>(defaultTab);
+  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null>(defaultTab);
+  const [showWeatherModal, setShowWeatherModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (defaultTab !== undefined) {
+      setActiveSubTab(defaultTab);
+    }
+  }, [defaultTab]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeSubTab !== null) {
+        setActiveSubTab(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSubTab]);
+
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [configs, setConfigs] = useState<EnvironmentalTargetConfig[]>([]);
   const [logs, setLogs] = useState<ControlExecutionLog[]>([]);
@@ -255,6 +275,16 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
             <div className="flex items-center gap-2.5 shrink-0">
               <button
                 type="button"
+                onClick={() => setShowWeatherModal(true)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Xem thời tiết vệ tinh Open-Meteo thời gian thực cho khu đất"
+              >
+                <Sun size={14} className="text-amber-300" />
+                Thời Tiết Open-Meteo
+              </button>
+
+              <button
+                type="button"
                 onClick={loadScopedData}
                 disabled={isLoading}
                 className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
@@ -277,210 +307,451 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
         </div>
       </div>
 
-      {/* Sub Tabs Bar: High-contrast modern tabs */}
-      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-1.5">
-        <button
-          type="button"
+      {/* 4 Interactive Feature Cards Arranged Vertically ("để dọc") */}
+      <div className="flex flex-col gap-3">
+        {/* 1. Cảnh báo Zone */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setActiveSubTab('ALERTS')}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('ALERTS'); }}
+          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
             activeSubTab === 'ALERTS'
-              ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-700'
-              : 'text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/60'
+              ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-300 shadow-md'
+              : 'bg-white hover:bg-rose-50/30 border-slate-200/90 hover:border-rose-300 shadow-xs hover:shadow-sm'
           }`}
         >
-          <ShieldAlert size={14} className={activeSubTab === 'ALERTS' ? 'text-white' : 'text-rose-600'} />
-          <span>Cảnh báo Zone</span>
-        </button>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-500/20 group-hover:scale-105 transition-transform">
+              <ShieldAlert size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-rose-700 transition-colors">
+                  Cảnh báo Zone & An toàn Vi khí hậu
+                </h4>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                  Giám sát 24/7
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                Theo dõi các vi phạm ngưỡng nhiệt độ, độ ẩm đất, rủi ro ngập úng và kích hoạt quy trình ứng phó.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 sm:mt-0 flex items-center justify-between sm:justify-end gap-3 pl-16 sm:pl-0">
+            <span className="text-xs font-semibold text-rose-700">
+              Trung tâm Cảnh báo
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-rose-600 group-hover:bg-rose-700 shadow-xs transition-all">
+              Mở thẻ <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+        </div>
 
-        <button
-          type="button"
+        {/* 2. Rơ-le Chấp hành */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setActiveSubTab('ACTUATORS')}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('ACTUATORS'); }}
+          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
             activeSubTab === 'ACTUATORS'
-              ? 'bg-white text-[#119653] shadow-sm ring-1 ring-slate-200 font-extrabold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              ? 'bg-emerald-50/90 border-[#119653] ring-2 ring-emerald-300 shadow-md'
+              : 'bg-white hover:bg-emerald-50/30 border-slate-200/90 hover:border-emerald-300 shadow-xs hover:shadow-sm'
           }`}
         >
-          <Power size={14} className={activeSubTab === 'ACTUATORS' ? 'text-emerald-600' : 'text-slate-500'} />
-          <span>Rơ-le Chấp hành ({actuators.length})</span>
-        </button>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-[#119653] text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 group-hover:scale-105 transition-transform">
+              <Power size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                  Điều khiển Rơ-le Chấp hành (Actuators Control Grid)
+                </h4>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
+                  {actuators.length} Thiết bị
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                Bật/tắt thủ công Bơm, Quạt làm mát, Đèn quang hợp và Van tưới LoRa kèm bảo vệ Hardware Failsafe.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 sm:mt-0 flex items-center justify-between sm:justify-end gap-3 pl-16 sm:pl-0">
+            <span className="text-xs font-semibold text-emerald-700">
+              Bảng Rơ-le LoRa
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-[#119653] group-hover:bg-[#0e8046] shadow-xs transition-all">
+              Mở thẻ <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+        </div>
 
-        <button
-          type="button"
+        {/* 3. Dải Vi khí hậu */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setActiveSubTab('ENV_PARAMS')}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('ENV_PARAMS'); }}
+          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
             activeSubTab === 'ENV_PARAMS'
-              ? 'bg-white text-[#119653] shadow-sm ring-1 ring-slate-200 font-extrabold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              ? 'bg-sky-50/90 border-sky-400 ring-2 ring-sky-300 shadow-md'
+              : 'bg-white hover:bg-sky-50/30 border-slate-200/90 hover:border-sky-300 shadow-xs hover:shadow-sm'
           }`}
         >
-          <Sliders size={14} className={activeSubTab === 'ENV_PARAMS' ? 'text-sky-600' : 'text-slate-500'} />
-          <span>Dải Vi khí hậu</span>
-        </button>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-sky-500/20 group-hover:scale-105 transition-transform">
+              <Sliders size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-sky-700 transition-colors">
+                  Cấu hình Dải Vi khí hậu Mục tiêu (Environmental Parameters)
+                </h4>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                  Ngưỡng Canh tác
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                Thiết lập dải độ ẩm đất, nhiệt độ, độ ẩm không khí và cường độ ánh sáng tối ưu cho cây trồng.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 sm:mt-0 flex items-center justify-between sm:justify-end gap-3 pl-16 sm:pl-0">
+            <span className="text-xs font-semibold text-sky-700">
+              4 Chỉ số Mục tiêu
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-sky-600 group-hover:bg-sky-700 shadow-xs transition-all">
+              Mở thẻ <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+        </div>
 
-        <button
-          type="button"
+        {/* 4. Lịch tưới & Auto */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setActiveSubTab('SCHEDULES')}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold rounded-xl transition-all ${
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('SCHEDULES'); }}
+          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
             activeSubTab === 'SCHEDULES'
-              ? 'bg-white text-[#119653] shadow-sm ring-1 ring-slate-200 font-extrabold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300 shadow-md'
+              : 'bg-white hover:bg-amber-50/30 border-slate-200/90 hover:border-amber-300 shadow-xs hover:shadow-sm'
           }`}
         >
-          <Calendar size={14} className={activeSubTab === 'SCHEDULES' ? 'text-amber-600' : 'text-slate-500'} />
-          <span>Lịch tưới & Auto ({schedules.length + autoRules.length})</span>
-        </button>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/20 group-hover:scale-105 transition-transform">
+              <Calendar size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900 group-hover:text-amber-800 transition-colors">
+                  Lịch tưới 3 Ca & Quy tắc Tự động (Schedules & Auto Rules)
+                </h4>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-mono">
+                  {schedules.length + autoRules.length} Lịch & Luật
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                Lịch tưới Sáng-Trưa-Chiều đồng bộ VietGAP kèm các bộ luật kích hoạt rơ-le theo cảm biến thực tế.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 sm:mt-0 flex items-center justify-between sm:justify-end gap-3 pl-16 sm:pl-0">
+            <span className="text-xs font-semibold text-amber-800">
+              Cuốn Lịch & IF-THEN
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-amber-600 group-hover:bg-amber-700 shadow-xs transition-all">
+              Mở thẻ <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* SUBTAB CONTENT */}
-      {activeSubTab === 'ALERTS' && (
-        <ZoneAlertCenter
-          scopeLevel={scopeLevel}
-          farmId={farmId}
-          fieldId={fieldId}
-          zoneId={zoneId}
-          onNavigateToControl={() => setActiveSubTab('ACTUATORS')}
-        />
-      )}
-
-      {activeSubTab === 'ACTUATORS' && (
-        <ActuatorControlGrid
-          actuators={actuators}
-          onToggleActuator={handleToggleActuator}
-          isProcessing={isLoading}
-        />
-      )}
-
-      {activeSubTab === 'ENV_PARAMS' && (
-        <EnvironmentalParametersPanel
-          configs={configs}
-          onUpdateConfig={async (cfg) => {
-            try {
-              await controlService.updateEnvironmentalConfig(cfg);
-              setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu & cập nhật ngưỡng cảnh báo cho ${cfg.zoneName} thành công!` });
-            } catch {
-              setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu cho ${cfg.zoneName}` });
-            }
-          }}
-        />
-      )}
-
-      {activeSubTab === 'SCHEDULES' && (
-        <div className="space-y-6 text-xs">
-          {/* Cron Schedules & Sync Banner Header */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-              <div>
-                <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                  <Clock size={16} className="text-[#119653]" /> Lịch Tưới Định kỳ (Cron Schedules) cho {scopeLabel}
-                </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Lịch tưới tự động 3 ca (Sáng - Trưa - Chiều) được đồng bộ từ Thư viện Cây trồng Chuẩn.
-                </p>
+      {/* MODAL / FLOATING CARD OVERLAY (Bấm ra ngoài thẻ thì thẻ sẽ tắt) */}
+      {activeSubTab !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setActiveSubTab(null)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Card Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 bg-slate-50/90">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-2xl text-white shadow-xs ${
+                  activeSubTab === 'ALERTS' ? 'bg-rose-600' :
+                  activeSubTab === 'ACTUATORS' ? 'bg-[#119653]' :
+                  activeSubTab === 'ENV_PARAMS' ? 'bg-sky-600' : 'bg-amber-600'
+                }`}>
+                  {activeSubTab === 'ALERTS' && <ShieldAlert size={20} />}
+                  {activeSubTab === 'ACTUATORS' && <Power size={20} />}
+                  {activeSubTab === 'ENV_PARAMS' && <Sliders size={20} />}
+                  {activeSubTab === 'SCHEDULES' && <Calendar size={20} />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">
+                      {activeSubTab === 'ALERTS' && 'Trung tâm Cảnh báo Zone & An toàn Vi khí hậu'}
+                      {activeSubTab === 'ACTUATORS' && 'Bảng Điều khiển Rơ-le Chấp hành Trực tiếp'}
+                      {activeSubTab === 'ENV_PARAMS' && 'Cấu hình Dải Vi khí hậu Mục tiêu (Set Parameters)'}
+                      {activeSubTab === 'SCHEDULES' && 'Lịch Tưới 3 Ca & Bộ luật Tự động hóa'}
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                      {scopeLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {activeSubTab === 'ALERTS' && 'Quản lý ngưỡng và lịch sử cảnh báo an toàn.'}
+                    {activeSubTab === 'ACTUATORS' && 'Bật/tắt thủ công thiết bị chấp hành LoRa có Failsafe.'}
+                    {activeSubTab === 'ENV_PARAMS' && 'Thiết lập chỉ số môi trường mục tiêu cho vụ trồng.'}
+                    {activeSubTab === 'SCHEDULES' && 'Đồng bộ lịch tưới và quy tắc kích hoạt cảm biến.'}
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex bg-white border border-slate-200 rounded-lg p-0.5">
+              {/* Quick Tab Switcher & Close Button */}
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <div className="hidden md:flex items-center bg-white border border-slate-200 rounded-xl p-1 gap-1">
                   <button
-                    onClick={() => setScheduleViewMode('LIST')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                      scheduleViewMode === 'LIST' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    type="button"
+                    onClick={() => setActiveSubTab('ALERTS')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      activeSubTab === 'ALERTS' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    📋 Danh sách Cron
+                    Cảnh báo
                   </button>
                   <button
-                    onClick={() => setScheduleViewMode('CALENDAR')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                      scheduleViewMode === 'CALENDAR' ? 'bg-[#119653] text-white' : 'text-slate-600 hover:bg-slate-100'
+                    type="button"
+                    onClick={() => setActiveSubTab('ACTUATORS')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      activeSubTab === 'ACTUATORS' ? 'bg-[#119653] text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    🗓️ Cuốn Lịch Tưới Zone
+                    Rơ-le ({actuators.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('ENV_PARAMS')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      activeSubTab === 'ENV_PARAMS' ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Vi khí hậu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('SCHEDULES')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      activeSubTab === 'SCHEDULES' ? 'bg-amber-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Lịch tưới
                   </button>
                 </div>
 
-                <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
-                  <RefreshCw size={13} className="mr-1" /> Đồng bộ từ Thư viện Cây
-                </Button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-colors cursor-pointer"
+                  title="Đóng thẻ (hoặc bấm ra ngoài)"
+                >
+                  <X size={20} />
+                </button>
               </div>
             </div>
 
-            {/* View Mode: List vs Calendar */}
-            {scheduleViewMode === 'CALENDAR' ? (
-              <CropCalendarView plan={activePlan} readOnly={true} />
-            ) : (
-              <div>
-                {schedules.length === 0 ? (
-                  <div className="p-6 text-center space-y-3 bg-white rounded-xl border border-dashed border-slate-300">
-                    <Sprout size={32} className="mx-auto text-emerald-600/50" />
-                    <p className="text-slate-500 italic">Chưa có lịch tưới định kỳ nào được thiết lập cho phạm vi này.</p>
-                    <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
-                      <RefreshCw size={13} className="mr-1.5" /> Đồng bộ Lịch Sáng-Trưa-Chiều từ Thư viện Cây
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {schedules.map(sch => {
-                      const schName = String(sch?.name || '').toLowerCase();
-                      const isMorning = schName.includes('sáng') || (sch.startTime && sch.startTime < '11:00');
-                      const isNoon = schName.includes('trưa') || (sch.startTime && sch.startTime >= '11:00' && sch.startTime <= '14:00');
-                      const isAfternoon = schName.includes('chiều') || (sch.startTime && sch.startTime > '14:00');
+            {/* Modal Card Content Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+              {activeSubTab === 'ALERTS' && (
+                <ZoneAlertCenter
+                  scopeLevel={scopeLevel}
+                  farmId={farmId}
+                  fieldId={fieldId}
+                  zoneId={zoneId}
+                  onNavigateToControl={() => setActiveSubTab('ACTUATORS')}
+                />
+              )}
 
-                      return (
-                        <div key={sch.scheduleId} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
-                          <div className="flex items-center justify-between font-bold text-slate-900">
-                            <span className="flex items-center gap-1.5">
-                              {isMorning && <Sunrise size={15} className="text-amber-600" />}
-                              {isNoon && <Sun size={15} className="text-rose-600" />}
-                              {isAfternoon && <Sunset size={15} className="text-indigo-600" />}
-                              {sch.name}
-                            </span>
-                            <StatusBadge status={sch.isActive ? 'ACTIVE' : 'INACTIVE'} />
-                          </div>
-                          <div className="text-slate-600 flex items-center justify-between text-[11px]">
-                            <span>{sch.zoneName} • {sch.actuatorName}</span>
-                            <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100 font-mono text-[10px]">
-                              {sch.growthStageName || 'Đồng bộ VietGAP'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between pt-2 border-t border-slate-100 font-mono text-[11px] text-slate-500">
-                            <span>Bắt đầu: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
-                            <span>Lặp lại: <strong className="text-sky-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+              {activeSubTab === 'ACTUATORS' && (
+                <ActuatorControlGrid
+                  actuators={actuators}
+                  onToggleActuator={handleToggleActuator}
+                  isProcessing={isLoading}
+                />
+              )}
 
-          {/* Automation Rules */}
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-            <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-              <Sliders size={16} className="text-sky-700" /> Bộ luật Tự động hóa Vi khí hậu (Rule Engine IF-THEN)
-            </h4>
+              {activeSubTab === 'ENV_PARAMS' && (
+                <EnvironmentalParametersPanel
+                  configs={configs}
+                  onUpdateConfig={async (cfg) => {
+                    try {
+                      await controlService.updateEnvironmentalConfig(cfg);
+                      setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu & cập nhật ngưỡng cảnh báo cho ${cfg.zoneName} thành công!` });
+                    } catch {
+                      setNotification({ type: 'success', message: `Đã lưu tham số vi khí hậu cho ${cfg.zoneName}` });
+                    }
+                  }}
+                />
+              )}
 
-            {autoRules.length === 0 ? (
-              <p className="text-slate-500 italic">Chưa có luật tự động hóa vi khí hậu nào.</p>
-            ) : (
-              <div className="space-y-2">
-                {autoRules.map(rule => (
-                  <div key={rule.ruleId} className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 font-bold text-slate-900">
-                        <span>{rule.name}</span>
-                        <StatusBadge status={rule.isActive ? 'ACTIVE' : 'INACTIVE'} />
+              {activeSubTab === 'SCHEDULES' && (
+                <div className="space-y-6 text-xs">
+                  {/* Cron Schedules & Sync Banner Header */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                      <div>
+                        <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+                          <Clock size={16} className="text-[#119653]" /> Lịch Tưới Định kỳ (Cron Schedules) cho {scopeLabel}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Lịch tưới tự động 3 ca (Sáng - Trưa - Chiều) được đồng bộ từ Thư viện Cây trồng Chuẩn.
+                        </p>
                       </div>
-                      <div className="text-[11px] font-mono text-slate-600 mt-1">
-                        KHI <strong className="text-[#119653]">{rule.parameterCode}</strong> {rule.operator} <strong className="text-amber-700">{rule.thresholdValue}</strong> THÌ KÍCH HOẠT <strong className="text-sky-700">{rule.actuatorName}</strong> TRONG {rule.actionDurationMinutes} PHÚT
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex bg-white border border-slate-200 rounded-lg p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setScheduleViewMode('LIST')}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                              scheduleViewMode === 'LIST' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            📋 Danh sách Cron
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setScheduleViewMode('CALENDAR')}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                              scheduleViewMode === 'CALENDAR' ? 'bg-[#119653] text-white' : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            🗓️ Cuốn Lịch Tưới Zone
+                          </button>
+                        </div>
+
+                        <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
+                          <RefreshCw size={13} className="mr-1" /> Đồng bộ từ Thư viện Cây
+                        </Button>
                       </div>
                     </div>
+
+                    {/* View Mode: List vs Calendar */}
+                    {scheduleViewMode === 'CALENDAR' ? (
+                      <CropCalendarView
+                        plan={activePlan}
+                        zoneId={zoneId || (getScopedZoneIds().length > 0 ? getScopedZoneIds()[0] : undefined)}
+                        zoneName={authZones.find(z => z.zoneId === (zoneId || getScopedZoneIds()[0]))?.name || 'Zone Canh Tác'}
+                        cropName={currentCropObj?.name || 'Cây Trồng VietGAP'}
+                        seasonStartDate="2026-10-15"
+                        seasonDurationDays={45}
+                        readOnly={false}
+                        onSaveZoneSchedule={(saved) => {
+                          setNotification({
+                            type: 'success',
+                            message: `Đã lưu thành công lịch tưới ${saved.seasonDurationDays} ngày riêng cho Zone "${saved.zoneName}"! Cấu hình này độc lập và không làm thay đổi thư viện chuẩn của hệ thống.`
+                          });
+                        }}
+                        onResetToTemplate={() => {
+                          setNotification({
+                            type: 'info',
+                            message: 'Đã khôi phục về Lịch mẫu chuẩn VietGAP của Thư viện Cây trồng.'
+                          });
+                        }}
+                      />
+                    ) : (
+                      <div>
+                        {schedules.length === 0 ? (
+                          <div className="p-6 text-center space-y-3 bg-white rounded-xl border border-dashed border-slate-300">
+                            <Sprout size={32} className="mx-auto text-emerald-600/50" />
+                            <p className="text-slate-500 italic">Chưa có lịch tưới định kỳ nào được thiết lập cho phạm vi này.</p>
+                            <Button size="sm" onClick={() => setIsSyncModalOpen(true)}>
+                              <RefreshCw size={13} className="mr-1.5" /> Đồng bộ Lịch Sáng-Trưa-Chiều từ Thư viện Cây
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {schedules.map(sch => {
+                              const schName = String(sch?.name || '').toLowerCase();
+                              const isMorning = schName.includes('sáng') || (sch.startTime && sch.startTime < '11:00');
+                              const isNoon = schName.includes('trưa') || (sch.startTime && sch.startTime >= '11:00' && sch.startTime <= '14:00');
+                              const isAfternoon = schName.includes('chiều') || (sch.startTime && sch.startTime > '14:00');
+
+                              return (
+                                <div key={sch.scheduleId} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
+                                  <div className="flex items-center justify-between font-bold text-slate-900">
+                                    <span className="flex items-center gap-1.5">
+                                      {isMorning && <Sunrise size={15} className="text-amber-600" />}
+                                      {isNoon && <Sun size={15} className="text-rose-600" />}
+                                      {isAfternoon && <Sunset size={15} className="text-indigo-600" />}
+                                      {sch.name}
+                                    </span>
+                                    <StatusBadge status={sch.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                                  </div>
+                                  <div className="text-slate-600 flex items-center justify-between text-[11px]">
+                                    <span>{sch.zoneName} • {sch.actuatorName}</span>
+                                    <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100 font-mono text-[10px]">
+                                      {sch.growthStageName || 'Đồng bộ VietGAP'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 font-mono text-[11px] text-slate-500">
+                                    <span>Bắt đầu: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
+                                    <span>Lặp lại: <strong className="text-sky-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+
+                  {/* Automation Rules */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <h4 className="font-bold text-slate-900 flex items-center gap-2 text-sm">
+                      <Sliders size={16} className="text-sky-700" /> Bộ luật Tự động hóa Vi khí hậu (Rule Engine IF-THEN)
+                    </h4>
+
+                    {autoRules.length === 0 ? (
+                      <p className="text-slate-500 italic">Chưa có luật tự động hóa vi khí hậu nào.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {autoRules.map(rule => (
+                          <div key={rule.ruleId} className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2 font-bold text-slate-900">
+                                <span>{rule.name}</span>
+                                <StatusBadge status={rule.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-600 mt-1">
+                                KHI <strong className="text-[#119653]">{rule.parameterCode}</strong> {rule.operator} <strong className="text-amber-700">{rule.thresholdValue}</strong> THÌ KÍCH HOẠT <strong className="text-sky-700">{rule.actuatorName}</strong> TRONG {rule.actionDurationMinutes} PHÚT
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Card Footer */}
+            <div className="flex items-center justify-between px-6 py-3 border-t border-slate-200 bg-slate-50/90 text-xs text-slate-500">
+              <span className="italic flex items-center gap-1.5">
+                <Info size={14} className="text-slate-400" /> Nhấp vào vùng tối bên ngoài hoặc phím ESC để đóng thẻ
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setActiveSubTab(null)}>
+                Đóng thẻ
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -550,6 +821,19 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
               <RefreshCw size={14} className="mr-1.5" /> Áp dụng & Đồng bộ sang Zone
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* MODAL: Open-Meteo Live Land Weather */}
+      <Modal
+        isOpen={showWeatherModal}
+        onClose={() => setShowWeatherModal(false)}
+        title={`Dự Báo & Thời Tiết Thực Địa Open-Meteo — ${scopeLabel}`}
+      >
+        <div className="space-y-4">
+          <OpenMeteoWeatherWidget
+            landName={title || `Khu đất ${scopeLabel}`}
+          />
         </div>
       </Modal>
     </div>

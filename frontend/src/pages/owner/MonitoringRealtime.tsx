@@ -29,7 +29,7 @@ export const MonitoringRealtime: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Gauge className="text-[#062326]" size={22} /> Giám sát Vi khí hậu Thời gian thực (Real-time Telemetry)
+            <Gauge className="text-[#119653]" size={22} /> Giám sát Vi khí hậu Thời gian thực (Real-time Telemetry)
           </h1>
           <p className="text-xs text-slate-600 mt-1">Số liệu cảm biến trực tiếp từ các LoRa Sensor Nodes truyền về chu kỳ 60 giây.</p>
         </div>
@@ -59,7 +59,7 @@ export const MonitoringRealtime: React.FC = () => {
               <StatusBadge status={s.status} />
             </div>
             <h4 className="text-xs font-bold text-slate-900">{s.name}</h4>
-            <div className="text-2xl font-bold text-[#062326] pt-1">
+            <div className="text-2xl font-bold text-[#119653] pt-1">
               {s.lastReading} <span className="text-xs font-normal text-slate-500">{s.unit}</span>
             </div>
             <span className="text-[10px] text-slate-400 block">Cập nhật: {s.lastReadingAt}</span>

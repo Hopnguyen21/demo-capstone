@@ -10,7 +10,7 @@ const createCenterPinIcon = () =>
     className: 'custom-center-pin-wrapper',
     html: `
       <div style="
-        background-color: #062326;
+        background-color: #119653;
         width: 26px;
         height: 26px;
         border-radius: 50%;
@@ -44,8 +44,8 @@ const createVertexPinIcon = (index: number, isOutside?: boolean) =>
         <div style="
           position: absolute;
           top: -20px;
-          background: ${isOutside ? '#dc2626' : '#062326'};
-          color: ${isOutside ? '#fecaca' : '#34d399'};
+          background: ${isOutside ? '#dc2626' : '#119653'};
+          color: ${isOutside ? '#fecaca' : '#ffffff'};
           font-size: 10px;
           font-weight: 700;
           font-family: monospace;
@@ -295,7 +295,7 @@ const DraggableVertexMarker: React.FC<{
     >
       <Popup>
         <div className="p-1 space-y-1.5 text-slate-800 text-xs">
-          <div className="font-bold text-[#062326] flex items-center justify-between gap-3">
+          <div className="font-bold text-[#119653] flex items-center justify-between gap-3">
             <span>Đỉnh ranh giới #{index + 1}</span>
             {isOutside ? (
               <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-mono font-bold">
@@ -827,7 +827,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
   const areaHa = (areaM2 / 10000).toFixed(2);
 
   const getLevelColor = () => {
-    if (level === 'FARM') return { stroke: '#062326', fill: '#062326', label: 'Vị trí Trang trại (Farm)' };
+    if (level === 'FARM') return { stroke: '#119653', fill: '#119653', label: 'Vị trí Trang trại (Farm)' };
     if (level === 'FIELD') return { stroke: '#0284c7', fill: '#0284c7', label: 'Phân khu Lô đất (Field)' };
     return { stroke: '#10b981', fill: '#10b981', label: 'Nhà màng / Khu vực (Zone)' };
   };
@@ -960,13 +960,13 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
           {/* Realtime Info Badge */}
           <div className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800 shadow-md space-y-1">
             <div className="flex items-center gap-2 font-medium">
-              <Crosshair size={14} className="text-[#062326]" />
+              <Crosshair size={14} className="text-[#119653]" />
               <span>Tọa độ tâm: <strong className="font-mono text-slate-900">{center[0].toFixed(4)}, {center[1].toFixed(4)}</strong></span>
             </div>
             {!isCenterOnly && polygon.length > 0 && (
               <div className="flex items-center justify-between text-[11px] text-slate-600 border-t border-slate-100 pt-1 gap-3">
                 <span>Ranh giới: <strong className="text-emerald-700">{polygon.length} đỉnh</strong></span>
-                <span>Diện tích: <strong className="text-[#062326] font-bold">{areaM2.toLocaleString()} m² ({areaHa} ha)</strong></span>
+                <span>Diện tích: <strong className="text-[#119653] font-bold">{areaM2.toLocaleString()} m² ({areaHa} ha)</strong></span>
               </div>
             )}
             {level === 'FARM' && isReverseGeocoding && (
@@ -1121,7 +1121,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
             {parentFarmPolygon && parentFarmPolygon.length >= 3 && (
               <Polygon
                 positions={parentFarmPolygon}
-                pathOptions={{ color: '#062326', fillColor: '#062326', fillOpacity: 0.08, weight: 2.5, dashArray: '6, 6' }}
+                pathOptions={{ color: '#119653', fillColor: '#119653', fillOpacity: 0.08, weight: 2.5, dashArray: '6, 6' }}
               />
             )}
 
@@ -1343,7 +1343,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
                             value={row.lat}
                             onChange={e => handleCoordInputChange(idx, 'lat', e.target.value)}
                             placeholder="vd: 11.9419"
-                            className={`w-full bg-white border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[#062326] ${
+                            className={`w-full bg-white border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[#119653] ${
                               isViolating ? 'border-red-400' : 'border-slate-300'
                             }`}
                           />
@@ -1355,7 +1355,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
                             value={row.lng}
                             onChange={e => handleCoordInputChange(idx, 'lng', e.target.value)}
                             placeholder="vd: 108.4563"
-                            className={`w-full bg-white border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[#062326] ${
+                            className={`w-full bg-white border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[#119653] ${
                               isViolating ? 'border-red-400' : 'border-slate-300'
                             }`}
                           />

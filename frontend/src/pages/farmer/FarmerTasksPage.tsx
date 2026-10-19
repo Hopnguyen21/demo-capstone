@@ -31,7 +31,7 @@ export const FarmerTasksPage: React.FC = () => {
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <CheckSquare className="text-[#062326]" size={22} /> Danh sách Tác vụ Nông nghiệp
+          <CheckSquare className="text-[#119653]" size={22} /> Danh sách Tác vụ Nông nghiệp
         </h1>
         <p className="text-xs text-slate-500 mt-1">Các công việc thực địa do Farm Owner giao cho bạn.</p>
       </div>
@@ -44,7 +44,7 @@ export const FarmerTasksPage: React.FC = () => {
           return (
             <div key={id} className="p-4 bg-white border border-slate-200 rounded-xl space-y-2 text-xs shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-[#062326]">#{id?.substring(0, 8)}</span>
+                <span className="font-bold text-emerald-800">#{id?.substring(0, 8)}</span>
                 <StatusBadge status={isDone ? 'COMPLETED' : 'PENDING'} />
               </div>
               <h3 className="text-sm font-bold text-slate-900">{t.title}</h3>

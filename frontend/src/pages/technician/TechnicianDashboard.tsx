@@ -36,19 +36,19 @@ export const TechnicianDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Technician Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-[#062326] to-emerald-950 text-white rounded-2xl shadow-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">Field Service & Node Placement Center</span>
+          <span className="text-xs font-mono font-semibold text-emerald-100 uppercase tracking-wider">Field Service & Node Placement Center</span>
           <h1 className="text-2xl font-bold text-white mt-1">Trung tâm Điều hành Kỹ thuật IoT</h1>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-xs text-emerald-100 mt-1">
             Vào Zone để **chấm vị trí Node**, nhận tín hiệu **Owner Nghiệm thu**, và **Xác nhận hoàn thành** công trình.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => navigate('/technician/provisioning')} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold">
+          <Button onClick={() => navigate('/technician/provisioning')} className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shadow-sm">
             <Layers size={16} className="mr-1.5" /> Yêu cầu Lắp đặt Mới ({installationRequests.length})
           </Button>
-          <Button onClick={() => navigate('/technician/maintenance')} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold">
+          <Button onClick={() => navigate('/technician/maintenance')} className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shadow-sm">
             <Wrench size={16} className="mr-1.5" /> Yêu cầu Bảo trì ({maintenanceRequests.length})
           </Button>
         </div>
@@ -94,7 +94,7 @@ export const TechnicianDashboard: React.FC = () => {
       <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <Layers size={18} className="text-[#062326]" /> Tất cả Yêu cầu Thực địa (Lắp đặt & Bảo trì)
+            <Layers size={18} className="text-[#119653]" /> Tất cả Yêu cầu Thực địa (Lắp đặt & Bảo trì)
           </h3>
           <span className="text-xs text-slate-500 font-mono">Kỹ thuật viên chọn mục tương ứng để vào Chấm Node</span>
         </div>

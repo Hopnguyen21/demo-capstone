@@ -224,8 +224,8 @@ export const CreateFarmWizard: React.FC = () => {
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-[#062326] text-xs font-semibold mb-1 border border-emerald-200">
-              <UserCheck size={14} className="text-emerald-700" /> Vai trò: Chủ Trang trại (Farm Owner / Tenant)
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold mb-1 border border-emerald-200">
+              <UserCheck size={14} className="text-[#119653]" /> Vai trò: Chủ Trang trại (Farm Owner / Tenant)
             </div>
             <h1 className="text-2xl font-bold text-slate-900">
               Quy trình Khởi tạo Phân cấp Nông trang
@@ -263,12 +263,12 @@ export const CreateFarmWizard: React.FC = () => {
               key={tb.id}
               onClick={() => setActiveTab(tb.id as any)}
               className={`p-3 text-left rounded-xl border transition-all ${isActive
-                  ? 'bg-[#062326] text-white border-[#062326] shadow-md ring-2 ring-[#062326]/20'
+                  ? 'bg-[#119653] text-white border-[#119653] shadow-md ring-2 ring-[#119653]/30'
                   : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                 }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <Icon size={18} className={isActive ? 'text-emerald-400' : 'text-[#062326]'} />
+                <Icon size={18} className={isActive ? 'text-white' : 'text-[#119653]'} />
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
                   Bước {idx + 1}
                 </span>
@@ -288,7 +288,7 @@ export const CreateFarmWizard: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Building2 size={20} className="text-[#062326]" /> Bước 1: Thông tin & GIS Map Ranh giới Trang trại (Farm)
+                  <Building2 size={20} className="text-[#119653]" /> Bước 1: Thông tin & GIS Map Ranh giới Trang trại (Farm)
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">Xác định tên, địa chỉ và vẽ ranh giới quy hoạch tổng thể của Trang trại lớn.</p>
               </div>
@@ -323,9 +323,9 @@ export const CreateFarmWizard: React.FC = () => {
                       type="button"
                       onClick={() => handleSearchAddress()}
                       disabled={isSearchingAddress}
-                      className="bg-[#062326] hover:bg-[#062326]/90 text-white font-semibold text-xs py-2 px-3 shrink-0 flex items-center gap-1.5 shadow-xs"
+                      className="bg-[#119653] hover:bg-emerald-700 text-white font-semibold text-xs py-2 px-3 shrink-0 flex items-center gap-1.5 shadow-xs"
                     >
-                      {isSearchingAddress ? <Loader2 size={13} className="animate-spin text-emerald-400" /> : <Compass size={14} className="text-emerald-400" />}
+                      {isSearchingAddress ? <Loader2 size={13} className="animate-spin text-emerald-200" /> : <Compass size={14} className="text-white" />}
                       <span>Định vị trên GIS Map</span>
                     </Button>
                   </div>
@@ -363,7 +363,7 @@ export const CreateFarmWizard: React.FC = () => {
                   <label className="block text-slate-700 font-bold mb-1">Mô tả Trang trại</label>
                   <textarea
                     rows={3}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs shadow-xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] text-xs shadow-xs"
                     value={farmData.description}
                     onChange={e => setFarmData({ ...farmData, description: e.target.value })}
                     placeholder="Mô tả quy mô và nông sản chính của trang trại..."
@@ -397,10 +397,10 @@ export const CreateFarmWizard: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <MapPin size={20} className="text-[#062326]" /> Bước 2: Phân khu Lô đất (Field) lồng trong Trang trại
+                  <MapPin size={20} className="text-[#119653]" /> Bước 2: Phân khu Lô đất (Field) lồng trong Trang trại
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Lô đất thuộc về Trang trại mẹ <strong className="text-[#062326]">"{farmData.name}"</strong>. Vẽ ranh giới Lô đất nằm bên trong Trang trại.
+                  Lô đất thuộc về Trang trại mẹ <strong className="text-emerald-800">"{farmData.name}"</strong>. Vẽ ranh giới Lô đất nằm bên trong Trang trại.
                 </p>
               </div>
               <span className="text-xs font-semibold px-2.5 py-1 bg-sky-50 text-sky-800 rounded-full border border-sky-200">
@@ -410,9 +410,9 @@ export const CreateFarmWizard: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4 text-xs">
-                <div className="p-3 bg-[#062326]/5 border border-[#062326]/20 rounded-xl">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                   <span className="text-slate-500 block text-[11px]">Trang trại Mẹ sở hữu:</span>
-                  <strong className="text-[#062326] font-bold text-sm flex items-center gap-1.5 mt-0.5">
+                  <strong className="text-emerald-900 font-bold text-sm flex items-center gap-1.5 mt-0.5">
                     <Building2 size={15} /> {farmData.name}
                   </strong>
                 </div>
@@ -461,10 +461,10 @@ export const CreateFarmWizard: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Sprout size={20} className="text-[#062326]" /> Bước 3: Khu vực Nhà màng (Zone) lồng trong Lô đất
+                  <Sprout size={20} className="text-[#119653]" /> Bước 3: Khu vực Nhà màng (Zone) lồng trong Lô đất
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Nhà màng / Khu vực tưới thuộc Lô đất <strong className="text-[#062326]">"{fieldData.name}"</strong> thuộc Trang trại <strong className="text-[#062326]">"{farmData.name}"</strong>.
+                  Nhà màng / Khu vực tưới thuộc Lô đất <strong className="text-emerald-800">"{fieldData.name}"</strong> thuộc Trang trại <strong className="text-emerald-800">"{farmData.name}"</strong>.
                 </p>
               </div>
               <span className="text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 rounded-full border border-amber-200">
@@ -481,7 +481,7 @@ export const CreateFarmWizard: React.FC = () => {
                   </div>
                   <div className="flex items-center justify-between text-slate-600 border-t border-slate-200 pt-1">
                     <span>Lô đất Mẹ:</span>
-                    <strong className="text-[#062326]">{fieldData.name}</strong>
+                    <strong className="text-emerald-800">{fieldData.name}</strong>
                   </div>
                 </div>
 
@@ -602,9 +602,9 @@ export const CreateFarmWizard: React.FC = () => {
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Calendar size={20} className="text-[#062326]" /> Bước 4: Thiết lập Cây trồng & Vụ mùa đầu tiên
+                    <Calendar size={20} className="text-[#119653]" /> Bước 4: Thiết lập Cây trồng & Vụ mùa đầu tiên
                   </h3>
-                  <p className="text-xs text-slate-600 mt-0.5">Chọn giống cây canh tác và thiết lập lịch vụ mùa cho Nhà màng <strong className="text-[#062326]">"{zoneData.name}"</strong>.</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Chọn giống cây canh tác và thiết lập lịch vụ mùa cho Nhà màng <strong className="text-emerald-800">"{zoneData.name}"</strong>.</p>
                 </div>
                 <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
                   Bước 4 / 5
@@ -615,13 +615,13 @@ export const CreateFarmWizard: React.FC = () => {
                 {/* LEFT: Crop & Season Config */}
                 <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-4">
                   <h4 className="font-bold text-emerald-950 flex items-center gap-1.5 text-sm">
-                    <Sprout size={16} className="text-[#062326]" /> Chọn Cây trồng & Giống cây (Configure Crop)
+                    <Sprout size={16} className="text-[#119653]" /> Chọn Cây trồng & Giống cây (Configure Crop)
                   </h4>
 
                   <div>
                     <label className="block text-slate-700 font-medium mb-1">Loài Cây trồng (Backend Crop Catalog) *</label>
                     <select
-                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
                       value={selectedCropId}
                       onChange={e => {
                         const newCropId = e.target.value;
@@ -659,7 +659,7 @@ export const CreateFarmWizard: React.FC = () => {
                   <div>
                     <label className="block text-slate-700 font-medium mb-1">Giống thương mại / Variety (Backend Catalog) *</label>
                     <select
-                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
                       value={selectedVarietyId}
                       onChange={e => {
                         setSelectedVarietyId(e.target.value);
@@ -708,7 +708,7 @@ export const CreateFarmWizard: React.FC = () => {
                       <span>Nhà màng:</span><strong className="text-slate-800">{zoneData.name}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span>Diện tích Zone:</span><strong className="text-[#062326]">{Number(zoneData.areaM2).toLocaleString('vi-VN')} m²</strong>
+                      <span>Diện tích Zone:</span><strong className="text-emerald-800">{Number(zoneData.areaM2).toLocaleString('vi-VN')} m²</strong>
                     </div>
                     <div className="flex justify-between">
                       <span>Lô đất mẹ:</span><strong className="text-slate-800">{fieldData.name}</strong>
@@ -755,19 +755,19 @@ export const CreateFarmWizard: React.FC = () => {
               {/* ── IoT DEVICE & COST ESTIMATION CARD ── */}
               <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#062326] to-[#0a3d41] text-white">
+                <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center">
-                      <Cpu size={15} className="text-emerald-400" />
+                    <div className="w-7 h-7 rounded-lg bg-white/20 border border-white/30 flex items-center justify-center">
+                      <Cpu size={15} className="text-white" />
                     </div>
                     <div>
                       <div className="font-bold text-sm flex items-center gap-2">
                         Ước tính Thiết bị IoT & Chi phí Lắp đặt
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-normal">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/30 font-normal">
                           {profile.icon} {cropData.crop.split(' ')[0]}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Bố trí theo mô hình mạng tổ ong (Lục giác) trên diện tích {Number(areaM2).toLocaleString('vi-VN')} m²</div>
+                      <div className="text-[11px] text-emerald-100 mt-0.5">Bố trí theo mô hình mạng tổ ong (Lục giác) trên diện tích {Number(areaM2).toLocaleString('vi-VN')} m²</div>
                     </div>
                   </div>
                   <ChevronDown size={16} className="text-slate-400" />
@@ -836,12 +836,12 @@ export const CreateFarmWizard: React.FC = () => {
                         <span className="font-mono font-semibold">{formatVND(UNIT_PRICES.installation)}</span>
                       </div>
                       {/* Total row */}
-                      <div className="flex justify-between items-center px-4 py-3 bg-[#062326]/5 font-bold text-slate-900">
-                        <span className="flex items-center gap-1.5 text-[#062326]">
+                      <div className="flex justify-between items-center px-4 py-3 bg-emerald-50/70 border-t border-emerald-200 font-bold text-slate-900">
+                        <span className="flex items-center gap-1.5 text-emerald-900">
                           <TrendingUp size={14} /> Tổng ước tính
                         </span>
                         <div className="text-right">
-                          <div className="text-base font-bold text-[#062326] font-mono">{formatVND(totalDeviceCost)}</div>
+                          <div className="text-base font-bold text-emerald-800 font-mono">{formatVND(totalDeviceCost)}</div>
                           <div className="text-[10px] text-slate-500 font-normal">
                             Dao động: {formatVND(minCost)} – {formatVND(maxCost)}
                           </div>
@@ -871,7 +871,7 @@ export const CreateFarmWizard: React.FC = () => {
         {activeTab === 'REVIEW' && (
           <div className="space-y-6">
             <div className="text-center space-y-2 py-3">
-              <div className="w-14 h-14 bg-emerald-100 text-[#062326] rounded-full flex items-center justify-center mx-auto shadow-inner">
+              <div className="w-14 h-14 bg-emerald-100 text-[#119653] rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <CheckCircle2 size={32} />
               </div>
               <h3 className="text-lg font-bold text-slate-900">Xem lại Cấu trúc Nông trang & Gửi Yêu cầu Kỹ thuật (Review & Submit)</h3>
@@ -893,7 +893,7 @@ export const CreateFarmWizard: React.FC = () => {
             <div className="p-5 bg-slate-900 text-white rounded-2xl space-y-4 shadow-lg font-mono text-xs">
               <div className="text-emerald-400 font-bold text-sm flex items-center justify-between border-b border-slate-800 pb-2">
                 <span>Tổng hợp Phân cấp GIS Nông trang</span>
-                <span className="text-[11px] font-normal bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full">Sẵn sàng Bàn giao</span>
+                <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">Sẵn sàng Bàn giao</span>
               </div>
 
               <div className="space-y-3 pl-2">

@@ -70,22 +70,22 @@ export const ControlPage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Top Banner & Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-[#062326] to-slate-900 p-6 rounded-3xl text-white shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 p-6 rounded-3xl text-white shadow-xl border border-emerald-400/40">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono tracking-wide">
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-800/30 text-emerald-100 border border-emerald-300/40 font-mono tracking-wide backdrop-blur-xs">
               LUỒNG CF3: SMART ENVIRONMENTAL CONTROL
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="flex items-center gap-1.5 text-xs text-emerald-100 font-mono">
+              <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse" />
               LoRa GW-ESP32 ONLINE (915 MHz)
             </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            <Sliders className="text-emerald-400" size={26} />
+            <Sliders className="text-white" size={26} />
             Điều khiển Vi khí hậu & Chấp hành Thực địa
           </h1>
-          <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+          <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
             Hệ thống tự động và điều khiển thủ công cho Bơm tưới, Van solenoid, Quạt đối lưu và Đèn quang hợp theo quy trình 10 bước chuẩn VietGAP / GlobalGAP.
           </p>
         </div>
@@ -96,7 +96,7 @@ export const ControlPage: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={loadData}
-            className="bg-white/10 text-white border-white/20 hover:bg-white/20"
+            className="bg-white/10 text-white border-white/30 hover:bg-white/20"
           >
             <RefreshCw size={14} className={`mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
             Làm mới
@@ -147,11 +147,11 @@ export const ControlPage: React.FC = () => {
           onClick={() => setActiveTab('ACTUATORS')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'ACTUATORS'
-              ? 'bg-[#062326] text-white shadow-sm font-bold'
+              ? 'bg-[#119653] text-white shadow-sm font-bold'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
           }`}
         >
-          <Power size={16} className={activeTab === 'ACTUATORS' ? 'text-emerald-400' : 'text-slate-500'} />
+          <Power size={16} className={activeTab === 'ACTUATORS' ? 'text-white' : 'text-slate-500'} />
           Điều khiển Rơ-le & Cấu hình Ngưỡng (Steps 1-9)
         </button>
 
@@ -159,11 +159,11 @@ export const ControlPage: React.FC = () => {
           onClick={() => setActiveTab('SAFETY')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'SAFETY'
-              ? 'bg-[#062326] text-white shadow-sm font-bold'
+              ? 'bg-[#119653] text-white shadow-sm font-bold'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
           }`}
         >
-          <ShieldAlert size={16} className={activeTab === 'SAFETY' ? 'text-emerald-400' : 'text-slate-500'} />
+          <ShieldAlert size={16} className={activeTab === 'SAFETY' ? 'text-white' : 'text-slate-500'} />
           Quy tắc An toàn Interlock (Business Rules)
         </button>
 
@@ -171,11 +171,11 @@ export const ControlPage: React.FC = () => {
           onClick={() => setActiveTab('LOGS')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
             activeTab === 'LOGS'
-              ? 'bg-[#062326] text-white shadow-sm font-bold'
+              ? 'bg-[#119653] text-white shadow-sm font-bold'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
           }`}
         >
-          <FileText size={16} className={activeTab === 'LOGS' ? 'text-emerald-400' : 'text-slate-500'} />
+          <FileText size={16} className={activeTab === 'LOGS' ? 'text-white' : 'text-slate-500'} />
           Nhật ký Lịch sử Điều khiển (Step 10)
         </button>
       </div>

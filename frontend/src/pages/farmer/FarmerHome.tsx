@@ -40,9 +40,9 @@ export const FarmerHome: React.FC = () => {
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* Mobile Header Banner */}
       <div className="p-5 bg-gradient-to-r from-emerald-50 via-white to-slate-50 border border-emerald-200 rounded-2xl shadow-xs space-y-2">
-        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#062326]">Giao diện Nông dân Thực địa</span>
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#119653]">Giao diện Nông dân Thực địa</span>
         <h1 className="text-xl font-bold text-slate-900">Xin chào, {user?.fullName || 'Nông dân'}!</h1>
-        <p className="text-xs text-slate-600">Bạn được phân quyền quản lý <strong className="text-[#062326]">{assignedZones.length} Nhà màng</strong> tại Trang trại.</p>
+        <p className="text-xs text-slate-600">Bạn được phân quyền quản lý <strong className="text-[#119653]">{assignedZones.length} Nhà màng</strong> tại Trang trại.</p>
       </div>
 
       {/* Quick Field Alert Warning */}
@@ -83,7 +83,7 @@ export const FarmerHome: React.FC = () => {
       {/* Assigned Zones Cards */}
       <div className="space-y-3">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <Sprout size={16} className="text-[#062326]" /> Nhà màng được Phân công
+          <Sprout size={16} className="text-[#119653]" /> Nhà màng được Phân công
         </h3>
 
         <div className="grid grid-cols-1 gap-3">
@@ -108,7 +108,7 @@ export const FarmerHome: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
-                  <div><span className="text-slate-500 block text-[10px]">Độ ẩm đất</span><strong className="text-[#062326]">68.4% (An toàn)</strong></div>
+                  <div><span className="text-slate-500 block text-[10px]">Độ ẩm đất</span><strong className="text-emerald-800">68.4% (An toàn)</strong></div>
                   <div><span className="text-slate-500 block text-[10px]">Nhiệt độ</span><strong className="text-amber-700">24.8°C</strong></div>
                 </div>
 

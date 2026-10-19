@@ -371,7 +371,7 @@ export interface WeatherData {
   humidity: number;
   rainfallMm: number;
   windSpeedKmH: number;
-  condition: 'Sunny' | 'Cloudy' | 'Rainy' | 'Thunderstorm';
+  condition: 'Sunny' | 'Cloudy' | 'Rainy' | 'Thunderstorm' | string;
   rainProbability: number;
   recordedAt: string;
   forecast: {
