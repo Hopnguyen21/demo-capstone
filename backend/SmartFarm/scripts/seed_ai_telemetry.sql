@@ -52,7 +52,7 @@ BEGIN
             INSERT INTO telemetry_readings 
                 (id, tenant_id, farm_id, zone_id, device_id, gateway_id, message_id, parameter_code, value, unit, captured_at_utc, received_at_utc, created_at_utc)
             VALUES 
-                (gen_random_uuid(), z.tenant_id, z.farm_id, z.zone_id, d.device_id, d.gateway_id, msg_prefix || '-EC', 'EC', 2.1000, 'mS/cm', NOW(), NOW(), NOW())
+                (gen_random_uuid(), z.tenant_id, z.farm_id, z.zone_id, d.device_id, d.gateway_id, msg_prefix || '-EC', 'Ec', 2.1000, 'mS/cm', NOW(), NOW(), NOW())
             ON CONFLICT DO NOTHING;
 
             -- 6. Ph: 6.25 pH

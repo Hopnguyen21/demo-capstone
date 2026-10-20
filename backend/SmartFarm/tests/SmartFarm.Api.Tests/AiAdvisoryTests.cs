@@ -36,6 +36,32 @@ public sealed class AiAdvisoryTests
     }
 
     [Fact]
+    public async Task Stale_telemetry_is_not_sent_to_provider_or_used_for_advice()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var reading = await db.TelemetryReadings.SingleAsync(x => x.ZoneId == fixture.ZoneId);
+            reading.CapturedAtUtc = DateTime.UtcNow.AddMinutes(-20);
+            reading.ReceivedAtUtc = DateTime.UtcNow.AddMinutes(-20);
+            await db.SaveChangesAsync();
+        }
+
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+        var response = await client.PostAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/ai/ask", new { question = "Độ ẩm đất hiện tại thế nào?" });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var recommendation = await Read<AiRecommendationView>(response);
+        Assert.Equal(AiRecommendationStatus.InsufficientData, recommendation.Status);
+        Assert.False(recommendation.IsActionable);
+        Assert.Contains(recommendation.Limitations, x => x.Contains("fresh telemetry", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(0, factory.AiProvider.Calls);
+    }
+
+    [Fact]
     public async Task Farmer_is_forbidden_and_cross_tenant_zone_is_hidden()
     {
         using var factory = new TestApplicationFactory();
@@ -84,6 +110,8 @@ public sealed class AiAdvisoryTests
         await Login(client, "owner-a@example.com");
         var recommendation = await Ask(client, fixture.ZoneId);
         Assert.True(recommendation.IsActionable);
+        Assert.NotNull(factory.AiProvider.LastRequest);
+        Assert.All(factory.AiProvider.LastRequest!.Context.Telemetry, x => Assert.True(x.IsFresh));
 
         var response = await client.PostAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/ai/apply-recommendation", new
         {
@@ -118,6 +146,33 @@ public sealed class AiAdvisoryTests
         Assert.False(recommendation.IsActionable);
 
         var response = await client.PostAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/ai/apply-recommendation", new { recommendationId = recommendation.RecommendationId, decision = "Accepted" });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Empty(factory.ControlTransport.Published);
+    }
+
+    [Fact]
+    public async Task Irrigation_recommendation_cannot_be_accepted_after_soil_telemetry_goes_stale()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+        var recommendation = await Ask(client, fixture.ZoneId);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var reading = await db.TelemetryReadings.SingleAsync(x => x.ZoneId == fixture.ZoneId);
+            reading.CapturedAtUtc = DateTime.UtcNow.AddMinutes(-20);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/ai/apply-recommendation", new
+        {
+            recommendationId = recommendation.RecommendationId,
+            decision = "Accepted"
+        });
+
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Empty(factory.ControlTransport.Published);
     }

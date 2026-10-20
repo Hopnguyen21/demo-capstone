@@ -28,7 +28,7 @@ public sealed class UnavailableRainForecastProvider(IServiceProvider serviceProv
                 var weather = await weatherProvider.GetAsync(farmId, Guid.Empty, cancellationToken);
                 if (weather.Available)
                 {
-                    return new RainForecastResult(true, weather.RainProbabilityPercent ?? 0);
+                    return new RainForecastResult(true, weather.RainProbabilityNext6HoursMaxPercent ?? 0);
                 }
             }
         }

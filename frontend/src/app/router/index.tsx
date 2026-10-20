@@ -9,6 +9,7 @@ import { AdminDashboard } from '../../pages/admin/AdminDashboard';
 import { TenantsPage } from '../../pages/admin/TenantsPage';
 import { UsersPage } from '../../pages/admin/UsersPage';
 import { CropsPage } from '../../pages/admin/CropsPage';
+import { VietGapStandardsPage } from '../../pages/admin/VietGapStandardsPage';
 import { GrowthProfilesPage } from '../../pages/admin/GrowthProfilesPage';
 import { DevicesPage } from '../../pages/admin/DevicesPage';
 import { SystemHealthPage } from '../../pages/admin/SystemHealthPage';
@@ -94,6 +95,7 @@ export const router = createBrowserRouter([
       { path: '/admin/tenants', element: <TenantsPage /> },
       { path: '/admin/users', element: <UsersPage /> },
       { path: '/admin/crops', element: <CropsPage /> },
+      { path: '/admin/vietgap', element: <VietGapStandardsPage /> },
       { path: '/admin/growth-profiles', element: <GrowthProfilesPage /> },
       { path: '/admin/devices', element: <DevicesPage /> },
       { path: '/admin/system-health', element: <SystemHealthPage /> },

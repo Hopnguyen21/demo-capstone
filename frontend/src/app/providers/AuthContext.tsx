@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, Farm, Zone } from '../../types';
-import { authService, farmService, zoneService, getAccessToken } from '../../services';
+import { authService, farmService, fieldService, zoneService, getAccessToken } from '../../services';
 
 interface AuthContextType {
   user: User | null;
@@ -74,11 +74,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [zones, setZones] = useState<Zone[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
+  const [farmZonesRevision, setFarmZonesRevision] = useState(0);
 
   // Listen for unauthenticated event from API interceptor
   useEffect(() => {
     const handleUnauthenticated = () => {
       setUser(null);
+      setFarms([]);
+      setZones([]);
+      setSelectedFarmId('');
+      setSelectedZoneId('');
       localStorage.removeItem('smartfarm_user');
       localStorage.removeItem('smartfarm_role');
     };
@@ -88,21 +93,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Fetch real farms & zones when logged in
   const refreshFarmsAndZones = async () => {
+    setFarmZonesRevision(revision => revision + 1);
+    setFarms([]);
+    setZones([]);
+    setSelectedFarmId('');
+    setSelectedZoneId('');
     try {
       const realFarms = await farmService.getFarms();
-      if (Array.isArray(realFarms) && realFarms.length > 0) {
-        setFarms(realFarms);
-        setSelectedFarmId(realFarms[0].farmId);
-        const realZones = await zoneService.getZones();
-        if (Array.isArray(realZones) && realZones.length > 0) {
-          setZones(realZones);
-          setSelectedZoneId(realZones[0].zoneId);
-        }
-      }
+      const farmList = Array.isArray(realFarms) ? realFarms : [];
+      setFarms(farmList);
+      const farmId = farmList[0]?.farmId || '';
+      setSelectedFarmId(farmId);
     } catch {
-      // Offline fallback
+      setFarms([]);
+      setZones([]);
+      setSelectedFarmId('');
+      setSelectedZoneId('');
     }
   };
+
+  // Keep the selected zone inside the selected farm; AI and dashboard must use the same scope.
+  useEffect(() => {
+    let active = true;
+    setZones([]);
+    setSelectedZoneId('');
+    if (!selectedFarmId || !getAccessToken()) return () => { active = false; };
+
+    const loadFarmZones = async () => {
+      try {
+        const fields = await fieldService.getFields(selectedFarmId);
+        const zoneGroups = await Promise.all(fields.map((field: any) => zoneService.getZones(field.fieldId)));
+        if (!active) return;
+        const farmZones = zoneGroups.flat().filter((zone: Zone) => zone.farmId === selectedFarmId);
+        setZones(farmZones);
+        setSelectedZoneId(farmZones[0]?.zoneId || '');
+      } catch {
+        if (active) {
+          setZones([]);
+          setSelectedZoneId('');
+        }
+      }
+    };
+    void loadFarmZones();
+    return () => { active = false; };
+  }, [selectedFarmId, farmZonesRevision]);
 
   useEffect(() => {
     if (getAccessToken()) {
@@ -156,6 +190,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore
     }
     setUser(null);
+    setFarms([]);
+    setZones([]);
+    setSelectedFarmId('');
+    setSelectedZoneId('');
     localStorage.removeItem('smartfarm_user');
     localStorage.removeItem('smartfarm_role');
   };

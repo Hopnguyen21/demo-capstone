@@ -216,7 +216,7 @@ export interface PlantingSeason {
   currentGrowthStageId: string;
   currentGrowthStageName?: string;
   status: 'PLANNED' | 'ACTIVE' | 'HARVESTED' | 'CANCELLED';
-  progressPercent: number;
+  progressPercent?: number;
   schedulesCount?: number;
   assignedFarmerNames?: string[];
   irrigationPlanNote?: string;

@@ -389,42 +389,6 @@ export const fieldService = {
 export const zoneService = {
   /** GET /api/v1/zones or /api/v1/fields/{fieldId}/zones */
   getZones: async (fieldId?: string) => {
-    const enrichZone = (z: any) => {
-      let crop = z.currentCrop;
-      let stage = z.currentStage;
-      const name = (z.name || '').toLowerCase();
-      const notes = (z.notes || '').toLowerCase();
-      
-      if (!crop) {
-        if (name.includes('dua leo') || name.includes('dưa leo') || notes.includes('dua leo') || notes.includes('dưa leo')) {
-          crop = 'Dưa leo Baby (Cucumber)';
-          stage = stage || 'Nuôi trái & Thu hoạch';
-        } else if (name.includes('xa lach') || name.includes('xà lách') || notes.includes('xa lach') || notes.includes('xà lách')) {
-          crop = 'Xà lách cuộn (Batavia)';
-          stage = stage || 'Phát triển búp cuộn (Vegetative)';
-        } else if (name.includes('dau tay') || name.includes('dâu tây') || notes.includes('dau tay') || notes.includes('dâu tây')) {
-          crop = 'Dâu tây Hana (Strawberry)';
-          stage = stage || 'Ra hoa & Nuôi trái';
-        } else if (name.includes('ca chua') || name.includes('cà chua') || notes.includes('ca chua') || notes.includes('cà chua')) {
-          crop = 'Cà chua chuông (Sweet Pepper)';
-          stage = stage || 'Sinh trưởng phát triển thân lá';
-        } else {
-          crop = 'Cây trồng VietGAP';
-          stage = stage || 'Đang sinh trưởng';
-        }
-      }
-
-      if (!stage) {
-        stage = 'Sinh trưởng & Phát triển';
-      }
-
-      return {
-        ...z,
-        currentCrop: crop,
-        currentStage: stage,
-      };
-    };
-
     try {
       const url = fieldId ? `/api/v1/fields/${fieldId}/zones` : '/api/v1/zones';
       const res = await apiClient.get(url);
@@ -433,16 +397,9 @@ export const zoneService = {
       if (Array.isArray(data)) list = data;
       else if (data?.value && Array.isArray(data.value)) list = data.value;
       else if (data && typeof data === 'object' && 'zoneId' in data) list = [data];
-      
-      return list.map(enrichZone);
+
+      return list;
     } catch {
-      if (!fieldId) {
-        try {
-          const res = await apiClient.get('/api/v1/fields/31000000-0000-0000-0000-000000000001/zones');
-          const raw = Array.isArray(res.data) ? res.data : (res.data?.value ?? []);
-          return raw.map(enrichZone);
-        } catch { return []; }
-      }
       return [];
     }
   },
@@ -515,6 +472,12 @@ export const cropService = {
     } catch {
       return { cropId, ...data };
     }
+  },
+
+  /** DELETE /api/v1/crops/{cropId} */
+  deleteCrop: async (cropId: string) => {
+    const res = await apiClient.delete(`/api/v1/crops/${cropId}`);
+    return res.data;
   },
 
   /** GET /api/v1/crops/{cropId}/varieties */
@@ -597,25 +560,17 @@ export const cropService = {
 
 export const seasonService = {
   /** GET /api/v1/zones/{zoneId}/planting-seasons */
-  getSeasons: async (zoneId?: string) => {
-    const target = zoneId || '32000000-0000-0000-0000-000000000001';
-    try {
-      const res = await apiClient.get(`/api/v1/zones/${target}/planting-seasons`);
-      const raw = res.data?.value ?? res.data ?? [];
-      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-      return list.map((s: any) => ({
-        ...s,
-        plantingSeasonId: s.plantingSeasonId || s.seasonId,
-        seasonId: s.plantingSeasonId || s.seasonId,
-        cropName: s.cropName || 'Dưa leo Baby VietGAP',
-        zoneName: s.zoneName || 'Zone Canh tác',
-        currentGrowthStageName: s.currentGrowthStageName || 'Ra hoa (Flowering)',
-        progressPercent: s.progressPercent ?? 45,
-        status: (s.status === 'InProgress' || s.status === 'IN_PROGRESS') ? 'ACTIVE' : (s.status || 'ACTIVE'),
-      }));
-    } catch {
-      return [];
-    }
+  getSeasons: async (zoneId: string) => {
+    if (!zoneId) throw new Error('Zone ID is required to load planting seasons.');
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/planting-seasons`);
+    const raw = res.data?.value ?? res.data ?? [];
+    const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map((s: any) => ({
+      ...s,
+      plantingSeasonId: s.plantingSeasonId || s.seasonId,
+      seasonId: s.plantingSeasonId || s.seasonId,
+      status: (s.status === 'InProgress' || s.status === 'IN_PROGRESS') ? 'ACTIVE' : (s.status || 'ACTIVE'),
+    }));
   },
 
   /** POST /api/v1/zones/{zoneId}/planting-seasons */
@@ -1119,14 +1074,11 @@ export const aiService = {
 
   /** POST /api/v1/ai/conversations/{conversationId}/messages or /api/v1/zones/{zoneId}/ai/ask */
   sendMessage: async (promptOrZoneId: string, maybeQuestion?: string) => {
-    const zoneId = maybeQuestion !== undefined ? promptOrZoneId : '32000000-0000-0000-0000-000000000001';
+    const zoneId = maybeQuestion !== undefined ? promptOrZoneId : '';
     const question = maybeQuestion !== undefined ? maybeQuestion : promptOrZoneId;
-    try {
-      const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/ask`, { question });
-      return res.data;
-    } catch {
-      return { role: 'ASSISTANT', text: 'Mô hình AI Nông học VietGAP khuyến nghị duy trì độ ẩm 70-75% và thông gió nhẹ.' };
-    }
+    if (!zoneId) throw new Error('Không xác định được khu vực cần tư vấn AI.');
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/ask`, { question });
+    return res.data;
   },
 
   /** Alias: ask */
@@ -1136,34 +1088,25 @@ export const aiService = {
 
   /** GET /api/v1/zones/{zoneId}/ai/history */
   getMessages: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
-    try {
-      const res = await apiClient.get(`/api/v1/zones/${targetZone}/ai/history`);
-      return res.data?.recommendations ?? res.data?.interactions ?? (Array.isArray(res.data) ? res.data : []);
-    } catch {
-      return [];
-    }
+    if (!zoneId) throw new Error('Không xác định được khu vực cần tải lịch sử AI.');
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/ai/history`);
+    return res.data?.recommendations ?? res.data?.interactions ?? (Array.isArray(res.data) ? res.data : []);
   },
 
   /** POST /api/v1/zones/{zoneId}/ai/apply-recommendation */
   applyRecommendation: async (
-    recIdOrZoneId: string,
-    maybeRecId?: string,
+    zoneId: string,
+    recommendationId: string,
     decision: 'Apply' | 'Dismiss' | 'Accepted' | 'Rejected' = 'Apply',
     reason?: string
   ) => {
-    const zoneId = maybeRecId !== undefined ? recIdOrZoneId : '32000000-0000-0000-0000-000000000001';
-    const recommendationId = maybeRecId !== undefined ? maybeRecId : recIdOrZoneId;
-    try {
-      const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/apply-recommendation`, {
-        recommendationId,
-        decision,
-        reason,
-      });
-      return res.data;
-    } catch {
-      return { success: true };
-    }
+    if (!zoneId || !recommendationId) throw new Error('Không xác định được khu vực hoặc khuyến nghị AI.');
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/apply-recommendation`, {
+      recommendationId,
+      decision,
+      reason,
+    });
+    return res.data;
   },
 
   /** Legacy alias */
@@ -1251,7 +1194,7 @@ export const supportService = {
             if (Array.isArray(locs) && locs.length > 0) {
               mappedNodesCount = locs.length;
             }
-          } catch {}
+          } catch { }
         }
 
         const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned || sr.status === 'Closed' || sr.status === 'Resolved');
@@ -1324,7 +1267,7 @@ export const supportService = {
           const match = devList.find((d: any) => d.zoneId === data.zoneId) || devList[0];
           deviceId = match.deviceId || match.id;
         }
-      } catch {}
+      } catch { }
     }
     if (!deviceId) deviceId = '52000000-0000-0000-0000-000000000002';
 
@@ -1622,7 +1565,7 @@ export const notificationService = {
   markAsRead: async (notificationId: string): Promise<void> => {
     try {
       await apiClient.put(`/api/v1/notifications/${notificationId}/read`);
-    } catch {}
+    } catch { }
   },
 
   /** PUT /api/v1/notifications/read-all */

@@ -26,51 +26,44 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
     powerWatts: 750,
   };
 
-  const [selectedZoneId, setSelectedZoneId] = useState<string>(configs[0]?.zoneId || '32000000-0000-0000-0000-000000000001');
-  const [currentConfigs, setCurrentConfigs] = useState<EnvironmentalTargetConfig[]>(configs.length > 0 ? configs : [fallbackConfig]);
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(configs[0]?.zoneId || '');
+  const [currentConfigs, setCurrentConfigs] = useState<EnvironmentalTargetConfig[]>(configs);
   const [isSaved, setIsSaved] = useState<boolean>(false);
   const [realtimeTelemetry, setRealtimeTelemetry] = useState<{
     soilMoisture: number;
     temperature: number;
     humidity: number;
     light: number;
-  }>({
-    soilMoisture: 68.4,
-    temperature: 24.8,
-    humidity: 71.5,
-    light: 740,
-  });
+  } | null>(null);
 
   // Tự động load dữ liệu thực tế từ Backend ngầm mỗi 10 giây
   useEffect(() => {
     if (!selectedZoneId) return;
+    setRealtimeTelemetry(null);
 
     let isMounted = true;
     const fetchLatest = async () => {
       try {
         const data = await telemetryService.getRealtime(selectedZoneId);
         if (data && data.metrics && Array.isArray(data.metrics)) {
-          let sm = 68.4;
-          let temp = 24.8;
-          let hum = 71.5;
-          let lux = 740;
+          const values: { soilMoisture?: number; temperature?: number; humidity?: number; light?: number } = {};
 
           data.metrics.forEach((m: any) => {
-            const code = m.parameterCode?.toString();
+            if (m.isFresh !== true) return;
+            const code = m.parameterCode?.toString().replace(/_/g, '').toLowerCase();
             const val = Number(m.value);
-            if (code === 'SoilMoisture' || code === '0') sm = val;
-            else if (code === 'Temperature' || code === '1') temp = val;
-            else if (code === 'AirHumidity' || code === '2') hum = val;
-            else if (code === 'LightIntensity' || code === '3') lux = val;
+            if (!Number.isFinite(val)) return;
+            if (code === 'soilmoisture' || code === '1') values.soilMoisture = val;
+            else if (code === 'temperature' || code === '0') values.temperature = val;
+            else if (code === 'airhumidity' || code === '2') values.humidity = val;
+            else if (code === 'lightintensity' || code === '4') values.light = val;
           });
 
           if (isMounted) {
-            setRealtimeTelemetry({
-              soilMoisture: sm,
-              temperature: temp,
-              humidity: hum,
-              light: lux,
-            });
+            const { soilMoisture, temperature, humidity, light } = values;
+            setRealtimeTelemetry(soilMoisture !== undefined && temperature !== undefined && humidity !== undefined && light !== undefined
+              ? { soilMoisture, temperature, humidity, light }
+              : null);
           }
         }
       } catch {
@@ -87,11 +80,11 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
   }, [selectedZoneId]);
 
   React.useEffect(() => {
-    if (configs && configs.length > 0) {
-      setCurrentConfigs(configs);
-      if (!selectedZoneId || !configs.some(c => c.zoneId === selectedZoneId)) {
-        setSelectedZoneId(configs[0].zoneId);
-      }
+    setCurrentConfigs(configs || []);
+    if (configs.length > 0) {
+      if (!selectedZoneId || !configs.some(c => c.zoneId === selectedZoneId)) setSelectedZoneId(configs[0].zoneId);
+    } else {
+      setSelectedZoneId('');
     }
   }, [configs]);
 
@@ -115,6 +108,10 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
     }
     setTimeout(() => setIsSaved(false), 3000);
   };
+
+  if (currentConfigs.length === 0) {
+    return <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">Chưa có cấu hình Zone/ngưỡng từ DB. Chưa thể hiển thị telemetry hoặc điều chỉnh ngưỡng.</div>;
+  }
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-6 space-y-6">
@@ -153,7 +150,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
       </div>
 
       {/* Visual Range Bands for Selected Zone */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {realtimeTelemetry ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <CropRangeBand
           label="Độ ẩm đất (Soil Moisture)"
           min={activeConfig.minSoilMoisture}
@@ -186,7 +183,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
           current={realtimeTelemetry.light}
           unit="lux"
         />
-      </div>
+      </div> : <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Chưa có đủ telemetry mới từ DB cho các cảm biến. Không hiển thị số liệu mẫu.</div>}
 
       {/* Parameter Control Sliders / Inputs */}
       <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">

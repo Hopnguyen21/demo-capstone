@@ -55,8 +55,15 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 9. Telemetry readings for Zone 3
 INSERT INTO telemetry_readings (id, tenant_id, farm_id, zone_id, device_id, gateway_id, message_id, parameter_code, value, unit, captured_at_utc, received_at_utc, created_at_utc)
-VALUES 
-(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000003', '52000000-0000-0000-0000-000000000007', '51000000-0000-0000-0000-000000000001', 'msg-zone3-temp-01', 'Temperature', 22.8, 'C', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000003', '52000000-0000-0000-0000-000000000007', '51000000-0000-0000-0000-000000000001', 'msg-zone3-hum-01', 'AirHumidity', 72.5, '%', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000003', '52000000-0000-0000-0000-000000000007', '51000000-0000-0000-0000-000000000001', 'msg-zone3-soil-01', 'SoilMoisture', 66.4, '%', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(gen_random_uuid(), '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000003', '52000000-0000-0000-0000-000000000007', '51000000-0000-0000-0000-000000000001', 'msg-zone3-lux-01', 'LightIntensity', 32000.0, 'lux', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+SELECT gen_random_uuid(), farm.tenant_id, farm.id, z.id, '52000000-0000-0000-0000-000000000007', '51000000-0000-0000-0000-000000000001', reading.message_id, reading.parameter_code, reading.value, reading.unit, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+FROM zones z
+JOIN fields f ON f.id = z.field_id
+JOIN farms farm ON farm.id = f.farm_id
+CROSS JOIN (VALUES
+    ('msg-zone3-temp-01', 'Temperature', 22.8::numeric, 'C'),
+    ('msg-zone3-hum-01', 'AirHumidity', 72.5::numeric, '%'),
+    ('msg-zone3-soil-01', 'SoilMoisture', 66.4::numeric, '%'),
+    ('msg-zone3-lux-01', 'LightIntensity', 32000.0::numeric, 'lux')
+) AS reading(message_id, parameter_code, value, unit)
+WHERE z.id = '32000000-0000-0000-0000-000000000003'
+ON CONFLICT DO NOTHING;

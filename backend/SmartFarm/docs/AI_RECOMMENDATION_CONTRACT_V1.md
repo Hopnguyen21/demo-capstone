@@ -13,7 +13,7 @@ This contract normalizes Flow 4 and API catalog endpoints #84-#88. It overrides 
 
 `GET /api/v1/zones/{zoneId}/ai/context` (#84) builds context on the server from the JWT Tenant and complete Farm -> Field -> Zone chain. It includes the active Crop/Variety, Growth Profile and Stage, applied thresholds, latest telemetry freshness, and weather availability. Client-supplied Tenant, Farm, Crop, Stage, telemetry or weather values are never trusted as context.
 
-An active season, current stage, fresh telemetry and available weather are mandatory for an actionable recommendation. Missing inputs are listed explicitly. The API returns a limited context/recommendation instead of inventing values. Provider output below `Ai:MinimumConfidence` is stored as `LowConfidence`, includes its limitations and is not actionable.
+An active season, current stage, at least one fresh telemetry reading and available weather are mandatory for an actionable recommendation. Stale readings remain visible in the server context with their capture time and freshness flag, but are excluded from the provider payload. The weather field `rainProbabilityNext6HoursMaxPercent` is the maximum precipitation probability over the next six forecast hours, not a current observation. Missing inputs are listed explicitly. The API returns a limited context/recommendation instead of inventing values. Provider output below `Ai:MinimumConfidence` is stored as `LowConfidence`, includes its limitations and is not actionable.
 
 The provider receives a structured context and untrusted user question through `IAiAdvisoryProvider`. The default provider is unavailable and returns an explicit limitation; tests replace it with a fake provider.
 

@@ -6,7 +6,7 @@ import { useAuth } from '../../app/providers/AuthContext';
 
 export const AIAssistantPage: React.FC = () => {
   const { zones, selectedZoneId, setSelectedZoneId } = useAuth();
-  const currentZoneId = selectedZoneId || zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001';
+  const currentZoneId = selectedZoneId || zones[0]?.zoneId || '';
   
   const [aiContext, setAiContext] = useState<any>(null);
   const [loadingContext, setLoadingContext] = useState(false);
@@ -27,8 +27,10 @@ export const AIAssistantPage: React.FC = () => {
   }, [messages, isSending]);
 
   useEffect(() => {
+    let active = true;
     if (currentZoneId) {
       setLoadingContext(true);
+      setAiContext(null);
       // Immediately reset chat and recommendations to prevent showing old zone data
       setMessages([
         { messageId: 'm1', sender: 'AI', text: 'Xin chào! Tôi là Trợ lý AI Nông học VietGAP. Tôi có thể hỗ trợ bạn theo dõi vi khí hậu, tưới tiêu và phát hiện sâu bệnh.', timestamp: 'Hôm nay' }
@@ -36,15 +38,16 @@ export const AIAssistantPage: React.FC = () => {
       setRecommendations([]);
 
       aiService.getContext(currentZoneId)
-        .then(ctx => setAiContext(ctx))
+        .then(ctx => { if (active) setAiContext(ctx); })
         .catch(err => {
           console.error('Failed to load AI context:', err);
-          setAiContext(null);
+          if (active) setAiContext(null);
         })
-        .finally(() => setLoadingContext(false));
+        .finally(() => { if (active) setLoadingContext(false); });
 
       aiService.getMessages(currentZoneId)
         .then(hist => {
+          if (!active) return;
           if (Array.isArray(hist) && hist.length > 0) {
             // Restore chat messages from history (oldest first)
             const sortedHist = [...hist].sort((a: any, b: any) => 
@@ -114,15 +117,24 @@ export const AIAssistantPage: React.FC = () => {
           }
         })
         .catch(() => {
-          setRecommendations([]);
+          if (active) setRecommendations([]);
         });
+    } else {
+      setAiContext(null);
+      setLoadingContext(false);
+      setRecommendations([]);
     }
+    return () => { active = false; };
   }, [currentZoneId]);
 
   const handleSend = async (e?: React.FormEvent, customQuestion?: string) => {
     if (e) e.preventDefault();
     const userText = (customQuestion || inputText).trim();
     if (!userText || isSending) return;
+    if (!currentZoneId) {
+      setMessages(prev => [...prev, { messageId: `msg-${Date.now()}`, sender: 'AI', text: 'Tài khoản chưa có Zone được phân quyền để tư vấn AI.', timestamp: new Date().toLocaleTimeString() }]);
+      return;
+    }
     setInputText('');
     setIsSending(true);
     setMessages(prev => [...prev, { messageId: `msg-${Date.now()}`, sender: 'USER', text: userText, timestamp: new Date().toLocaleTimeString() }]);
@@ -164,8 +176,9 @@ export const AIAssistantPage: React.FC = () => {
           ...prev
         ]);
       }
-    } catch {
-      setMessages(prev => [...prev, { messageId: `msg-${Date.now() + 1}`, sender: 'AI', text: 'Khuyến nghị: Duy trì độ ẩm đất 65-70% và thông gió nhẹ.', timestamp: new Date().toLocaleTimeString() }]);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.title || 'Không thể lấy tư vấn AI từ dữ liệu hiện tại. Vui lòng kiểm tra kết nối và thử lại.';
+      setMessages(prev => [...prev, { messageId: `msg-${Date.now() + 1}`, sender: 'AI', text: detail, timestamp: new Date().toLocaleTimeString() }]);
     } finally {
       setIsSending(false);
     }
@@ -173,11 +186,12 @@ export const AIAssistantPage: React.FC = () => {
 
   const handleApply = async (id: string) => {
     try {
-      await aiService.applyRecommendation(currentZoneId, id, 'Accepted');
+      const result = await aiService.applyRecommendation(currentZoneId, id, 'Accepted');
+      const commandStatus = result?.command?.status || null;
       // Update inside messages list
       setMessages(prev => prev.map(m => {
         if (m.recommendation && m.recommendation.recommendationId === id) {
-          return { ...m, recommendation: { ...m.recommendation, status: 'ACCEPTED' } };
+          return { ...m, recommendation: { ...m.recommendation, status: 'ACCEPTED', commandStatus } };
         }
         return m;
       }));
@@ -187,25 +201,15 @@ export const AIAssistantPage: React.FC = () => {
       console.error('Failed to apply recommendation:', err);
       const detailMsg = err?.response?.data?.detail || err?.response?.data?.title || 'Điều kiện vi khí hậu không cho phép thực hiện lúc này.';
       
-      // 1. Thêm tin nhắn thông báo vào khung chat
-      setMessages(prev => [
-        ...prev.map(m => {
-          if (m.recommendation && m.recommendation.recommendationId === id) {
-            return { ...m, recommendation: { ...m.recommendation, status: 'REJECTED' } };
-          }
-          return m;
-        }),
+      // Backend chưa xác nhận quyết định nên giữ nguyên recommendation và cho phép thử lại.
+      setMessages(prev => [...prev,
         {
           messageId: `msg-alert-${Date.now()}`,
           sender: 'AI',
-          text: `⚠️ **TẠM HOÃN / HỦY KHUYẾN NGHỊ:** ${detailMsg}\n\nHệ thống đã tự động hủy đề xuất kích hoạt thiết bị để bảo vệ cây trồng và tiết kiệm năng lượng.`,
+          text: `⚠️ Chưa thể duyệt khuyến nghị: ${detailMsg}`,
           timestamp: new Date().toLocaleTimeString()
         }
       ]);
-
-      // 2. Hủy khuyến nghị trên backend & xóa khỏi hàng đợi chờ duyệt bên phải
-      setRecommendations(prev => prev.filter(r => (r.recommendationId || r.id) !== id));
-      aiService.applyRecommendation(currentZoneId, id, 'Rejected', detailMsg).catch(() => {});
     }
   };
 
@@ -221,8 +225,8 @@ export const AIAssistantPage: React.FC = () => {
       setRecommendations(prev => prev.filter(r => (r.recommendationId || r.id) !== id));
     } catch (err) {
       console.error('Failed to reject recommendation:', err);
-      // Still remove from queue locally
-      setRecommendations(prev => prev.filter(r => (r.recommendationId || r.id) !== id));
+      const detail = (err as any)?.response?.data?.detail || (err as any)?.response?.data?.title || 'Không thể lưu quyết định từ chối.';
+      setMessages(prev => [...prev, { messageId: `msg-alert-${Date.now()}`, sender: 'AI', text: detail, timestamp: new Date().toLocaleTimeString() }]);
     }
   };
 
@@ -231,7 +235,7 @@ export const AIAssistantPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Bot className="text-[#119653]" size={24} /> Trợ lý AI Nông học VietGAP (Gemini 2.5 Flash + RAG)
+            <Bot className="text-[#119653]" size={24} /> Trợ lý AI Nông học VietGAP
           </h1>
           <p className="text-xs text-slate-600 mt-1">Phân tích vi khí hậu thời gian thực, chẩn đoán sâu bệnh và đề xuất tưới thông minh theo từng Khu vực trồng (Zone).</p>
         </div>
@@ -259,19 +263,50 @@ export const AIAssistantPage: React.FC = () => {
         {/* Left 2 Cols: Chat Interface */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col h-[600px] overflow-hidden">
           {/* Chat Context Header */}
-          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>
-                Bối cảnh AI: <strong className="text-slate-900">
-                  {aiContext?.zoneName || 'Demo Greenhouse Zone'} 
-                  ({aiContext?.cropName ? `${aiContext.cropName} - ${aiContext.growthStageName || 'Sinh trưởng'}` : 'Đang tải dữ liệu...'})
-                </strong>
+          <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>
+                  Bối cảnh AI: <strong className="text-slate-900">
+                    {aiContext?.zoneName || (loadingContext ? 'Đang tải Zone...' : 'Chưa có dữ liệu Zone')}
+                  </strong>
+                  {aiContext?.cropName && (
+                    <span className="ml-1 text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-full border border-emerald-200">
+                      🌿 {aiContext.cropName}{aiContext.growthStageName ? ` • ${aiContext.growthStageName}` : ''}{aiContext.daysSinceStart !== undefined ? ` (Ngày ${aiContext.daysSinceStart})` : ''}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+                {loadingContext ? 'Đang cập nhật...' : aiContext ? `${aiContext.telemetry?.filter((x: any) => x.isFresh).length ?? 0} cảm biến realtime · ${aiContext.weather?.available ? '🌤️ Thời tiết thực tế' : '⚠️ Thiếu thời tiết'}` : 'Chưa tải được dữ liệu'}
               </span>
             </div>
-            <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
-              {loadingContext ? 'Đang cập nhật...' : `Context Loaded (${aiContext?.telemetry?.length || 4} Sensors + Thời tiết)`}
-            </span>
+
+            {/* Micro Sensor Bar */}
+            {aiContext?.telemetry && aiContext.telemetry.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-0.5 text-[11px]">
+                {aiContext.telemetry.map((t: any) => (
+                  <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
+                    <span className="text-slate-400 font-medium">
+                      {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
+                       t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
+                       t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
+                       t.parameterCode === 'Light' ? '☀️ Ánh sáng' :
+                       t.parameterCode === 'SoilPh' ? '🧪 pH đất' :
+                       t.parameterCode === 'SoilEc' ? '⚡ EC đất' : t.parameterCode}:
+                    </span>
+                    <strong className="text-slate-800 font-mono">{t.value} {t.unit}</strong>
+                  </div>
+                ))}
+                {aiContext.weather?.temperatureCelsius !== undefined && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs whitespace-nowrap">
+                    <span>Dự báo 6h:</span>
+                    <strong>{aiContext.weather.rainProbabilityNext6HoursMaxPercent ?? 0}% mưa</strong>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Messages Stream */}
@@ -352,7 +387,7 @@ export const AIAssistantPage: React.FC = () => {
                         <span className="text-[11px] text-slate-500 italic">Xác nhận để kích hoạt thiết bị</span>
                         {msg.recommendation.status === 'ACCEPTED' ? (
                           <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 font-semibold text-xs border border-emerald-300">
-                            <CheckCircle2 size={14} className="text-emerald-600" /> Đã gửi lệnh bật máy bơm
+                            <CheckCircle2 size={14} className="text-emerald-600" /> {msg.recommendation.commandStatus === 'Failed' ? 'Gửi lệnh thất bại' : msg.recommendation.commandStatus === 'Pending' ? 'Lệnh đang chờ gửi' : msg.recommendation.commandStatus === 'Acknowledged' ? 'Thiết bị đã xác nhận lệnh' : msg.recommendation.commandStatus === 'TimedOut' ? 'Thiết bị không xác nhận trước thời hạn' : msg.recommendation.commandStatus === 'Cancelled' ? 'Lệnh đã bị hủy' : msg.recommendation.commandStatus === 'Sent' ? 'Đã gửi lệnh, chờ thiết bị xác nhận' : 'Đã duyệt; chưa tải trạng thái lệnh'}
                           </div>
                         ) : msg.recommendation.status === 'REJECTED' ? (
                           <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 font-semibold text-xs border border-rose-200">
@@ -417,11 +452,27 @@ export const AIAssistantPage: React.FC = () => {
             <span className="text-slate-400 font-medium whitespace-nowrap text-[10px]">Gợi ý nhanh:</span>
             <button
               type="button"
-              onClick={() => handleSend(undefined, 'Nhiệt độ và độ ẩm hiện tại thế nào, có cần tưới không?')}
+              onClick={() => handleSend(undefined, 'Nhiệt độ và độ ẩm đất hiện tại thế nào, có cần kích hoạt tưới nhỏ giọt không?')}
               disabled={isSending}
               className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
             >
-              💧 Kiểm tra vi khí hậu & tưới
+              💧 Vi khí hậu & nhu cầu tưới
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend(undefined, 'Cây trồng ở giai đoạn hiện tại có nguy cơ mắc bệnh gì và cách phòng trừ IPM theo VietGAP?')}
+              disabled={isSending}
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+            >
+              🐛 Sâu bệnh hại & giải pháp IPM
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSend(undefined, 'Thời tiết dự báo tiếp theo có thích hợp cho sự phát triển của cây không?')}
+              disabled={isSending}
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+            >
+              🌤️ Đánh giá thời tiết & cây trồng
             </button>
             <button
               type="button"
@@ -429,15 +480,7 @@ export const AIAssistantPage: React.FC = () => {
               disabled={isSending}
               className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
             >
-              ⏰ Xem lịch tưới sắp tới
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSend(undefined, 'Cây trồng giai đoạn này cần lưu ý phòng ngừa bệnh gì?')}
-              disabled={isSending}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
-            >
-              🌿 Khuyến nghị chăm sóc VietGAP
+              ⏰ Lịch tưới sắp tới
             </button>
           </div>
 

@@ -102,6 +102,14 @@ export const FarmsPage: React.FC = () => {
       seasonService.getSeasons(zid).then(seasons => {
         if (Array.isArray(seasons) && seasons.length > 0) {
           const activeSeason = seasons.find((s: any) => s.status === 'ACTIVE' || s.status === 'InProgress') || seasons[0];
+          setSelectedZone(current => {
+            if (!current || (current.zoneId !== zid && (current as any).id !== zid)) return current;
+            const currentCrop = activeSeason.varietyName || activeSeason.cropName;
+            const currentStage = activeSeason.currentGrowthStageName;
+            return current.currentCrop === currentCrop && current.currentStage === currentStage
+              ? current
+              : { ...current, currentCrop, currentStage };
+          });
           setZoneYieldMap(prev => ({
             ...prev,
             [zid]: {
@@ -183,7 +191,7 @@ export const FarmsPage: React.FC = () => {
       const assignedEmpObj = employees.find(e => (e.employeeId || e.userId) === newEmployeeId);
       setAssignNotification({
         type: 'success',
-        message: newEmployeeId 
+        message: newEmployeeId
           ? `Đã phân công nhân viên [${assignedEmpObj?.fullName || 'Nông dân'}] phụ trách Zone này thành công!`
           : 'Đã hủy phân công phụ trách Zone (về trạng thái Trống).'
       });
@@ -698,8 +706,8 @@ export const FarmsPage: React.FC = () => {
           <button
             onClick={handleResetToFarms}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${!selectedFarm
-                ? 'bg-[#119653] text-white shadow-xs font-bold'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              ? 'bg-[#119653] text-white shadow-xs font-bold'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
           >
             <Home size={14} /> Tất cả Trang trại
@@ -712,8 +720,8 @@ export const FarmsPage: React.FC = () => {
               <button
                 onClick={() => { setSelectedField(null); setSelectedZone(null); }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${selectedFarm && !selectedField
-                    ? 'bg-[#119653] text-white shadow-xs font-bold'
-                    : 'bg-emerald-50 text-[#119653] border border-emerald-200 hover:bg-emerald-100'
+                  ? 'bg-[#119653] text-white shadow-xs font-bold'
+                  : 'bg-emerald-50 text-[#119653] border border-emerald-200 hover:bg-emerald-100'
                   }`}
               >
                 <Building2 size={14} /> {selectedFarm.name}
@@ -728,8 +736,8 @@ export const FarmsPage: React.FC = () => {
               <button
                 onClick={() => setSelectedZone(null)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${selectedField && !selectedZone
-                    ? 'bg-sky-700 text-white shadow-xs'
-                    : 'bg-sky-50 text-sky-900 border border-sky-200 hover:bg-sky-100'
+                  ? 'bg-sky-700 text-white shadow-xs'
+                  : 'bg-sky-50 text-sky-900 border border-sky-200 hover:bg-sky-100'
                   }`}
               >
                 <MapPin size={14} /> {selectedField.name}
@@ -1156,8 +1164,8 @@ export const FarmsPage: React.FC = () => {
                 </h4>
 
                 <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
-                  <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop}</strong></div>
-                  <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage}</strong></div>
+                  <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop || 'Chưa có dữ liệu'}</strong></div>
+                  <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage || 'Chưa có dữ liệu'}</strong></div>
                 </div>
 
                 <div className="space-y-2">
@@ -1261,9 +1269,8 @@ export const FarmsPage: React.FC = () => {
                 </div>
 
                 {assignNotification && (
-                  <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-                    assignNotification.type === 'success' ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' : 'bg-rose-50 border border-rose-300 text-rose-900'
-                  }`}>
+                  <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${assignNotification.type === 'success' ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' : 'bg-rose-50 border border-rose-300 text-rose-900'
+                    }`}>
                     <CheckCircle2 size={14} className={assignNotification.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
                     <span>{assignNotification.message}</span>
                   </div>
@@ -1364,9 +1371,8 @@ export const FarmsPage: React.FC = () => {
       {/* Modal Add Field inside Selected Farm */}
       <Modal isOpen={showAddFieldModal} title={`Thêm Phân khu Lô đất Mới vào "${selectedFarm?.name || 'Trang trại'}"`} onClose={() => setShowAddFieldModal(false)}>
         <div className="space-y-4 text-xs">
-          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${
-            farmAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-sky-50 border border-sky-200 text-sky-900'
-          }`}>
+          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${farmAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-sky-50 border border-sky-200 text-sky-900'
+            }`}>
             <span>Diện tích còn trống của Trang trại:</span>
             <strong className={`font-mono text-sm ${farmAvailableArea <= 0 ? 'text-red-700' : 'text-sky-800'}`}>
               {farmAvailableArea.toLocaleString()} m²
@@ -1400,9 +1406,8 @@ export const FarmsPage: React.FC = () => {
               onChange={e => setNewFieldArea(e.target.value)}
               placeholder="VD: 5000"
             />
-            <span className={`text-[10px] mt-0.5 block ${
-              Number(newFieldArea) > farmAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
-            }`}>
+            <span className={`text-[10px] mt-0.5 block ${Number(newFieldArea) > farmAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
+              }`}>
               {Number(newFieldArea) > farmAvailableArea
                 ? `⚠️ Vượt quá diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²)!`
                 : `Tối đa diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²).`}
@@ -1453,8 +1458,8 @@ export const FarmsPage: React.FC = () => {
                 farmAvailableArea <= 0
                   ? 'Trang trại đã hết diện tích trống'
                   : (Number(newFieldArea) || 0) > farmAvailableArea
-                  ? 'Diện tích vượt quá phần còn lại của Trang trại'
-                  : fieldGisError || undefined
+                    ? 'Diện tích vượt quá phần còn lại của Trang trại'
+                    : fieldGisError || undefined
               }
             >
               {isSubmittingField ? 'Đang lưu vào DB...' : 'Thêm Lô đất vào Farm'}
@@ -1466,9 +1471,8 @@ export const FarmsPage: React.FC = () => {
       {/* Modal Add Zone inside Selected Field */}
       <Modal isOpen={showAddZoneModal} title={`Thêm Zone Mới vào Lô đất "${selectedField?.name || 'Field'}"`} onClose={() => setShowAddZoneModal(false)}>
         <div className="space-y-4 text-xs">
-          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${
-            fieldAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-amber-50 border border-amber-200 text-amber-900'
-          }`}>
+          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${fieldAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-amber-50 border border-amber-200 text-amber-900'
+            }`}>
             <span>Diện tích còn trống trong Lô đất:</span>
             <strong className={`font-mono text-sm ${fieldAvailableArea <= 0 ? 'text-red-700' : 'text-amber-800'}`}>
               {fieldAvailableArea.toLocaleString()} m²
@@ -1505,9 +1509,8 @@ export const FarmsPage: React.FC = () => {
               onChange={e => setNewZoneArea(e.target.value)}
               placeholder="VD: 1000"
             />
-            <span className={`text-[10px] mt-0.5 block ${
-              Number(newZoneArea) > fieldAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
-            }`}>
+            <span className={`text-[10px] mt-0.5 block ${Number(newZoneArea) > fieldAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
+              }`}>
               {Number(newZoneArea) > fieldAvailableArea
                 ? `⚠️ Diện tích quy hoạch (${(Number(newZoneArea) || 0).toLocaleString()} m²) vượt quá diện tích còn lại của Lô đất (${fieldAvailableArea.toLocaleString()} m²)!`
                 : `Tối đa diện tích còn lại của Lô đất (${fieldAvailableArea.toLocaleString()} m²).`}
@@ -1557,8 +1560,8 @@ export const FarmsPage: React.FC = () => {
                 fieldAvailableArea <= 0
                   ? 'Lô đất đã hết diện tích trống'
                   : (Number(newZoneArea) || 0) > fieldAvailableArea
-                  ? 'Diện tích vượt quá phần còn lại của Lô đất'
-                  : zoneGisError || undefined
+                    ? 'Diện tích vượt quá phần còn lại của Lô đất'
+                    : zoneGisError || undefined
               }
             >
               {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Lô đất'}
@@ -1655,7 +1658,7 @@ export const FarmsPage: React.FC = () => {
               <Button
                 onClick={() => {
                   const targetZone = zones.find(z => z.name === createdZoneSuccessData.zoneName) ||
-                                     (createdZoneSuccessData.zoneId ? zones.find(z => z.zoneId === createdZoneSuccessData.zoneId) : null);
+                    (createdZoneSuccessData.zoneId ? zones.find(z => z.zoneId === createdZoneSuccessData.zoneId) : null);
                   setCreatedZoneSuccessData(null);
                   if (targetZone) {
                     handleSelectZone(targetZone);
@@ -1772,33 +1775,30 @@ export const FarmsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setInstallPriority('NORMAL')}
-                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${
-                  installPriority === 'NORMAL'
+                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${installPriority === 'NORMAL'
                     ? 'bg-slate-100 border-slate-400 text-slate-900'
                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 Bình thường
               </button>
               <button
                 type="button"
                 onClick={() => setInstallPriority('HIGH')}
-                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${
-                  installPriority === 'HIGH'
+                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${installPriority === 'HIGH'
                     ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-2xs'
                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 ⚡ Ưu tiên cao
               </button>
               <button
                 type="button"
                 onClick={() => setInstallPriority('CRITICAL')}
-                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${
-                  installPriority === 'CRITICAL'
+                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${installPriority === 'CRITICAL'
                     ? 'bg-rose-100 border-rose-400 text-rose-900 shadow-2xs'
                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 🚨 Khẩn cấp
               </button>

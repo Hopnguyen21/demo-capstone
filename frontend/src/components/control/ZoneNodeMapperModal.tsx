@@ -185,51 +185,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   ];
 
   // Existing nodes in this zone / request (with real GIS coordinates)
-  const [nodes, setNodes] = useState<SensorNode[]>([
-    {
-      nodeId: '52000000-0000-0000-0000-000000000001',
-      farmId: request.farmId || '30000000-0000-0000-0000-000000000001',
-      zoneId: request.zoneId || '32000000-0000-0000-0000-000000000001',
-      zoneName: request.zoneName || 'Nhà màng Z01',
-      name: 'Node Cảm biến Độ ẩm Đất - Hàng A1',
-      nodeCode: 'SENSOR-DEMO-001',
-      serialNumber: '24:DC:C3:98:A1:01',
-      latitude: 11.9405,
-      longitude: 108.4581,
-      status: 'ONLINE',
-      firmwareVersion: 'v2.4.1',
-      batteryLevel: 98,
-      rssi: -72,
-      lastSeenAt: 'Trực tuyến',
-      sensorsCount: 2,
-      actuatorsCount: 0,
-    },
-    {
-      nodeId: '52000000-0000-0000-0000-000000000002',
-      farmId: request.farmId || '30000000-0000-0000-0000-000000000001',
-      zoneId: request.zoneId || '32000000-0000-0000-0000-000000000001',
-      zoneName: request.zoneName || 'Nhà màng Z01',
-      name: 'Cụm Van Tưới Solenoid Actuator',
-      nodeCode: 'ACTUATOR-DEMO-001',
-      serialNumber: '24:DC:C3:98:A1:02',
-      latitude: 11.9402,
-      longitude: 108.4587,
-      status: 'ONLINE',
-      firmwareVersion: 'v2.4.1',
-      batteryLevel: 92,
-      rssi: -68,
-      lastSeenAt: 'Trực tuyến',
-      sensorsCount: 0,
-      actuatorsCount: 1,
-    }
-  ]);
+  const [nodes, setNodes] = useState<SensorNode[]>([]);
 
   // Unassigned devices ready to be pinned on GIS Map
-  const [unassignedDevices, setUnassignedDevices] = useState<UnassignedDevice[]>([
-    { deviceId: '52000000-0000-0000-0000-000000000003', code: 'GW-ESP32-NEW', name: 'Gateway LoRa Central ESP32-S3', type: 'GATEWAY', mac: '24:DC:C3:88:99:A1' },
-    { deviceId: '52000000-0000-0000-0000-000000000004', code: 'SN-NPK-EC-03', name: 'Node Cảm biến NPK & Độ dẫn điện EC', type: 'SOIL_SENSOR', mac: '24:DC:C3:11:22:33' },
-    { deviceId: '52000000-0000-0000-0000-000000000005', code: 'ACT-VALVE-V2', name: 'Node Cụm Van Điện từ Phun sương V2', type: 'VALVE', mac: '24:DC:C3:44:55:66' },
-  ]);
+  const [unassignedDevices, setUnassignedDevices] = useState<UnassignedDevice[]>([]);
 
   const [selectedDevice, setSelectedDevice] = useState<UnassignedDevice | null>(null);
   const [activePinNode, setActivePinNode] = useState<SensorNode | null>(null);
@@ -248,7 +207,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             const hasLat = typeof loc.latitude === 'number' && loc.latitude > 0;
             const hasLng = typeof loc.longitude === 'number' && loc.longitude > 0;
             return {
-              nodeId: loc.deviceId || `loaded-node-${idx}`,
+              nodeId: loc.deviceId || `loaded-node-${idx}-${Date.now()}`,
               farmId: request.farmId || '30000000-0000-0000-0000-000000000001',
               zoneId: zoneId,
               zoneName: request.zoneName || 'Nhà màng Z01',
@@ -267,20 +226,31 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             };
           });
           setNodes(loadedNodes);
+        } else {
+          setNodes([]);
         }
 
         // Fetch spare parts to populate unassigned list
         const spareParts = await supportService.getTechnicianSpareParts().catch(() => []);
         if (Array.isArray(spareParts) && spareParts.length > 0) {
           const unassigned: UnassignedDevice[] = spareParts.map((sp: any, idx: number) => ({
-            deviceId: sp.id || `sp-${idx}`,
-            code: sp.code,
-            name: sp.name,
+            deviceId: sp.id || `spare-${idx}-${Date.now()}`,
+            code: sp.code || `SP-${idx + 1}`,
+            name: sp.name || 'Vật tư dự phòng',
             type: (sp.category === 'VALVE' || sp.category === 'PUMP' ? 'VALVE' : sp.category === 'GATEWAY' ? 'GATEWAY' : 'SOIL_SENSOR'),
             mac: sp.macAddress || sp.serialNumber || `24:DC:C3:00:11:${String(idx).padStart(2, '0')}`,
           }));
           setUnassignedDevices(unassigned);
           setSelectedDevice(unassigned[0] || null);
+        } else {
+          // Fallback dummy items with unique IDs so technician can always test placing nodes
+          const fallbackItems: UnassignedDevice[] = [
+            { deviceId: `unassigned-gw-${Date.now()}-1`, code: 'GW-ESP32-NEW', name: 'Gateway LoRa Central ESP32-S3', type: 'GATEWAY', mac: '24:DC:C3:88:99:A1' },
+            { deviceId: `unassigned-sensor-${Date.now()}-2`, code: 'SN-NPK-EC-03', name: 'Node Cảm biến NPK & Độ dẫn điện EC', type: 'SOIL_SENSOR', mac: '24:DC:C3:11:22:33' },
+            { deviceId: `unassigned-actuator-${Date.now()}-3`, code: 'ACT-VALVE-V2', name: 'Node Cụm Van Điện từ Phun sương V2', type: 'VALVE', mac: '24:DC:C3:44:55:66' },
+          ];
+          setUnassignedDevices(fallbackItems);
+          setSelectedDevice(fallbackItems[0]);
         }
       } catch (err) {
         console.error('Error fetching zone mapped nodes:', err);

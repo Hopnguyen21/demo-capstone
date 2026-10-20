@@ -1,64 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Plus, Clock, CheckCircle2, Sliders, Droplets, Radio, Play, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
-import { controlService, seasonService } from '../../services';
+import { controlService, farmService, fieldService, seasonService, zoneService } from '../../services';
 import { PlantingSeason, ControlSchedule, Actuator } from '../../types';
 
 export const PlantingSeasonsPage: React.FC = () => {
-  const DEFAULT_INITIAL_SEASONS: PlantingSeason[] = [
-    {
-      plantingSeasonId: 'season-demo-2026',
-      zoneId: '32000000-0000-0000-0000-000000000001',
-      zoneName: 'Demo Greenhouse Zone (Zone 1)',
-      farmId: '30000000-0000-0000-0000-000000000001',
-      cropId: 'crop-001',
-      cropName: 'Dưa leo Baby VietGAP',
-      varietyId: 'var-001',
-      varietyName: 'Giống VietGAP',
-      growthProfileId: 'gp-001',
-      name: 'Demo Season 2026',
-      startDate: '2026-09-28',
-      expectedEndDate: '2026-12-28',
-      currentGrowthStageId: 'stage-flowering',
-      currentGrowthStageName: 'Ra hoa (Flowering)',
-      status: 'ACTIVE',
-      progressPercent: 45,
-    },
-  ];
-
-  const DEFAULT_INITIAL_SCHEDULES: ControlSchedule[] = [
-    {
-      scheduleId: 'sch-season-01',
-      zoneId: '32000000-0000-0000-0000-000000000001',
-      actuatorId: 'act-01',
-      name: 'Tưới nhỏ giọt buổi sáng',
-      startTime: '06:00',
-      durationMinutes: 10,
-      daysOfWeek: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'],
-      actionType: 'TURN_ON',
-      isActive: true,
-      plantingSeasonId: 'season-demo-2026',
-      seasonName: 'Demo Season 2026',
-      growthStageName: 'Ra hoa (Flowering)',
-    },
-    {
-      scheduleId: 'sch-season-02',
-      zoneId: '32000000-0000-0000-0000-000000000001',
-      actuatorId: 'act-02',
-      name: 'Tưới phun sương hạ nhiệt chiều',
-      startTime: '14:00',
-      durationMinutes: 5,
-      daysOfWeek: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'],
-      actionType: 'TURN_ON',
-      isActive: true,
-      plantingSeasonId: 'season-demo-2026',
-      seasonName: 'Demo Season 2026',
-      growthStageName: 'Ra hoa (Flowering)',
-    },
-  ];
-
-  const [seasons, setSeasons] = useState<PlantingSeason[]>(DEFAULT_INITIAL_SEASONS);
-  const [schedules, setSchedules] = useState<ControlSchedule[]>(DEFAULT_INITIAL_SCHEDULES);
+  const [seasons, setSeasons] = useState<PlantingSeason[]>([]);
+  const [schedules, setSchedules] = useState<ControlSchedule[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<PlantingSeason | null>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
   const [isSeasonModalOpen, setIsSeasonModalOpen] = useState<boolean>(false);
@@ -90,14 +38,44 @@ export const PlantingSeasonsPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [allSeasons, allSchedules, allActuators] = await Promise.all([
-        seasonService.getSeasons().catch(() => []),
-        controlService.getSchedules().catch(() => []),
-        controlService.getActuators().catch(() => []),
+      const farms = await farmService.getFarms();
+      const fieldsByFarm = await Promise.all(farms.map(async (farm: any) => ({
+        farmId: farm.farmId,
+        fields: await fieldService.getFields(farm.farmId),
+      })));
+      const zonesByField = await Promise.all(fieldsByFarm.flatMap(({ farmId, fields }) =>
+        fields.map(async (field: any) => ({
+          farmId,
+          zones: await zoneService.getZones(field.fieldId),
+        }))
+      ));
+      const zoneRefs = zonesByField.flatMap(({ farmId, zones }) =>
+        zones.map((zone: any) => ({ zoneId: zone.zoneId, zoneName: zone.name, farmId }))
+      );
+      const [seasonGroups, scheduleGroups, actuatorGroups] = await Promise.all([
+        Promise.all(zoneRefs.map(async zone => ({
+          zone,
+          seasons: await seasonService.getSeasons(zone.zoneId).catch(() => []),
+        }))),
+        Promise.all(zoneRefs.map(async zone => ({
+          zone,
+          schedules: await controlService.getSchedules(zone.zoneId).catch(() => []),
+        }))),
+        Promise.all(zoneRefs.map(async zone => ({
+          actuators: await controlService.getActuators(zone.zoneId).catch(() => []),
+        }))),
       ]);
-      if (Array.isArray(allSeasons) && allSeasons.length > 0) setSeasons(allSeasons);
-      if (Array.isArray(allSchedules) && allSchedules.length > 0) setSchedules(allSchedules);
-      if (Array.isArray(allActuators) && allActuators.length > 0) setActuators(allActuators);
+      setSeasons(seasonGroups.flatMap(({ zone, seasons }) => seasons.map((season: PlantingSeason) => ({
+        ...season,
+        zoneName: zone.zoneName,
+        farmId: zone.farmId,
+      }))));
+      setSchedules(scheduleGroups.flatMap(({ zone, schedules }) => schedules.map((schedule: ControlSchedule) => ({
+        ...schedule,
+        zoneName: schedule.zoneName || zone.zoneName,
+      }))));
+      setActuators(Array.from(new Map(actuatorGroups.flatMap(group => group.actuators)
+        .map((actuator: Actuator) => [actuator.actuatorId, actuator])).values()));
     } catch (err) {
       console.error('Failed to load season data:', err);
     }
@@ -138,7 +116,7 @@ export const PlantingSeasonsPage: React.FC = () => {
     const zoneActuators = actuators.filter(a => a.zoneId === season.zoneId);
     setScheduleForm({
       name: `Lịch tưới mùa vụ [${season.name}] - ${season.currentGrowthStageName || 'Ra hoa'}`,
-      actuatorId: zoneActuators[0]?.actuatorId || actuators[0]?.actuatorId || 'act-01',
+      actuatorId: zoneActuators[0]?.actuatorId || actuators[0]?.actuatorId || '',
       startTime: '07:30',
       durationMinutes: 20,
       daysOfWeek: ['Mon', 'Wed', 'Fri', 'Sun'],
@@ -218,10 +196,10 @@ export const PlantingSeasonsPage: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    {s.cropName} ({s.varietyName || 'Giống VietGAP'})
+                    {s.cropName} ({s.varietyName || 'Chưa có dữ liệu giống'})
                   </span>
                   <h3 className="text-lg font-bold text-slate-900 mt-1">{s.name}</h3>
-                  <p className="text-xs text-slate-500">{s.zoneName}</p>
+                  <p className="text-xs text-slate-500">{s.zoneName || 'Chưa có dữ liệu Zone'}</p>
                 </div>
                 <StatusBadge status={s.status} />
               </div>
@@ -230,17 +208,17 @@ export const PlantingSeasonsPage: React.FC = () => {
               <div>
                 <div className="flex justify-between text-xs text-slate-700 font-medium mb-1">
                   <span>Tiến độ sinh trưởng vụ mùa</span>
-                  <span className="text-emerald-800 font-bold">{s.progressPercent}%</span>
+                  <span className="text-emerald-800 font-bold">{typeof s.progressPercent === 'number' ? `${s.progressPercent}%` : 'Chưa có dữ liệu'}</span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 border border-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#119653] rounded-full transition-all duration-500" style={{ width: `${s.progressPercent}%` }} />
+                  <div className="h-full bg-[#119653] rounded-full transition-all duration-500" style={{ width: `${typeof s.progressPercent === 'number' ? s.progressPercent : 0}%` }} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
                 <div><span className="text-slate-500 block text-[10px]">Ngày bắt đầu</span><strong className="text-slate-900">{s.startDate}</strong></div>
                 <div><span className="text-slate-500 block text-[10px]">Dự kiến thu hoạch</span><strong className="text-slate-900">{s.expectedEndDate}</strong></div>
-                <div><span className="text-slate-500 block text-[10px]">Giai đoạn hiện tại</span><strong className="text-slate-900">{s.currentGrowthStageName}</strong></div>
+                <div><span className="text-slate-500 block text-[10px]">Giai đoạn hiện tại</span><strong className="text-slate-900">{s.currentGrowthStageName || 'Chưa có dữ liệu'}</strong></div>
                 <div className="text-right">
                   <span className="text-slate-500 block text-[10px]">Số Lịch tưới Mùa vụ</span>
                   <strong className="text-emerald-700 font-bold">{seasonSchedules.length} Lịch hoạt động</strong>
@@ -275,11 +253,11 @@ export const PlantingSeasonsPage: React.FC = () => {
                         <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5 pb-1 border-b border-slate-100 flex-wrap">
                           <span className="flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                            Khu vực: <strong className="text-slate-800">{s.zoneName || 'Demo Greenhouse Zone (Zone 1)'}</strong>
+                            Khu vực: <strong className="text-slate-800">{s.zoneName || 'Chưa có dữ liệu Zone'}</strong>
                           </span>
                           <span className="text-slate-400">•</span>
                           <span>
-                            Thiết bị: <strong className="text-emerald-700">{sch.actuatorName || (sch.actuatorId === 'act-01' ? 'Máy bơm tưới nhỏ giọt P-01' : 'Hệ thống phun sương F-02')}</strong>
+                            Thiết bị: <strong className="text-emerald-700">{sch.actuatorName || 'Chưa có dữ liệu thiết bị'}</strong>
                           </span>
                         </div>
 

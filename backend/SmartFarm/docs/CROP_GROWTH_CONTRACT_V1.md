@@ -30,3 +30,5 @@ A filtered unique PostgreSQL index enforces at most one `InProgress` season per 
 Closing #45 changes an `InProgress` season to `Completed`, records the actual end date and optional yield, and preserves all stage-transition and applied-threshold history. Cancel is deferred because the source does not define its command contract.
 
 All Zone and Season endpoints resolve Zone → Field → Farm → Tenant. FarmOwner may write. Farmer may read only a Zone explicitly assigned through `user_zone_accesses`.
+
+Season read responses also include `cropName`, nullable `varietyName`, `growthProfileName` and `currentGrowthStageName`, resolved from the persisted Crop, Variety, Profile and current Stage relations. Clients must display these returned values and must not substitute guessed crop or stage labels when the database value is missing.

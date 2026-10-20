@@ -13,6 +13,7 @@ namespace SmartFarm.Api.HostedServices;
 /// </summary>
 public sealed class SimulatedIotTelemetryWorker(
     IServiceScopeFactory scopes,
+    IConfiguration configuration,
     ILogger<SimulatedIotTelemetryWorker> logger) : BackgroundService
 {
     private static readonly Random Rnd = new();
@@ -20,7 +21,17 @@ public sealed class SimulatedIotTelemetryWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Simulated IoT Telemetry Worker started (Interval: 1 minute).");
+        var isEnabled = configuration.GetValue<bool>("SimulatedIot:Enabled", false);
+        if (!isEnabled)
+        {
+            logger.LogInformation("Simulated IoT Telemetry Worker is disabled via configuration (SimulatedIot:Enabled = false).");
+            return;
+        }
+
+        var intervalSeconds = configuration.GetValue<int>("SimulatedIot:IntervalSeconds", 300);
+        if (intervalSeconds < 10) intervalSeconds = 10;
+
+        logger.LogInformation("Simulated IoT Telemetry Worker started (Interval: {Interval} seconds).", intervalSeconds);
 
         // Chờ 5 giây ban đầu sau khi app khởi động để database migration hoàn tất
         try
@@ -32,8 +43,8 @@ public sealed class SimulatedIotTelemetryWorker(
             return;
         }
 
-        // Định kỳ sinh dữ liệu ngẫu nhiên mỗi 1 phút (60 giây)
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        // Định kỳ sinh dữ liệu ngẫu nhiên theo cấu hình
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -86,8 +97,9 @@ public sealed class SimulatedIotTelemetryWorker(
         }
 
         _cycleCount++;
-        // Cứ mỗi 5 phút (chu kỳ 5 và 6, tức 2 lần liên tiếp), giả lập sự cố lỗi phần cứng và vi phạm ngưỡng
-        var isFaultCycle = (_cycleCount % 5 == 0) || (_cycleCount % 5 == 1 && _cycleCount > 1);
+        var faultSimulationConfig = configuration.GetValue<bool>("SimulatedIot:EnableFaultSimulation", false);
+        // Cứ mỗi 5 chu kỳ nếu bật EnableFaultSimulation thì mới giả lập sự cố
+        var isFaultCycle = faultSimulationConfig && ((_cycleCount % 5 == 0) || (_cycleCount % 5 == 1 && _cycleCount > 1));
 
         if (isFaultCycle)
         {

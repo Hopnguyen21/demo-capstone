@@ -34,6 +34,24 @@ public sealed class TelemetryAlertTests
     }
 
     [Fact]
+    public async Task Adapter_rejects_device_whose_farm_does_not_own_its_zone()
+    {
+        using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var device = await db.Devices.SingleAsync(x => x.Id == fixture.DeviceId);
+            device.FarmId = await db.Farms.Where(x => x.Id != device.FarmId).Select(x => x.Id).FirstAsync();
+            await db.SaveChangesAsync();
+        }
+
+        await Assert.ThrowsAsync<RequestValidationException>(() => SendAsync(factory, fixture, fixture.Fingerprint, 70, "%", "wrong-device-farm"));
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.Empty(await verifyDb.TelemetryReadings.ToListAsync());
+    }
+
+    [Fact]
     public async Task Duplicate_message_is_idempotent_and_does_not_advance_anti_flap()
     {
         using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory); var captured = DateTime.UtcNow.AddMinutes(-1);

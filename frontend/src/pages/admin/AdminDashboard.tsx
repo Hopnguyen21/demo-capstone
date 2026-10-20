@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MetricCard, StatusBadge } from '../../components/ui/BaseUI';
 import { tenantService, farmService, deviceService, adminService } from '../../services';
 import { AuditLog } from '../../types';
-import { Building2, Sprout, Radio, Cpu, Users, ShieldAlert, Activity, ArrowUpRight } from 'lucide-react';
+import { Building2, Sprout, Radio, Cpu, Users, ShieldAlert, Activity, ArrowUpRight, FileCheck, BookOpen, CheckCircle2, FileText, Droplets, Thermometer } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const tenantGrowthData = [
@@ -162,6 +162,72 @@ export const AdminDashboard: React.FC = () => {
                 <div className="h-full bg-emerald-500 w-[23%]" />
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* VietGAP Standards & System Agronomy Status */}
+      <div className="p-5 bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 text-white rounded-2xl shadow-sm space-y-4 border border-emerald-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 backdrop-blur-xs flex items-center justify-center text-emerald-300 border border-emerald-400/30">
+              <FileCheck size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm sm:text-base text-white">Quy chuẩn Nông nghiệp VietGAP Hệ thống Hiện hành</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-400 text-emerald-950 uppercase">
+                  TCVN 11892-1:2017
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-800 text-teal-200 border border-teal-600">
+                  Canh tác Đất & Nhà Màng
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-200/90 mt-0.5">
+                Thiết lập chuẩn hóa vi khí hậu, ngưỡng độ ẩm đất, lịch tưới nhỏ giọt 3 ca và phòng trừ IPM cho toàn bộ các Tenant & Trang trại.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/admin/crops"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors whitespace-nowrap self-start sm:self-auto"
+          >
+            <BookOpen size={13} /> Thư viện Cây trồng & Nhập PDF/DOCX
+          </a>
+        </div>
+
+        {/* 4 VietGAP Standard Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+              <Droplets size={13} /> Thổ Nhưỡng Đất
+            </div>
+            <div className="font-bold text-white text-sm">pH 5.5 - 6.8 • Ẩm 65-85%</div>
+            <div className="text-[10px] text-emerald-200/70">EC an toàn 1.4 - 2.5 mS/cm</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+              <Thermometer size={13} /> Vi Khí Hậu Tối Ưu
+            </div>
+            <div className="font-bold text-white text-sm">Nhiệt độ 18°C - 30°C</div>
+            <div className="text-[10px] text-emerald-200/70">Quang thông 20k - 30k Lux</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+              <CheckCircle2 size={13} /> Quản Lý Nước Tưới
+            </div>
+            <div className="font-bold text-white text-sm">Tưới Nhỏ Giọt 3 Ca</div>
+            <div className="text-[10px] text-emerald-200/70">07:30 Sáng • 12:00 Trưa • 16:30 Chiều</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+              <FileText size={13} /> Hồ Sơ & Nguồn Gốc
+            </div>
+            <div className="font-bold text-white text-sm">Nhật ký VietGAP Tự động</div>
+            <div className="text-[10px] text-emerald-200/70">Minh bạch truy xuất nguồn gốc QR</div>
           </div>
         </div>
       </div>

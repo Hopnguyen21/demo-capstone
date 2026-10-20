@@ -61,6 +61,46 @@ const createVertexPinIcon = (index: number, isOutside?: boolean) =>
     iconAnchor: [10, 10],
   });
 
+const createDevicePinIcon = (name: string, isActuator?: boolean, isOnline?: boolean) =>
+  L.divIcon({
+    className: 'custom-device-pin-wrapper',
+    html: `
+      <div style="position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <div style="
+          background: ${isActuator ? '#0284c7' : '#059669'};
+          color: white;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          border: 2px solid white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13px;
+          box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        ">
+          ${isActuator ? '⚡' : '📡'}
+        </div>
+        <div style="
+          position: absolute;
+          top: -22px;
+          background: #062326;
+          color: ${isOnline ? '#6ee7b7' : '#f87171'};
+          font-size: 9px;
+          font-weight: 700;
+          padding: 1px 6px;
+          border-radius: 9999px;
+          border: 1px solid rgba(255,255,255,0.25);
+          white-space: nowrap;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          pointer-events: none;
+        ">${name}</div>
+      </div>
+    `,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  });
+
 interface GISLocationPickerProps {
   level: 'FARM' | 'FIELD' | 'ZONE';
   center: [number, number];
@@ -71,6 +111,16 @@ interface GISLocationPickerProps {
   parentFieldPolygon?: [number, number][];
   /** Other existing fields/zones within the same parent to display for context */
   otherPolygons?: { name: string; polygon: [number, number][]; areaM2?: number }[];
+  /** Optional IoT devices/sensors located within this zone/field to display as pins */
+  deviceMarkers?: {
+    id: string;
+    name: string;
+    code?: string;
+    type?: string;
+    status?: string;
+    batteryLevel?: number;
+    coords: [number, number];
+  }[];
   height?: string;
   readOnly?: boolean;
   hidePolygon?: boolean;
@@ -339,6 +389,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
   parentFarmPolygon,
   parentFieldPolygon,
   otherPolygons,
+  deviceMarkers,
   height = '420px',
   readOnly = false,
   hidePolygon = false,
@@ -1064,6 +1115,11 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded" style={{ backgroundColor: isPolygonInvalid ? '#ef4444' : levelStyle.stroke }} /> Hiện tại ({level})
             </div>
+            {deviceMarkers && deviceMarkers.length > 0 && (
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-800">
+                <span className="text-[11px]">📡</span> Thiết bị ({deviceMarkers.length})
+              </div>
+            )}
             {level === 'ZONE' && zoneOutsideWarning && (
               <div className="flex items-center gap-1.5 text-red-700 font-bold">
                 <span className="w-3 h-3 rounded bg-red-400" /> Ngoài Lô đất!
@@ -1186,19 +1242,41 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               />
             ))}
 
-            {/* Live Preview Polygon from modal inputs */}
-            {showCoordModal && previewPolygon && previewPolygon.length >= 3 && (
-              <Polygon
-                positions={previewPolygon}
-                pathOptions={{
-                  color: previewHasViolation ? '#f97316' : '#8b5cf6',
-                  fillColor: previewHasViolation ? '#f97316' : '#8b5cf6',
-                  fillOpacity: 0.25,
-                  weight: 2,
-                  dashArray: '8, 4',
-                }}
-              />
-            )}
+            {/* Connected IoT Device Markers (Sensors & Actuators) */}
+            {deviceMarkers && deviceMarkers.map((dev) => {
+              const isActuator = dev.type === 'ACTUATOR' || dev.code?.includes('ACTUATOR') || dev.name?.includes('ACTUATOR');
+              const isOnline = dev.status === 'ONLINE' || dev.status === 'Online';
+              return (
+                <Marker
+                  key={`dev-marker-${dev.id}`}
+                  position={dev.coords}
+                  icon={createDevicePinIcon(dev.code || dev.name, isActuator, isOnline)}
+                >
+                  <Popup>
+                    <div className="p-1 space-y-1 text-slate-800 min-w-[180px]">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                        <strong className="text-slate-900 text-xs flex items-center gap-1">
+                          {isActuator ? '⚡ Tủ điều khiển Actuator' : '📡 Cảm biến LoRa'}
+                        </strong>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                          {dev.status || 'ONLINE'}
+                        </span>
+                      </div>
+                      <div className="text-xs font-semibold text-[#062326] pt-1">{dev.name}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">Mã: {dev.code || dev.id}</div>
+                      <div className="text-[11px] text-slate-600 font-mono">
+                        GPS: [{dev.coords[0].toFixed(5)}, {dev.coords[1].toFixed(5)}]
+                      </div>
+                      {typeof dev.batteryLevel === 'number' && (
+                        <div className="text-[11px] text-slate-700 flex items-center gap-1 pt-1 border-t border-slate-100">
+                          <span>🔋 Pin:</span> <strong>{dev.batteryLevel}%</strong>
+                        </div>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
           </MapContainer>
         </div>
       </div>

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Common.Interfaces;
@@ -17,6 +18,7 @@ public sealed class AiAdvisoryService(
     IAiWeatherProvider weatherProvider,
     IControlService controlService,
     IOptions<AiOptions> options,
+    Microsoft.Extensions.Logging.ILogger<AiAdvisoryService> logger,
     TimeProvider clock) : IAiAdvisoryService
 {
     private readonly AiOptions settings = options.Value;
@@ -57,6 +59,7 @@ public sealed class AiAdvisoryService(
         {
             case AiRecommendationDecisionType.Accepted:
                 ValidateAcceptable(recommendation);
+                await EnsureActionTelemetryIsFreshAsync(recommendation, cancellationToken);
                 await EnsureStageIsCurrentAsync(recommendation, cancellationToken);
                 await EnsureAgronomicSafetyAsync(recommendation, cancellationToken);
                 await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
@@ -165,13 +168,17 @@ public sealed class AiAdvisoryService(
         {
             try
             {
-                var result = await provider.GenerateAsync(new AiProviderRequest(question, context), cancellationToken);
+                // Keep historical readings visible in the persisted/context API response,
+                // but never give stale measurements to the model as decision context.
+                var providerContext = context with { Telemetry = context.Telemetry.Where(x => x.IsFresh).ToList() };
+                var result = await provider.GenerateAsync(new AiProviderRequest(question, providerContext), cancellationToken);
                 recommendation = await FromProviderAsync(request, context, result, now, cancellationToken);
                 request.ProviderName = Optional(result.ProviderName, 100) ?? "Unknown";
                 request.Status = recommendation.Status == AiRecommendationStatus.Ready ? AiConsultationStatus.Completed : AiConsultationStatus.Limited;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                logger.LogError(ex, "AI advisory provider execution failed: {Message}", ex.Message);
                 recommendation = CreateLimited(request, context, AiRecommendationStatus.ProviderUnavailable,
                     "AI analysis is currently unavailable",
                     "No advice was generated because the configured AI provider failed.",
@@ -202,17 +209,31 @@ public sealed class AiAdvisoryService(
             var actuator = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
                 .SingleOrDefaultAsync(x => x.Id == result.ProposedControlAction.ActuatorId && x.Device.ZoneId == request.ZoneId, cancellationToken);
             var maxDuration = actuator is null ? 0 : Math.Min(1800, actuator.MaxDurationMinutes * 60);
-            if (actuator is null || result.ProposedControlAction.DurationSeconds < 1 || result.ProposedControlAction.DurationSeconds > maxDuration)
+            if (actuator is null || actuator.Device.Status != DeviceStatus.Online || actuator.Device.DecommissionedAtUtc is not null ||
+                !Enum.IsDefined(result.ProposedControlAction.Action) || result.ProposedControlAction.DurationSeconds < 1 ||
+                result.ProposedControlAction.DurationSeconds > maxDuration)
             {
                 status = AiRecommendationStatus.InvalidProviderOutput;
-                limitations.Add("The provider proposed an actuator or duration that is not valid for this Zone.");
+                limitations.Add("The provider proposed an unavailable actuator, unsupported action, or duration that is not valid for this Zone.");
             }
             else
             {
-                actionable = true;
-                actuatorId = actuator.Id;
-                action = result.ProposedControlAction.Action;
-                duration = result.ProposedControlAction.DurationSeconds;
+                var isIrrigationPump = actuator.ActuatorType.Contains("pump", StringComparison.OrdinalIgnoreCase) ||
+                                       actuator.ActuatorType.Contains("water", StringComparison.OrdinalIgnoreCase) ||
+                                       actuator.ActuatorType.Contains("irrigation", StringComparison.OrdinalIgnoreCase);
+                var hasFreshSoilMoisture = context.Telemetry.Any(x => x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && x.IsFresh);
+                if (isIrrigationPump && result.ProposedControlAction.Action == ActuatorCommandAction.TurnOn && !hasFreshSoilMoisture)
+                {
+                    status = AiRecommendationStatus.InsufficientData;
+                    limitations.Add("A current soil-moisture reading is required before recommending irrigation.");
+                }
+                else
+                {
+                    actionable = true;
+                    actuatorId = actuator.Id;
+                    action = result.ProposedControlAction.Action;
+                    duration = result.ProposedControlAction.DurationSeconds;
+                }
             }
         }
 
@@ -246,13 +267,18 @@ public sealed class AiAdvisoryService(
         var season = await db.PlantingSeasons.AsNoTracking()
             .Include(x => x.Crop).Include(x => x.Variety).Include(x => x.GrowthProfile).Include(x => x.CurrentGrowthStage).Include(x => x.AppliedRequirements)
             .SingleOrDefaultAsync(x => x.ZoneId == zone.Id && x.Status == PlantingSeasonStatus.InProgress, cancellationToken);
-        var readings = await db.TelemetryReadings.AsNoTracking()
-            .Where(x => x.ZoneId == zone.Id)
-            .OrderByDescending(x => x.CapturedAtUtc)
-            .Take(100)
-            .ToListAsync(cancellationToken);
-        var telemetry = readings.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x =>
-            new AiTelemetryContextItem(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc, x.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes))).ToList();
+        var telemetry = new List<AiTelemetryContextItem>();
+        foreach (var parameterCode in Enum.GetValues<EnvironmentalParameterCode>())
+        {
+            var reading = await db.TelemetryReadings.AsNoTracking()
+                .Where(x => x.ZoneId == zone.Id && x.ParameterCode == parameterCode && x.CapturedAtUtc <= now)
+                .OrderByDescending(x => x.CapturedAtUtc)
+                .ThenByDescending(x => x.ReceivedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (reading is null) continue;
+            var isFresh = reading.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes) && reading.CapturedAtUtc <= now;
+            telemetry.Add(new AiTelemetryContextItem(reading.ParameterCode, reading.Value, reading.Unit, reading.CapturedAtUtc, isFresh));
+        }
         var actuators = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
             .Where(x => x.Device.ZoneId == zone.Id && x.Device.DecommissionedAtUtc == null)
             .Select(x => new AiActuatorContextItem(x.Id, x.ActuatorType, Math.Min(1800, x.MaxDurationMinutes * 60), x.Device.Status == DeviceStatus.Online))
@@ -266,15 +292,23 @@ public sealed class AiAdvisoryService(
         if (season?.Crop is null) missing.Add("crop");
         if (season?.GrowthProfile is null) missing.Add("growth profile");
         if (season?.CurrentGrowthStage is null) missing.Add("growth stage");
-        if (telemetry.Count == 0) missing.Add("telemetry");
+        // Old sensor readings may be useful as historical context, but they must never
+        // make a consultation actionable or be presented as current measurements.
+        if (!telemetry.Any(x => x.IsFresh)) missing.Add("fresh telemetry");
         if (!weather.Available) missing.Add("weather");
 
         TimeZoneInfo farmTz;
         try { farmTz = TimeZoneInfo.FindSystemTimeZoneById(zone.Field.Farm.TimeZone); }
         catch { farmTz = TimeZoneInfo.Utc; }
 
+        var irrigationActuatorIds = actuators
+            .Where(x => x.ActuatorType.Contains("pump", StringComparison.OrdinalIgnoreCase) ||
+                        x.ActuatorType.Contains("water", StringComparison.OrdinalIgnoreCase) ||
+                        x.ActuatorType.Contains("irrigation", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.ActuatorId)
+            .ToArray();
         var rawSchedules = await db.ControlSchedules.AsNoTracking()
-            .Where(x => x.ZoneId == zone.Id && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddHours(12))
+            .Where(x => x.ZoneId == zone.Id && irrigationActuatorIds.Contains(x.ActuatorId) && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddHours(12))
             .OrderBy(x => x.NextRunAtUtc)
             .Take(5)
             .Select(x => new { x.Name, x.NextRunAtUtc, x.DurationSeconds })
@@ -297,7 +331,7 @@ public sealed class AiAdvisoryService(
             telemetry,
             actuators,
             upcomingSchedules,
-            new AiWeatherContext(weather.Available, weather.Summary, weather.RainProbabilityPercent, weather.TemperatureCelsius, weather.ObservedAtUtc, weather.Limitation),
+            new AiWeatherContext(weather.Available, weather.Summary, weather.RainProbabilityNext6HoursMaxPercent, weather.TemperatureCelsius, weather.ObservedAtUtc, weather.Limitation),
             missing,
             missing.Count == 0);
     }
@@ -353,8 +387,16 @@ public sealed class AiAdvisoryService(
         var now = clock.GetUtcNow().UtcDateTime;
 
         // 1. Kiểm tra lịch tưới sắp diễn ra trong vòng 30 phút tới
+        var irrigationActuators = await db.DeviceActuators.AsNoTracking().Where(x => x.Device.ZoneId == recommendation.ZoneId)
+            .Select(x => new { x.Id, x.ActuatorType }).ToListAsync(cancellationToken);
+        var irrigationActuatorIds = irrigationActuators
+            .Where(x => x.ActuatorType.Contains("pump", StringComparison.OrdinalIgnoreCase) ||
+                        x.ActuatorType.Contains("water", StringComparison.OrdinalIgnoreCase) ||
+                        x.ActuatorType.Contains("irrigation", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Id)
+            .ToArray();
         var upcomingSchedule = await db.ControlSchedules.AsNoTracking()
-            .Where(x => x.ZoneId == recommendation.ZoneId && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddMinutes(30))
+            .Where(x => x.ZoneId == recommendation.ZoneId && irrigationActuatorIds.Contains(x.ActuatorId) && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddMinutes(30))
             .FirstOrDefaultAsync(cancellationToken);
 
         if (upcomingSchedule is not null)
@@ -365,8 +407,9 @@ public sealed class AiAdvisoryService(
 
         // 2. Kiểm tra độ ẩm đất hiện tại nếu đã quá cao
         var latestSoilMoisture = await db.TelemetryReadings.AsNoTracking()
-            .Where(x => x.ZoneId == recommendation.ZoneId && x.ParameterCode == EnvironmentalParameterCode.SoilMoisture)
+            .Where(x => x.ZoneId == recommendation.ZoneId && x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && x.CapturedAtUtc <= now)
             .OrderByDescending(x => x.CapturedAtUtc)
+            .ThenByDescending(x => x.ReceivedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (latestSoilMoisture is not null)
@@ -382,6 +425,26 @@ public sealed class AiAdvisoryService(
                 throw new ResourceConflictException($"Không thể duyệt tưới: Độ ẩm đất đo được hiện tại ({latestSoilMoisture.Value}%) đã vượt ngưỡng cho phép ({maxAllowedMoisture}%), tưới thêm sẽ gây úng rễ.");
             }
         }
+    }
+
+    private async Task EnsureActionTelemetryIsFreshAsync(AiRecommendation recommendation, CancellationToken cancellationToken)
+    {
+        var actuator = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
+            .SingleOrDefaultAsync(x => x.Id == recommendation.ProposedActuatorId && x.Device.ZoneId == recommendation.ZoneId, cancellationToken);
+        if (actuator is null) throw new ResourceConflictException("The recommended actuator is no longer available in this Zone.");
+
+        var isIrrigationPump = actuator.ActuatorType.Contains("pump", StringComparison.OrdinalIgnoreCase) ||
+                               actuator.ActuatorType.Contains("water", StringComparison.OrdinalIgnoreCase) ||
+                               actuator.ActuatorType.Contains("irrigation", StringComparison.OrdinalIgnoreCase);
+        if (!isIrrigationPump || recommendation.ProposedAction != ActuatorCommandAction.TurnOn) return;
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        var cutoff = now.AddMinutes(-settings.TelemetryFreshnessMinutes);
+        var hasFreshSoilMoisture = await db.TelemetryReadings.AsNoTracking().AnyAsync(x =>
+            x.ZoneId == recommendation.ZoneId && x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && x.CapturedAtUtc >= cutoff && x.CapturedAtUtc <= now,
+            cancellationToken);
+        if (!hasFreshSoilMoisture)
+            throw new ResourceConflictException("Soil-moisture telemetry is stale. Request a new analysis after a fresh sensor reading arrives.");
     }
 
     private void ValidateAcceptable(AiRecommendation recommendation)

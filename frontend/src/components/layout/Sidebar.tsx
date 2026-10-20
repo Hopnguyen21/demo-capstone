@@ -24,6 +24,7 @@ export const Sidebar: React.FC = () => {
     { title: 'Quản lý Tenants', path: '/admin/tenants', icon: <Building2 size={18} /> },
     { title: 'Quản lý Người dùng', path: '/admin/users', icon: <Users size={18} /> },
     { title: 'Thư viện Giống Cây', path: '/admin/crops', icon: <Sprout size={18} /> },
+    { title: 'Quy chuẩn VietGAP', path: '/admin/vietgap', icon: <FileText size={18} />, badge: 'TCVN' },
     { title: 'Hồ sơ Sinh trưởng', path: '/admin/growth-profiles', icon: <Activity size={18} /> },
     { title: 'Kho Vật tư & Linh kiện', path: '/admin/devices', icon: <Package size={18} />, badge: 'Kho' },
     { title: 'Sức khỏe Máy chủ & IoT', path: '/admin/system-health', icon: <Radio size={18} /> },
@@ -120,7 +121,7 @@ export const Sidebar: React.FC = () => {
           <span className="font-semibold text-slate-600">SmartFarm Web v4.0</span>
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
         </div>
-        <p className="mt-0.5 text-slate-400">TimescaleDB + Gemini 1.5</p>
+        <p className="mt-0.5 text-slate-400">PostgreSQL + Gemini 2.5</p>
       </div>
     </aside>
   );

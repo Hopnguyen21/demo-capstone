@@ -507,11 +507,20 @@ public sealed class FarmerService(SmartFarmDbContext db) : IFarmerService
             .ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<PlatformHardwareItemView>> GetMySparePartsAsync(Guid technicianId, CancellationToken ct) =>
-        await db.PlatformHardwareItems.AsNoTracking().Where(x => x.AssignedTechnicianId == technicianId)
+    public async Task<IReadOnlyList<PlatformHardwareItemView>> GetMySparePartsAsync(Guid technicianId, CancellationToken ct)
+    {
+        var assigned = await db.PlatformHardwareItems.AsNoTracking().Where(x => x.AssignedTechnicianId == technicianId)
             .OrderBy(x => x.Code)
             .Select(x => new PlatformHardwareItemView(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc))
             .ToListAsync(ct);
+
+        if (assigned.Count > 0) return assigned;
+
+        return await db.PlatformHardwareItems.AsNoTracking()
+            .OrderBy(x => x.Code)
+            .Select(x => new PlatformHardwareItemView(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc))
+            .ToListAsync(ct);
+    }
 }
 
 // ─── Schedule Sync Service ────────────────────────────────────────────────────

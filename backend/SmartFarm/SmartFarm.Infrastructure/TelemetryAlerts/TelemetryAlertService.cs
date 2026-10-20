@@ -34,6 +34,12 @@ public sealed class TelemetryAlertService(
             throw new AuthenticationException("The gateway is not authorized to publish for this device.");
         if (device.ZoneId != envelope.ZoneId)
             throw new RequestValidationException("zoneId", "Device is not assigned to the supplied Zone.");
+        var zoneFarmId = await db.Zones.AsNoTracking()
+            .Where(x => x.Id == envelope.ZoneId)
+            .Select(x => x.Field.FarmId)
+            .SingleOrDefaultAsync(ct);
+        if (zoneFarmId == Guid.Empty || device.FarmId != zoneFarmId)
+            throw new RequestValidationException("deviceId", "Device farm does not match the Farm that owns its assigned Zone.");
         if (device.Status is DeviceStatus.Unassigned or DeviceStatus.Decommissioned || device.DecommissionedAtUtc is not null)
             throw new ResourceConflictException("Device is not active in a Zone.");
 
@@ -188,14 +194,14 @@ public sealed class TelemetryAlertService(
     public async Task<LatestTelemetryView> LatestAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
     {
         await EnsureZoneAccessAsync(userId, tenantId, zoneId, ct);
-        var rows = await db.TelemetryReadings.AsNoTracking().Where(x => x.ZoneId == zoneId).OrderByDescending(x => x.CapturedAtUtc).ToListAsync(ct);
-        var requirements = await CurrentRequirementsAsync(zoneId, ct);
         var now = clock.GetUtcNow().UtcDateTime;
+        var rows = await db.TelemetryReadings.AsNoTracking().Where(x => x.ZoneId == zoneId && x.CapturedAtUtc <= now).OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).ToListAsync(ct);
+        var requirements = await CurrentRequirementsAsync(zoneId, ct);
         var metrics = rows.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x =>
         {
             requirements.TryGetValue(x.ParameterCode, out var requirement);
             var status = requirement is null ? "Unknown" : x.Value < requirement.MinValue ? "Below" : x.Value > requirement.MaxValue ? "Above" : "Normal";
-            var fresh = x.ReceivedAtUtc >= now - FreshnessWindow && x.CapturedAtUtc >= now - FreshnessWindow;
+            var fresh = x.CapturedAtUtc >= now - FreshnessWindow;
             return new LatestMetricView(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc, x.ReceivedAtUtc, fresh, status);
         }).OrderBy(x => x.ParameterCode).ToList();
         return new(zoneId, rows.FirstOrDefault()?.ReceivedAtUtc, metrics.Any(x => x.IsFresh), metrics);

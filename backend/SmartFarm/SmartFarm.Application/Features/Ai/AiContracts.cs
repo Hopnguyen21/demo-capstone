@@ -7,7 +7,7 @@ public sealed record AiTelemetryContextItem(EnvironmentalParameterCode Parameter
 public sealed record AiRequirementContextItem(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
 public sealed record AiActuatorContextItem(Guid ActuatorId, string ActuatorType, int MaxDurationSeconds, bool IsOnline);
 public sealed record AiUpcomingScheduleContextItem(string Name, DateTime NextRunAtUtc, string NextRunTimeFormatted, int DurationSeconds, int MinutesUntilRun);
-public sealed record AiWeatherContext(bool Available, string? Summary, decimal? RainProbabilityPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
+public sealed record AiWeatherContext(bool Available, string? Summary, decimal? RainProbabilityNext6HoursMaxPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
 public sealed record AiZoneContext(
     Guid FarmId, string FarmName, string FarmTimeZone, Guid FieldId, string FieldName, Guid ZoneId, string ZoneName, decimal ZoneAreaM2,
     Guid? PlantingSeasonId, string? CropName, string? VarietyName, Guid? GrowthProfileId, string? GrowthProfileName, int? SeasonAgeDays,
@@ -23,7 +23,7 @@ public sealed record AiZoneContext(
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);
 public sealed record AiProviderRequest(string Question, AiZoneContext Context);
 public sealed record AiProviderResult(string ProviderName, string Summary, string Details, decimal Confidence, IReadOnlyList<string> Limitations, AiProposedControlAction? ProposedControlAction);
-public sealed record AiWeatherResult(bool Available, string? Summary, decimal? RainProbabilityPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
+public sealed record AiWeatherResult(bool Available, string? Summary, decimal? RainProbabilityNext6HoursMaxPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
 
 public sealed record AskAiCommand(string Question, Guid? ParentRecommendationId = null);
 public sealed record DecideRecommendationCommand(Guid RecommendationId, AiRecommendationDecisionType Decision, string? Reason, string? FollowUpQuestion);

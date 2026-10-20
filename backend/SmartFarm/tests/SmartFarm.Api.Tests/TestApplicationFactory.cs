@@ -125,10 +125,12 @@ internal sealed class FakeRainProvider : IRainForecastProvider
 internal sealed class FakeAiProvider : IAiAdvisoryProvider
 {
     internal int Calls { get; private set; }
+    internal AiProviderRequest? LastRequest { get; private set; }
     internal AiProviderResult Result { get; set; } = new("FakeAgronomist", "Review conditions", "No automatic action proposed.", 0.9m, [], null);
     public Task<AiProviderResult> GenerateAsync(AiProviderRequest request, CancellationToken cancellationToken)
     {
         Calls++;
+        LastRequest = request;
         return Task.FromResult(Result);
     }
 }

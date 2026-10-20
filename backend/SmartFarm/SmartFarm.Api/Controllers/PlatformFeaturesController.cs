@@ -147,7 +147,7 @@ public sealed class PlatformFeaturesController(
 
     // ─── 7. GIS Node Placement & Mapping ──────────────────────────────────────
     [HttpPut("api/v1/zones/{zoneId:guid}/devices/bulk-locations")]
-    [Authorize(Roles = "PlatformTechnician")]
+    [Authorize(Roles = "PlatformTechnician,FarmOwner,PlatformAdmin")]
     public async Task<IActionResult> BulkUpdateNodeLocations(
         Guid zoneId,
         [FromBody] BulkUpdateNodeLocationsCommand command,
@@ -158,6 +158,7 @@ public sealed class PlatformFeaturesController(
     }
 
     [HttpGet("api/v1/zones/{zoneId:guid}/devices/map-locations")]
+    [Authorize(Roles = "PlatformTechnician,FarmOwner,PlatformAdmin,Farmer")]
     public async Task<ActionResult<IReadOnlyList<DeviceMapLocationView>>> GetMapLocations(Guid zoneId, CancellationToken ct)
     {
         return Ok(await gisService.GetMapLocationsAsync(User.GetUserId(), zoneId, ct));
@@ -165,7 +166,7 @@ public sealed class PlatformFeaturesController(
 
     // ─── 8. Technician Spare Parts ────────────────────────────────────────────
     [HttpGet("api/v1/platform/technicians/me/spare-parts")]
-    [Authorize(Roles = "PlatformTechnician")]
+    [Authorize(Roles = "PlatformTechnician,FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<PlatformHardwareItemView>>> GetMySpareParts(CancellationToken ct)
     {
         return Ok(await farmerService.GetMySparePartsAsync(User.GetUserId(), ct));

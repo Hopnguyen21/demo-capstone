@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import {
   farmService, fieldService, zoneService, deviceService,
-  alertService, supportService, seasonService
+  alertService, supportService, seasonService, telemetryService, aiService
 } from '../../services';
 import { Farm, Field, Zone, Alert } from '../../types';
 import {
@@ -18,7 +18,7 @@ import { mockWeather } from '../../mocks/mockData';
 
 export const OwnerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, farms: authFarms, zones: authZones, selectedFarmId, setSelectedFarmId } = useAuth();
+  const { user, farms: authFarms, zones: authZones, selectedFarmId, selectedZoneId, setSelectedFarmId } = useAuth();
 
   const [farms, setFarms] = useState<Farm[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
@@ -27,24 +27,19 @@ export const OwnerDashboard: React.FC = () => {
   const [actuators, setActuators] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [weatherData, setWeatherData] = useState<any>(null);
+  const [latestTelemetry, setLatestTelemetry] = useState<Record<string, any>>({});
+  const [activeRecommendation, setActiveRecommendation] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Selected Farm for Dashboard Scope
-  const activeFarm = farms.find(f => f.farmId === selectedFarmId) || farms[0] || {
-    farmId: '30000000-0000-0000-0000-000000000001',
-    name: 'Demo Hydroponic Farm',
-    address: 'Đà Lạt, Lâm Đồng',
-    totalAreaM2: 50000,
-    areaM2: 50000,
-    status: 'ACTIVE' as const,
-  };
+  const activeFarm = farms.find(f => f.farmId === selectedFarmId) || farms[0] || null;
 
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
       const [farmsData, fieldsData, zonesData, nodesData, actsData, alertsData] = await Promise.all([
         farmService.getFarms().catch(() => authFarms || []),
-        fieldService.getFields().catch(() => []),
+        fieldService.getFields(selectedFarmId).catch(() => []),
         zoneService.getZones().catch(() => authZones || []),
         deviceService.getNodes().catch(() => []),
         deviceService.getActuators().catch(() => []),
@@ -75,26 +70,72 @@ export const OwnerDashboard: React.FC = () => {
   }, [selectedFarmId]);
 
   // Derived metrics for active farm
-  const farmFields = fields.filter(fd => fd.farmId === activeFarm.farmId);
-  const farmZones = zones.filter(z => z.farmId === activeFarm.farmId || farmFields.some(fd => fd.fieldId === z.fieldId));
-  const activeZones = farmZones.length > 0 ? farmZones : zones;
+  const farmFields = activeFarm ? fields.filter(fd => fd.farmId === activeFarm.farmId) : [];
+  const farmZones = activeFarm ? zones.filter(z => z.farmId === activeFarm.farmId || farmFields.some(fd => fd.fieldId === z.fieldId)) : [];
+  const activeZones = farmZones;
 
-  const totalFarmArea = Number(activeFarm.totalAreaM2 || activeFarm.areaM2 || 50000);
+  const aiZoneId = selectedZoneId && activeZones.some(zone => zone.zoneId === selectedZoneId)
+    ? selectedZoneId
+    : activeZones[0]?.zoneId || '';
+
+  useEffect(() => {
+    let active = true;
+    setLatestTelemetry({});
+    if (!aiZoneId) return () => { active = false; };
+    const fetchLatest = () => telemetryService.getRealtime(aiZoneId)
+      .then(data => {
+        if (!active || !Array.isArray(data?.metrics)) return;
+        const freshMetrics: Record<string, any> = {};
+        data.metrics.filter((metric: any) => metric.isFresh === true).forEach((metric: any) => {
+          const rawCode = String(metric.parameterCode);
+          const key = ({ '0': 'temperature', '1': 'soilmoisture', '2': 'airhumidity', '4': 'lightintensity' } as Record<string, string>)[rawCode]
+            || rawCode.replace(/_/g, '').toLowerCase();
+          freshMetrics[key] = metric;
+        });
+        setLatestTelemetry(freshMetrics);
+      })
+      .catch(() => { if (active) setLatestTelemetry({}); });
+    void fetchLatest();
+    const timer = window.setInterval(fetchLatest, 10000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [aiZoneId]);
+
+  useEffect(() => {
+    let active = true;
+    setActiveRecommendation(null);
+    if (!aiZoneId) return () => { active = false; };
+    aiService.getMessages(aiZoneId)
+      .then(history => {
+        if (!active || !Array.isArray(history)) return;
+        const now = new Date().toISOString();
+        const latest = history
+          .filter((item: any) => item.isActionable && item.proposedAction && item.status?.toLowerCase() === 'ready' && (!item.validUntilUtc || item.validUntilUtc > now))
+          .sort((a: any, b: any) => new Date(b.createdAtUtc || 0).getTime() - new Date(a.createdAtUtc || 0).getTime())[0];
+        setActiveRecommendation(latest || null);
+      })
+      .catch(() => { if (active) setActiveRecommendation(null); });
+    return () => { active = false; };
+  }, [aiZoneId]);
+
+  const totalFarmArea = Number(activeFarm?.totalAreaM2 || activeFarm?.areaM2 || 0);
   const totalZoneArea = activeZones.reduce((acc, z) => acc + Number(z.areaM2 || 0), 0);
   const activeRelaysCount = actuators.filter(a => a.status === 'ON').length;
-  const onlineNodesCount = nodes.filter(n => n.status === 'ONLINE' || (n.batteryLevel ?? 0) > 0).length || 6;
+  const onlineNodesCount = nodes.filter(n => String(n.status).toLowerCase() === 'online').length;
   const openAlerts = alerts.filter(a => (a.status as any) === 'OPEN' || (a.status as any) === 'Open');
 
   // Weather info
   const weather = weatherData || mockWeather;
 
-  // Active AI recommendation
-  const activeRecommendation = {
-    title: 'Khuyến nghị Tối ưu Năng suất & Vi khí hậu VietGAP',
-    confidenceScore: 94,
-    recommendationText: 'Duy trì độ ẩm đất từ 65% – 70% và kích hoạt quạt đối lưu không khí 15 phút vào đầu giờ chiều để cân bằng ẩm.',
-    reasoning: 'Zone đang trong giai đoạn phát triển hoa & nuôi quả, việc đối lưu nhẹ giúp chống đọng sương, triệt tiêu nguy cơ nấm phấn trắng.',
-    expectedImpact: 'Tăng 9.5% tỷ lệ đậu quả và giảm 18% lượng nước tưới dư thừa.',
+  const metric = (code: string) => latestTelemetry[code.toLowerCase()];
+  const metricValue = (code: string, decimals = 1) => {
+    const reading = metric(code);
+    return reading ? `${Number(reading.value).toFixed(decimals)} ${reading.unit || ''}`.trim() : '—';
+  };
+  const metricStatus = (code: string) => {
+    const reading = metric(code);
+    if (!reading) return 'Chưa có dữ liệu mới';
+    const status = reading.thresholdStatus;
+    return status === 'Normal' ? 'Trong ngưỡng DB' : status === 'Below' ? 'Thấp hơn ngưỡng DB' : status === 'Above' ? 'Vượt ngưỡng DB' : 'Chưa có ngưỡng DB';
   };
 
   return (
@@ -122,7 +163,7 @@ export const OwnerDashboard: React.FC = () => {
               <span className="text-xs text-emerald-100 font-medium">Trang trại:</span>
               <select
                 className="bg-black/25 text-white text-xs font-semibold px-3 py-1.5 rounded-xl border border-white/30 focus:outline-none focus:border-white cursor-pointer shadow-xs"
-                value={activeFarm.farmId}
+                value={activeFarm?.farmId || ''}
                 onChange={e => {
                   setSelectedFarmId(e.target.value);
                 }}
@@ -141,11 +182,11 @@ export const OwnerDashboard: React.FC = () => {
             <div className="space-y-1.5">
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2.5">
                 <Building2 size={28} className="text-white" />
-                {activeFarm.name}
+                {activeFarm?.name || 'Chưa có Farm từ DB'}
               </h1>
               <p className="text-xs sm:text-sm text-emerald-100 flex items-center gap-2 flex-wrap">
                 <span className="flex items-center gap-1">
-                  <MapPin size={14} className="text-emerald-200" /> {activeFarm.address}
+                  <MapPin size={14} className="text-emerald-200" /> {activeFarm?.address || 'Chưa có địa chỉ Farm'}
                 </span>
                 <span>•</span>
                 <span>Quy mô: <strong>{(totalFarmArea / 10000).toFixed(1)} ha</strong> ({totalFarmArea.toLocaleString()} m²)</span>
@@ -334,14 +375,11 @@ export const OwnerDashboard: React.FC = () => {
                   <span className="text-slate-600 font-medium flex items-center gap-1.5">
                     <Droplets size={14} className="text-sky-600" /> Độ ẩm đất (Soil Moisture)
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Tối ưu</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">{metricStatus('soilmoisture')}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 font-mono">68.4 <span className="text-xs font-normal">%</span></span>
-                  <span className="text-[11px] text-slate-500">Chuẩn: 60 - 80%</span>
-                </div>
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#119653] h-full rounded-full transition-all" style={{ width: '68.4%' }} />
+                  <span className="text-2xl font-black text-slate-900 font-mono">{metricValue('soilmoisture')}</span>
+                  <span className="text-[11px] text-slate-500">Giá trị DB mới nhất</span>
                 </div>
               </div>
 
@@ -351,14 +389,11 @@ export const OwnerDashboard: React.FC = () => {
                   <span className="text-slate-600 font-medium flex items-center gap-1.5">
                     <Thermometer size={14} className="text-amber-600" /> Nhiệt độ Không khí
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Ổn định</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">{metricStatus('temperature')}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 font-mono">24.8 <span className="text-xs font-normal">°C</span></span>
-                  <span className="text-[11px] text-slate-500">Chuẩn: 18 - 28°C</span>
-                </div>
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full transition-all" style={{ width: '62%' }} />
+                  <span className="text-2xl font-black text-slate-900 font-mono">{metricValue('temperature')}</span>
+                  <span className="text-[11px] text-slate-500">Giá trị DB mới nhất</span>
                 </div>
               </div>
 
@@ -368,14 +403,11 @@ export const OwnerDashboard: React.FC = () => {
                   <span className="text-slate-600 font-medium flex items-center gap-1.5">
                     <CloudRain size={14} className="text-teal-600" /> Độ ẩm Không khí
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Lý tưởng</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">{metricStatus('airhumidity')}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 font-mono">71.5 <span className="text-xs font-normal">%</span></span>
-                  <span className="text-[11px] text-slate-500">Chuẩn: 65 - 80%</span>
-                </div>
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                  <div className="bg-teal-600 h-full rounded-full transition-all" style={{ width: '71.5%' }} />
+                  <span className="text-2xl font-black text-slate-900 font-mono">{metricValue('airhumidity')}</span>
+                  <span className="text-[11px] text-slate-500">Giá trị DB mới nhất</span>
                 </div>
               </div>
 
@@ -385,14 +417,11 @@ export const OwnerDashboard: React.FC = () => {
                   <span className="text-slate-600 font-medium flex items-center gap-1.5">
                     <Sun size={14} className="text-amber-500" /> Cường độ Ánh sáng
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Đủ quang hợp</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">{metricStatus('lightintensity')}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 font-mono">740 <span className="text-xs font-normal">Lux</span></span>
-                  <span className="text-[11px] text-slate-500">Chuẩn: 500 - 950 Lux</span>
-                </div>
-                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                  <div className="bg-amber-400 h-full rounded-full transition-all" style={{ width: '77%' }} />
+                  <span className="text-2xl font-black text-slate-900 font-mono">{metricValue('lightintensity')}</span>
+                  <span className="text-[11px] text-slate-500">Giá trị DB mới nhất</span>
                 </div>
               </div>
             </div>
@@ -439,11 +468,11 @@ export const OwnerDashboard: React.FC = () => {
                     <div className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs space-y-1">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Cây trồng:</span>
-                        <strong className="text-emerald-800 font-bold">{z.currentCrop || 'Rau ăn quả VietGAP'}</strong>
+                        <strong className="text-emerald-800 font-bold">{z.currentCrop || 'Chưa đồng bộ mùa vụ từ DB'}</strong>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Giai đoạn:</span>
-                        <strong className="text-sky-700">{z.currentStage || 'Nuôi quả & Thu hoạch'}</strong>
+                        <strong className="text-sky-700">{z.currentStage || 'Chưa đồng bộ giai đoạn từ DB'}</strong>
                       </div>
                     </div>
 
@@ -473,22 +502,17 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-[#119653] border border-emerald-200">
-                Độ tin cậy: {activeRecommendation.confidenceScore}%
+                {activeRecommendation ? `Độ tin cậy: ${Math.round((activeRecommendation.confidence || 0) * 100)}%` : 'Chưa có khuyến nghị mới'}
               </span>
             </div>
 
             <div className="text-xs text-slate-800 leading-relaxed font-medium">
-              "{activeRecommendation.recommendationText}"
+              {activeRecommendation?.details || activeRecommendation?.summary || 'Chưa có khuyến nghị AI còn hiệu lực được lưu cho Zone này.'}
             </div>
 
-            <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs space-y-1.5">
-              <div className="text-slate-600 text-[11px]">
-                <strong className="text-slate-900">Lý do chuyên gia:</strong> {activeRecommendation.reasoning}
-              </div>
-              <div className="text-emerald-800 font-semibold text-[11px] pt-1 border-t border-slate-100">
-                🚀 {activeRecommendation.expectedImpact}
-              </div>
-            </div>
+            {activeRecommendation?.limitations?.length > 0 && <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs text-slate-600">
+              <strong className="text-slate-900">Giới hạn dữ liệu:</strong> {activeRecommendation.limitations.join('; ')}
+            </div>}
 
             <div className="flex items-center justify-between pt-1">
               <Button
@@ -499,13 +523,7 @@ export const OwnerDashboard: React.FC = () => {
               >
                 Hỏi thêm AI
               </Button>
-              <Button
-                size="sm"
-                onClick={() => navigate('/owner/schedules')}
-                className="bg-[#119653] hover:bg-emerald-700 text-white font-bold text-xs"
-              >
-                <CheckCircle2 size={13} className="mr-1" /> Đồng bộ Lịch tưới
-              </Button>
+              {activeRecommendation && <span className="text-[10px] text-slate-500">Zone: {zones.find(zone => zone.zoneId === aiZoneId)?.name || '—'}</span>}
             </div>
           </div>
 

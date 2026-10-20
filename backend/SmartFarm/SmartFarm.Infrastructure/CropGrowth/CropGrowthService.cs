@@ -179,7 +179,8 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         if (await dbContext.PlantingSeasons.AnyAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct)) throw new ResourceConflictException("Zone already has an InProgress Planting Season.");
         var season = new PlantingSeason { ZoneId = zoneId, CropId = command.CropId, VarietyId = command.VarietyId, GrowthProfileId = profile.Id, CurrentGrowthStageId = first.Id, Name = name, StartDate = command.StartDate, ExpectedEndDate = command.ExpectedEndDate };
-        ApplyRequirements(season, first); dbContext.PlantingSeasons.Add(season); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct); return season.ToView();
+        ApplyRequirements(season, first); dbContext.PlantingSeasons.Add(season); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        return (await SeasonQuery().AsNoTracking().SingleAsync(x => x.Id == season.Id, ct)).ToView();
     }
 
     public async Task<PlantingSeasonView> GetSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CancellationToken ct)
@@ -200,6 +201,7 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         dbContext.SeasonStageTransitions.Add(transition);
         season.StageTransitions.Add(transition);
         season.CurrentGrowthStageId = stage.Id;
+        season.CurrentGrowthStage = stage;
         dbContext.SeasonAppliedRequirements.RemoveRange(season.AppliedRequirements);
         await dbContext.SaveChangesAsync(ct);
         season.AppliedRequirements.Clear();
@@ -236,7 +238,14 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
     }
 
     private IQueryable<GrowthProfile> ProfileQuery() => dbContext.GrowthProfiles.Include(x => x.Stages).ThenInclude(x => x.Requirements);
-    private IQueryable<PlantingSeason> SeasonQuery() => dbContext.PlantingSeasons.Include(x => x.Zone).ThenInclude(x => x.Field).ThenInclude(x => x.Farm).Include(x => x.AppliedRequirements).Include(x => x.StageTransitions);
+    private IQueryable<PlantingSeason> SeasonQuery() => dbContext.PlantingSeasons
+        .Include(x => x.Zone).ThenInclude(x => x.Field).ThenInclude(x => x.Farm)
+        .Include(x => x.Crop)
+        .Include(x => x.Variety)
+        .Include(x => x.GrowthProfile)
+        .Include(x => x.CurrentGrowthStage)
+        .Include(x => x.AppliedRequirements)
+        .Include(x => x.StageTransitions);
     private async Task<AppUser> EnsureUserAsync(Guid id, Guid? tenantId, bool ownerRequired, CancellationToken ct)
     {
         var user = await dbContext.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new AuthorizationException();
