@@ -75,6 +75,7 @@ export interface Zone {
   zoneId: string;
   fieldId: string;
   farmId: string;
+  farmName?: string;
   name: string;
   description?: string;
   zoneType?: string;
@@ -168,6 +169,9 @@ export interface CropVariety {
   isSystemDefined: boolean;
 }
 
+export type PlantVariety = CropVariety;
+
+
 export interface GrowthStage {
   growthStageId: string;
   growthProfileId: string;
@@ -199,15 +203,32 @@ export interface GrowthProfile {
   requirements: Record<string, EnvironmentalRequirement[]>; // keyed by stageId
 }
 
+export interface FarmingSeason {
+  id: string;
+  code: string;
+  name: string;
+  year: number;
+  startDate: string;
+  endDate: string;
+  description?: string;
+  status: 'Active' | 'Upcoming' | 'Completed' | string;
+  isActive: boolean;
+  linkedBatchesCount?: number;
+}
+
 export interface PlantingSeason {
   plantingSeasonId: string;
+  seasonId?: string;
   zoneId: string;
   zoneName?: string;
   farmId: string;
+  farmName?: string;
   cropId: string;
   cropName: string;
   varietyId?: string;
   varietyName?: string;
+  farmingSeasonId?: string;
+  farmingSeasonName?: string;
   growthProfileId: string;
   name: string;
   startDate: string;
@@ -215,11 +236,13 @@ export interface PlantingSeason {
   actualEndDate?: string;
   currentGrowthStageId: string;
   currentGrowthStageName?: string;
-  status: 'PLANNED' | 'ACTIVE' | 'HARVESTED' | 'CANCELLED';
+  status: 'PLANNED' | 'ACTIVE' | 'HARVESTED' | 'CANCELLED' | string;
   progressPercent?: number;
   schedulesCount?: number;
   assignedFarmerNames?: string[];
   irrigationPlanNote?: string;
+  actualYieldKg?: number;
+  closeNotes?: string;
 }
 
 export interface Gateway {
@@ -522,6 +545,105 @@ export interface ServiceRequest {
   // Thông tin Hợp đồng & Nghiệm thu
   contractDetails?: ContractDetails;
   acceptanceDetails?: AcceptanceDetails;
+}
+
+export type ZoneContractStatusType = 'Active' | 'ExpiringSoon' | 'Expired' | 'Terminated' | 'Renewed';
+
+export interface ZoneContractRenewal {
+  id: string;
+  contractId: string;
+  createdByOwnerId?: string;
+  newEndDate: string;
+  newMonthlyRentVnd?: number;
+  renewalValueVnd: number;
+  extendedMonths?: number;
+  renewalDate?: string;
+  discountPercent?: number;
+  newContractValueVnd?: number;
+  notes?: string;
+  createdAtUtc: string;
+}
+
+export interface ZoneContract {
+  id: string;
+  tenantId: string;
+  farmId: string;
+  farmName?: string;
+  zoneId: string;
+  zoneName?: string;
+  createdByOwnerId?: string;
+  parentContractId?: string;
+  parentContractNumber?: string;
+  contractNumber: string;
+  title?: string;
+  cropType?: string;
+  monthlyRentVnd: number;
+  depositVnd: number;
+  totalContractValueVnd: number;
+  subtotalVnd?: number;
+  discountPercent?: number;
+  discountVnd?: number;
+  vatRatePercent?: number;
+  vatAmountVnd?: number;
+  durationMonths?: number;
+  hardwareIncluded?: string;
+  startDate: string;
+  endDate: string;
+  status: ZoneContractStatusType | number;
+  statusText?: string;
+  daysRemaining: number;
+  lesseeName: string;
+  lesseePhone?: string;
+  lesseeIdentityNumber?: string;
+  lesseeAddress?: string;
+  specialTerms?: string;
+  notes?: string;
+  signedAtUtc?: string;
+  renewals?: ZoneContractRenewal[];
+  createdAtUtc?: string;
+}
+
+export interface DeviceDepreciation {
+  id: string;
+  zoneId: string;
+  zoneName?: string;
+  deviceId: string;
+  deviceName?: string;
+  deviceCode?: string;
+  serialNumber?: string;
+  hardwareAddress?: string;
+  deviceType?: string;
+  originalCostVnd: number;
+  monthlyDepreciationVnd: number;
+  accumulatedDepreciationVnd: number;
+  currentBookValueVnd: number;
+  depreciationLifetimeMonths: number;
+  monthsElapsed: number;
+  remainingMonths: number;
+  remainingLifespanMonths?: number;
+  warrantyMonths?: number;
+  installationDate?: string;
+  method: string;
+  startDate: string;
+  depreciationStatus: 'Active' | 'ExpiringSoon' | 'FullyDepreciated';
+  status?: 'Active' | 'ExpiringSoon' | 'FullyDepreciated';
+  isNearContractRenewal?: boolean;
+  notes?: string;
+  createdAtUtc?: string;
+}
+
+export interface ExpiringContractAlert {
+  contractId: string;
+  contractNumber: string;
+  farmId: string;
+  farmName: string;
+  zoneId: string;
+  zoneName: string;
+  cropType?: string;
+  endDate: string;
+  daysRemaining: number;
+  status: ZoneContractStatusType;
+  totalContractValueVnd: number;
 }
 
 export interface AuditLog {

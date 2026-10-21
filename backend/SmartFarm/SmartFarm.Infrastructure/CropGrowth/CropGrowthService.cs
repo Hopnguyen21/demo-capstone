@@ -178,7 +178,7 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         var first = profile.Stages.OrderBy(x => x.StageOrder).FirstOrDefault() ?? throw new ResourceConflictException("Growth Profile has no stages.");
         await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         if (await dbContext.PlantingSeasons.AnyAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct)) throw new ResourceConflictException("Zone already has an InProgress Planting Season.");
-        var season = new PlantingSeason { ZoneId = zoneId, CropId = command.CropId, VarietyId = command.VarietyId, GrowthProfileId = profile.Id, CurrentGrowthStageId = first.Id, Name = name, StartDate = command.StartDate, ExpectedEndDate = command.ExpectedEndDate };
+        var season = new PlantingSeason { ZoneId = zoneId, CropId = command.CropId, VarietyId = command.VarietyId, GrowthProfileId = profile.Id, CurrentGrowthStageId = first.Id, Name = name, StartDate = command.StartDate, ExpectedEndDate = command.ExpectedEndDate, FarmingSeasonId = command.FarmingSeasonId };
         ApplyRequirements(season, first); dbContext.PlantingSeasons.Add(season); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         return (await SeasonQuery().AsNoTracking().SingleAsync(x => x.Id == season.Id, ct)).ToView();
     }
@@ -245,7 +245,8 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
         .Include(x => x.GrowthProfile)
         .Include(x => x.CurrentGrowthStage)
         .Include(x => x.AppliedRequirements)
-        .Include(x => x.StageTransitions);
+        .Include(x => x.StageTransitions)
+        .Include(x => x.FarmingSeason);
     private async Task<AppUser> EnsureUserAsync(Guid id, Guid? tenantId, bool ownerRequired, CancellationToken ct)
     {
         var user = await dbContext.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new AuthorizationException();

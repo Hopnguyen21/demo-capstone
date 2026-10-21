@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
-import { alertService, supportService, notificationService, NotificationItem, isAuthenticated } from '../../services';
+import { alertService, supportService, notificationService, NotificationItem, isAuthenticated, zoneContractService } from '../../services';
 import { openMeteoService } from '../../services/openMeteoService';
 import { mockWeather } from '../../mocks/mockData';
 import {
@@ -55,12 +55,27 @@ export const Topbar: React.FC = () => {
       return;
     }
     try {
-      const [list, count] = await Promise.all([
-        notificationService.getNotifications(undefined, 1, 15),
-        notificationService.getUnreadCount()
+      const [list, count, expContracts] = await Promise.all([
+        notificationService.getNotifications(undefined, 1, 15).catch(() => []),
+        notificationService.getUnreadCount().catch(() => 0),
+        zoneContractService.getExpiringContracts(undefined, 30).catch(() => []),
       ]);
-      setNotifications(list);
-      setUnreadCount(count);
+
+      const contractNotifs: NotificationItem[] = (expContracts || []).map((c: any) => ({
+        notificationId: `contract-${c.contractId}`,
+        userId: user?.userId || '',
+        title: `⚠️ Hợp đồng [${c.contractNumber}] sắp hết hạn`,
+        message: `Phân khu: ${c.zoneName} (${c.farmName}). Hạn kết thúc: ${c.endDate} (còn ${c.daysRemaining} ngày). Nhấn để gia hạn ngay.`,
+        type: 'Alert' as const,
+        severity: c.daysRemaining <= 7 ? 'Critical' : 'Warning',
+        isRead: false,
+        createdAtUtc: new Date().toISOString(),
+        targetUrl: '/owner/farms',
+      }));
+
+      const combined = [...contractNotifs, ...(list || [])];
+      setNotifications(combined);
+      setUnreadCount(count + contractNotifs.length);
     } catch {
       // Fallback
     }
@@ -269,10 +284,10 @@ export const Topbar: React.FC = () => {
                     <div
                       key={n.notificationId}
                       onClick={async () => {
-                        if (!n.isRead) {
-                          await notificationService.markAsRead(n.notificationId);
-                          fetchNotifications();
+                        if (!n.isRead && !n.notificationId.startsWith('contract-')) {
+                          await notificationService.markAsRead(n.notificationId).catch(() => null);
                         }
+                        setShowNotificationMenu(false);
                         if (n.targetUrl) navigate(n.targetUrl);
                       }}
                       className={`p-3 rounded-xl border text-xs cursor-pointer transition-all hover:shadow-sm ${
@@ -302,7 +317,13 @@ export const Topbar: React.FC = () => {
                           {new Date(n.createdAtUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{' '}
                           {new Date(n.createdAtUtc).toLocaleDateString()}
                         </span>
-                        {!n.isRead && <span className="text-[#119653] font-bold text-[10px] flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#119653]"></span>Mới</span>}
+                        {n.targetUrl ? (
+                          <span className="text-[#119653] font-bold text-[10px] flex items-center gap-1 hover:underline">
+                            Mở đối tượng <ExternalLink size={10} />
+                          </span>
+                        ) : !n.isRead ? (
+                          <span className="text-[#119653] font-bold text-[10px] flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#119653]"></span>Mới</span>
+                        ) : null}
                       </div>
                     </div>
                   ))

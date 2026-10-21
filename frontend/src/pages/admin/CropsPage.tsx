@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { cropService, zoneService } from '../../services';
-import { Crop, CalendarIrrigationPlan, Zone } from '../../types';
+import { Crop, CalendarIrrigationPlan, Zone, CropVariety } from '../../types';
 import { Button, Input, Modal, StatusBadge } from '../../components/ui/BaseUI';
 import { CropCalendarView } from '../../components/crops/CropCalendarView';
 import { 
   Sprout, Plus, Search, Layers, BookOpen, Calendar as CalendarIcon, 
   Thermometer, Droplets, Zap, Sun, RefreshCw, CheckCircle2, Sliders, Info, ChevronRight, Sunrise, Sunset,
-  FileUp, FileText, Upload, Trash2, Check, AlertTriangle, FileCheck
+  FileUp, FileText, Upload, Trash2, Check, AlertTriangle, FileCheck, GitBranch, Tag, Sparkles
 } from 'lucide-react';
 
 export const CropsPage: React.FC = () => {
@@ -17,6 +17,15 @@ export const CropsPage: React.FC = () => {
   const [activeModalTab, setActiveModalTab] = useState<'INFO' | 'CALENDAR' | 'SYNC'>('INFO');
   const [selectedZoneIdForSync, setSelectedZoneIdForSync] = useState<string>('zone-01');
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Variety Management state (Item 10)
+  const [varietiesByCrop, setVarietiesByCrop] = useState<Record<string, CropVariety[]>>({});
+  const [isVarietyModalOpen, setIsVarietyModalOpen] = useState(false);
+  const [selectedCropForVarieties, setSelectedCropForVarieties] = useState<Crop | null>(null);
+  const [varietyList, setVarietyList] = useState<CropVariety[]>([]);
+  const [newVarietyName, setNewVarietyName] = useState('');
+  const [newVarietyDesc, setNewVarietyDesc] = useState('');
+  const [isAddingVariety, setIsAddingVariety] = useState(false);
 
   // Form state for creating/editing crop
   const [formData, setFormData] = useState<Partial<Crop>>({
@@ -83,12 +92,22 @@ export const CropsPage: React.FC = () => {
   ]);
 
   const loadData = async () => {
-    const [fetchedCrops, fetchedZones] = await Promise.all([
+    const [fetchedCrops, fetchedZones, allVarieties] = await Promise.all([
       cropService.getCrops(),
       zoneService.getZones(),
+      cropService.getAllVarieties().catch(() => []),
     ]);
     setCrops([...fetchedCrops]);
     setZones(fetchedZones);
+
+    const varMap: Record<string, CropVariety[]> = {};
+    if (Array.isArray(allVarieties)) {
+      for (const v of allVarieties) {
+        if (!varMap[v.cropId]) varMap[v.cropId] = [];
+        varMap[v.cropId].push(v);
+      }
+    }
+    setVarietiesByCrop(varMap);
   };
 
   useEffect(() => {
@@ -131,6 +150,70 @@ export const CropsPage: React.FC = () => {
     setFormData({ ...crop });
     setActiveModalTab('INFO');
     setIsModalOpen(true);
+  };
+
+  const openVarietyModal = async (crop: Crop) => {
+    setSelectedCropForVarieties(crop);
+    setNewVarietyName('');
+    setNewVarietyDesc('');
+    setIsVarietyModalOpen(true);
+    try {
+      const vars = await cropService.getVarieties(crop.cropId);
+      setVarietyList(vars);
+      setVarietiesByCrop(prev => ({ ...prev, [crop.cropId]: vars }));
+    } catch {
+      setVarietyList(varietiesByCrop[crop.cropId] || []);
+    }
+  };
+
+  const handleAddVariety = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCropForVarieties || !newVarietyName.trim()) return;
+    setIsAddingVariety(true);
+    try {
+      const created = await cropService.createVariety(selectedCropForVarieties.cropId, {
+        name: newVarietyName.trim(),
+        description: newVarietyDesc.trim() || undefined
+      });
+      const updatedList = [...varietyList, created];
+      setVarietyList(updatedList);
+      setVarietiesByCrop(prev => ({
+        ...prev,
+        [selectedCropForVarieties.cropId]: updatedList
+      }));
+      setNewVarietyName('');
+      setNewVarietyDesc('');
+      setNotification({ type: 'success', message: `Đã thêm giống cây [${created.name}] cho loài cây ${selectedCropForVarieties.name} thành công!` });
+    } catch (err: any) {
+      console.error(err);
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Có lỗi khi thêm giống cây';
+      setNotification({ type: 'error', message: `Lỗi: ${msg}` });
+    } finally {
+      setIsAddingVariety(false);
+    }
+  };
+
+  const handleSeedSuggestedVariety = async (varietyName: string, desc: string) => {
+    if (!selectedCropForVarieties) return;
+    setIsAddingVariety(true);
+    try {
+      const created = await cropService.createVariety(selectedCropForVarieties.cropId, {
+        name: varietyName,
+        description: desc
+      });
+      const updatedList = [...varietyList, created];
+      setVarietyList(updatedList);
+      setVarietiesByCrop(prev => ({
+        ...prev,
+        [selectedCropForVarieties.cropId]: updatedList
+      }));
+      setNotification({ type: 'success', message: `Đã tạo nhanh giống cây [${varietyName}]!` });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Lỗi thêm giống';
+      setNotification({ type: 'error', message: `Lỗi: ${msg}` });
+    } finally {
+      setIsAddingVariety(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -541,6 +624,34 @@ export const CropsPage: React.FC = () => {
                     </span>
                   </div>
                 </div>
+
+                {/* Plant Varieties Badge Row (Item 10) */}
+                <div className="p-2.5 bg-purple-50/70 border border-purple-100 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-purple-950">
+                    <span className="flex items-center gap-1.5">
+                      <Sprout size={13} className="text-purple-600" /> Giống cây thuộc loài (Varieties)
+                    </span>
+                    <span className="text-[10px] bg-purple-200/80 text-purple-900 px-1.5 py-0.5 rounded-full font-bold">
+                      {(varietiesByCrop[c.cropId] || []).length} giống
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 text-[10px]">
+                    {(varietiesByCrop[c.cropId] || []).length > 0 ? (
+                      (varietiesByCrop[c.cropId] || []).slice(0, 3).map(v => (
+                        <span key={v.varietyId} className="bg-white border border-purple-200 text-purple-800 px-2 py-0.5 rounded-md font-medium shadow-2xs">
+                          {v.name}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">Chưa có giống cây được định nghĩa</span>
+                    )}
+                    {(varietiesByCrop[c.cropId] || []).length > 3 && (
+                      <span className="text-purple-700 font-semibold px-1 self-center">
+                        +{(varietiesByCrop[c.cropId] || []).length - 3} giống khác
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Action Footer */}
@@ -557,15 +668,25 @@ export const CropsPage: React.FC = () => {
                     <Trash2 size={13} /> Xóa
                   </button>
                 </div>
-                <button
-                  onClick={() => {
-                    openEditModal(c);
-                    setActiveModalTab('SYNC');
-                  }}
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1 text-[11px] shadow-2xs transition-all cursor-pointer"
-                >
-                  <RefreshCw size={12} /> Đồng bộ sang Zone
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => openVarietyModal(c)}
+                    className="bg-purple-100 hover:bg-purple-200 text-purple-900 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 text-[11px] transition-all cursor-pointer shadow-2xs"
+                    title="Quản lý các giống cây thuộc loài này"
+                  >
+                    <Layers size={12} className="text-purple-700" /> Giống cây
+                  </button>
+                  <button
+                    onClick={() => {
+                      openEditModal(c);
+                      setActiveModalTab('SYNC');
+                    }}
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1 text-[11px] shadow-2xs transition-all cursor-pointer"
+                  >
+                    <RefreshCw size={12} /> Đồng bộ Zone
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -1013,6 +1134,194 @@ export const CropsPage: React.FC = () => {
           {/* Footer Action */}
           <div className="flex justify-end pt-3 border-t border-slate-100">
             <Button variant="ghost" onClick={() => setIsDocModalOpen(false)}>Đóng</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* DEDICATED MODAL: Plant Variety Management (Item 10) */}
+      <Modal
+        isOpen={isVarietyModalOpen}
+        onClose={() => setIsVarietyModalOpen(false)}
+        title={`Quản lý Giống cây (Plant Variety) - ${selectedCropForVarieties?.name || ''}`}
+      >
+        <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1 text-xs">
+          {/* Architectural / Educational Banner for Reviewers & Teachers */}
+          <div className="p-3.5 bg-linear-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl space-y-1.5">
+            <div className="flex items-center gap-2 font-bold text-purple-900 text-xs">
+              <Sparkles size={15} className="text-purple-600" />
+              <span>Mô hình Nông học: 1 Loài cây (Crop) ───&lt; Nhiều Giống cây (Plant Varieties)</span>
+            </div>
+            <p className="text-[11px] text-purple-800 leading-relaxed">
+              Loài cây <strong className="font-semibold text-purple-950">[{selectedCropForVarieties?.name}]</strong> là danh mục nông học cấp 1. 
+              Các giống cây con dưới đây được dùng khi nông dân tạo đợt trồng (PlantingCrop), đảm bảo <em>chỉ chọn được giống đúng loài cây đã chọn</em> qua cascade dropdown.
+            </p>
+          </div>
+
+          {/* Quick seed suggestions for typical crops */}
+          {selectedCropForVarieties && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                <Tag size={13} className="text-emerald-600" /> Gợi ý các giống phổ biến (Nhấn để thêm nhanh):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedCropForVarieties.name.toLowerCase().includes('cà chua') ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Cà chua bi lùn F1', 'Sinh trưởng hữu hạn, thời gian 70 ngày, brix 8.5%')}
+                      className="px-2.5 py-1 bg-white border border-purple-200 hover:bg-purple-100 text-purple-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Cà chua bi lùn F1
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Cà chua Cherry Nova VietGAP', 'Dạng chùm, quả đỏ mọng, vị ngọt thanh brix 9.5%')}
+                      className="px-2.5 py-1 bg-white border border-purple-200 hover:bg-purple-100 text-purple-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Cà chua Cherry Nova
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Cà chua Múi Hoàng Gia', 'Trái lớn 180-250g, thịt dày, chịu nhiệt tốt')}
+                      className="px-2.5 py-1 bg-white border border-purple-200 hover:bg-purple-100 text-purple-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Cà chua Múi Hoàng Gia
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Cà chua Beef Đà Lạt', 'Chuyên canh nhà màng công nghệ cao, quả chắc ngọt')}
+                      className="px-2.5 py-1 bg-white border border-purple-200 hover:bg-purple-100 text-purple-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Cà chua Beef Đà Lạt
+                    </button>
+                  </>
+                ) : selectedCropForVarieties.name.toLowerCase().includes('dưa') ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Dưa lưới Huỳnh Long', 'Vỏ vàng ruột cam, vân lưới nổi rõ, độ ngọt cao')}
+                      className="px-2.5 py-1 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Dưa lưới Huỳnh Long
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Dưa lưới Taki Nhật Bản', 'Vân lưới đồng đều, ruột xanh ngọc, chuẩn xuất khẩu')}
+                      className="px-2.5 py-1 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Dưa lưới Taki Nhật Bản
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety('Dưa leo baby VietGAP', 'Trái dài 10-12cm, giòn ngọt không đắng')}
+                      className="px-2.5 py-1 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + Dưa leo baby VietGAP
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety(`${selectedCropForVarieties.name} F1 Cao Sản`, 'Kháng bệnh tốt, năng suất vượt trội theo tiêu chuẩn VietGAP')}
+                      className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + {selectedCropForVarieties.name} F1 Cao Sản
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isAddingVariety}
+                      onClick={() => handleSeedSuggestedVariety(`${selectedCropForVarieties.name} Thủy Canh Chuyên Dụng`, 'Phù hợp trồng hệ thống NFT và giá thể tưới nhỏ giọt')}
+                      className="px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 rounded-lg font-medium transition-all cursor-pointer shadow-2xs"
+                    >
+                      + {selectedCropForVarieties.name} Thủy Canh Chuyên Dụng
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Form to Add New Variety */}
+          <form onSubmit={handleAddVariety} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+            <h5 className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+              <Plus size={14} className="text-purple-600" /> Thêm Giống Cây Mới Cho [{selectedCropForVarieties?.name}]
+            </h5>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Tên giống cây *</label>
+                <Input
+                  required
+                  placeholder="Ví dụ: Cà chua Cherry Nova F1"
+                  value={newVarietyName}
+                  onChange={e => setNewVarietyName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Đặc tính sinh trưởng & chất lượng</label>
+                <Input
+                  placeholder="Ví dụ: Độ brix 9.2%, kháng bọ trĩ, quả mọng"
+                  value={newVarietyDesc}
+                  onChange={e => setNewVarietyDesc(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={isAddingVariety || !newVarietyName.trim()} className="bg-purple-700 hover:bg-purple-800 text-white text-xs py-1.5">
+                {isAddingVariety ? 'Đang lưu...' : '+ Thêm Giống Cây'}
+              </Button>
+            </div>
+          </form>
+
+          {/* List of Existing Varieties */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between font-bold text-slate-800">
+              <span className="flex items-center gap-1.5">
+                <Layers size={14} className="text-purple-600" /> Danh sách Giống Cây Hiện Có ({varietyList.length})
+              </span>
+              <span className="text-[11px] text-slate-500 font-normal">Entity: PlantVariety (CropId: {selectedCropForVarieties?.cropId})</span>
+            </div>
+
+            {varietyList.length === 0 ? (
+              <div className="p-6 bg-slate-50 rounded-xl text-center text-slate-500 text-xs border border-dashed border-slate-300">
+                Loài cây này chưa có giống nào được thêm. Hãy chọn các nút gợi ý ở trên hoặc điền form để tạo giống đầu tiên!
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {varietyList.map(v => (
+                  <div key={v.varietyId} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs hover:border-purple-300 transition-all">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-xs">{v.name}</span>
+                        {v.isSystemDefined && (
+                          <span className="px-1.5 py-0.2 text-[9px] bg-emerald-100 text-emerald-800 rounded font-semibold border border-emerald-200">
+                            Hệ thống
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {v.description || 'Chưa có thông tin mô tả đặc tính nông học.'}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono text-purple-800 bg-purple-50 px-2 py-1 rounded border border-purple-100 shrink-0">
+                      ID: {v.varietyId.slice(0, 8)}...
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-3 border-t border-slate-100">
+            <Button variant="ghost" onClick={() => setIsVarietyModalOpen(false)}>Đóng</Button>
           </div>
         </div>
       </Modal>

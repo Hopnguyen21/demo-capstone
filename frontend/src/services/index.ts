@@ -2,6 +2,7 @@
 // Replaces all mock data imports from ./mocks/mockData
 
 import { apiClient, setTokens, clearTokens, extractApiError } from './api';
+import type { FarmingSeason, PlantingSeason, CropVariety } from '../types';
 
 // ─── Re-export api utilities ─────────────────────────────────────────────────
 export { extractApiError, clearTokens, getAccessToken, isAuthenticated, setTokens } from './api';
@@ -486,6 +487,12 @@ export const cropService = {
     return res.data?.value ?? res.data ?? [];
   },
 
+  /** GET /api/v1/varieties (All varieties across crops or filtered) */
+  getAllVarieties: async (cropId?: string) => {
+    const res = await apiClient.get('/api/v1/varieties', { params: cropId ? { cropId } : {} });
+    return res.data?.value ?? res.data ?? [];
+  },
+
   /** POST /api/v1/crops/{cropId}/varieties */
   createVariety: async (cropId: string, data: { name: string; description?: string }) => {
     const res = await apiClient.post(`/api/v1/crops/${cropId}/varieties`, data);
@@ -615,6 +622,19 @@ export const seasonService = {
     }));
   },
 
+  /** GET /api/v1/planting-seasons (All planting batches across all visible zones/farms) */
+  getAllPlantingBatches: async (params?: { farmId?: string; zoneId?: string; seasonId?: string }) => {
+    const res = await apiClient.get('/api/v1/planting-seasons', { params }).catch(() => ({ data: [] }));
+    const raw = res.data?.value ?? res.data ?? [];
+    const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map((s: any) => ({
+      ...s,
+      plantingSeasonId: s.plantingSeasonId || s.seasonId,
+      seasonId: s.plantingSeasonId || s.seasonId,
+      status: (s.status === 'InProgress' || s.status === 'IN_PROGRESS') ? 'ACTIVE' : (s.status || 'ACTIVE'),
+    }));
+  },
+
   /** POST /api/v1/zones/{zoneId}/planting-seasons */
   createSeason: async (
     zoneId: string,
@@ -623,6 +643,7 @@ export const seasonService = {
       cropId: string;
       varietyId?: string;
       growthProfileId?: string;
+      farmingSeasonId?: string;
       startDate: string;
       expectedEndDate: string;
     }
@@ -658,6 +679,47 @@ export const seasonService = {
   ) => {
     const res = await apiClient.put(`/api/v1/zones/${zoneId}/planting-seasons/${seasonId}/close`, data);
     return res.data;
+  },
+};
+
+// Master Farming Seasons (Đông-Xuân, Hè-Thu...)
+export const farmingSeasonService = {
+  getSeasons: async (params?: { year?: number; status?: string }) => {
+    const res = await apiClient.get('/api/v1/seasons', { params });
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  getSeasonById: async (id: string) => {
+    const res = await apiClient.get(`/api/v1/seasons/${id}`);
+    return res.data;
+  },
+
+  createSeason: async (data: {
+    code: string;
+    name: string;
+    year: number;
+    startDate: string;
+    endDate: string;
+    description?: string;
+    status?: string;
+  }) => {
+    const res = await apiClient.post('/api/v1/seasons', data);
+    return res.data;
+  },
+
+  updateSeason: async (id: string, data: any) => {
+    const res = await apiClient.put(`/api/v1/seasons/${id}`, data);
+    return res.data;
+  },
+
+  deleteSeason: async (id: string) => {
+    const res = await apiClient.delete(`/api/v1/seasons/${id}`);
+    return res.data;
+  },
+
+  getSeasonPlantingCrops: async (id: string) => {
+    const res = await apiClient.get(`/api/v1/seasons/${id}/planting-crops`);
+    return res.data?.value ?? res.data ?? [];
   },
 };
 
@@ -1620,5 +1682,94 @@ export const notificationService = {
     }
   },
 };
+
+export const zoneContractService = {
+  /** GET /api/v1/zone-contracts */
+  getAllContracts: async (): Promise<any[]> => {
+    try {
+      const res = await apiClient.get('/api/v1/zone-contracts');
+      return res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** GET /api/v1/farms/{farmId}/zone-contracts */
+  getContractsByFarm: async (farmId: string): Promise<any[]> => {
+    try {
+      const res = await apiClient.get(`/api/v1/farms/${farmId}/zone-contracts`);
+      return res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** GET /api/v1/zones/{zoneId}/contracts */
+  getContractsByZone: async (zoneId: string): Promise<any[]> => {
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${zoneId}/contracts`);
+      return res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** GET /api/v1/zone-contracts/{id} */
+  getContractById: async (id: string): Promise<any> => {
+    const res = await apiClient.get(`/api/v1/zone-contracts/${id}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/zones/{zoneId}/contracts */
+  createContract: async (zoneId: string, data: any): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/contracts`, data);
+    return res.data;
+  },
+
+  /** POST /api/v1/zone-contracts/{id}/renew */
+  renewContract: async (id: string, data: any): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/zone-contracts/${id}/renew`, data);
+    return res.data;
+  },
+
+  /** GET /api/v1/zone-contracts/expiring */
+  getExpiringContracts: async (farmId?: string, daysThreshold: number = 30): Promise<any[]> => {
+    try {
+      const params: any = { daysThreshold };
+      if (farmId) params.farmId = farmId;
+      const res = await apiClient.get('/api/v1/zone-contracts/expiring', { params });
+      return res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** GET /api/v1/zones/{zoneId}/depreciations */
+  getDepreciationsByZone: async (zoneId: string): Promise<any[]> => {
+    try {
+      const res = await apiClient.get(`/api/v1/zones/${zoneId}/depreciations`);
+      return res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** GET /api/v1/farms/{farmId}/depreciations */
+  getDepreciationsByFarm: async (farmId: string): Promise<any[]> => {
+    try {
+      const res = await apiClient.get(`/api/v1/farms/${farmId}/depreciations`);
+      return res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** POST /api/v1/zones/{zoneId}/depreciations */
+  createDepreciation: async (zoneId: string, data: any): Promise<any> => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/depreciations`, data);
+    return res.data;
+  },
+};
+
 
 
