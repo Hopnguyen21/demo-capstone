@@ -38,18 +38,8 @@ public sealed class InventoryTasksController(IInventoryTaskService service) : Co
 
     // API catalog #99
     [HttpGet("tasks")]
-    public async Task<ActionResult<IReadOnlyList<FarmTaskView>>> Tasks(Guid farmId, CancellationToken ct)
-    {
-        try
-        {
-            var tenantId = User.GetOptionalTenantId() ?? Guid.Empty;
-            return Ok(await service.ListTasksAsync(User.GetUserId(), tenantId, farmId, ct));
-        }
-        catch (Exception)
-        {
-            return Ok(Array.Empty<FarmTaskView>());
-        }
-    }
+    public async Task<ActionResult<IReadOnlyList<FarmTaskView>>> Tasks(Guid farmId, CancellationToken ct) =>
+        Ok(await service.ListTasksAsync(User.GetUserId(), User.GetTenantId(), farmId, ct));
 
     // API catalog #100
     [HttpPost("tasks"), Authorize(Roles = "FarmOwner")]

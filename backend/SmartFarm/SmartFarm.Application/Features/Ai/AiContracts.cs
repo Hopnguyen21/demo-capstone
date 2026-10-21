@@ -8,6 +8,18 @@ public sealed record AiRequirementContextItem(EnvironmentalParameterCode Paramet
 public sealed record AiActuatorContextItem(Guid ActuatorId, string ActuatorType, int MaxDurationSeconds, bool IsOnline);
 public sealed record AiUpcomingScheduleContextItem(string Name, DateTime NextRunAtUtc, string NextRunTimeFormatted, int DurationSeconds, int MinutesUntilRun);
 public sealed record AiWeatherContext(bool Available, string? Summary, decimal? RainProbabilityNext6HoursMaxPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
+public sealed record AiZoneStructureItem(
+    Guid ZoneId, string ZoneName, decimal AreaM2, string ZoneType, string ZoneStatus,
+    string? ActiveCrop, string? GrowthStageName, int? SeasonAgeDays);
+
+public sealed record AiFieldStructureItem(
+    Guid FieldId, string FieldName, decimal AreaM2,
+    IReadOnlyList<AiZoneStructureItem> Zones);
+
+public sealed record AiFarmStructureContext(
+    Guid FarmId, string FarmName, decimal TotalAreaM2,
+    IReadOnlyList<AiFieldStructureItem> Fields);
+
 public sealed record AiZoneContext(
     Guid FarmId, string FarmName, string FarmTimeZone, Guid FieldId, string FieldName, Guid ZoneId, string ZoneName, decimal ZoneAreaM2,
     Guid? PlantingSeasonId, string? CropName, string? VarietyName, Guid? GrowthProfileId, string? GrowthProfileName, int? SeasonAgeDays,
@@ -18,7 +30,9 @@ public sealed record AiZoneContext(
     IReadOnlyList<AiUpcomingScheduleContextItem> UpcomingSchedules,
     AiWeatherContext Weather,
     IReadOnlyList<string> MissingData,
-    bool IsSufficientForAdvice);
+    bool IsSufficientForAdvice,
+    AiFarmStructureContext? FarmStructure = null);
+
 
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);
 public sealed record AiProviderRequest(string Question, AiZoneContext Context);

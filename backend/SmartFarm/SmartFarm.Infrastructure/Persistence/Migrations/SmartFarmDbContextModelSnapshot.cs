@@ -1776,6 +1776,68 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("device_connection_tests", (string)null);
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.DeviceDepreciation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AccumulatedDepreciationVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("CurrentBookValueVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("DepreciationLifetimeMonths")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("MonthlyDepreciationVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("OriginalCostVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ZoneId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByOwnerId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ZoneId");
+
+                    b.ToTable("DeviceDepreciations");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.DeviceDiagnosticJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4135,6 +4197,140 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContract", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContractNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CropType")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("DepositVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("FarmId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LesseeAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LesseeIdentityNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LesseeName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LesseePhone")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("MonthlyRentVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ParentContractId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SignedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SpecialTerms")
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("TerminatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TerminationReason")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("TotalContractValueVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ZoneId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByOwnerId");
+
+                    b.HasIndex("FarmId");
+
+                    b.HasIndex("ParentContractId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ZoneId");
+
+                    b.ToTable("ZoneContracts");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContractRenewal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByOwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("NewEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("NewMonthlyRentVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("RenewalValueVnd")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContractId");
+
+                    b.HasIndex("CreatedByOwnerId");
+
+                    b.ToTable("ZoneContractRenewals");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.ActuatorCommand", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.DeviceActuator", "Actuator")
@@ -4774,6 +4970,41 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("Device");
 
                     b.Navigation("TechnicianUser");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.DeviceDepreciation", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByOwner")
+                        .WithMany()
+                        .HasForeignKey("CreatedByOwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.Device", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.Zone", "Zone")
+                        .WithMany()
+                        .HasForeignKey("ZoneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByOwner");
+
+                    b.Navigation("Device");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("Zone");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.DeviceDiagnosticJob", b =>
@@ -5474,6 +5705,66 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("Field");
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContract", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByOwner")
+                        .WithMany()
+                        .HasForeignKey("CreatedByOwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.Farm", "Farm")
+                        .WithMany()
+                        .HasForeignKey("FarmId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.ZoneContract", "ParentContract")
+                        .WithMany()
+                        .HasForeignKey("ParentContractId");
+
+                    b.HasOne("SmartFarm.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.Zone", "Zone")
+                        .WithMany()
+                        .HasForeignKey("ZoneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByOwner");
+
+                    b.Navigation("Farm");
+
+                    b.Navigation("ParentContract");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("Zone");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContractRenewal", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.ZoneContract", "Contract")
+                        .WithMany("Renewals")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByOwner")
+                        .WithMany()
+                        .HasForeignKey("CreatedByOwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("CreatedByOwner");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.ActuatorCommand", b =>
                 {
                     b.Navigation("Events");
@@ -5615,6 +5906,11 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("PlantingSeasons");
 
                     b.Navigation("UserAccesses");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContract", b =>
+                {
+                    b.Navigation("Renewals");
                 });
 #pragma warning restore 612, 618
         }

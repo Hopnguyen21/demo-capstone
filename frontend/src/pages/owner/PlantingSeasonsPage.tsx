@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Clock, CheckCircle2, Sliders, Droplets, Radio, Play, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+  Calendar, Plus, Clock, CheckCircle2, Sliders, Droplets, Radio, Play,
+  ShieldCheck, Sparkles, QrCode, FileText, Printer, Download, Package,
+  DollarSign, AlertTriangle, Check
+} from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 import { controlService, farmService, fieldService, seasonService, zoneService } from '../../services';
 import { PlantingSeason, ControlSchedule, Actuator } from '../../types';
@@ -10,8 +14,22 @@ export const PlantingSeasonsPage: React.FC = () => {
   const [selectedSeason, setSelectedSeason] = useState<PlantingSeason | null>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
   const [isSeasonModalOpen, setIsSeasonModalOpen] = useState<boolean>(false);
+  const [isHarvestModalOpen, setIsHarvestModalOpen] = useState<boolean>(false);
+  const [isVietgapLogModalOpen, setIsVietgapLogModalOpen] = useState<boolean>(false);
+  const [harvestSaved, setHarvestSaved] = useState<boolean>(false);
   const [actuators, setActuators] = useState<Actuator[]>([]);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Harvest Form State
+  const [harvestForm, setHarvestForm] = useState({
+    harvestDate: '2026-10-21',
+    totalYieldKg: 850,
+    gradeAKg: 720,
+    gradeBKg: 100,
+    scrapKg: 30,
+    unitPrice: 45000,
+    notes: 'Thu hoạch lứa 1 đạt chuẩn xuất khẩu VietGAP, độ ngọt Brix 9.2%',
+  });
 
   // New Planting Season Form State
   const [seasonForm, setSeasonForm] = useState({
@@ -126,6 +144,34 @@ export const PlantingSeasonsPage: React.FC = () => {
     setIsScheduleModalOpen(true);
   };
 
+  const handleOpenHarvest = (season: PlantingSeason) => {
+    setSelectedSeason(season);
+    setHarvestSaved(false);
+    setHarvestForm({
+      harvestDate: new Date().toISOString().slice(0, 10),
+      totalYieldKg: 850,
+      gradeAKg: 720,
+      gradeBKg: 100,
+      scrapKg: 30,
+      unitPrice: 45000,
+      notes: `Thu hoạch ${season.name} đạt chuẩn xuất khẩu VietGAP, độ ngọt Brix 9.2%`,
+    });
+    setIsHarvestModalOpen(true);
+  };
+
+  const handleSaveHarvest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSeason) return;
+    setHarvestSaved(true);
+    setSuccessToast(`Đã ghi nhận sản lượng thu hoạch ${harvestForm.totalYieldKg}kg cho [${selectedSeason.name}]!`);
+    setTimeout(() => setSuccessToast(null), 3500);
+  };
+
+  const handleOpenVietgapLog = (season: PlantingSeason) => {
+    setSelectedSeason(season);
+    setIsVietgapLogModalOpen(true);
+  };
+
   const handleSaveSeasonSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSeason) return;
@@ -227,13 +273,21 @@ export const PlantingSeasonsPage: React.FC = () => {
 
               {/* Season Irrigation Schedules Embedded Section */}
               <div className="p-4 bg-emerald-50/40 border border-emerald-200 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <Droplets size={14} className="text-emerald-700" /> Các Lịch Tưới Đang Chạy cho Vụ này
+                    <Droplets size={14} className="text-emerald-700" /> Lịch Tưới &amp; Vận Hành Canh Tác
                   </h4>
-                  <Button size="sm" variant="primary" onClick={() => handleOpenSetupSchedule(s)}>
-                    <Clock size={13} className="mr-1.5" /> Setup Lịch tưới Mùa vụ
-                  </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => handleOpenVietgapLog(s)} className="text-xs">
+                      <FileText size={13} className="mr-1.5 text-emerald-700" /> Nhật Ký VietGAP &amp; Vật Tư
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleOpenHarvest(s)} className="text-xs border-amber-300 text-amber-800 hover:bg-amber-50">
+                      <QrCode size={13} className="mr-1.5 text-amber-600" /> Thu Hoạch &amp; Mã QR
+                    </Button>
+                    <Button size="sm" variant="primary" onClick={() => handleOpenSetupSchedule(s)}>
+                      <Clock size={13} className="mr-1.5" /> Setup Lịch tưới
+                    </Button>
+                  </div>
                 </div>
 
                 {seasonSchedules.length === 0 ? (
@@ -485,6 +539,237 @@ export const PlantingSeasonsPage: React.FC = () => {
             <Button variant="primary" type="submit">Kích hoạt Vụ mùa</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal 1: Ghi Nhận Thu Hoạch & Tạo Tem Mã QR Truy Xuất */}
+      <Modal
+        isOpen={isHarvestModalOpen}
+        onClose={() => setIsHarvestModalOpen(false)}
+        title={`Ghi Nhận Thu Hoạch & Sinh Mã QR Truy Xuất: "${selectedSeason?.name || ''}"`}
+      >
+        <div className="space-y-4 text-xs">
+          {!harvestSaved ? (
+            <form onSubmit={handleSaveHarvest} className="space-y-3.5">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-slate-500 block text-[10px]">Cây trồng & Vụ mùa:</span>
+                <strong className="text-slate-900 text-sm">{selectedSeason?.cropName} ({selectedSeason?.varietyName})</strong>
+                <p className="text-[11px] text-slate-500 mt-0.5">Khu vực: {selectedSeason?.zoneName} • Tiêu chuẩn VietGAP TCVN 11892-1:2017</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Ngày Thu Hoạch *</label>
+                  <Input
+                    type="date"
+                    required
+                    value={harvestForm.harvestDate}
+                    onChange={e => setHarvestForm({ ...harvestForm, harvestDate: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Tổng Sản Lượng (kg) *</label>
+                  <Input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.1"
+                    value={harvestForm.totalYieldKg}
+                    onChange={e => setHarvestForm({ ...harvestForm, totalYieldKg: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                <div>
+                  <label className="block text-emerald-900 font-bold text-[11px] mb-1">Loại 1 (VIP - kg)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={harvestForm.gradeAKg}
+                    onChange={e => setHarvestForm({ ...harvestForm, gradeAKg: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-emerald-900 font-bold text-[11px] mb-1">Loại 2 (Thường - kg)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={harvestForm.gradeBKg}
+                    onChange={e => setHarvestForm({ ...harvestForm, gradeBKg: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-rose-900 font-bold text-[11px] mb-1">Hao hụt/Loại (kg)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={harvestForm.scrapKg}
+                    onChange={e => setHarvestForm({ ...harvestForm, scrapKg: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Giá Bán Dự Kiến (VNĐ/kg)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={harvestForm.unitPrice}
+                    onChange={e => setHarvestForm({ ...harvestForm, unitPrice: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-center">
+                  <span className="text-[10px] text-slate-500 font-semibold uppercase">Doanh Thu Dự Kiến:</span>
+                  <span className="text-base font-black text-emerald-700">
+                    {((harvestForm.gradeAKg + harvestForm.gradeBKg) * harvestForm.unitPrice).toLocaleString('vi-VN')} VNĐ
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Ghi Chú Nghiệm Thu / Độ Ngọt Brix</label>
+                <Input
+                  value={harvestForm.notes}
+                  onChange={e => setHarvestForm({ ...harvestForm, notes: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button variant="ghost" type="button" onClick={() => setIsHarvestModalOpen(false)}>Hủy</Button>
+                <Button variant="primary" type="submit" className="bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5">
+                  <QrCode size={15} /> Lưu &amp; Sinh Tem QR Truy Xuất
+                </Button>
+              </div>
+            </form>
+          ) : (
+            /* Printable QR Label Tag Preview */
+            <div className="space-y-4">
+              <div className="p-5 bg-white border-2 border-dashed border-emerald-500 rounded-2xl shadow-sm text-center space-y-3">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-900 rounded-full font-bold text-xs uppercase tracking-wide">
+                  <Check size={14} /> Tem Truy Xuất Nguồn Gốc VietGAP
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-slate-900">{selectedSeason?.cropName}</h3>
+                  <p className="text-xs text-slate-600 font-medium">Giống: {selectedSeason?.varietyName || 'Cao Sản F1'} • {selectedSeason?.zoneName}</p>
+                </div>
+
+                {/* Simulated QR Code Graphic */}
+                <div className="flex justify-center py-2">
+                  <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs inline-block">
+                    <div className="w-32 h-32 bg-slate-900 p-2 rounded-lg flex flex-col justify-between items-center text-white">
+                      <div className="flex justify-between w-full">
+                        <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center"><div className="w-3 h-3 bg-white" /></div>
+                        <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center"><div className="w-3 h-3 bg-white" /></div>
+                      </div>
+                      <div className="text-[9px] font-mono font-bold tracking-widest text-emerald-400">SMARTFARM</div>
+                      <div className="flex justify-between w-full">
+                        <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center"><div className="w-3 h-3 bg-white" /></div>
+                        <div className="w-3 h-3 bg-white" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-left bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-[11px]">
+                  <div className="flex justify-between"><span>Mã Lô Thu Hoạch:</span><strong className="font-mono text-emerald-700">LOT-VIE-2026-H01</strong></div>
+                  <div className="flex justify-between"><span>Ngày Thu Hoạch:</span><strong>{harvestForm.harvestDate}</strong></div>
+                  <div className="flex justify-between"><span>Sản Lượng Đóng Gói:</span><strong>{harvestForm.totalYieldKg} kg (Hạng A: {harvestForm.gradeAKg}kg)</strong></div>
+                  <div className="flex justify-between"><span>Thời Gian Cách Ly PHI:</span><strong className="text-emerald-700">Đã đảm bảo 7 ngày</strong></div>
+                  <div className="flex justify-between"><span>Tiêu Chuẩn:</span><strong>TCVN 11892-1:2017</strong></div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsHarvestModalOpen(false)}>Đóng</Button>
+                <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5">
+                  <Printer size={15} /> In Tem Nhãn Bao Bì
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal 2: Nhật Ký Canh Tác Điện Tử & Hồ Sơ VietGAP */}
+      <Modal
+        isOpen={isVietgapLogModalOpen}
+        onClose={() => setIsVietgapLogModalOpen(false)}
+        title={`Nhật Ký Canh Tác & Hồ Sơ Thẩm Định VietGAP: "${selectedSeason?.name || ''}"`}
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div className="font-bold text-emerald-950 text-sm">Hồ Sơ Canh Tác Chuẩn VietGAP (TCVN 11892-1:2017)</div>
+              <p className="text-[11px] text-emerald-800 mt-0.5">
+                Vụ: {selectedSeason?.name} • Khu vực: {selectedSeason?.zoneName} • Cây trồng: {selectedSeason?.cropName}
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+              ✓ 100% Tuân Thủ
+            </span>
+          </div>
+
+          {/* Farming Log Table */}
+          <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-[11px]">
+                  <th className="p-2.5">Ngày</th>
+                  <th className="p-2.5">Hoạt Động / Công Việc</th>
+                  <th className="p-2.5">Vật Tư &amp; Mã Lô (Lot #)</th>
+                  <th className="p-2.5">Liều Lượng</th>
+                  <th className="p-2.5">Cách Ly (PHI)</th>
+                  <th className="p-2.5">Trạng Thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
+                <tr className="hover:bg-slate-50/50">
+                  <td className="p-2.5 font-mono text-slate-500">2026-10-15</td>
+                  <td className="p-2.5 font-medium text-slate-900">Bón lót chuẩn bị luống</td>
+                  <td className="p-2.5">Phân trùn quế vi sinh <span className="font-mono text-emerald-700">(LOT-TQ-01)</span></td>
+                  <td className="p-2.5">0.5 kg/m²</td>
+                  <td className="p-2.5 font-bold text-emerald-700">0 ngày</td>
+                  <td className="p-2.5"><span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">Đạt chuẩn</span></td>
+                </tr>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="p-2.5 font-mono text-slate-500">2026-10-18</td>
+                  <td className="p-2.5 font-medium text-slate-900">Phun phòng nấm sinh học</td>
+                  <td className="p-2.5">Chế phẩm Trichoderma <span className="font-mono text-emerald-700">(LOT-BIO-02)</span></td>
+                  <td className="p-2.5">10 ml/m²</td>
+                  <td className="p-2.5 font-bold text-emerald-700">3 ngày</td>
+                  <td className="p-2.5"><span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">Đạt chuẩn</span></td>
+                </tr>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="p-2.5 font-mono text-slate-500">2026-10-20</td>
+                  <td className="p-2.5 font-medium text-slate-900">Tưới phân hữu cơ hòa tan</td>
+                  <td className="p-2.5">NPK Hữu Cơ Rong Biển <span className="font-mono text-emerald-700">(LOT-NPK-04)</span></td>
+                  <td className="p-2.5">5 g/gốc</td>
+                  <td className="p-2.5 font-bold text-emerald-700">7 ngày</td>
+                  <td className="p-2.5"><span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">Đạt chuẩn</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-slate-600 text-[11px]">
+            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+              <CheckCircle2 size={15} className="text-emerald-600" /> Hồ Sơ Sẵn Sàng Thẩm Định
+            </div>
+            <p>
+              Nhật ký được đối soát chéo tự động với phiếu xuất kho vật tư và lệnh điều khiển máy bơm IoT. Không phát hiện vi phạm dư lượng hóa chất độc hại.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="outline" onClick={() => setIsVietgapLogModalOpen(false)}>Đóng</Button>
+            <Button onClick={() => window.print()} className="bg-[#119653] hover:bg-[#0e8046] text-white flex items-center gap-1.5 font-bold">
+              <Printer size={15} /> Xuất Hồ Sơ Thẩm Định VietGAP (In / PDF)
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

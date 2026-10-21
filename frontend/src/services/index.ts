@@ -504,8 +504,50 @@ export const cropService = {
     varietyId?: string;
     name: string;
     description?: string;
+    isDefault?: boolean;
+    sourceProfileId?: string;
+    stages?: any[];
   }) => {
-    const res = await apiClient.post('/api/v1/growth-profiles', data);
+    const payload: any = {
+      cropId: data.cropId,
+      varietyId: data.varietyId,
+      name: data.name,
+      description: data.description,
+      isDefault: data.isDefault ?? true,
+      sourceProfileId: data.sourceProfileId,
+    };
+    if (Array.isArray(data.stages) && data.stages.length > 0) {
+      payload.stages = data.stages.map((s: any, idx: number) => {
+        const rawReqs = s.requirements || [];
+        const normalizedReqs = rawReqs.map((r: any) => {
+          let code = r.parameterCode || r.parameterName || 'Temperature';
+          if (code === 'AirTemperature') code = 'Temperature';
+          else if (code === 'SoilPH') code = 'Ph';
+          else if (code === 'SoilEC') code = 'Ec';
+          else if (code === 'Light') code = 'LightIntensity';
+          const min = Number(r.minValue) || 0;
+          const max = Number(r.maxValue) || 100;
+          const target = Number(r.targetValue ?? r.optimalValue) || Math.round((min + max) / 2);
+          return {
+            parameterCode: code,
+            minValue: min,
+            maxValue: max,
+            targetValue: target,
+            unit: r.unit || (code === 'Temperature' ? '°C' : code === 'Ph' ? 'pH' : code === 'Ec' ? 'mS/cm' : '%')
+          };
+        });
+        return {
+          name: s.name || s.stageName || `Giai đoạn ${idx + 1}`,
+          stageOrder: s.stageOrder ?? (idx + 1),
+          durationDays: Math.max(1, Number(s.durationDays ?? s.days) || 15),
+          requirements: normalizedReqs.length > 0 ? normalizedReqs : [
+            { parameterCode: 'Temperature', minValue: 20, maxValue: 30, targetValue: 25, unit: '°C' },
+            { parameterCode: 'SoilMoisture', minValue: 60, maxValue: 80, targetValue: 70, unit: '%' }
+          ]
+        };
+      });
+    }
+    const res = await apiClient.post('/api/v1/growth-profiles', payload);
     return res.data;
   },
 
@@ -1578,4 +1620,5 @@ export const notificationService = {
     }
   },
 };
+
 

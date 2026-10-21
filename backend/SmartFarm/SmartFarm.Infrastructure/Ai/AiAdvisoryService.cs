@@ -322,6 +322,36 @@ public sealed class AiAdvisoryService(
             return new AiUpcomingScheduleContextItem(x.Name, x.NextRunAtUtc, formatted, x.DurationSeconds, minutesUntil);
         }).ToList();
 
+        // ─── Private Farm Structure: toàn bộ Field/Zone của tenant này (lọc theo FarmId) ──
+        // Security: Chỉ load dữ liệu của đúng FarmId + TenantId → không bao giờ lộ chéo tenant
+        var today = DateOnly.FromDateTime(now);
+        var farmFields = await db.Fields.AsNoTracking()
+            .Include(f => f.Zones)
+                .ThenInclude(z => z.PlantingSeasons.Where(s => s.Status == PlantingSeasonStatus.InProgress))
+                    .ThenInclude(s => s.Crop)
+            .Include(f => f.Zones)
+                .ThenInclude(z => z.PlantingSeasons.Where(s => s.Status == PlantingSeasonStatus.InProgress))
+                    .ThenInclude(s => s.CurrentGrowthStage)
+            .Where(f => f.FarmId == zone.Field.FarmId)
+            .ToListAsync(cancellationToken);
+
+        var fieldItems = farmFields.Select(f =>
+        {
+            var zoneItems = f.Zones.Select(z =>
+            {
+                var activeSeason = z.PlantingSeasons.FirstOrDefault(s => s.Status == PlantingSeasonStatus.InProgress);
+                return new AiZoneStructureItem(
+                    z.Id, z.Name, z.AreaM2, z.ZoneType, z.Status.ToString(),
+                    activeSeason?.Crop.Name,
+                    activeSeason?.CurrentGrowthStage?.Name,
+                    activeSeason is null ? null : Math.Max(0, today.DayNumber - activeSeason.StartDate.DayNumber));
+            }).ToList();
+            return new AiFieldStructureItem(f.Id, f.Name, f.AreaM2, zoneItems);
+        }).ToList();
+
+        var farmStructure = new AiFarmStructureContext(
+            zone.Field.FarmId, zone.Field.Farm.Name, zone.Field.Farm.TotalAreaM2, fieldItems);
+
         return new AiZoneContext(
             zone.Field.FarmId, zone.Field.Farm.Name, zone.Field.Farm.TimeZone, zone.FieldId, zone.Field.Name, zone.Id, zone.Name, zone.AreaM2,
             season?.Id, season?.Crop.Name, season?.Variety?.Name, season?.GrowthProfileId, season?.GrowthProfile.Name,
@@ -333,8 +363,10 @@ public sealed class AiAdvisoryService(
             upcomingSchedules,
             new AiWeatherContext(weather.Available, weather.Summary, weather.RainProbabilityNext6HoursMaxPercent, weather.TemperatureCelsius, weather.ObservedAtUtc, weather.Limitation),
             missing,
-            missing.Count == 0);
+            missing.Count == 0,
+            farmStructure);
     }
+
 
     private AiRecommendation CreateLimited(AiConsultationRequest request, AiZoneContext context, AiRecommendationStatus status, string summary, string details, IEnumerable<string> limitations, DateTime now) => new()
     {

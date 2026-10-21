@@ -8,7 +8,7 @@ public sealed class SmartFarmDbContextFactory : IDesignTimeDbContextFactory<Smar
     public SmartFarmDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__SmartFarmDb")
-            ?? "Host=localhost;Port=5432;Database=smartfarm;Username=smartfarm";
+            ?? "Host=localhost;Port=5432;Database=SmartFarmDB01;Username=postgres;Password=12345";
 
         var options = new DbContextOptionsBuilder<SmartFarmDbContext>()
             .UseNpgsql(connectionString, npgsql =>

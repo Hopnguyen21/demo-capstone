@@ -6,7 +6,10 @@ import { useAuth } from '../../app/providers/AuthContext';
 
 export const AIAssistantPage: React.FC = () => {
   const { zones, selectedZoneId, setSelectedZoneId } = useAuth();
-  const currentZoneId = selectedZoneId || zones[0]?.zoneId || '';
+  const zoneIdList = zones.map(z => z.zoneId || (z as any).id).filter(Boolean);
+  const currentZoneId = (selectedZoneId && zoneIdList.includes(selectedZoneId))
+    ? selectedZoneId
+    : (zoneIdList[0] || '');
   
   const [aiContext, setAiContext] = useState<any>(null);
   const [loadingContext, setLoadingContext] = useState(false);
@@ -249,11 +252,14 @@ export const AIAssistantPage: React.FC = () => {
               onChange={(e) => setSelectedZoneId(e.target.value)}
               className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer"
             >
-              {zones.map((z) => (
-                <option key={z.zoneId} value={z.zoneId}>
-                  {z.name || `Zone ${z.zoneId.slice(0, 8)}`}
-                </option>
-              ))}
+              {zones.map((z) => {
+                const zId = z.zoneId || (z as any).id;
+                return (
+                  <option key={zId} value={zId}>
+                    {z.name || `Zone ${zId?.slice(0, 8)}`}
+                  </option>
+                );
+              })}
             </select>
           </div>
         )}
@@ -273,7 +279,8 @@ export const AIAssistantPage: React.FC = () => {
                   </strong>
                   {aiContext?.cropName && (
                     <span className="ml-1 text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-full border border-emerald-200">
-                      🌿 {aiContext.cropName}{aiContext.growthStageName ? ` • ${aiContext.growthStageName}` : ''}{aiContext.daysSinceStart !== undefined ? ` (Ngày ${aiContext.daysSinceStart})` : ''}
+                      🌿 {aiContext.cropName}{aiContext.growthStageName ? ` • ${aiContext.growthStageName}` : ''}{(aiContext.seasonAgeDays ?? aiContext.daysSinceStart) !== undefined ? ` (Ngày ${aiContext.seasonAgeDays ?? aiContext.daysSinceStart})` : ''}
+                      {aiContext.growthProfileName ? ` • 📜 ${aiContext.growthProfileName}` : ''}
                     </span>
                   )}
                 </span>
@@ -286,19 +293,27 @@ export const AIAssistantPage: React.FC = () => {
             {/* Micro Sensor Bar */}
             {aiContext?.telemetry && aiContext.telemetry.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-0.5 text-[11px]">
-                {aiContext.telemetry.map((t: any) => (
-                  <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
-                    <span className="text-slate-400 font-medium">
-                      {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
-                       t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
-                       t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
-                       t.parameterCode === 'Light' ? '☀️ Ánh sáng' :
-                       t.parameterCode === 'SoilPh' ? '🧪 pH đất' :
-                       t.parameterCode === 'SoilEc' ? '⚡ EC đất' : t.parameterCode}:
-                    </span>
-                    <strong className="text-slate-800 font-mono">{t.value} {t.unit}</strong>
-                  </div>
-                ))}
+                {aiContext.telemetry.map((t: any) => {
+                  const req = aiContext.requirements?.find((r: any) => r.parameterCode === t.parameterCode);
+                  return (
+                    <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
+                      <span className="text-slate-400 font-medium">
+                        {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
+                         t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
+                         t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
+                         t.parameterCode === 'Light' ? '☀️ Ánh sáng' :
+                         t.parameterCode === 'SoilPh' ? '🧪 pH đất' :
+                         t.parameterCode === 'SoilEc' ? '⚡ EC đất' : t.parameterCode}:
+                      </span>
+                      <strong className="text-slate-800 font-mono">{t.value} {t.unit}</strong>
+                      {req && (
+                        <span className="text-[10px] text-emerald-700 font-sans ml-0.5 font-medium">
+                          (chuẩn: {req.minValue}-{req.maxValue})
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
                 {aiContext.weather?.temperatureCelsius !== undefined && (
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs whitespace-nowrap">
                     <span>Dự báo 6h:</span>
