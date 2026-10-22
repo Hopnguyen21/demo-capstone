@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using SmartFarm.Api.HostedServices;
 using Microsoft.EntityFrameworkCore;
 using SmartFarm.Infrastructure.Persistence;
+using SmartFarm.Infrastructure.Ai.Knowledge;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -78,9 +79,10 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Auto-migration: apply pending EF Core migrations on startup
+// Auto-migration: apply pending EF Core migrations on startup & seed default knowledge base
 using (var scope = app.Services.CreateScope())
 {
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
@@ -88,8 +90,17 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "Auto-migration failed on startup");
+    }
+
+    try
+    {
+        var docService = scope.ServiceProvider.GetRequiredService<AgricultureDocumentService>();
+        await docService.SeedVietGapKnowledgeAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Knowledge base seeding encountered an issue during startup");
     }
 }
 

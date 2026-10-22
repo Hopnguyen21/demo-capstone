@@ -21,6 +21,15 @@ public sealed class SimulatedIotTelemetryWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var environment = configuration.GetValue<string>("ASPNETCORE_ENVIRONMENT") 
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
+            ?? string.Empty;
+        if (string.Equals(environment, "Testing", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogInformation("Simulated IoT Telemetry Worker is disabled in Testing environment.");
+            return;
+        }
+
         var isEnabled = configuration.GetValue<bool>("SimulatedIot:Enabled", false);
         if (!isEnabled)
         {

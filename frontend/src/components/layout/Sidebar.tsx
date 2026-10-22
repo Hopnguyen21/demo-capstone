@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Building2, Users, Sprout, Cpu, Radio, Activity,
   ShieldAlert, Settings, Wrench, Package, CpuIcon, MapPin, Gauge,
   Sliders, Calendar, Bot, FileText, ClipboardList, PackageCheck, Headphones,
-  ChevronRight, FileCheck
+  ChevronRight, FileCheck, BookOpen
 } from 'lucide-react';
 
 export interface NavItem {

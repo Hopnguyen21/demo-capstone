@@ -224,10 +224,13 @@ export const Topbar: React.FC = () => {
       {/* Right section: Weather, Notifications, Dev Role Switcher, Profile */}
       <div className="flex items-center gap-3">
         {/* Live Weather Widget */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-[#0e8046] border border-[#14a85e] rounded-lg text-xs">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-[#0e8046] border border-[#14a85e] rounded-lg text-xs" title="Thời tiết tham khảo (Demo / Giả lập)">
           <Sun size={15} className="text-amber-300" />
           <div className="flex flex-col">
-            <span className="font-semibold text-white">{weather.temperature}°C Đà Lạt</span>
+            <span className="font-semibold text-white flex items-center gap-1.5">
+              {weather.temperature}°C Đà Lạt
+              <span className="text-[9px] bg-amber-400/30 text-amber-100 px-1 py-0.2 rounded font-normal">Demo</span>
+            </span>
             <span className="text-[10px] text-emerald-100/90 flex items-center gap-1">
               <CloudRain size={10} className="text-sky-200" /> Mưa: {weather.rainProbability}%
             </span>

@@ -20,6 +20,7 @@ interface AuthContextType {
     role: 'FarmOwner' | 'Farmer';
   }) => Promise<any>;
   logout: () => Promise<void>;
+  refreshFarmsAndZones: () => Promise<void>;
   farms: Farm[];
   zones: Zone[];
 }
@@ -214,6 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        refreshFarmsAndZones,
         farms,
         zones,
       }}

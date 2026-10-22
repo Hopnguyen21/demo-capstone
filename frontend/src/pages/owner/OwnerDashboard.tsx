@@ -229,6 +229,9 @@ export const OwnerDashboard: React.FC = () => {
                 <div className="font-bold text-white text-sm flex items-center gap-2">
                   <span>{weather.temperature ?? 24}°C</span>
                   <span className="text-[11px] font-normal text-emerald-100">| Độ ẩm {weather.humidity ?? 70}%</span>
+                  {!weatherData && (
+                    <span className="text-[9px] bg-amber-400/30 text-amber-200 px-1 py-0.2 rounded font-normal">Demo</span>
+                  )}
                 </div>
                 <div className="text-[11px] text-emerald-100 flex items-center gap-1">
                   <Droplets size={11} className="text-emerald-200" /> Khả năng mưa: {weather.rainProbability ?? 15}%

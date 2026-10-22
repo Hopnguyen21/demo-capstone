@@ -1,3 +1,4 @@
+using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Control;
 using SmartFarm.Domain.Enums;
 
@@ -35,8 +36,20 @@ public sealed record AiZoneContext(
 
 
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);
-public sealed record AiProviderRequest(string Question, AiZoneContext Context);
-public sealed record AiProviderResult(string ProviderName, string Summary, string Details, decimal Confidence, IReadOnlyList<string> Limitations, AiProposedControlAction? ProposedControlAction);
+public sealed record AiSourceView(Guid DocumentId, string Title, string? Organization, string Category, float Similarity);
+public sealed record AiProviderRequest(
+    string Question,
+    AiZoneContext Context,
+    IReadOnlyList<KnowledgePassageView>? KnowledgePassages = null);
+public sealed record AiProviderResult(
+    string ProviderName,
+    string Summary,
+    string Details,
+    decimal Confidence,
+    IReadOnlyList<string> Limitations,
+    AiProposedControlAction? ProposedControlAction,
+    IReadOnlyList<int>? CitedPassageIndexes = null,
+    IReadOnlyList<string>? Sources = null);
 public sealed record AiWeatherResult(bool Available, string? Summary, decimal? RainProbabilityNext6HoursMaxPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);
 
 public sealed record AskAiCommand(string Question, Guid? ParentRecommendationId = null);
@@ -46,7 +59,9 @@ public sealed record AiRecommendationView(
     string Summary, string Details, IReadOnlyList<string> Limitations, decimal Confidence,
     AiRecommendationStatus Status, bool IsActionable, DateTime ValidUntilUtc,
     Guid? ProposedActuatorId, ActuatorCommandAction? ProposedAction, int? ProposedDurationSeconds,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    IReadOnlyList<AiSourceView>? Sources = null,
+    string? ContextSnapshotJson = null);
 public sealed record AiDecisionView(Guid DecisionId, Guid RecommendationId, AiRecommendationDecisionType Decision, string? Reason, DateTime CreatedAtUtc, Guid? CommandId, Guid? FollowUpConsultationId);
 public sealed record AiDecisionResult(AiRecommendationView Recommendation, AiDecisionView Decision, ActuatorCommandView? Command, AiRecommendationView? FollowUpRecommendation);
 public sealed record AiHistoryView(Guid ZoneId, IReadOnlyList<AiRecommendationView> Recommendations);

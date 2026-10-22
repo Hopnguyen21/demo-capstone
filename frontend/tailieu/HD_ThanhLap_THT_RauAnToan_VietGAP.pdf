@@ -1,241 +1,50 @@
-﻿	
- 
- 
-
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:fb="http://www.facebook.com/2008/fbml">
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <title>NOMAFSI - Viện KHKT nông lâm nghiệp miền núi phía Bắc</title>
-    <meta name="keywords" CONTENT="NOMAFSI, northern mountainous, agriculture, forestry, science, institute" />
-    <meta name="description" CONTENT="Northern Mountainous Agriculture & Forestry Science Institute" />
-    <meta name="robots" content="index, follow"/>
-    <meta name="author" content="Northern Mountainous Agriculture & Forestry Science Institute"/>
-    <link rel="SHORTCUT ICON" href="/vnt_upload/File/Image/logotron.png" type="image/x-icon" />
-    <link rel="icon" href="/vnt_upload/File/Image/logotron.png" type="image/gif" />
-    <link href="https://nomafsi.com.vn/skins/default/style/reset.css" rel="stylesheet" type="text/css" />
-    <link href="https://nomafsi.com.vn/skins/default/style/global.css" rel="stylesheet" type="text/css" />
-    <link href="https://nomafsi.com.vn/skins/default/style/box.css" rel="stylesheet" type="text/css" />
-    <link href="https://nomafsi.com.vn/skins/default/style/site.css?v=1.1" rel="stylesheet" type="text/css" />
-    <script type="text/javascript" src="https://nomafsi.com.vn/js/jquery.js"></script>
-    <script type="text/javascript" src="https://nomafsi.com.vn/js/javascript.js"></script>
-    <script type="text/javascript" src="http://www.google.com/jsapi"></script>
-    <script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false&language=vi"></script>
-    <script type="text/javascript" src="https://nomafsi.com.vn/js/google/gmaps.js"></script>
-    <link href="https://nomafsi.com.vn/js/jquery_popup/css/modalPopLite.css" rel="stylesheet" type="text/css" />
-    <script type="text/javascript" src="https://nomafsi.com.vn/js/jquery_popup/modalPopLite.js"></script>
-    <script type="text/javascript" src="https://nomafsi.com.vn/js/jquery_popup/functions.js"></script>
-    <script type="text/javascript" src="https://nomafsi.com.vn/js/weather.min.js"></script>
-    <script language="javascript" >
-        var ROOT = "https://nomafsi.com.vn/";
-        var DIR_IMAGE = "https://nomafsi.com.vn/skins/default/images";
-        var cmd = "vnTRUST";
-    </script>
-    <script type="text/javascript">
-        function load_maps(id,w_map,h_map)
-        {
-            //$('#maps').addClass("active");
-            $(".ext_maps").html('<div align="center"><img src="'+DIR_IMAGE+'/loading.gif" alt="Loadding ..." /><br>Loadding ...</div>');
-            $.ajax({
-                type: "GET",
-                url: ROOT+'modules/contact/ajax/load_map.php',
-                data: "id="+id+"&w="+w_map+"&h="+h_map,
-                success: function(html){
-                    $("#ext_maps").html(html);
-                }
-            });
-            return false;
-        }
-    </script>
-    <script id='ext_javascript'></script>
-    
-</head>
-<body >
-<div class="top-menu-container">
-    <div class="width-1000">
-        <div id="menu-top-first-container">
-            <ul class="top-menu-first">
-                
-                <div class="box-search">
-                    <form name="formSearch" method="get" action="https://nomafsi.com.vn/vn/tim-kiem.html/" class="box_search">
-                          <div class="scponsi">
-                            <input name="keyword" type="text" class="text_search"  placeholder="Từ khóa" value="">
-                            <button  type="submit"  >
-                               <span>Tìm</span>
-                            </button>
-                          </div>
-                        </form>
-                </div>
-                <div id="box-lang">
-                    <ul class="list-item">
-                    <li class="item current">
-                            <a href="https://nomafsi.com.vn/vn/.html">
-                                <span class="icon"><img title="Language" alt="Language" src="https://nomafsi.com.vn/vnt_upload/lang/flag_vn.jpg"></span>
-                                <span class="lang-name">Language</span>
-                            </a>
-                        </li><li class="item ">
-                            <a href="https://nomafsi.com.vn/en/.html">
-                                <span class="icon"><img title="English" alt="English" src="https://nomafsi.com.vn/vnt_upload/lang/colors-of-england.gif"></span>
-                                <span class="lang-name">English</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </ul>
-            <h1><a onmousedown="return rwt(this,'advertise',57)" href='http://nomafsi.com.vn' target='_self' title='Viện KHKT nông lâm nghiệp miền núi phía Bắc'  ><img id='logo-header'  src='https://nomafsi.com.vn/vnt_upload/weblink/VIEN_4.png' width='190' alt='Viện KHKT nông lâm nghiệp miền núi phía Bắc'  class='png' /></a></h1>
-        </div>
-    </div>
-    <div id="menu-top-second-container">
-        <ul><li><a class="" href="http://nomafsi.com.vn/vn/gioi-thieu.html">Giới thiệu</a></li><li><a class="" href="http://nomafsi.com.vn/vn/tin-tuc.html">Tin tức</a></li><li><a class="" href="https://nomafsi.com.vn/vn/nghien-cuu-khoa-hoc.html">Nghiên cứu khoa học</a></li><li><a class="" href="https://nomafsi.com.vn/vn/san-pham-khcn.html">Sản phẩm KHCN</a></li><li><a class="" href="https://nomafsi.com.vn/vn/">Các trung tâm</a><ul><li><a target="_self" href="http://chevietnam.com.vn/">TT NC&amp;PT Chè</a></li><li><a target="_self" href="http://nomafsi.com.vn/vn/trung-tam-nghien-cuu-va-phat-trien-rau-hoa-qua.html">TT NC&amp;PT Rau hoa quả</a></li><li><a target="_self" href="http://nomafsi.com.vn/vn/trung-tam-nln-tay-bac.html">TT NC&amp;PT NLN Tây Bắc</a></li><li><a target="_self" href="http://nomafsi.com.vn/vn/trung-tam-nc.html">TT NC&amp;PT Cây ôn đới</a></li></ul></li><li><a class="current" href="https://nomafsi.com.vn/vn/download/thong-bao-6.html">Thông báo</a></li></ul>
-         <div class="clear"></div>
-    </div>
-</div>
-<div id="bg-wraper">
-    <div id="body-content">
-        <p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	<span style="color: rgb(255, 0, 0);"><span style="font-size: 20px;"><strong>NỘI DUNG TRANG KH&Ocirc;NG T&Igrave;M </strong></span></span></p>
-<p style="text-align: center;">
-	<span style="color: rgb(255, 0, 0);">THẤY VUI L&Ograve;NG KIỂM TRA LẠI</span></p>
-<p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	&nbsp;</p>
-<p style="text-align: center;">
-	&nbsp;</p>
-
-    </div>
-    <div id="footer">
-        <div id="footer-bg">
-            <div class="width-1000">
-                <div id="footer-line"></div>
-                <div id="footer-content">
-                    <span id="footer-content-left">
-                        <!--==============DOC SITE===============-->
-                        <div class="site-info">
-                            <img alt="logo1" src="/vnt_upload/File/04_2015/logo1.png" style="float: left; margin-right: 10px;" />
-<p style="float: left">&nbsp;</p>
-
-<h3 style="font-size:16px; text-transform: uppercase; font-weight: bold; margin-bottom: 10px">Viện khoa học kỹ thuật</h3>
-
-<h2 style="font-size:16px; text-transform: uppercase; font-weight: bold;margin-bottom: 10px">Nông lâm nghiệp miền núi phía bắc</h2>
-
-<p>Khu 9, Phường Phong Châu, Tỉnh Phú Thọ</p>
-
-<p>Tel: +84 210 3865 073<br />
-Fax: +84 210 3865 931<br />
-Email: vienmnpb@gmail.com</p>
-
-<p><br />
-<br />
-&nbsp;</p>
-
-<p>&nbsp;</p>
-
-<div style="clear: both">&nbsp;</div>
-
-                        </div>
-                        <!--===========End DOC SITE===============-->
-                    </span>
-                    <span id="footer-content-right">
-                        <p class=advertise ><a onmousedown="return rwt(this,'advertise',56)" href='http://' target='_blank' title='Bản đồ cuối trang'  ><img border=0 src="https://nomafsi.com.vn/vnt_upload/weblink/1.jpg"  width='406'  alt='Bản đồ cuối trang' /></a></p>
-                        <a id="view-map" class="map" style="display: block; text-align: left" href="#" onclick="return load_maps(1,1000,700);">Xem bản đồ lớn</a><div class="popup-wrapper" style="background-color: #ccc;">
-                            <div id="ext_maps" style="width: 1000px; height: 700px;position: relative;overflow: hidden"></div>
-                        </div>
-                    </span>
-                    <div class="clear"></div>
-                </div>
-            </div>
-        </div>
-        <div id="bar-footer">
-            <div class="width-1000" style="position: relative">
-                <a href="#" class="back-top"></a>
-                <span id="copyright">Copyright © 2015 NOMAFSI <a href="http://www.thietkeweb.com/"> Thiết kế web chuyên nghiệp : TRUST.vn</a></span>
-                <span id="social-network">
-                    <a href='http://' target='_blank' ><img src='https://nomafsi.com.vn/vnt_upload/weblink/youtube.png' /></a> &nbsp; <a href='http://' target='_blank' ><img src='https://nomafsi.com.vn/vnt_upload/weblink/twiter.png' /></a> &nbsp; <a href='http://' target='_blank' ><img src='https://nomafsi.com.vn/vnt_upload/weblink/z.png' /></a> &nbsp; <a href='https://www.facebook.com/groups/382544025131375/' target='_blank' ><img src='https://nomafsi.com.vn/vnt_upload/weblink/facebook.png' /></a> &nbsp; <a href='http://google' target='_blank' ><img src='https://nomafsi.com.vn/vnt_upload/weblink/google.png' /></a> &nbsp; 
-                </span>
-                <div class="clear"></div>
-            </div>
-        </div>
-    </div>
-</div>
-<div id="floating_banner_left" style="overflow: hidden; position: absolute; top: 0px; ">
-    <div id="floating_banner_left_content"></div>
-</div>
-<div id="floating_banner_right" style="overflow: hidden; position: absolute; top: 0px;" >
-    <div id="floating_banner_right_content"></div>
-</div>
-<script type="text/javascript">
-    $(window).load(function(){ initLoaded(); });
-    var slideTime = 700;
-    var rootWidth = 950;
-    var floatAtBottom = false;
-    function Ad_floating_init()
-    {
-        xMoveTo('floating_banner_right', rootWidth - (rootWidth-screen.width), 0);
-        xMoveTo('floating_banner_left', rootWidth - (screen.width), 0);
-        winOnResize(); // set initial position
-        xAddEventListener(window, 'resize', winOnResize, false);
-        xAddEventListener(window, 'scroll', winOnScroll, false);
-    }
-    function winOnResize() {
-        checkScreenWidth();
-        winOnScroll(); // initial slide
-    }
-    function winOnScroll() {
-        var y = xScrollTop();
-        if( y <= 135 ) y=135;
-        if (floatAtBottom) {
-            y += xClientHeight() - xHeight('floating_banner_left');
-        }
-        xSlideTo('floating_banner_left', (screen.width - rootWidth)/2 - (110 +15) , y, slideTime);
-        xSlideTo('floating_banner_right', (screen.width + rootWidth)/2 - 2 , y, slideTime);
-    }
-    function checkScreenWidth()
-    {
-        if( screen.width <= 1230 )
-        {
-            document.getElementById('floating_banner_left').style.display = 'none';
-            document.getElementById('floating_banner_right').style.display = 'none';
-        }
-    }
-
-    Ad_floating_init();
-</script>
-<script type="text/javascript">
-    $(document).ready(function(){
-        if ($('.back-top').length) {
-            var scrollTrigger = 100, // px
-                    backToTop = function () {
-                        var scrollTop = $(window).scrollTop();
-                        if (scrollTop > scrollTrigger) {
-                            $('.back-top').addClass('show');
-                        } else {
-                            $('.back-top').removeClass('show');
-                        }
-                    };
-            backToTop();
-            $(window).on('scroll', function () {
-                backToTop();
-            });
-            $('.back-top').on('click', function (e) {
-                e.preventDefault();
-                $('html,body').animate({
-                    scrollTop: 0
-                }, 700);
-            });
-        }
-    });
-</script>
-
-</body>
-</html>
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 719 >>
+stream
+BT
+/F1 14 Tf
+50 800 Td
+(HUONG DAN TO CHUC SAN XUAT TO HOP TAC VIETGAP) Tj
+/F1 10 Tf
+0 -25 Td
+0 -16 Td
+(HUONG DAN THANH LAP VA QUAN LY TO HOP TAC SAN XUAT RAU AN TOAN VIETGAP) Tj
+0 -16 Td
+(1. CO SO PHAP LY: Nghi dinh so 77/2019/ND-CP ve to hop tac va chuong trinh VietGAP quoc gia.) Tj
+0 -16 Td
+(2. DIEU KIEN THANH LAP: Toi thieu 03 thanh vien cung khu vuc lien canh, co hop dong hop tac.) Tj
+0 -16 Td
+(3. TO CHUC SAN XUAT: Ban hanh quy che noi bo, phan cong khao sat chat luong nuoc va dat dinh ky.) Tj
+0 -16 Td
+(4. LIEN KET TIEU THU: Ky hop dong cung ung voi cac sieu thi va chuoi thuc pham an toan.) Tj
+0 -16 Td
+(5. DANH GIA NOI BO: Tu kiem tra cheo giua cac ho nong dan truoc khi to chuc chung nhan kiem tra.) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1080
+%%EOF

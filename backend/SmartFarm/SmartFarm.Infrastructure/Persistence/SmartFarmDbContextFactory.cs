@@ -14,6 +14,7 @@ public sealed class SmartFarmDbContextFactory : IDesignTimeDbContextFactory<Smar
             .UseNpgsql(connectionString, npgsql =>
             {
                 npgsql.UseNetTopologySuite();
+                npgsql.UseVector();
                 npgsql.MigrationsAssembly(typeof(SmartFarmDbContext).Assembly.FullName);
             })
             .Options;

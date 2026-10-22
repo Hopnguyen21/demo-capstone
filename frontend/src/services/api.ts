@@ -56,7 +56,7 @@ export function isAuthenticated() { return !!getAccessToken(); }
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 20_000,
+  timeout: 45_000,
   headers: { 'Content-Type': 'application/json' },
 });
 

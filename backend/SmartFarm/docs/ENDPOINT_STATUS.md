@@ -92,8 +92,8 @@ Audited against the numbered catalog in `API_CATALOG.md` and concrete controller
 | 86 | Implemented | `AiAdvisoryController.Decide` → Owner-approved control handoff |
 | 87 | Implemented | `AiAdvisoryController.History` → persisted recommendations |
 | 88 | Implemented | `AiAdvisoryController.HideHistory` archives AI history |
-| 89 | Contract missing | Knowledge ingestion format, pgvector and access/audit policy unresolved |
-| 90 | Contract missing | Knowledge ingestion format, pgvector and access/audit policy unresolved |
+| 89 | Implemented | `AgricultureKnowledgeController.GetDocuments` → list knowledge documents & VietGAP guidelines |
+| 90 | Implemented | `AgricultureKnowledgeController.UploadDocument` → ingest PDF/DOCX/TXT with pgvector embeddings |
 | 91 | Implemented | `ReportsController.Overview` → `IReportService` |
 | 92 | Implemented | `ReportsController.Season` → `IReportService` |
 | 93 | Implemented | `ReportsController.Water` → acknowledged-command calculation |
@@ -110,8 +110,8 @@ Audited against the numbered catalog in `API_CATALOG.md` and concrete controller
 
 ## Totals
 
-- Implemented: 94/103.
+- Implemented: 96/103.
 - Deferred: 6/103 (#4, #5, #8, #9, #12, #22).
-- Contract missing: 3/103 (#89, #90, #103).
+- Contract missing: 1/103 (#103).
 
 Supplemental normalized endpoints (registration, Zone access, inventory receipts/requirements/low-stock, finance CRUD, Service Request lifecycle, alert resolve, technician administration, IoT deployment workflow, and reports for inventory/tasks/maintenance) are tracked by their stable v1 IDs in `API_CATALOG.md`; they do not renumber the source 103.

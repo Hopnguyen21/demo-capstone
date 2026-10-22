@@ -12,7 +12,11 @@ public sealed class PersistenceModelTests
     private static SmartFarmDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<SmartFarmDbContext>()
-            .UseNpgsql("Host=localhost;Database=smartfarm_model_tests;Username=smartfarm", options => options.UseNetTopologySuite())
+            .UseNpgsql("Host=localhost;Database=smartfarm_model_tests;Username=smartfarm", options =>
+            {
+                options.UseNetTopologySuite();
+                options.UseVector();
+            })
             .Options;
 
         return new SmartFarmDbContext(options);

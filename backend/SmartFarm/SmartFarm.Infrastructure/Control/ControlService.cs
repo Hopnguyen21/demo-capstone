@@ -204,10 +204,17 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
         var due = await db.ControlSchedules.Include(x => x.Zone).ThenInclude(x => x.Field).ThenInclude(x => x.Farm).Where(x => x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc <= nowUtc).ToListAsync(ct); var count = 0;
         foreach (var schedule in due)
         {
-            var occurrence = schedule.NextRunAtUtc; schedule.NextRunAtUtc = CronSpec.Parse(schedule.CronExpression).Next(nowUtc, schedule.Zone.Field.Farm.TimeZone); var actuator = await ActuatorAsync(schedule.ZoneId, schedule.ActuatorId, ct);
-            if (await HasActiveManualAsync(schedule.ZoneId, nowUtc, ct) || !await AutomatedGuardsPassAsync(actuator, schedule.EnableRainDelay, schedule.RainThresholdPercent, ActuatorCommandAction.TurnOn, ct)) continue;
-            var key = $"schedule:{schedule.Id:N}:{occurrence.Ticks}"; if (await db.ActuatorCommands.AnyAsync(x => x.TenantId == schedule.TenantId && x.IdempotencyKey == key, ct)) continue;
-            var command = BuildCommand(actuator, schedule.TenantId, null, CommandTriggerSource.Schedule, ActuatorCommandAction.TurnOn, schedule.DurationSeconds, key, null, nowUtc); command.ScheduleId = schedule.Id; db.ActuatorCommands.Add(command); await db.SaveChangesAsync(ct); await DispatchAsync(command, ct); count++;
+            try
+            {
+                var occurrence = schedule.NextRunAtUtc; schedule.NextRunAtUtc = CronSpec.Parse(schedule.CronExpression).Next(nowUtc, schedule.Zone.Field.Farm.TimeZone); var actuator = await ActuatorAsync(schedule.ZoneId, schedule.ActuatorId, ct);
+                if (await HasActiveManualAsync(schedule.ZoneId, nowUtc, ct) || !await AutomatedGuardsPassAsync(actuator, schedule.EnableRainDelay, schedule.RainThresholdPercent, ActuatorCommandAction.TurnOn, ct)) continue;
+                var key = $"schedule:{schedule.Id:N}:{occurrence.Ticks}"; if (await db.ActuatorCommands.AnyAsync(x => x.TenantId == schedule.TenantId && x.IdempotencyKey == key, ct)) continue;
+                var command = BuildCommand(actuator, schedule.TenantId, null, CommandTriggerSource.Schedule, ActuatorCommandAction.TurnOn, schedule.DurationSeconds, key, null, nowUtc); command.ScheduleId = schedule.Id; db.ActuatorCommands.Add(command); await db.SaveChangesAsync(ct); await DispatchAsync(command, ct); count++;
+            }
+            catch
+            {
+                // Bỏ qua lịch có biểu thức cron không tương thích để không làm gián đoạn worker tự động
+            }
         }
         await db.SaveChangesAsync(ct); return count;
     }

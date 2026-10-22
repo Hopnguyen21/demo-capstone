@@ -416,18 +416,23 @@ export interface AIMessage {
 
 export interface AIRecommendation {
   recommendationId: string;
-  farmId: string;
-  zoneId: string;
-  zoneName: string;
-  cropName: string;
-  recommendationType: 'IRRIGATION' | 'ENVIRONMENTAL' | 'PEST' | 'FERTILIZATION';
+  farmId?: string;
+  zoneId?: string;
+  zoneName?: string;
+  cropName?: string;
+  recommendationType?: 'IRRIGATION' | 'ENVIRONMENTAL' | 'PEST' | 'FERTILIZATION' | string;
   title: string;
   recommendationText: string;
   reasoning: string;
-  expectedImpact: string;
+  expectedImpact?: string;
   confidenceScore: number; // 0-100%
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
-  createdAt: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'READY' | string;
+  createdAt?: string;
+  proposedAction?: string;
+  proposedDurationSeconds?: number;
+  validUntilUtc?: string;
+  sources?: string[];
+  commandStatus?: string;
 }
 
 export interface TaskItem {
@@ -721,4 +726,74 @@ export interface SafetyCheckResult {
   failsafeTimerMinutes: number;
   warnings: string[];
 }
+
+export interface AgricultureDocumentSummary {
+  id: string;
+  title: string;
+  fileName?: string;
+  fileType: 'pdf' | 'docx' | 'txt' | 'seed' | string;
+  authorOrganization?: string;
+  category: 'irrigation' | 'pest' | 'nutrition' | 'climate' | 'record' | 'general' | string;
+  cropScope: string;
+  version?: string;
+  isPublic: boolean;
+  tenantId?: string;
+  chunkCount: number;
+  createdAtUtc: string;
+}
+
+export interface AgricultureChunk {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  cropTags: string;
+  keywords: string;
+  hasEmbedding: boolean;
+}
+
+export interface AgricultureDocumentDetail extends AgricultureDocumentSummary {
+  contentText: string;
+  chunks: AgricultureChunk[];
+}
+
+export interface KnowledgePassage {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  authorOrganization?: string;
+  category: string;
+  content: string;
+  similarityScore: number;
+}
+
+export interface AiSource {
+  documentId: string;
+  title: string;
+  organization?: string;
+  authorOrganization?: string;
+  category: string;
+  similarity?: number;
+  similarityScore?: number;
+}
+
+export interface AiRecommendationView {
+  recommendationId: string;
+  consultationRequestId: string;
+  zoneId: string;
+  question: string;
+  summary: string;
+  details: string;
+  limitations: string[];
+  confidence: number;
+  status: string;
+  isActionable: boolean;
+  validUntilUtc: string;
+  proposedActuatorId?: string;
+  proposedAction?: 'TurnOn' | 'TurnOff' | string;
+  proposedDurationSeconds?: number;
+  createdAtUtc: string;
+  sources?: AiSource[];
+  contextSnapshotJson?: string;
+}
+
 

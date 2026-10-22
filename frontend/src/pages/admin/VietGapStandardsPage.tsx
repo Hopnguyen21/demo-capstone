@@ -6,7 +6,7 @@ import {
   Sprout, Beaker, ShieldAlert, Clock, ChevronDown, ChevronUp,
   FileCheck2, CheckSquare, Bookmark, HeartPulse, Microscope
 } from 'lucide-react';
-import { cropService } from '../../services';
+import { cropService, knowledgeService } from '../../services';
 import { Crop } from '../../types';
 
 export interface VietGapRegulationDetail {
@@ -93,6 +93,8 @@ export const VietGapStandardsPage: React.FC = () => {
   const [selectedDoc, setSelectedDoc] = useState<VietGapRegulationDetail | null>(null);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [selectedCropForConvert, setSelectedCropForConvert] = useState<string>('');
   const [convertingDoc, setConvertingDoc] = useState<VietGapRegulationDetail | null>(null);
@@ -414,6 +416,7 @@ export const VietGapStandardsPage: React.FC = () => {
 
   useEffect(() => {
     loadCrops();
+    loadBackendDocuments();
     if (documents.length > 0 && !selectedDoc) {
       setSelectedDoc(documents[0]);
     }
@@ -425,6 +428,82 @@ export const VietGapStandardsPage: React.FC = () => {
       setCrops(res || []);
     } catch {
       // fallback
+    }
+  };
+
+  const loadBackendDocuments = async () => {
+    try {
+      const backendDocs = await knowledgeService.getDocuments();
+      if (backendDocs && backendDocs.length > 0) {
+        const mapped: VietGapRegulationDetail[] = backendDocs.map((d: any) => ({
+          id: d.id,
+          code: `TCVN / ${d.category || 'VietGAP'}`,
+          title: d.title,
+          cropName: d.cropScope || 'Đa cây trồng',
+          category: d.category === 'irrigation' ? 'Tưới tiêu' : d.category === 'pest' ? 'Sâu bệnh (IPM)' : 'Quy chuẩn chung',
+          fileType: (d.fileType?.toUpperCase() === 'DOCX' ? 'DOCX' : 'PDF') as 'PDF' | 'DOCX',
+          fileSize: `${d.chunkCount || 1} đoạn RAG`,
+          uploadDate: d.createdAtUtc ? new Date(d.createdAtUtc).toLocaleDateString('vi-VN') : 'Mặc định',
+          author: d.authorOrganization || 'SmartFarm Platform',
+          issuingAuthority: d.authorOrganization || 'Cục Trồng trọt - Bộ NN & PTNT',
+          validityPeriod: '2026 - 2029',
+          status: 'VALIDATED' as const,
+          profileGenerated: false,
+          soilManagement: {
+            soilType: 'Đất canh tác tiêu chuẩn VietGAP',
+            heavyMetalLimits: 'QCVN 03-MT:2015',
+            isolationDistance: 'Tối thiểu 100m',
+            soilPreparation: 'Xử lý vôi và chế phẩm sinh học đối kháng'
+          },
+          waterManagement: {
+            waterSourceStandard: 'QCVN 08-MT:2015/BTNMT',
+            eColiLimit: 'Không phát hiện Salmonella, E.Coli đạt ngưỡng',
+            phWaterRange: '6.0 - 6.8',
+            irrigationMethod: 'Tưới nhỏ giọt bù áp tiết kiệm nước'
+          },
+          fertilizerRules: {
+            organicRequirements: 'Ủ hoai mục hoàn toàn bằng vi sinh hữu hiệu',
+            chemicalFertilizerCeiling: 'Theo khuyến cáo khuyến nông',
+            preHarvestIntervalDays: 14,
+            forbiddenFertilizers: 'Không dùng phân tươi và chất cấm'
+          },
+          pestManagementIPM: {
+            ipmPrinciples: 'IPM 4 Đúng: Đúng thuốc, đúng lúc, đúng liều lượng, đúng cách',
+            permittedBioPesticides: 'Bacillus thuringiensis, Beauveria bassiana, Trichoderma',
+            isolationQuarantineDays: 7,
+            prohibitedChemicals: 'Tuân thủ danh mục hoạt chất cấm BNN&PTNT'
+          },
+          climateRequirements: {
+            tempOptimal: '20°C - 28°C',
+            moistureOptimal: '65% - 75%',
+            pHOptimal: '6.0 - 6.8',
+            ecOptimal: '1.8 - 2.5 mS/cm',
+            luxOptimal: '30.000 Lux',
+            growthDays: 90,
+            harvestNoticeDays: 7
+          },
+          harvestSafety: {
+            harvestToolsStandard: 'Dụng cụ sạch và khử trùng',
+            waterWashingStandard: 'Nước rửa đạt chuẩn sinh hoạt',
+            packagingMaterial: 'Bao bì an toàn thực phẩm',
+            traceabilityQr: 'Truy xuất nguồn gốc VietGAP điện tử'
+          },
+          stagesOverview: [
+            { name: 'Cây con', days: 15, temp: '22-26°C', moisture: '75-80%', fertilizerAction: 'Kích rễ lân hữu cơ', ipmAction: 'Phòng lở cổ rễ' },
+            { name: 'Sinh trưởng', days: 35, temp: '20-28°C', moisture: '70-75%', fertilizerAction: 'Cân bằng NPK vi lượng', ipmAction: 'Bẫy côn trùng' },
+            { name: 'Nuôi trái', days: 25, temp: '21-27°C', moisture: '65-70%', fertilizerAction: 'Bổ sung Canxi Bo, Kali', ipmAction: 'Giám sát dịch hại' },
+            { name: 'Thu hoạch', days: 15, temp: '20-25°C', moisture: '65-70%', fertilizerAction: 'Ngừng phân bón cách ly', ipmAction: 'Kiểm dư lượng' }
+          ]
+        }));
+
+        setDocuments(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newOnes = mapped.filter(m => !existingIds.has(m.id));
+          return [...prev, ...newOnes];
+        });
+      }
+    } catch (e) {
+      console.warn('Không tải được tài liệu RAG từ backend:', e);
     }
   };
 
@@ -441,12 +520,14 @@ export const VietGapStandardsPage: React.FC = () => {
     const ext = file.name.split('.').pop()?.toUpperCase();
     const isPDF = ext === 'PDF';
     const isDOCX = ext === 'DOC' || ext === 'DOCX';
+    const isTXT = ext === 'TXT';
 
-    if (!isPDF && !isDOCX) {
-      setNotification({ type: 'error', message: 'Vui lòng chỉ tải lên tệp định dạng .PDF hoặc .DOCX' });
+    if (!isPDF && !isDOCX && !isTXT) {
+      setNotification({ type: 'error', message: 'Vui lòng chỉ tải lên tệp định dạng .PDF, .DOCX hoặc .TXT' });
       return;
     }
 
+    setSelectedUploadFile(file);
     const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
     setUploadFormData(prev => ({
       ...prev,
@@ -458,15 +539,42 @@ export const VietGapStandardsPage: React.FC = () => {
     }));
   };
 
-  const handleSaveDocument = (e: React.FormEvent) => {
+  const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFormData.title || !uploadFormData.cropName) {
       setNotification({ type: 'error', message: 'Vui lòng nhập tên tài liệu và loại cây trồng liên quan!' });
       return;
     }
 
+    setIsUploading(true);
+    let backendDocId: string | null = null;
+    try {
+      if (selectedUploadFile) {
+        const fd = new FormData();
+        fd.append('file', selectedUploadFile);
+        fd.append('title', uploadFormData.title.trim());
+        fd.append('category', 'general');
+        if (uploadFormData.issuingAuthority || uploadFormData.author) {
+          fd.append('authorOrganization', (uploadFormData.issuingAuthority || uploadFormData.author).trim());
+        }
+        if (uploadFormData.cropName) {
+          fd.append('cropScope', uploadFormData.cropName.trim());
+        }
+        fd.append('isPublic', 'true');
+
+        const uploadRes = await knowledgeService.uploadDocument(fd);
+        if (uploadRes?.id || uploadRes?.documentId) {
+          backendDocId = uploadRes.id || uploadRes.documentId;
+        }
+      }
+    } catch (err: any) {
+      console.warn('Backend RAG upload error:', err);
+    } finally {
+      setIsUploading(false);
+    }
+
     const newDoc: VietGapRegulationDetail = {
-      id: `VG-DOC-${String(documents.length + 1).padStart(3, '0')}`,
+      id: backendDocId || `VG-DOC-${String(documents.length + 1).padStart(3, '0')}`,
       code: uploadFormData.code || 'TCVN 11892-1:2017',
       title: uploadFormData.title,
       cropName: uploadFormData.cropName,
@@ -564,11 +672,19 @@ export const VietGapStandardsPage: React.FC = () => {
     setDocuments([newDoc, ...documents]);
     setSelectedDoc(newDoc);
     setIsUploadModalOpen(false);
+    setSelectedUploadFile(null);
     setNotification({ type: 'success', message: `Đã nạp và lưu thành công hồ sơ chuẩn VietGAP toàn diện: ${newDoc.title}` });
   };
 
-  const handleDeleteDocument = (id: string) => {
+  const handleDeleteDocument = async (id: string) => {
     if (window.confirm('Bạn có chắc chắn muốn xóa tài liệu quy chuẩn VietGAP này khỏi hệ thống?')) {
+      try {
+        if (!id.startsWith('VG-DOC-')) {
+          await knowledgeService.deleteDocument(id);
+        }
+      } catch (err) {
+        console.warn('Backend delete document error:', err);
+      }
       const remaining = documents.filter(d => d.id !== id);
       setDocuments(remaining);
       if (selectedDoc?.id === id) {
@@ -1362,9 +1478,16 @@ export const VietGapStandardsPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg transition-all"
+                  disabled={isUploading}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
                 >
-                  Lưu & Thẩm Định Toàn Diện VietGAP
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Đang Nạp & Lập Chỉ Mục RAG...
+                    </>
+                  ) : (
+                    'Lưu & Thẩm Định Toàn Diện VietGAP'
+                  )}
                 </button>
               </div>
             </form>

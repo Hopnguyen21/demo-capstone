@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Ai;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Ai;
@@ -44,6 +45,36 @@ public sealed class GeminiAiAdvisoryProviderTests
         var handler = new StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });
         var provider = new GeminiAiAdvisoryProvider(new HttpClient(handler), Options.Create(new GeminiOptions { ApiKey = "test-secret-key" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<GeminiAiAdvisoryProvider>.Instance);
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GenerateAsync(new AiProviderRequest("Phân tích", Context(Guid.NewGuid())), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Provider_includes_rag_knowledge_passages_in_prompt_content()
+    {
+        var actuatorId = Guid.NewGuid();
+        var output = JsonSerializer.Serialize(new
+        {
+            summary = "Dựa trên tiêu chuẩn VietGAP",
+            details = "Tưới nhỏ giọt theo quy trình VietGAP.",
+            confidence = 0.95m,
+            limitations = new[] { "Theo tài liệu VietGAP 2024" },
+            proposedControlAction = new { enabled = false }
+        });
+        var envelope = JsonSerializer.Serialize(new { candidates = new[] { new { content = new { parts = new[] { new { text = output } } } } } });
+        var handler = new StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(envelope, Encoding.UTF8, "application/json") });
+        var provider = new GeminiAiAdvisoryProvider(new HttpClient(handler), Options.Create(new GeminiOptions { ApiKey = "test-secret-key", Model = "gemini-2.5-flash" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<GeminiAiAdvisoryProvider>.Instance);
+
+        var passages = new List<KnowledgePassageView>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), "Tài liệu VietGAP tưới tiêu", "Bộ NN&PTNT", "irrigation", "Độ ẩm tối ưu cho cà chua là 65-75%.", 0.92f)
+        };
+
+        var request = new AiProviderRequest("Có nên tưới không?", Context(actuatorId), passages);
+        var result = await provider.GenerateAsync(request, CancellationToken.None);
+
+        Assert.Equal("Google Gemini/gemini-2.5-flash", result.ProviderName);
+        Assert.Contains("agriculture_knowledge", handler.Body, StringComparison.Ordinal);
+        Assert.Contains("Độ ẩm tối ưu cho cà chua là 65-75%.", handler.Body, StringComparison.Ordinal);
+        Assert.Contains("Tài liệu VietGAP tưới tiêu", result.Sources!);
     }
 
     private static AiZoneContext Context(Guid actuatorId) => new(

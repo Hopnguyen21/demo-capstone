@@ -40,6 +40,7 @@ public sealed class AiRecommendation : AuditableEntity
     public Guid? ProposedActuatorId { get; set; }
     public ActuatorCommandAction? ProposedAction { get; set; }
     public int? ProposedDurationSeconds { get; set; }
+    public string SourcesJson { get; set; } = "[]";
     public ICollection<AiRecommendationDecision> Decisions { get; } = new List<AiRecommendationDecision>();
 }
 

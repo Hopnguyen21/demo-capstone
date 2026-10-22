@@ -17,6 +17,7 @@ public sealed class AiAdvisoryService(
     IAiAdvisoryProvider provider,
     IAiWeatherProvider weatherProvider,
     IControlService controlService,
+    IAgricultureKnowledgeRetriever knowledgeRetriever,
     IOptions<AiOptions> options,
     Microsoft.Extensions.Logging.ILogger<AiAdvisoryService> logger,
     TimeProvider clock) : IAiAdvisoryService
@@ -171,8 +172,63 @@ public sealed class AiAdvisoryService(
                 // Keep historical readings visible in the persisted/context API response,
                 // but never give stale measurements to the model as decision context.
                 var providerContext = context with { Telemetry = context.Telemetry.Where(x => x.IsFresh).ToList() };
-                var result = await provider.GenerateAsync(new AiProviderRequest(question, providerContext), cancellationToken);
+
+                // ── RAG: Tìm tài liệu nông học liên quan đến câu hỏi ──────────────
+                IReadOnlyList<KnowledgePassageView>? passages = null;
+                try
+                {
+                    passages = await knowledgeRetriever.RetrievePassagesAsync(
+                        question,
+                        cropName: context.CropName,
+                        category: null,      // Không lọc theo danh mục để tối đa tài liệu
+                        tenantId: tenantId,
+                        topK: 4,
+                        cancellationToken);
+
+                    if (passages.Count > 0)
+                        logger.LogInformation("[RAG] Retrieved {Count} knowledge passages for question.", passages.Count);
+                    else
+                        logger.LogDebug("[RAG] No relevant passages found.");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "[RAG] Knowledge retrieval failed, proceeding without RAG context.");
+                }
+
+                var providerRequest = new AiProviderRequest(question, providerContext, passages);
+                var promptText = AiPromptBuilder.Build(providerRequest);
+                var result = await provider.GenerateAsync(
+                    providerRequest,
+                    cancellationToken);
                 recommendation = await FromProviderAsync(request, context, result, now, cancellationToken);
+
+                var sources = (result.CitedPassageIndexes ?? [])
+                    .Distinct()
+                    .Where(i => passages is not null && i >= 1 && i <= passages.Count)
+                    .Select(i => passages![i - 1])
+                    .GroupBy(p => p.DocumentId).Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
+                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore))
+                    .ToList();
+
+                if (sources.Count == 0 && passages is { Count: > 0 })
+                {
+                    sources = passages
+                        .GroupBy(p => p.DocumentId).Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
+                        .Take(3)
+                        .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore))
+                        .ToList();
+                }
+
+                recommendation.SourcesJson = JsonSerializer.Serialize(sources);
+                request.ContextSnapshotJson = JsonSerializer.Serialize(new 
+                { 
+                    Question = question,
+                    Prompt = promptText,
+                    SystemPrompt = AiPromptBuilder.SystemPrompt,
+                    Context = providerContext,
+                    Passages = passages,
+                    Sources = sources.Select(s => s.Title).ToList() 
+                });
                 request.ProviderName = Optional(result.ProviderName, 100) ?? "Unknown";
                 request.Status = recommendation.Status == AiRecommendationStatus.Ready ? AiConsultationStatus.Completed : AiConsultationStatus.Limited;
             }
@@ -204,14 +260,19 @@ public sealed class AiAdvisoryService(
         ActuatorCommandAction? action = null;
         int? duration = null;
 
-        if (result.ProposedControlAction is not null && status == AiRecommendationStatus.Ready)
+        var validatedAction = AiOutputValidator.ValidateAction(result, context, settings.MinimumConfidence);
+        if (result.ProposedControlAction is not null && validatedAction is null && status == AiRecommendationStatus.Ready)
+        {
+            limitations.Add("Đề xuất điều khiển chưa đạt điều kiện an toàn hoặc thiếu dữ liệu cảm biến mới.");
+        }
+        else if (validatedAction is not null && status == AiRecommendationStatus.Ready)
         {
             var actuator = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
-                .SingleOrDefaultAsync(x => x.Id == result.ProposedControlAction.ActuatorId && x.Device.ZoneId == request.ZoneId, cancellationToken);
+                .SingleOrDefaultAsync(x => x.Id == validatedAction.ActuatorId && x.Device.ZoneId == request.ZoneId, cancellationToken);
             var maxDuration = actuator is null ? 0 : Math.Min(1800, actuator.MaxDurationMinutes * 60);
             if (actuator is null || actuator.Device.Status != DeviceStatus.Online || actuator.Device.DecommissionedAtUtc is not null ||
-                !Enum.IsDefined(result.ProposedControlAction.Action) || result.ProposedControlAction.DurationSeconds < 1 ||
-                result.ProposedControlAction.DurationSeconds > maxDuration)
+                !Enum.IsDefined(validatedAction.Action) || validatedAction.DurationSeconds < 1 ||
+                validatedAction.DurationSeconds > maxDuration)
             {
                 status = AiRecommendationStatus.InvalidProviderOutput;
                 limitations.Add("The provider proposed an unavailable actuator, unsupported action, or duration that is not valid for this Zone.");
@@ -222,7 +283,7 @@ public sealed class AiAdvisoryService(
                                        actuator.ActuatorType.Contains("water", StringComparison.OrdinalIgnoreCase) ||
                                        actuator.ActuatorType.Contains("irrigation", StringComparison.OrdinalIgnoreCase);
                 var hasFreshSoilMoisture = context.Telemetry.Any(x => x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && x.IsFresh);
-                if (isIrrigationPump && result.ProposedControlAction.Action == ActuatorCommandAction.TurnOn && !hasFreshSoilMoisture)
+                if (isIrrigationPump && validatedAction.Action == ActuatorCommandAction.TurnOn && !hasFreshSoilMoisture)
                 {
                     status = AiRecommendationStatus.InsufficientData;
                     limitations.Add("A current soil-moisture reading is required before recommending irrigation.");
@@ -231,8 +292,8 @@ public sealed class AiAdvisoryService(
                 {
                     actionable = true;
                     actuatorId = actuator.Id;
-                    action = result.ProposedControlAction.Action;
-                    duration = result.ProposedControlAction.DurationSeconds;
+                    action = validatedAction.Action;
+                    duration = validatedAction.DurationSeconds;
                 }
             }
         }
@@ -518,6 +579,44 @@ public sealed class AiAdvisoryService(
         return value.Length <= 2000 ? value : value[..2000];
     }
     private static IReadOnlyList<string> ParseLimitations(string? value) => string.IsNullOrWhiteSpace(value) ? [] : value.Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private static AiRecommendationView ToView(AiRecommendation x) => new(x.Id, x.ConsultationRequestId, x.ZoneId, x.ConsultationRequest.Question, x.Summary, x.Details, ParseLimitations(x.Limitations), x.Confidence, x.Status, x.IsActionable, x.ValidUntilUtc, x.ProposedActuatorId, x.ProposedAction, x.ProposedDurationSeconds, x.CreatedAtUtc);
+    private static IReadOnlyList<AiSourceView> ParseSources(string? sourcesJson, string? legacySnapshotJson)
+    {
+        if (!string.IsNullOrWhiteSpace(sourcesJson) && sourcesJson != "[]")
+        {
+            try
+            {
+                var list = JsonSerializer.Deserialize<List<AiSourceView>>(sourcesJson, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                if (list is { Count: > 0 }) return list;
+            }
+            catch { }
+        }
+
+        if (!string.IsNullOrWhiteSpace(legacySnapshotJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(legacySnapshotJson);
+                if (doc.RootElement.TryGetProperty("Sources", out var sProp) && sProp.ValueKind == JsonValueKind.Array)
+                {
+                    return sProp.EnumerateArray()
+                        .Select(e => e.GetString())
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(s => new AiSourceView(Guid.Empty, s!, null, "VietGAP", 0.9f))
+                        .ToList();
+                }
+            }
+            catch { }
+        }
+
+        return [];
+    }
+
+    private static AiRecommendationView ToView(AiRecommendation x) => new(
+        x.Id, x.ConsultationRequestId, x.ZoneId, x.ConsultationRequest?.Question ?? string.Empty,
+        x.Summary, x.Details, ParseLimitations(x.Limitations), x.Confidence,
+        x.Status, x.IsActionable, x.ValidUntilUtc, x.ProposedActuatorId,
+        x.ProposedAction, x.ProposedDurationSeconds, x.CreatedAtUtc,
+        ParseSources(x.SourcesJson, x.ConsultationRequest?.ContextSnapshotJson),
+        x.ConsultationRequest?.ContextSnapshotJson);
     private static AiDecisionView ToView(AiRecommendationDecision x) => new(x.Id, x.RecommendationId, x.DecisionType, x.Reason, x.CreatedAtUtc, x.ActuatorCommandId, x.FollowUpConsultationId);
 }

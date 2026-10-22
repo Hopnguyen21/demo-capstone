@@ -53,6 +53,7 @@ internal sealed class AiRecommendationConfiguration : IEntityTypeConfiguration<A
         b.Property(x => x.ProposedActuatorId).HasColumnName("proposed_actuator_id");
         b.Property(x => x.ProposedAction).HasColumnName("proposed_action").HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.ProposedDurationSeconds).HasColumnName("proposed_duration_seconds");
+        b.Property(x => x.SourcesJson).HasColumnName("sources_json").HasColumnType("text").HasDefaultValue("[]");
         b.HasIndex(x => x.ConsultationRequestId).IsUnique();
         b.HasIndex(x => new { x.ZoneId, x.CreatedAtUtc });
         b.HasOne(x => x.ConsultationRequest).WithOne(x => x.Recommendation).HasForeignKey<AiRecommendation>(x => x.ConsultationRequestId).OnDelete(DeleteBehavior.Cascade);

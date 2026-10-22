@@ -37,7 +37,8 @@ internal sealed class TestApplicationFactory : WebApplicationFactory<Program>
                 ["Jwt:Audience"] = "SmartFarm.TestClients",
                 ["Jwt:SigningKey"] = SigningKey,
                 ["Jwt:AccessTokenMinutes"] = "60",
-                ["Jwt:RefreshTokenDays"] = "30"
+                ["Jwt:RefreshTokenDays"] = "30",
+                ["SimulatedIot:Enabled"] = "false"
             });
         });
         builder.ConfigureServices(services =>

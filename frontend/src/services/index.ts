@@ -2,7 +2,14 @@
 // Replaces all mock data imports from ./mocks/mockData
 
 import { apiClient, setTokens, clearTokens, extractApiError } from './api';
-import type { FarmingSeason, PlantingSeason, CropVariety } from '../types';
+import type { 
+  FarmingSeason, 
+  PlantingSeason, 
+  CropVariety, 
+  AgricultureDocumentSummary, 
+  AgricultureDocumentDetail, 
+  KnowledgePassage 
+} from '../types';
 
 // ─── Re-export api utilities ─────────────────────────────────────────────────
 export { extractApiError, clearTokens, getAccessToken, isAuthenticated, setTokens } from './api';
@@ -1181,7 +1188,7 @@ export const aiService = {
     const zoneId = maybeQuestion !== undefined ? promptOrZoneId : '';
     const question = maybeQuestion !== undefined ? maybeQuestion : promptOrZoneId;
     if (!zoneId) throw new Error('Không xác định được khu vực cần tư vấn AI.');
-    const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/ask`, { question });
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/ask`, { question }, { timeout: 90_000 });
     return res.data;
   },
 
@@ -1201,21 +1208,95 @@ export const aiService = {
   applyRecommendation: async (
     zoneId: string,
     recommendationId: string,
-    decision: 'Apply' | 'Dismiss' | 'Accepted' | 'Rejected' = 'Apply',
+    decision: 'Apply' | 'Dismiss' | 'Accepted' | 'Rejected' = 'Accepted',
     reason?: string
   ) => {
     if (!zoneId || !recommendationId) throw new Error('Không xác định được khu vực hoặc khuyến nghị AI.');
+    const normalizedDecision = decision === 'Apply' ? 'Accepted' : decision === 'Dismiss' ? 'Rejected' : decision;
+    const finalReason = normalizedDecision === 'Rejected' ? (reason?.trim() || 'Từ chối bởi người dùng') : reason?.trim();
     const res = await apiClient.post(`/api/v1/zones/${zoneId}/ai/apply-recommendation`, {
       recommendationId,
-      decision,
-      reason,
+      decision: normalizedDecision,
+      reason: finalReason,
     });
     return res.data;
+  },
+
+  /** DELETE /api/v1/zones/{zoneId}/ai/history */
+  hideHistory: async (zoneId: string) => {
+    if (!zoneId) throw new Error('Không xác định được khu vực cần ẩn lịch sử AI.');
+    const res = await apiClient.delete(`/api/v1/zones/${zoneId}/ai/history`);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/zones/{zoneId}/ai/history (Clear history) */
+  clearHistory: async (zoneId: string) => {
+    return aiService.hideHistory(zoneId);
   },
 
   /** Legacy alias */
   getRecommendations: async () => [],
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 13B. AGRICULTURE KNOWLEDGE BASE & RAG (VIETGAP)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const knowledgeService = {
+  /** GET /api/v1/ai/knowledge/documents */
+  getDocuments: async (category?: string) => {
+    const res = await apiClient.get('/api/v1/ai/knowledge/documents', {
+      params: category ? { category } : undefined,
+    });
+    const list = res.data?.value ?? res.data ?? [];
+    return (Array.isArray(list) ? list : []) as AgricultureDocumentSummary[];
+  },
+
+  /** Alias: listDocuments */
+  listDocuments: async (category?: string) => {
+    return knowledgeService.getDocuments(category);
+  },
+
+  /** GET /api/v1/ai/knowledge/documents/{documentId} */
+  getDocument: async (documentId: string) => {
+    const res = await apiClient.get(`/api/v1/ai/knowledge/documents/${documentId}`);
+    return res.data as AgricultureDocumentDetail;
+  },
+
+  /** GET /api/v1/ai/knowledge/search */
+  search: async (query: string, cropName?: string, topK: number = 5) => {
+    const res = await apiClient.get('/api/v1/ai/knowledge/search', {
+      params: { 
+        query: query.trim(), 
+        cropName: cropName?.trim() || undefined, 
+        topK 
+      },
+    });
+    const list = res.data?.value ?? res.data ?? [];
+    return (Array.isArray(list) ? list : []) as KnowledgePassage[];
+  },
+
+  /** POST /api/v1/ai/knowledge/documents */
+  uploadDocument: async (formData: FormData) => {
+    const res = await apiClient.post('/api/v1/ai/knowledge/documents', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  /** DELETE /api/v1/ai/knowledge/documents/{documentId} */
+  deleteDocument: async (documentId: string) => {
+    const res = await apiClient.delete(`/api/v1/ai/knowledge/documents/${documentId}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/ai/knowledge/backfill-embeddings */
+  backfillEmbeddings: async () => {
+    const res = await apiClient.post('/api/v1/ai/knowledge/backfill-embeddings');
+    return res.data;
+  },
+};
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 14. SUPPORT & SERVICE REQUESTS

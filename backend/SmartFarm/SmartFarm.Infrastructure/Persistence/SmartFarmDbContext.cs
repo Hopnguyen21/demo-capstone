@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Pgvector.EntityFrameworkCore;
 using SmartFarm.Domain.Common;
 using SmartFarm.Domain.Entities;
 
@@ -70,11 +71,23 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<ZoneContractRenewal> ZoneContractRenewals => Set<ZoneContractRenewal>();
     public DbSet<DeviceDepreciation> DeviceDepreciations => Set<DeviceDepreciation>();
 
+    // ─── RAG Knowledge Base ──────────────────────────────────────────────────
+    public DbSet<AgricultureDocument> AgricultureDocuments => Set<AgricultureDocument>();
+    public DbSet<AgricultureKnowledgeChunk> AgricultureKnowledgeChunks => Set<AgricultureKnowledgeChunk>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("postgis");
+        // Bật pgvector extension để lưu và tìm kiếm embedding vector
+        modelBuilder.HasPostgresExtension("vector");
         modelBuilder.Entity<PlatformSetting>().HasKey(x => x.Key);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmartFarmDbContext).Assembly);
+
+        if (Database.ProviderName != "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            modelBuilder.Entity<AgricultureKnowledgeChunk>().Ignore(x => x.Embedding);
+        }
+
         base.OnModelCreating(modelBuilder);
     }
 
