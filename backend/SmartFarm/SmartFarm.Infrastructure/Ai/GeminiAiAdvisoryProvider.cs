@@ -16,11 +16,11 @@ public sealed class GeminiOptions
 {
     public const string SectionName = "Gemini";
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "gemini-2.5-flash-lite";
+    public string Model { get; set; } = "gemini-2.5-flash";
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int TimeoutSeconds { get; set; } = 30;
-    public int MaxOutputTokens { get; set; } = 4096;
-    public int? ThinkingBudget { get; set; } = null;
+    public int MaxOutputTokens { get; set; } = 8192;
+    public int? ThinkingBudget { get; set; } = 0;
     public int MaxQuestionLength { get; set; } = 1000;
 }
 
@@ -56,7 +56,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
             ["responseMimeType"] = "application/json",
             ["responseSchema"] = AiPromptBuilder.ResponseSchema
         };
-        if (settings.ThinkingBudget is > 0)
+        if (settings.ThinkingBudget.HasValue)
             generationConfig["thinkingConfig"] = new { thinkingBudget = settings.ThinkingBudget.Value };
 
         var body = new
@@ -192,7 +192,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
         }
     }
 
-    private static string ExtractText(JsonElement root)
+    private string ExtractText(JsonElement root)
     {
         if (root.TryGetProperty("promptFeedback", out var feedback) &&
             feedback.TryGetProperty("blockReason", out var blockReason))
@@ -203,9 +203,14 @@ public sealed partial class GeminiAiAdvisoryProvider(
 
         var candidate = candidates[0];
 
-        if (candidate.TryGetProperty("finishReason", out var finish) &&
-            finish.GetString() is "MAX_TOKENS" or "SAFETY" or "RECITATION" or "PROHIBITED_CONTENT")
-            throw new InvalidOperationException($"Gemini stopped with finishReason={finish.GetString()}.");
+        if (candidate.TryGetProperty("finishReason", out var finish))
+        {
+            var reason = finish.GetString();
+            if (reason is "SAFETY" or "RECITATION" or "PROHIBITED_CONTENT")
+                throw new InvalidOperationException($"Gemini stopped with finishReason={reason}.");
+            if (reason == "MAX_TOKENS")
+                logger.LogWarning("[Gemini] Response reached MAX_TOKENS limit; parsing generated parts.");
+        }
 
         if (!candidate.TryGetProperty("content", out var content) ||
             !content.TryGetProperty("parts", out var parts))

@@ -48,7 +48,7 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     public async Task<ActionResult<IReadOnlyList<KnowledgePassageView>>> Search(
         [FromQuery, Required, MinLength(2)] string query,
         [FromQuery] string? cropName,
-        [FromQuery] int topK = 5,
+        [FromQuery, Range(1, 20)] int topK = 5,
         CancellationToken cancellationToken = default)
     {
         var tenantId = User.IsInRole("PlatformAdmin") ? (Guid?)null : User.GetTenantId();
@@ -95,6 +95,11 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
                 tenantId = User.GetTenantId();
             }
             var isPublic = isPlatformAdmin ? request.IsPublic : false;
+            if (isPlatformAdmin && tenantId == null)
+            {
+                // Tài liệu do PlatformAdmin nạp không gắn tenant cụ thể bắt buộc phải là Public để không bị thất lạc
+                isPublic = true;
+            }
 
             var documentId = await documentService.IngestDocumentAsync(
                 request.Title,

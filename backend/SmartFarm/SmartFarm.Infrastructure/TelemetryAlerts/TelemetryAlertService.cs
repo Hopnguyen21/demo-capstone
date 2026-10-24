@@ -195,7 +195,22 @@ public sealed class TelemetryAlertService(
     {
         await EnsureZoneAccessAsync(userId, tenantId, zoneId, ct);
         var now = clock.GetUtcNow().UtcDateTime;
-        var rows = await db.TelemetryReadings.AsNoTracking().Where(x => x.ZoneId == zoneId && x.CapturedAtUtc <= now).OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).ToListAsync(ct);
+        var recentCutoff = now.AddHours(-24);
+        var rows = await db.TelemetryReadings.AsNoTracking()
+            .Where(x => x.ZoneId == zoneId && x.CapturedAtUtc >= recentCutoff && x.CapturedAtUtc <= now)
+            .OrderByDescending(x => x.CapturedAtUtc)
+            .ThenByDescending(x => x.ReceivedAtUtc)
+            .ToListAsync(ct);
+
+        if (rows.Count == 0)
+        {
+            rows = await db.TelemetryReadings.AsNoTracking()
+                .Where(x => x.ZoneId == zoneId && x.CapturedAtUtc <= now)
+                .OrderByDescending(x => x.CapturedAtUtc)
+                .Take(50)
+                .ToListAsync(ct);
+        }
+
         var requirements = await CurrentRequirementsAsync(zoneId, ct);
         var metrics = rows.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x =>
         {
@@ -210,12 +225,32 @@ public sealed class TelemetryAlertService(
     public async Task<TelemetryHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, EnvironmentalParameterCode parameterCode, DateTime fromUtc, DateTime toUtc, string interval, CancellationToken ct)
     {
         await EnsureZoneAccessAsync(userId, tenantId, zoneId, ct);
-        if (fromUtc.Kind != DateTimeKind.Utc || toUtc.Kind != DateTimeKind.Utc || fromUtc >= toUtc || toUtc - fromUtc > TimeSpan.FromDays(90))
+        var startUtc = fromUtc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc) : fromUtc.ToUniversalTime();
+        var endUtc = toUtc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(toUtc, DateTimeKind.Utc) : toUtc.ToUniversalTime();
+
+        if (startUtc >= endUtc || endUtc - startUtc > TimeSpan.FromDays(90))
             throw new RequestValidationException("range", "History requires UTC from < to and a range no greater than 90 days.");
-        var bucket = interval switch { "1m" => TimeSpan.FromMinutes(1), "5m" => TimeSpan.FromMinutes(5), "15m" => TimeSpan.FromMinutes(15), "1h" => TimeSpan.FromHours(1), "1d" => TimeSpan.FromDays(1), _ => throw new RequestValidationException("interval", "Interval must be 1m, 5m, 15m, 1h or 1d.") };
-        var rows = await db.TelemetryReadings.AsNoTracking().Where(x => x.ZoneId == zoneId && x.ParameterCode == parameterCode && x.CapturedAtUtc >= fromUtc && x.CapturedAtUtc <= toUtc).ToListAsync(ct);
+
+        var bucket = interval switch
+        {
+            "1m" => TimeSpan.FromMinutes(1),
+            "5m" => TimeSpan.FromMinutes(5),
+            "15m" => TimeSpan.FromMinutes(15),
+            "1h" => TimeSpan.FromHours(1),
+            "6h" => TimeSpan.FromHours(6),
+            "1d" => TimeSpan.FromDays(1),
+            _ => throw new RequestValidationException("interval", "Interval must be 1m, 5m, 15m, 1h, 6h or 1d.")
+        };
+
+        var rows = await db.TelemetryReadings.AsNoTracking()
+            .Where(x => x.ZoneId == zoneId && x.ParameterCode == parameterCode && x.CapturedAtUtc >= startUtc && x.CapturedAtUtc <= endUtc)
+            .ToListAsync(ct);
+
         var data = rows.GroupBy(x => new DateTime(x.CapturedAtUtc.Ticks / bucket.Ticks * bucket.Ticks, DateTimeKind.Utc))
-            .OrderBy(x => x.Key).Select(x => new TelemetryHistoryPoint(x.Key, x.Average(y => y.Value), x.Min(y => y.Value), x.Max(y => y.Value), x.Count())).ToList();
+            .OrderBy(x => x.Key)
+            .Select(x => new TelemetryHistoryPoint(x.Key, x.Average(y => y.Value), x.Min(y => y.Value), x.Max(y => y.Value), x.Count()))
+            .ToList();
+
         return new(zoneId, parameterCode, interval, data);
     }
 
@@ -324,6 +359,7 @@ public sealed class TelemetryAlertService(
     private async Task EnsureZoneAccessAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
     {
         var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, ct) ?? throw new AuthorizationException();
+        if (user.Role == UserRole.PlatformAdmin) return;
         if (!await ZoneInTenantAsync(zoneId, tenantId, ct)) throw new ResourceNotFoundException("Zone was not found.");
         if (user.TenantId != tenantId) throw new AuthorizationException();
         if (user.Role == UserRole.FarmOwner) return;

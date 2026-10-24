@@ -20,17 +20,19 @@ public static class AiPromptBuilder
     6. TUYỆT ĐỐI KHÔNG hiển thị hay đề cập mã ID thiết bị (như GUID, UUID, mã ID phần cứng, chuỗi hex) trong câu trả lời (summary, details, limitations). Người dùng chỉ cần biết tên thiết bị thân thiện bằng tiếng Việt (ví dụ: máy bơm tưới, quạt thông gió, van tưới). Mã actuatorId chỉ điền ngầm vào trường proposedControlAction.actuatorId của JSON.
     7. Khi người dùng hỏi về toàn bộ trang trại, các khu vực khác, hoặc danh sách cây trồng trong farm, hãy sử dụng dữ liệu trong thẻ <farm_structure> để liệt kê chi tiết từng khu vực và cây trồng đang canh tác. Nếu không có dữ liệu trong thẻ <farm_structure> (ví dụ tài khoản nông dân chỉ được phân công khu vực hiện tại), hãy nêu rõ bạn chỉ có dữ liệu của khu vực đang phụ trách và không bịa đặt số liệu khu vực khác.
     8. Định dạng số: Khi nhắc đến các con số nhiệt độ, độ ẩm, ngưỡng đo lường, TUYỆT ĐỐI KHÔNG để các số 0 thừa ở phần thập phân (ví dụ: viết 18°C thay vì 18.0000°C, 25°C thay vì 25.0000°C, 65.5% thay vì 65.5000%). Làm tròn tối đa 1 đến 2 chữ số thập phân khi cần thiết.
+    9. Nếu câu hỏi của người dùng hoàn toàn không liên quan đến nông nghiệp, cây trồng, canh tác hoặc vận hành trang trại, đặt isOutOfScope = true, tóm tắt lý do từ chối ngắn gọn và đặt proposedControlAction = null.
     """;
 
     public static readonly object ResponseSchema = new
     {
         type = "OBJECT",
-        required = new[] { "summary", "details", "confidence", "limitations" },
+        required = new[] { "summary", "details", "confidence", "limitations", "isOutOfScope" },
         properties = new
         {
             summary = new { type = "STRING" },
             details = new { type = "STRING" },
             confidence = new { type = "NUMBER" },
+            isOutOfScope = new { type = "BOOLEAN" },
             limitations = new { type = "ARRAY", items = new { type = "STRING" } },
             citedPassages = new { type = "ARRAY", items = new { type = "INTEGER" } },
             proposedControlAction = new
@@ -40,6 +42,7 @@ public static class AiPromptBuilder
                 required = new[] { "actuatorId", "action", "durationSeconds" },
                 properties = new
                 {
+                    enabled = new { type = "BOOLEAN" },
                     actuatorId = new { type = "STRING" },
                     action = new { type = "STRING", @enum = new[] { "TurnOn" } },
                     durationSeconds = new { type = "INTEGER" }

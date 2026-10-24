@@ -175,7 +175,12 @@ public sealed class AiAdvisoryService(
         await db.SaveChangesAsync(cancellationToken);
 
         AiRecommendation recommendation;
-        if (!context.IsSufficientForAdvice)
+        var requiresRealtimeData = IsRealtimeTelemetryOrControlQuestion(question);
+        var missingRequiredData = requiresRealtimeData
+            ? !context.IsSufficientForAdvice
+            : (context.MissingData.Contains("active planting season") || context.MissingData.Contains("crop"));
+
+        if (missingRequiredData)
         {
             var missingDetails = string.Join(", ", context.MissingData);
             recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
@@ -229,14 +234,23 @@ public sealed class AiAdvisoryService(
                     .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore))
                     .ToList();
 
+                // Fallback nếu model không trích dẫn số thứ tự nhưng có passage liên quan cao
+                if (sources.Count == 0 && passages is { Count: > 0 })
+                {
+                    sources = passages
+                        .Where(p => p.SimilarityScore >= 0.70f)
+                        .GroupBy(p => p.DocumentId)
+                        .Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
+                        .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore))
+                        .ToList();
+                }
+
                 recommendation.SourcesJson = JsonSerializer.Serialize(sources);
                 request.ContextSnapshotJson = JsonSerializer.Serialize(new 
                 { 
                     Question = question,
-                    Prompt = promptText,
-                    SystemPrompt = AiPromptBuilder.SystemPrompt,
                     Context = providerContext,
-                    Passages = passages,
+                    Passages = passages?.Select(p => new { p.ChunkId, p.DocumentId, p.DocumentTitle, p.Category, p.SimilarityScore }).ToList(),
                     Sources = sources.Select(s => s.Title).ToList() 
                 });
                 request.ProviderName = Optional(result.ProviderName, 100) ?? "Unknown";
@@ -308,6 +322,15 @@ public sealed class AiAdvisoryService(
             }
         }
 
+        if (!context.IsSufficientForAdvice)
+        {
+            actionable = false;
+            actuatorId = null;
+            action = null;
+            duration = null;
+            limitations.Add("Không khả dụng đề xuất điều khiển thiết bị tự động do thiếu dữ liệu cảm biến thời gian thực hoặc dự báo thời tiết.");
+        }
+
         if (status == AiRecommendationStatus.LowConfidence)
             limitations.Add($"Provider confidence {confidence:0.00} is below the required {settings.MinimumConfidence:0.00} threshold.");
 
@@ -337,19 +360,19 @@ public sealed class AiAdvisoryService(
         var now = clock.GetUtcNow().UtcDateTime;
         var season = await db.PlantingSeasons.AsNoTracking()
             .Include(x => x.Crop).Include(x => x.Variety).Include(x => x.GrowthProfile).Include(x => x.CurrentGrowthStage).Include(x => x.AppliedRequirements)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(x => x.ZoneId == zone.Id && x.Status == PlantingSeasonStatus.InProgress, cancellationToken);
-        var telemetry = new List<AiTelemetryContextItem>();
-        foreach (var parameterCode in Enum.GetValues<EnvironmentalParameterCode>())
+        var latestReadings = await db.TelemetryReadings.AsNoTracking()
+            .Where(x => x.ZoneId == zone.Id && x.CapturedAtUtc <= now)
+            .GroupBy(x => x.ParameterCode)
+            .Select(g => g.OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).First())
+            .ToListAsync(cancellationToken);
+
+        var telemetry = latestReadings.Select(reading =>
         {
-            var reading = await db.TelemetryReadings.AsNoTracking()
-                .Where(x => x.ZoneId == zone.Id && x.ParameterCode == parameterCode && x.CapturedAtUtc <= now)
-                .OrderByDescending(x => x.CapturedAtUtc)
-                .ThenByDescending(x => x.ReceivedAtUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (reading is null) continue;
             var isFresh = reading.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes) && reading.CapturedAtUtc <= now;
-            telemetry.Add(new AiTelemetryContextItem(reading.ParameterCode, reading.Value, reading.Unit, reading.CapturedAtUtc, isFresh));
-        }
+            return new AiTelemetryContextItem(reading.ParameterCode, reading.Value, reading.Unit, reading.CapturedAtUtc, isFresh);
+        }).ToList();
         var actuators = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
             .Where(x => x.Device.ZoneId == zone.Id && x.Device.DecommissionedAtUtc == null)
             .Select(x => new AiActuatorContextItem(x.Id, x.ActuatorType, Math.Min(1800, x.MaxDurationMinutes * 60), x.Device.Status == DeviceStatus.Online))
@@ -418,7 +441,7 @@ public sealed class AiAdvisoryService(
                     var activeSeason = z.PlantingSeasons.FirstOrDefault(s => s.Status == PlantingSeasonStatus.InProgress);
                     return new AiZoneStructureItem(
                         z.Id, z.Name, z.AreaM2, z.ZoneType, z.Status.ToString(),
-                        activeSeason?.Crop.Name,
+                        activeSeason?.Crop?.Name,
                         activeSeason?.CurrentGrowthStage?.Name,
                         activeSeason is null ? null : Math.Max(0, today.DayNumber - activeSeason.StartDate.DayNumber));
                 }).ToList();
@@ -432,9 +455,9 @@ public sealed class AiAdvisoryService(
 
         return new AiZoneContext(
             zone.Field.FarmId, zone.Field.Farm.Name, zone.Field.Farm.TimeZone, zone.FieldId, zone.Field.Name, zone.Id, zone.Name, zone.AreaM2,
-            season?.Id, season?.Crop.Name, season?.Variety?.Name, season?.GrowthProfileId, season?.GrowthProfile.Name,
+            season?.Id, season?.Crop?.Name, season?.Variety?.Name, season?.GrowthProfileId, season?.GrowthProfile?.Name,
             season is null ? null : Math.Max(0, DateOnly.FromDateTime(now).DayNumber - season.StartDate.DayNumber),
-            season?.CurrentGrowthStageId, season?.CurrentGrowthStage.Name,
+            season?.CurrentGrowthStageId, season?.CurrentGrowthStage?.Name,
             season?.AppliedRequirements.Select(x => new AiRequirementContextItem(x.ParameterCode, x.MinValue, x.MaxValue, x.TargetValue, x.Unit)).ToList() ?? [],
             telemetry,
             actuators,
@@ -669,6 +692,15 @@ public sealed class AiAdvisoryService(
         }
 
         return [];
+    }
+
+    private static bool IsRealtimeTelemetryOrControlQuestion(string question)
+    {
+        var q = question.ToLowerInvariant();
+        return q.Contains("hiện tại") || q.Contains("bây giờ") || q.Contains("hôm nay") ||
+               q.Contains("thế nào") || q.Contains("bao nhiêu") || q.Contains("đo được") ||
+               q.Contains("tưới không") || q.Contains("có nên tưới") || q.Contains("bật") ||
+               q.Contains("tắt") || q.Contains("điều khiển") || q.Contains("thời tiết");
     }
 
     private static AiRecommendationView ToView(AiRecommendation x) => new(

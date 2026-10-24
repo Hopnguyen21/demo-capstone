@@ -58,15 +58,15 @@ public sealed class AlertsController(ITelemetryAlertService service) : Controlle
 
     // API catalog #74
     [HttpGet("api/v1/alerts/{alertId:guid}")]
-    public async Task<ActionResult<AlertView>> Get(Guid alertId, CancellationToken ct) => Ok(await service.GetAlertAsync(User.GetUserId(), User.GetTenantId(), alertId, ct));
+    public async Task<ActionResult<AlertView>> Get(Guid alertId, CancellationToken ct) => Ok(await service.GetAlertAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, alertId, ct));
 
     // API catalog #75, normalized as acknowledge-only by TELEMETRY_ALERT_CONTRACT_V1.md
     [HttpPut("api/v1/alerts/{alertId:guid}/acknowledge")]
-    public async Task<ActionResult<AlertView>> Acknowledge(Guid alertId, AcknowledgeAlertRequest request, CancellationToken ct) => Ok(await service.AcknowledgeAsync(User.GetUserId(), User.GetTenantId(), alertId, request.Notes, ct));
+    public async Task<ActionResult<AlertView>> Acknowledge(Guid alertId, AcknowledgeAlertRequest request, CancellationToken ct) => Ok(await service.AcknowledgeAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, alertId, request.Notes, ct));
 
     // Contract extension ALERT-V1-01
     [HttpPut("api/v1/alerts/{alertId:guid}/resolve")]
-    public async Task<ActionResult<AlertView>> Resolve(Guid alertId, ResolveAlertRequest request, CancellationToken ct) => Ok(await service.ResolveAsync(User.GetUserId(), User.GetTenantId(), alertId, new(request.ActionTaken, request.Notes), ct));
+    public async Task<ActionResult<AlertView>> Resolve(Guid alertId, ResolveAlertRequest request, CancellationToken ct) => Ok(await service.ResolveAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, alertId, new(request.ActionTaken, request.Notes), ct));
 }
 
 public sealed class AlertRuleRequest

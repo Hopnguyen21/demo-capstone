@@ -105,6 +105,7 @@ public static class DependencyInjection
             .Validate(x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps, "OpenMeteo:BaseUrl must be an absolute HTTPS URL.")
             .Validate(x => x.TimeoutSeconds is >= 1 and <= 60, "OpenMeteo:TimeoutSeconds must be between 1 and 60.")
             .ValidateOnStart();
+        services.AddMemoryCache();
         services.AddSingleton<HttpClient>();
         services.AddScoped<IAiAdvisoryService, AiAdvisoryService>();
         services.AddScoped<GeminiAiAdvisoryProvider>();

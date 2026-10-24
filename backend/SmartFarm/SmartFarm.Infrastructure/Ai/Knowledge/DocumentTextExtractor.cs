@@ -15,14 +15,17 @@ public static class DocumentTextExtractor
     /// <summary>
     /// Trích xuất toàn bộ nội dung text từ file theo phần mở rộng.
     /// </summary>
-    public static string Extract(byte[] fileBytes, string fileType) =>
-        fileType.ToLowerInvariant() switch
+    public static string Extract(byte[] fileBytes, string fileType)
+    {
+        var raw = fileType.ToLowerInvariant() switch
         {
             "pdf"  => ExtractFromPdf(fileBytes),
             "docx" => ExtractFromDocx(fileBytes),
             "txt"  => Encoding.UTF8.GetString(fileBytes),
             _      => throw new NotSupportedException($"File type '{fileType}' is not supported.")
         };
+        return raw.Normalize(NormalizationForm.FormC);
+    }
 
     // ────────────────────────────────────────────────────────────────────────
     //  PDF: Trích xuất toàn diện trang và text bằng thư viện UglyToad.PdfPig

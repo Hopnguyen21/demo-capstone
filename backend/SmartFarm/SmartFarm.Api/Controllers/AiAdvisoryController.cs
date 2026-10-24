@@ -27,10 +27,13 @@ public sealed class AiAdvisoryController(IAiAdvisoryService service) : Controlle
     // API catalog #86. Accepted means the Owner/Authorized Farmer authorized an asynchronous control command, not that hardware ran.
     [Authorize(Roles = "FarmOwner,Farmer")]
     [HttpPost("api/v1/zones/{zoneId:guid}/ai/apply-recommendation")]
-    public async Task<ActionResult<AiDecisionResult>> Decide(Guid zoneId, DecideAiRecommendationRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<AiDecisionResult>> Decide(Guid zoneId, [FromBody] DecideAiRecommendationRequest request, CancellationToken cancellationToken)
     {
+        if (request.Decision is null)
+            return BadRequest(new { message = "Trường Decision (Accepted, Rejected, Ignored, MoreAnalysisRequested) là bắt buộc." });
+
         var result = await service.DecideAsync(User.GetUserId(), User.GetTenantId(), zoneId,
-            new DecideRecommendationCommand(request.RecommendationId, request.Decision, request.Reason, request.FollowUpQuestion), cancellationToken);
+            new DecideRecommendationCommand(request.RecommendationId, request.Decision.Value, request.Reason, request.FollowUpQuestion), cancellationToken);
         return result.Command is null ? Ok(result) : Accepted($"/api/v1/zones/{zoneId}/actuators/{result.Command.ActuatorId}/status", result);
     }
 
@@ -56,8 +59,12 @@ public sealed class AskAiRequest
 
 public sealed class DecideAiRecommendationRequest
 {
+    [Required]
     public Guid RecommendationId { get; init; }
-    public AiRecommendationDecisionType Decision { get; init; }
+
+    [Required]
+    public AiRecommendationDecisionType? Decision { get; init; }
+
     [StringLength(1000)] public string? Reason { get; init; }
     [StringLength(2000, MinimumLength = 3)] public string? FollowUpQuestion { get; init; }
 }

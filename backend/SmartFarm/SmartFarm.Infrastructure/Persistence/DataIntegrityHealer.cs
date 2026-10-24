@@ -61,7 +61,7 @@ public static class DataIntegrityHealer
                         CreatedAtUtc = now
                     };
 
-                    stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = EnvironmentalParameterCode.Temperature, MinValue = 20, MaxValue = 30, TargetValue = 25, Unit = "C" });
+                    stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = EnvironmentalParameterCode.Temperature, MinValue = 20, MaxValue = 30, TargetValue = 25, Unit = "°C" });
                     stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = EnvironmentalParameterCode.AirHumidity, MinValue = 60, MaxValue = 80, TargetValue = 70, Unit = "%" });
                     stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = EnvironmentalParameterCode.SoilMoisture, MinValue = 60, MaxValue = 75, TargetValue = 68, Unit = "%" });
                     stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = EnvironmentalParameterCode.LightIntensity, MinValue = 20000, MaxValue = 60000, TargetValue = 30000, Unit = "lux" });
@@ -102,16 +102,16 @@ public static class DataIntegrityHealer
                     var tenantId = zone.Field.Farm.TenantId;
                     var candidateCrops = crops.Where(c => c.TenantId == null || c.TenantId == tenantId).ToList();
                     Crop? matchedCrop = null;
-                    if (zoneLower.Contains("cà chua") || zoneLower.Contains("tomato") || zoneLower.Contains("beefsteak"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Ca Chua", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Tomato", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("dưa leo") || zoneLower.Contains("cucumber"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Dưa leo", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Cucumber", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("dâu tây") || zoneLower.Contains("strawberry"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Dau Tay", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Strawberry", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("xà lách") || zoneLower.Contains("lettuce"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Xa Lach", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Batavia", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("ớt") || zoneLower.Contains("pepper"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Ca Chua Chuong", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Pepper", StringComparison.OrdinalIgnoreCase));
+                    if (zoneLower.Contains("cà chua") || zoneLower.Contains("ca chua") || zoneLower.Contains("tomato") || zoneLower.Contains("beefsteak"))
+                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Cà chua", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Ca Chua", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Tomato", StringComparison.OrdinalIgnoreCase));
+                    else if (zoneLower.Contains("dưa leo") || zoneLower.Contains("dua leo") || zoneLower.Contains("cucumber"))
+                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Dưa leo", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Dua leo", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Cucumber", StringComparison.OrdinalIgnoreCase));
+                    else if (zoneLower.Contains("dâu tây") || zoneLower.Contains("dau tay") || zoneLower.Contains("strawberry"))
+                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Dâu tây", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Dau Tay", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Strawberry", StringComparison.OrdinalIgnoreCase));
+                    else if (zoneLower.Contains("xà lách") || zoneLower.Contains("xa lach") || zoneLower.Contains("lettuce"))
+                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Xà lách", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Xa Lach", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Batavia", StringComparison.OrdinalIgnoreCase));
+                    else if (zoneLower.Contains("ớt") || zoneLower.Contains("ot") || zoneLower.Contains("pepper"))
+                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Ớt", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Ot", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Pepper", StringComparison.OrdinalIgnoreCase));
 
                     if (matchedCrop is null) continue;
 

@@ -52,7 +52,7 @@ public sealed class FarmsController(IFarmService farmService) : ControllerBase
     [HttpGet("{farmId:guid}/structure")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<FarmStructureView>> Structure(Guid farmId, CancellationToken cancellationToken) =>
-        Ok(await farmService.GetStructureAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
+        Ok(await farmService.GetStructureAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, cancellationToken));
 }
 
 public sealed class CreateFarmRequest

@@ -479,6 +479,145 @@ public static class KnowledgeBaseSeedData
             results.Add((doc, chunks));
         }
 
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 11: Kỹ thuật canh tác và vi khí hậu chuyên sâu cho Cà chua
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Kỹ thuật canh tác và quản lý vi khí hậu chuyên sâu cho cà chua nhà màng VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "general",
+                CropScope = "cà chua",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Kỹ thuật canh tác và quản lý vi khí hậu cà chua VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    VI KHÍ HẬU VÀ NHU CẦU MÔI TRƯỜNG CHO CÀ CHUA NHÀ MÀNG:
+                    Nhiệt độ tối ưu: Ban ngày 21-28°C, ban đêm 16-19°C. Nhiệt độ > 32°C gây rụng hoa và giảm sức sống hạt phấn; nhiệt độ < 12°C làm chậm phát triển rễ.
+                    Độ ẩm không khí tối ưu: 60-70%. Độ ẩm > 85% kéo dài tạo điều kiện bùng phát nấm sương mai và mốc xám.
+                    Ánh sáng: Cần tối thiểu 6-8 giờ chiếu sáng trực tiếp/ngày, cường độ sáng 30.000-50.000 Lux.
+                    Độ ẩm đất/giá thể: Duy trì 65-75% trong giai đoạn sinh trưởng thân lá và nuôi quả; giảm xuống 60-65% giai đoạn chín thu hoạch.
+                    """,
+                    "cà chua",
+                    "cà chua,nhiệt độ,độ ẩm không khí,độ ẩm đất,ánh sáng,Lux,vi khí hậu,nhà màng"),
+
+                new(1, """
+                    KỸ THUẬT TỈA CÀNH, BẤM NGỌN VÀ THỤ PHẤN CÀ CHUA:
+                    Tỉa chồi nách: Thường xuyên tỉa bỏ chồi nách khi mới nhú 3-5cm, chỉ giữ lại 1 thân chính duy nhất để tập trung dinh dưỡng nuôi trái.
+                    Hạ giàn: Khi cây đạt chiều cao 2m, tiến hành hạ dây giàn để cây tiếp tục vươn ngọn và cho các lứa chùm hoa mới.
+                    Hỗ trợ thụ phấn: Rung giàn hoặc dùng quạt gió lưu thông vào khoảng 8h00 - 10h00 sáng khi độ ẩm không khí đạt 60-70% giúp hạt phấn phân tán tốt nhất.
+                    Tỉa quả: Mỗi chùm chỉ để 4-6 quả cân đối, tỉa bỏ sớm các quả dị hình, quả còi cọc ở đầu chùm.
+                    """,
+                    "cà chua",
+                    "tỉa chồi nách,hạ giàn,thụ phấn,rung giàn,tỉa quả,thân chính,chùm hoa"),
+
+                new(2, """
+                    RỐI LOẠN SINH LÝ CÀ CHUA VÀ PHÒNG CHỐNG THỐI ĐÍCH QUẢ (BER):
+                    Bệnh thối đít trái (Blossom End Rot - BER): Nguyên nhân do thiếu hụt Canxi cục bộ tại mô đáy quả, thường xuất hiện khi độ ẩm đất biến động mạnh hoặc EC quá cao cản trở hút Ca.
+                    Biện pháp phòng ngừa BER: Giữ ẩm độ đất ổn định 65-75%, không để giá thể khô kiệt rồi tưới đẫm; bổ sung Canxi-Bo dạng chelate qua hệ thống tưới nhỏ giọt định kỳ.
+                    Nứt quả: Xảy ra khi tưới nước quá nhiều sau một đợt khô hạn hoặc chênh lệch nhiệt độ ngày đêm quá lớn. Cần điều tiết lượng nước tưới chia nhỏ nhiều lần trong ngày.
+                    """,
+                    "cà chua",
+                    "thối đít trái,BER,Canxi,Calcium,nứt quả,dao động độ ẩm,rối loạn sinh lý")
+            };
+            results.Add((doc, chunks));
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 12: Quản lý dinh dưỡng và Fertigation theo tiêu chuẩn VietGAP
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Quản lý dinh dưỡng cây trồng và kỹ thuật châm phân Fertigation theo tiêu chuẩn VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "nutrition",
+                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Quản lý dinh dưỡng và kỹ thuật châm phân Fertigation VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    NGUYÊN TẮC QUẢN LÝ DINH DƯỠNG THEO CHUẨN VIETGAP:
+                    Chỉ sử dụng các loại phân bón nằm trong danh mục được phép lưu hành tại Việt Nam.
+                    Phân hữu cơ phải được ủ hoai mục hoàn toàn theo quy trình xử lý vi sinh vật, tuyệt đối không sử dụng phân chuồng tươi, phân bắc chưa qua xử lý.
+                    Áp dụng bón phân cân đối theo tỷ lệ N:P:K phù hợp với từng thời kỳ sinh trưởng của cây trồng để tránh tích lũy Nitrat (NO3-) dư thừa trong sản phẩm thu hoạch.
+                    Ngưỡng dư lượng Nitrat trong rau ăn lá theo VietGAP: ≤ 1500 mg/kg; rau ăn quả ≤ 500 mg/kg.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "dinh dưỡng,phân bón,VietGAP,hữu cơ hoai mục,Nitrat,NO3,dư lượng"),
+
+                new(1, """
+                    KỸ THUẬT CHÂM PHÂN FERTIGATION VÀ QUẢN LÝ EC, PH VÙNG RỄ:
+                    Hệ thống châm phân tự động hòa tan phân bón hòa tan cao cấp (A, B tank) trực tiếp vào đường ống tưới nhỏ giọt.
+                    Bể A chứa Canxi Nitrat và Sắt Chelate; Bể B chứa Kali, Photphat, Magie Sunfat và các vi lượng khác để tránh kết tủa Canxi Photphat và Canxi Sunfat.
+                    Độ pH của dung dịch tưới duy trì nghiêm ngặt trong khoảng 5.8 - 6.5 để tối ưu hóa khả năng hấp thu của tất cả các chất dinh dưỡng.
+                    Độ dẫn điện EC được kiểm soát theo từng loại cây: Cây con 1.0 - 1.5 dS/m; Cây trưởng thành và nuôi trái 2.0 - 2.8 dS/m; Xà lách thủy canh 1.2 - 1.6 dS/m.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "fertigation,châm phân,EC,pH,bể A,bể B,kết tủa,tưới nhỏ giọt"),
+
+                new(2, """
+                    CHẨN ĐOÁN RỐI LOẠN DINH DƯỠNG VÀ XỬ LÝ KHẮC PHỤC:
+                    Thiếu Đạm (N): Cây sinh trưởng còi cọc, lá già chuyển vàng đồng đều từ cuống lá ra mép lá. Khắc phục: Tăng nhẹ tỷ lệ Nitrat.
+                    Thiếu Lân (P): Lá bánh tẻ chuyển màu xanh đậm hoặc tím ánh đỏ ở gân mặt dưới lá, bộ rễ kém phát triển. Khắc phục: Bổ sung Photphat hòa tan.
+                    Thiếu Kali (K): Mép lá già bị cháy vàng xém, thịt quả mềm, màu sắc kém tươi và độ đường thấp. Khắc phục: Bổ sung Kali Sunfat hoặc Kali Nitrat.
+                    Thiếu Sắt (Fe): Đọt non bị bạc trắng, gân lá vẫn còn màu xanh. Khắc phục: Phun hoặc châm Fe-EDDHA hoặc Fe-EDTA.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "thiếu đạm,thiếu lân,thiếu kali,thiếu sắt,lá vàng,cháy mép lá,rối loạn dinh dưỡng")
+            };
+            results.Add((doc, chunks));
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 13: Tiêu chuẩn an toàn chất lượng nguồn nước tưới VietGAP
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Quy chuẩn an toàn chất lượng nguồn nước tưới nông nghiệp công nghệ cao theo QCVN 08-MT và VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "irrigation",
+                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Quy chuẩn an toàn nguồn nước tưới nông nghiệp công nghệ cao QCVN 08-MT và VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    QUY CHUẨN NGUỒN NƯỚC TƯỚI NÔNG NGHIỆP THEO QCVN 08-MT:2015/BTNMT:
+                    Nước tưới tiêu nông nghiệp công nghệ cao và thủy canh VietGAP phải được xét nghiệm định kỳ tối thiểu 6 tháng/lần.
+                    Giới hạn pH nguồn nước tưới tự nhiên: 5.5 - 8.5.
+                    Tổng chất rắn hòa tan (TDS): < 1000 mg/L (để hạn chế tích lũy muối làm tăng EC không kiểm soát).
+                    Chỉ số kim loại nặng cho phép: Asen (As) ≤ 0.05 mg/L; Chì (Pb) ≤ 0.05 mg/L; Cadimi (Cd) ≤ 0.01 mg/L; Thủy ngân (Hg) ≤ 0.001 mg/L.
+                    Nguồn nước giếng khoan bị nhiễm sắt (phèn) phải qua hệ thống giàn mưa khử sắt và bể lọc cát thạch anh trước khi đưa vào bể chứa tưới.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "nước tưới,QCVN 08-MT,kim loại nặng,Asen,Chì,Cadimi,TDS,pH,khử phèn"),
+
+                new(1, """
+                    KIỂM SOÁT VI SINH VẬT TRONG NƯỚC TƯỚI VIETGAP:
+                    Chỉ số vi sinh giới hạn trong nước tưới rau ăn lá và rau ăn sống: E. coli ≤ 100 CFU/100ml; Salmonella: Không được phát hiện trong 250ml mẫu nước.
+                    Tuyệt đối không sử dụng nguồn nước thải công nghiệp, nước thải y tế hoặc nước ao tù ô nhiễm để tưới tiêu.
+                    Hệ thống lọc nước nhà màng VietGAP: Sử dụng màng lọc đĩa 120-130 micron kết hợp đèn UV khử trùng nước hoặc ozone hóa để diệt sạch mầm bệnh nấm Fusarium và vi khuẩn trước khi châm phân tưới.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "vi sinh,E. coli,Salmonella,nước thải,khử trùng,đèn UV,ozone,lọc đĩa")
+            };
+            results.Add((doc, chunks));
+        }
+
         return results;
     }
 }

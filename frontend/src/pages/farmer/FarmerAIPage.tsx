@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Send, Loader2 } from 'lucide-react';
+import { Bot, Send, Loader2, Trash2, CheckCircle2, Clock, Sparkles } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { aiService } from '../../services';
 import { useAuth } from '../../app/providers/AuthContext';
@@ -10,8 +10,6 @@ const cleanTechnicalIds = (text?: string): string => {
     .replace(/\s*\((?:Mã\s*(?:ID|thiết bị)?|ID|ActuatorId)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\)/gi, '')
     .replace(/(?:mã\s*(?:ID|thiết bị)?|ID\s*thiết\s*bị|thiết\s*bị\s*mã)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/gi, '')
     .replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '')
-    .replace(/\b(\d+)\.0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
-    .replace(/\b(\d+\.\d*?[1-9])0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
     .replace(/\(\s*\)/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -22,12 +20,15 @@ export const FarmerAIPage: React.FC = () => {
   const zoneId = selectedZoneId || zones[0]?.zoneId || '';
   const currentZone = zones.find(z => z.zoneId === zoneId);
   const zoneName = currentZone?.name || zones[0]?.name || 'Nhà màng';
+  const canControl = (currentZone as any)?.canControl ?? false;
+
   const [aiContext, setAiContext] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([
     { id: '1', sender: 'AI', text: 'Chào bạn! Bạn cần tư vấn về vi khí hậu hay sâu bệnh tại Nhà màng được phân công?' }
   ]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -39,10 +40,12 @@ export const FarmerAIPage: React.FC = () => {
       { id: '1', sender: 'AI', text: 'Chào bạn! Bạn cần tư vấn về vi khí hậu hay sâu bệnh tại Nhà màng được phân công?' }
     ]);
     setAiContext(null);
+
     // Load AI context (zone/crop info)
     aiService.getContext(zoneId)
       .then(ctx => { if (active) setAiContext(ctx); })
       .catch(() => { if (active) setAiContext(null); });
+
     // Restore chat history
     aiService.getMessages(zoneId)
       .then(hist => {
@@ -59,7 +62,13 @@ export const FarmerAIPage: React.FC = () => {
           restored.push({
             id: `ha-${idx}`,
             sender: 'AI',
-            text: cleanTechnicalIds(h.details || h.summary || 'Trợ lý AI đã ghi nhận câu hỏi.')
+            text: cleanTechnicalIds(h.details || h.summary || 'Trợ lý AI đã ghi nhận câu hỏi.'),
+            sources: h.sources,
+            recommendationId: h.recommendationId || h.id,
+            isActionable: h.isActionable,
+            proposedAction: h.proposedAction,
+            proposedDurationSeconds: h.proposedDurationSeconds,
+            status: h.status
           });
         });
         if (restored.length > 0) {
@@ -71,20 +80,53 @@ export const FarmerAIPage: React.FC = () => {
       })
       .catch(() => {});
 
-    // Auto-refresh telemetry & context every 10 seconds
+    // Auto-refresh telemetry & context every 30 seconds (optimum interval)
     const interval = setInterval(() => {
       if (zoneId) {
         aiService.getContext(zoneId)
           .then(ctx => { if (active) setAiContext(ctx); })
           .catch(() => {});
       }
-    }, 10000);
+    }, 30000);
 
     return () => { 
       active = false; 
       clearInterval(interval);
     };
   }, [zoneId]);
+
+  const handleClearHistory = async () => {
+    if (!zoneId) return;
+    if (window.confirm('Xóa toàn bộ lịch sử tư vấn AI của khu vực này?')) {
+      try {
+        await aiService.clearHistory(zoneId);
+        setMessages([
+          { id: '1', sender: 'AI', text: 'Đã dọn dẹp lịch sử. Bạn cần tư vấn thêm vấn đề gì?' }
+        ]);
+      } catch (err) {
+        console.error('Failed to clear history:', err);
+      }
+    }
+  };
+
+  const handleApplyAction = async (msg: any) => {
+    if (!msg.recommendationId || decidingId) return;
+    setDecidingId(msg.recommendationId);
+    try {
+      const res = await aiService.applyRecommendation(
+        zoneId,
+        msg.recommendationId,
+        'Accepted'
+      );
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'ACCEPTED' } : m));
+      // Refresh context after action
+      aiService.getContext(zoneId).then(setAiContext).catch(() => {});
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Không thể thực thi lệnh');
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,10 +141,22 @@ export const FarmerAIPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const res = await aiService.ask(zoneId, userMsg);
-      // Correct field mapping: AiRecommendationView uses details/summary
-      const reply = cleanTechnicalIds((res as any)?.details || (res as any)?.summary || 'AI chưa trả về kết quả phân tích. Vui lòng tải lại dữ liệu hoặc thử lại sau.');
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'AI', text: reply }]);
+      const res: any = await aiService.ask(zoneId, userMsg);
+      const reply = cleanTechnicalIds(res?.details || res?.summary || 'AI chưa trả về kết quả phân tích.');
+      setMessages(prev => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'AI',
+          text: reply,
+          sources: res?.sources,
+          recommendationId: res?.recommendationId || res?.id,
+          isActionable: res?.isActionable,
+          proposedAction: res?.proposedAction,
+          proposedDurationSeconds: res?.proposedDurationSeconds,
+          status: res?.status || 'READY'
+        }
+      ]);
     } catch {
       setMessages(prev => [
         ...prev,
@@ -154,6 +208,14 @@ export const FarmerAIPage: React.FC = () => {
                 {aiContext.telemetry?.length ?? 0} cảm biến
               </span>
             )}
+            <button
+              type="button"
+              onClick={handleClearHistory}
+              title="Xóa lịch sử trò chuyện"
+              className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-100 transition-colors"
+            >
+              <Trash2 size={13} />
+            </button>
           </div>
         </div>
 
@@ -207,7 +269,54 @@ export const FarmerAIPage: React.FC = () => {
                 ? 'ml-auto bg-[#119653] text-white shadow-xs'
                 : 'bg-slate-50 text-slate-800 border border-slate-200 shadow-xs'
             }`}>
-              {m.text}
+              <div className="whitespace-pre-line">{m.text}</div>
+
+              {/* VietGAP Sources Badge */}
+              {m.sources && m.sources.length > 0 && (
+                <div className="mt-2.5 pt-2 border-t border-slate-200/70 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[10px] text-slate-400 font-semibold">Căn cứ:</span>
+                  {m.sources.map((s: any, idx: number) => {
+                    const title = typeof s === 'string' ? s : (s.title || s.documentTitle || '');
+                    return (
+                      <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-medium">
+                        📚 {title}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Action Proposal Card */}
+              {m.isActionable && m.proposedAction && (
+                <div className="mt-2.5 p-2.5 rounded-lg bg-emerald-50/80 border border-emerald-300 text-xs">
+                  <div className="font-semibold text-emerald-900 flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-emerald-600" />
+                      Đề xuất điều khiển: {m.proposedAction} {m.proposedDurationSeconds ? `(${Math.round(m.proposedDurationSeconds / 60)} phút)` : ''}
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                      m.status === 'ACCEPTED' ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {m.status === 'ACCEPTED' ? 'Đã duyệt' : 'Chờ duyệt'}
+                    </span>
+                  </div>
+                  {canControl ? (
+                    <button
+                      type="button"
+                      disabled={m.status === 'ACCEPTED' || decidingId === m.recommendationId}
+                      onClick={() => handleApplyAction(m)}
+                      className="w-full mt-1.5 py-1.5 px-3 rounded-md bg-[#119653] hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <CheckCircle2 size={13} />
+                      {decidingId === m.recommendationId ? 'Đang gửi lệnh...' : m.status === 'ACCEPTED' ? 'Đã kích hoạt' : 'Áp Dụng Lệnh Này'}
+                    </button>
+                  ) : (
+                    <div className="mt-1 text-[10px] text-slate-500 italic flex items-center gap-1">
+                      <Clock size={11} /> Cần Chủ Trang Trại phê duyệt để kích hoạt thiết bị.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
           {loading && (

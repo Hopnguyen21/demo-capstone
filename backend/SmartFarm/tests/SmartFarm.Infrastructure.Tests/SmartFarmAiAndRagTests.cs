@@ -317,3 +317,34 @@ public class FarmerAuthorizationAndSeedSyncTests
     }
 }
 
+public class RagAndAiAuditVerificationTests
+{
+    [Fact]
+    public void Gemini_response_schema_must_contain_isOutOfScope_and_enabled()
+    {
+        var schemaJson = System.Text.Json.JsonSerializer.Serialize(AiPromptBuilder.ResponseSchema);
+        schemaJson.Should().Contain("isOutOfScope");
+        schemaJson.Should().Contain("enabled");
+    }
+
+    [Fact]
+    public void Knowledge_base_seed_data_contains_at_least_13_comprehensive_documents()
+    {
+        var seedDocs = KnowledgeBaseSeedData.GetSeedDocuments();
+        seedDocs.Count.Should().BeGreaterOrEqualTo(13, "Cần tối thiểu 13 tài liệu bao gồm cà chua, dinh dưỡng fertigation và nguồn nước QCVN 08-MT");
+
+        seedDocs.Should().Contain(d => d.Document.Title.Contains("thối đít trái", StringComparison.OrdinalIgnoreCase) || d.Document.Title.Contains("cà chua", StringComparison.OrdinalIgnoreCase));
+        seedDocs.Should().Contain(d => d.Document.Title.Contains("Dinh Dưỡng Khoáng", StringComparison.OrdinalIgnoreCase) || d.Document.Title.Contains("Fertigation", StringComparison.OrdinalIgnoreCase));
+        seedDocs.Should().Contain(d => d.Document.Title.Contains("Nguồn Nước", StringComparison.OrdinalIgnoreCase) || d.Document.Title.Contains("QCVN 08", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("Độ ẩm đất", "do am dat")]
+    [InlineData("Cà chua bi", "ca chua bi")]
+    [InlineData("Tưới nhỏ giọt VietGAP", "tuoi nho giot vietgap")]
+    public void Diacritics_removal_normalizes_vietnamese_query_correctly(string input, string expected)
+    {
+        AgricultureKnowledgeRetriever.RemoveDiacritics(input).ToLowerInvariant().Trim().Should().Be(expected);
+    }
+}
+

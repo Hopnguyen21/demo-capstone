@@ -43,22 +43,44 @@ import { FarmerHome } from '../../pages/farmer/FarmerHome';
 import { FarmerZonesPage } from '../../pages/farmer/FarmerZonesPage';
 import { FarmerTasksPage } from '../../pages/farmer/FarmerTasksPage';
 import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
+import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
 import { RouteErrorBoundary } from '../../components/ui/RouteErrorBoundary';
 
-const OwnerOnlyAIAssistant = () => {
-  const { user } = useAuth();
-  if (user?.role === 'FARM_OWNER') return <AIAssistantPage />;
+import { UserRole } from '../../types';
+
+const landingByRole: Record<UserRole, string> = {
+  PLATFORM_ADMIN: '/admin/dashboard',
+  PLATFORM_TECHNICIAN: '/technician/dashboard',
+  FARM_OWNER: '/owner/dashboard',
+  FARMER: '/farmer/home',
+};
+
+const RequireRole: React.FC<{ allowedRoles: UserRole[]; children: React.ReactElement }> = ({ allowedRoles, children }) => {
+  const { user, role } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
 
-  const landingByRole = {
-    PLATFORM_ADMIN: '/admin/dashboard',
-    PLATFORM_TECHNICIAN: '/technician/dashboard',
-    FARM_OWNER: '/owner/dashboard',
-    FARMER: '/farmer/home',
-  } as const;
-  return <Navigate to={landingByRole[user.role]} replace />;
+  const currentRole = (user.role || role) as UserRole;
+  if (!allowedRoles.includes(currentRole)) {
+    return <Navigate to={landingByRole[currentRole] || '/home'} replace />;
+  }
+
+  return children;
+};
+
+const RoleBasedRedirect: React.FC = () => {
+  const { user, role } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  const currentRole = (user.role || role) as UserRole;
+  return <Navigate to={landingByRole[currentRole] || '/home'} replace />;
+};
+
+const OwnerOnlyAIAssistant = () => {
+  const { user } = useAuth();
+  if (user?.role === 'FARM_OWNER' || user?.role === 'PLATFORM_ADMIN') return <AIAssistantPage />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <Navigate to={landingByRole[user.role as UserRole] || '/home'} replace />;
 };
 
 export const router = createBrowserRouter([
@@ -84,59 +106,60 @@ export const router = createBrowserRouter([
     element: <RegisterPage />,
     errorElement: <RouteErrorBoundary />,
   },
-  // Authenticated Portal Layout (Protected by Shell)
+  // Authenticated Portal Layout (Protected by Shell & Role Guards)
   {
     element: <Shell />,
     errorElement: <RouteErrorBoundary />,
     children: [
-      // Admin Routes
-      { path: '/admin/dashboard', element: <AdminDashboard /> },
-      { path: '/admin/requests', element: <ServiceRequestsPage /> },
-      { path: '/admin/tenants', element: <TenantsPage /> },
-      { path: '/admin/users', element: <UsersPage /> },
-      { path: '/admin/crops', element: <CropsPage /> },
-      { path: '/admin/vietgap', element: <VietGapStandardsPage /> },
-      { path: '/admin/growth-profiles', element: <GrowthProfilesPage /> },
-      { path: '/admin/devices', element: <DevicesPage /> },
-      { path: '/admin/system-health', element: <SystemHealthPage /> },
-      { path: '/admin/audit-logs', element: <AuditLogsPage /> },
-      { path: '/admin/settings', element: <SettingsPage /> },
+      // Admin Routes (Exclusive to PLATFORM_ADMIN)
+      { path: '/admin/dashboard', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><AdminDashboard /></RequireRole> },
+      { path: '/admin/requests', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><ServiceRequestsPage /></RequireRole> },
+      { path: '/admin/tenants', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><TenantsPage /></RequireRole> },
+      { path: '/admin/users', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><UsersPage /></RequireRole> },
+      { path: '/admin/crops', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><CropsPage /></RequireRole> },
+      { path: '/admin/vietgap', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><VietGapStandardsPage /></RequireRole> },
+      { path: '/admin/growth-profiles', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><GrowthProfilesPage /></RequireRole> },
+      { path: '/admin/devices', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><DevicesPage /></RequireRole> },
+      { path: '/admin/system-health', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><SystemHealthPage /></RequireRole> },
+      { path: '/admin/audit-logs', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><AuditLogsPage /></RequireRole> },
+      { path: '/admin/settings', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><SettingsPage /></RequireRole> },
 
-      // Technician Routes
-      { path: '/technician/dashboard', element: <TechnicianDashboard /> },
-      { path: '/technician/deployments', element: <TechnicianDashboard /> },
-      { path: '/technician/provisioning', element: <ProvisioningPage /> },
-      { path: '/technician/gateways', element: <GatewaysPage /> },
-      { path: '/technician/devices', element: <GatewaysPage /> },
-      { path: '/technician/maintenance', element: <MaintenancePage /> },
-      { path: '/technician/inventory', element: <TechnicianInventoryPage /> },
+      // Technician Routes (Exclusive to PLATFORM_TECHNICIAN and PLATFORM_ADMIN)
+      { path: '/technician/dashboard', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><TechnicianDashboard /></RequireRole> },
+      { path: '/technician/deployments', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><TechnicianDashboard /></RequireRole> },
+      { path: '/technician/provisioning', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><ProvisioningPage /></RequireRole> },
+      { path: '/technician/gateways', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><GatewaysPage /></RequireRole> },
+      { path: '/technician/devices', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><GatewaysPage /></RequireRole> },
+      { path: '/technician/maintenance', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><MaintenancePage /></RequireRole> },
+      { path: '/technician/inventory', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><TechnicianInventoryPage /></RequireRole> },
 
-      // Farm Owner Routes
-      { path: '/owner/dashboard', element: <OwnerDashboard /> },
-      { path: '/owner/farms', element: <FarmsPage /> },
-      { path: '/owner/farms/create', element: <CreateFarmWizard /> },
+      // Farm Owner Routes (Exclusive to FARM_OWNER and PLATFORM_ADMIN)
+      { path: '/owner/dashboard', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><OwnerDashboard /></RequireRole> },
+      { path: '/owner/farms', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><FarmsPage /></RequireRole> },
+      { path: '/owner/farms/create', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><CreateFarmWizard /></RequireRole> },
       { path: '/owner/fields', element: <Navigate to="/owner/farms" replace /> },
       { path: '/owner/zones', element: <Navigate to="/owner/farms" replace /> },
-      { path: '/owner/planting-seasons', element: <PlantingSeasonsPage /> },
-      { path: '/owner/monitoring/realtime', element: <MonitoringRealtime /> },
-      { path: '/owner/monitoring/history', element: <MonitoringHistory /> },
-      { path: '/owner/alerts', element: <AlertsPage /> },
-      { path: '/owner/control', element: <ControlPage /> },
-      { path: '/owner/schedules', element: <SchedulesAutomationPage /> },
-      { path: '/owner/farmers', element: <FarmersPage /> },
-      { path: '/owner/tasks', element: <TasksPage /> },
+      { path: '/owner/planting-seasons', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><PlantingSeasonsPage /></RequireRole> },
+      { path: '/owner/monitoring/realtime', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><MonitoringRealtime /></RequireRole> },
+      { path: '/owner/monitoring/history', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><MonitoringHistory /></RequireRole> },
+      { path: '/owner/alerts', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><AlertsPage /></RequireRole> },
+      { path: '/owner/control', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><ControlPage /></RequireRole> },
+      { path: '/owner/schedules', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><SchedulesAutomationPage /></RequireRole> },
+      { path: '/owner/farmers', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><FarmersPage /></RequireRole> },
+      { path: '/owner/tasks', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><TasksPage /></RequireRole> },
       { path: '/owner/ai', element: <OwnerOnlyAIAssistant /> },
-      { path: '/owner/reports', element: <ReportsPage /> },
-      { path: '/owner/support', element: <SupportPage /> },
+      { path: '/owner/reports', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><ReportsPage /></RequireRole> },
+      { path: '/owner/support', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><SupportPage /></RequireRole> },
 
-      // Farmer Routes
-      { path: '/farmer/home', element: <FarmerHome /> },
-      { path: '/farmer/zones', element: <FarmerZonesPage /> },
-      { path: '/farmer/monitoring', element: <MonitoringRealtime /> },
-      { path: '/farmer/alerts', element: <AlertsPage /> },
-      { path: '/farmer/tasks', element: <FarmerTasksPage /> },
-      { path: '/farmer/irrigation', element: <FarmerIrrigationPage /> },
-      { path: '*', element: <Navigate to="/owner/dashboard" replace /> },
+      // Farmer Routes (Accessible to FARMER, FARM_OWNER, and PLATFORM_ADMIN)
+      { path: '/farmer/home', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerHome /></RequireRole> },
+      { path: '/farmer/zones', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerZonesPage /></RequireRole> },
+      { path: '/farmer/monitoring', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><MonitoringRealtime /></RequireRole> },
+      { path: '/farmer/alerts', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><AlertsPage /></RequireRole> },
+      { path: '/farmer/tasks', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerTasksPage /></RequireRole> },
+      { path: '/farmer/irrigation', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerIrrigationPage /></RequireRole> },
+      { path: '/farmer/ai', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerAIPage /></RequireRole> },
+      { path: '*', element: <RoleBasedRedirect /> },
     ],
   },
 ]);

@@ -491,7 +491,58 @@ public sealed class SimulatedIotTelemetryWorker(
                         continue;
                     }
 
-                    // Tạo bản ghi Cảnh báo Alert mới
+                    // Xác định mùa vụ và giai đoạn sinh trưởng hợp lệ trước khi tạo cảnh báo
+                    var effectiveSeason = currentSeason;
+                    if (effectiveSeason == null || effectiveSeason.CurrentGrowthStageId == Guid.Empty)
+                    {
+                        effectiveSeason = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zone.Id && s.CurrentGrowthStageId != Guid.Empty, ct);
+                    }
+                    if (effectiveSeason == null || effectiveSeason.CurrentGrowthStageId == Guid.Empty)
+                    {
+                        // Zone chưa có mùa vụ hoặc giai đoạn sinh trưởng để liên kết khóa ngoại
+                        continue;
+                    }
+
+                    var effectiveGrowthStageId = customRule?.GrowthStageId ?? effectiveSeason.CurrentGrowthStageId;
+                    if (effectiveGrowthStageId == Guid.Empty)
+                    {
+                        continue;
+                    }
+
+                    // Tìm 1 alert rule có sẵn trong DB hoặc tạo alert rule đại diện hợp lệ
+                    Guid ruleId;
+                    if (customRule != null)
+                    {
+                        ruleId = customRule.Id;
+                    }
+                    else
+                    {
+                        var defaultRule = await db.AlertRules.FirstOrDefaultAsync(r => r.ZoneId == zone.Id && r.GrowthStageId == effectiveGrowthStageId, ct);
+                        if (defaultRule != null)
+                        {
+                            ruleId = defaultRule.Id;
+                        }
+                        else
+                        {
+                            var newRule = new AlertRule
+                            {
+                                Id = Guid.NewGuid(),
+                                ZoneId = zone.Id,
+                                GrowthStageId = effectiveGrowthStageId,
+                                ParameterCode = cfg.Param,
+                                MinThreshold = min,
+                                MaxThreshold = max,
+                                Severity = sev,
+                                CooldownMinutes = 15,
+                                IsActive = true,
+                                CreatedAtUtc = now
+                            };
+                            db.AlertRules.Add(newRule);
+                            ruleId = newRule.Id;
+                        }
+                    }
+
+                    // Tạo bản ghi Cảnh báo Alert mới với đầy đủ FK hợp lệ
                     var alert = new Alert
                     {
                         Id = Guid.NewGuid(),
@@ -499,9 +550,9 @@ public sealed class SimulatedIotTelemetryWorker(
                         FarmId = farm.Id,
                         ZoneId = zone.Id,
                         DeviceId = reading.DeviceId,
-                        AlertRuleId = customRule?.Id ?? Guid.Empty,
-                        PlantingSeasonId = currentSeason?.Id ?? Guid.Empty,
-                        GrowthStageId = customRule?.GrowthStageId ?? currentSeason?.CurrentGrowthStageId ?? Guid.Empty,
+                        AlertRuleId = ruleId,
+                        PlantingSeasonId = effectiveSeason.Id,
+                        GrowthStageId = effectiveGrowthStageId,
                         ParameterCode = cfg.Param,
                         ObservedValue = reading.Value,
                         MinThreshold = min,
@@ -520,43 +571,6 @@ public sealed class SimulatedIotTelemetryWorker(
                         Notes = $"Tự động phát hiện vi phạm: {reading.Value}{reading.Unit} ngoài phạm vi [{min} - {max}{reading.Unit}]",
                         CreatedAtUtc = now
                     });
-
-                    // Nếu AlertRuleId là Guid.Empty thì không gán để tránh lỗi FK
-                    if (customRule == null)
-                    {
-                        // Tìm 1 alert rule có sẵn trong DB hoặc tạo alert rule đại diện
-                        var defaultRule = await db.AlertRules.FirstOrDefaultAsync(r => r.ZoneId == zone.Id, ct);
-                        if (defaultRule != null) alert.AlertRuleId = defaultRule.Id;
-                        else
-                        {
-                            var newRule = new AlertRule
-                            {
-                                Id = Guid.NewGuid(),
-                                ZoneId = zone.Id,
-                                GrowthStageId = currentSeason?.CurrentGrowthStageId ?? Guid.Empty,
-                                ParameterCode = cfg.Param,
-                                MinThreshold = min,
-                                MaxThreshold = max,
-                                Severity = sev,
-                                CooldownMinutes = 15,
-                                IsActive = true,
-                                CreatedAtUtc = now
-                            };
-                            db.AlertRules.Add(newRule);
-                            alert.AlertRuleId = newRule.Id;
-                        }
-                    }
-
-                    // Tương tự cho PlantingSeasonId và GrowthStageId
-                    if (alert.PlantingSeasonId == Guid.Empty)
-                    {
-                        var anySeason = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zone.Id, ct);
-                        if (anySeason != null)
-                        {
-                            alert.PlantingSeasonId = anySeason.Id;
-                            alert.GrowthStageId = anySeason.CurrentGrowthStageId;
-                        }
-                    }
 
                     if (alert.PlantingSeasonId != Guid.Empty && alert.GrowthStageId != Guid.Empty)
                     {

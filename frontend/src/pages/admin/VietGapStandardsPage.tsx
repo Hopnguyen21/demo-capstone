@@ -257,6 +257,11 @@ export const VietGapStandardsPage: React.FC = () => {
       return;
     }
 
+    if (file.size > 15 * 1024 * 1024) {
+      setNotification({ type: 'error', message: 'Dung lượng tệp vượt quá giới hạn tối đa 15 MB!' });
+      return;
+    }
+
     setSelectedUploadFile(file);
     const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
     setUploadFormData(prev => ({
@@ -423,9 +428,7 @@ export const VietGapStandardsPage: React.FC = () => {
   const handleDeleteDocument = async (id: string) => {
     if (window.confirm('Bạn có chắc chắn muốn xóa tài liệu quy chuẩn VietGAP này khỏi hệ thống?')) {
       try {
-        if (!id.startsWith('VG-DOC-')) {
-          await knowledgeService.deleteDocument(id);
-        }
+        await knowledgeService.deleteDocument(id);
         const remaining = documents.filter(d => d.id !== id);
         setDocuments(remaining);
         if (selectedDoc?.id === id) {
@@ -1074,17 +1077,17 @@ export const VietGapStandardsPage: React.FC = () => {
                 <input
                   type="file"
                   id="vietgap-file-input"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.docx,.txt"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
                 <label htmlFor="vietgap-file-input" className="cursor-pointer flex flex-col items-center">
                   <UploadCloud className="w-9 h-9 text-emerald-400 mb-2 animate-bounce" />
                   <span className="text-sm font-semibold text-slate-200">
-                    {uploadFormData.fileName ? uploadFormData.fileName : 'Nhấn để chọn tệp tài liệu VietGAP (.PDF hoặc .DOCX)'}
+                    {uploadFormData.fileName ? uploadFormData.fileName : 'Nhấn để chọn tệp tài liệu VietGAP (.PDF, .DOCX, .TXT)'}
                   </span>
                   <span className="text-xs text-slate-500 mt-1">
-                    {uploadFormData.fileSize !== '0 MB' ? `Dung lượng: ${uploadFormData.fileSize}` : 'Dung lượng tối đa: 25MB'}
+                    {uploadFormData.fileSize !== '0 MB' ? `Dung lượng: ${uploadFormData.fileSize}` : 'Dung lượng tối đa: 15MB'}
                   </span>
                 </label>
               </div>

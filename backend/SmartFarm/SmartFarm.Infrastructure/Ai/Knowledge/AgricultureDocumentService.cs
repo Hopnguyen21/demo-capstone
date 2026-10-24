@@ -124,9 +124,20 @@ public sealed class AgricultureDocumentService(
     public Task<IReadOnlyList<KnowledgePassageView>> SearchAsync(string query, string? cropName, Guid? tenantId, int topK, CancellationToken ct) =>
         retriever.RetrievePassagesAsync(query, cropName, null, tenantId, topK, ct);
 
-    public async Task<int> BackfillEmbeddingsAsync(CancellationToken ct) =>
-        await EmbedChunksAsync(db.AgricultureKnowledgeChunks
-            .Where(c => c.Status == KnowledgeChunkStatus.Pending || c.Status == KnowledgeChunkStatus.Failed), ct);
+    public async Task<int> BackfillEmbeddingsAsync(CancellationToken ct)
+    {
+        var failed = await db.AgricultureKnowledgeChunks
+            .Where(c => c.Status == KnowledgeChunkStatus.Failed)
+            .ToListAsync(ct);
+        foreach (var f in failed) f.Status = KnowledgeChunkStatus.Pending;
+        if (failed.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+        }
+
+        return await EmbedChunksAsync(db.AgricultureKnowledgeChunks, ct);
+    }
 
     private async Task<int> EmbedChunksAsync(IQueryable<AgricultureKnowledgeChunk> source, CancellationToken ct)
     {
@@ -137,19 +148,18 @@ public sealed class AgricultureDocumentService(
         while (true)
         {
             var chunks = await source
-                .Where(c => c.Status != KnowledgeChunkStatus.Completed)
+                .Where(c => c.Status == KnowledgeChunkStatus.Pending)
                 .OrderBy(c => c.DocumentId).ThenBy(c => c.ChunkIndex)
                 .Take(batch).ToListAsync(ct);
             if (chunks.Count == 0) break;
 
-            var progressed = false;
             foreach (var c in chunks)
             {
                 try
                 {
                     c.Embedding = new Vector(await embedding.GenerateDocumentEmbeddingAsync(c.Content, ct));
                     c.Status = KnowledgeChunkStatus.Completed;
-                    done++; progressed = true;
+                    done++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -160,7 +170,6 @@ public sealed class AgricultureDocumentService(
             }
             await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();
-            if (!progressed) break; // tránh vòng lặp vô hạn khi toàn bộ batch lỗi
         }
         return done;
     }

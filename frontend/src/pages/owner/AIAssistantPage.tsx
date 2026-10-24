@@ -43,8 +43,6 @@ const cleanTechnicalIds = (text?: string): string => {
     .replace(/\s*\((?:Mã\s*(?:ID|thiết bị)?|ID|ActuatorId)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\)/gi, '')
     .replace(/(?:mã\s*(?:ID|thiết bị)?|ID\s*thiết\s*bị|thiết\s*bị\s*mã)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/gi, '')
     .replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '')
-    .replace(/\b(\d+)\.0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
-    .replace(/\b(\d+\.\d*?[1-9])0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
     .replace(/\(\s*\)/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();

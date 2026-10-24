@@ -1018,7 +1018,7 @@ export const CropsPage: React.FC = () => {
             </div>
             <div className="space-y-1">
               <h4 className="font-bold text-slate-900 text-sm">Tải lên Tài liệu Kỹ thuật Nông nghiệp VietGAP</h4>
-              <p className="text-slate-500 text-[11px]">Hỗ trợ định dạng tài liệu <strong>.PDF</strong> và <strong>.DOCX</strong> (dung lượng tối đa 25MB)</p>
+              <p className="text-slate-500 text-[11px]">Hỗ trợ định dạng tài liệu <strong>.PDF</strong> và <strong>.DOCX</strong> (dung lượng tối đa 15MB)</p>
             </div>
 
             <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer shadow-xs transition-all text-xs">

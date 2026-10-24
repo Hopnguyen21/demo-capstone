@@ -8,75 +8,116 @@ namespace SmartFarm.Infrastructure.Finance;
 
 public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider clock) : IZoneContractService
 {
-    public async Task<IReadOnlyList<ZoneContractView>> GetAllContractsAsync(Guid ownerId, CancellationToken ct)
+    private static bool IsDevelopment() =>
+        string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+    public async Task<IReadOnlyList<ZoneContractView>> GetAllContractsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, ct);
+        await EnsureSeedDataAsync(ownerId, tenantId, ct);
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var contracts = await db.ZoneContracts
+        var query = db.ZoneContracts
             .Include(c => c.Farm)
             .Include(c => c.Zone)
             .Include(c => c.ParentContract)
             .Include(c => c.Renewals)
+            .AsNoTracking();
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.TenantId == tenantId.Value);
+        }
+
+        var contracts = await query
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
 
         return contracts.Select(c => MapToView(c, today)).ToList();
     }
 
-    public async Task<IReadOnlyList<ZoneContractView>> GetContractsByZoneAsync(Guid ownerId, Guid zoneId, CancellationToken ct)
+    public async Task<IReadOnlyList<ZoneContractView>> GetContractsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, ct);
+        await EnsureSeedDataAsync(ownerId, tenantId, ct);
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var contracts = await db.ZoneContracts
+        var query = db.ZoneContracts
             .Include(c => c.Farm)
             .Include(c => c.Zone)
             .Include(c => c.ParentContract)
             .Include(c => c.Renewals)
-            .Where(c => c.ZoneId == zoneId)
+            .AsNoTracking()
+            .Where(c => c.ZoneId == zoneId);
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.TenantId == tenantId.Value);
+        }
+
+        var contracts = await query
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
 
         return contracts.Select(c => MapToView(c, today)).ToList();
     }
 
-    public async Task<IReadOnlyList<ZoneContractView>> GetContractsByFarmAsync(Guid ownerId, Guid farmId, CancellationToken ct)
+    public async Task<IReadOnlyList<ZoneContractView>> GetContractsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, ct);
+        await EnsureSeedDataAsync(ownerId, tenantId, ct);
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var contracts = await db.ZoneContracts
+        var query = db.ZoneContracts
             .Include(c => c.Farm)
             .Include(c => c.Zone)
             .Include(c => c.ParentContract)
             .Include(c => c.Renewals)
-            .Where(c => c.FarmId == farmId)
+            .AsNoTracking()
+            .Where(c => c.FarmId == farmId);
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.TenantId == tenantId.Value);
+        }
+
+        var contracts = await query
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
 
         return contracts.Select(c => MapToView(c, today)).ToList();
     }
 
-    public async Task<ZoneContractView> GetContractByIdAsync(Guid ownerId, Guid contractId, CancellationToken ct)
+    public async Task<ZoneContractView> GetContractByIdAsync(Guid ownerId, Guid? tenantId, Guid contractId, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var contract = await db.ZoneContracts
+        var query = db.ZoneContracts
             .Include(c => c.Farm)
             .Include(c => c.Zone)
             .Include(c => c.ParentContract)
             .Include(c => c.Renewals)
-            .FirstOrDefaultAsync(c => c.Id == contractId, ct)
+            .AsNoTracking();
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.TenantId == tenantId.Value);
+        }
+
+        var contract = await query.FirstOrDefaultAsync(c => c.Id == contractId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy hợp đồng #{contractId}");
 
         return MapToView(contract, today);
     }
 
-    public async Task<ZoneContractView> CreateContractAsync(Guid ownerId, Guid tenantId, Guid zoneId, CreateZoneContractCommand command, CancellationToken ct)
+    public async Task<ZoneContractView> CreateContractAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateZoneContractCommand command, CancellationToken ct)
     {
-        var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
+        var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy Zone #{zoneId}");
 
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty && zone.Field.Farm.TenantId != tenantId.Value)
+        {
+            throw new UnauthorizedAccessException("Khu vực canh tác này không thuộc về Trang trại của Tenant bạn.");
+        }
+
+        var effectiveTenantId = (tenantId.HasValue && tenantId.Value != Guid.Empty)
+            ? tenantId.Value
+            : zone.Field.Farm.TenantId;
         var farmId = command.FarmId != Guid.Empty ? command.FarmId : zone.Field.FarmId;
 
         // Auto-generate Contract Number if not provided
@@ -102,7 +143,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
         var contract = new ZoneContract
         {
-            TenantId = tenantId,
+            TenantId = effectiveTenantId,
             FarmId = farmId,
             ZoneId = zoneId,
             CreatedByOwnerId = ownerId,
@@ -127,7 +168,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         // If this replaces an existing contract, update parent contract status to Renewed
         if (command.ParentContractId.HasValue)
         {
-            var parent = await db.ZoneContracts.FirstOrDefaultAsync(c => c.Id == command.ParentContractId.Value, ct);
+            var parent = await db.ZoneContracts.FirstOrDefaultAsync(c => c.Id == command.ParentContractId.Value && (tenantId == null || c.TenantId == tenantId.Value), ct);
             if (parent != null && parent.Status != ZoneContractStatus.Renewed)
             {
                 parent.Status = ZoneContractStatus.Renewed;
@@ -138,15 +179,19 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         db.ZoneContracts.Add(contract);
         await db.SaveChangesAsync(ct);
 
-        return await GetContractByIdAsync(ownerId, contract.Id, ct);
+        return await GetContractByIdAsync(ownerId, tenantId, contract.Id, ct);
     }
 
-    public async Task<ZoneContractView> RenewContractAsync(Guid ownerId, Guid contractId, RenewZoneContractCommand command, CancellationToken ct)
+    public async Task<ZoneContractView> RenewContractAsync(Guid ownerId, Guid? tenantId, Guid contractId, RenewZoneContractCommand command, CancellationToken ct)
     {
-        var contract = await db.ZoneContracts
-            .Include(c => c.Renewals)
-            .FirstOrDefaultAsync(c => c.Id == contractId, ct)
-            ?? throw new KeyNotFoundException($"Không tìm thấy hợp đồng #{contractId}");
+        var query = db.ZoneContracts.Include(c => c.Renewals).AsQueryable();
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.TenantId == tenantId.Value);
+        }
+
+        var contract = await query.FirstOrDefaultAsync(c => c.Id == contractId, ct)
+            ?? throw new KeyNotFoundException($"Không tìm thấy hợp đồng #{contractId} hoặc bạn không có quyền thao tác.");
 
         var baseEndDate = contract.EndDate;
         DateOnly newEndDate = command.DurationPreset switch
@@ -192,12 +237,12 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
         await db.SaveChangesAsync(ct);
 
-        return await GetContractByIdAsync(ownerId, contract.Id, ct);
+        return await GetContractByIdAsync(ownerId, tenantId, contract.Id, ct);
     }
 
-    public async Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? farmId, int daysThreshold, CancellationToken ct)
+    public async Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, ct);
+        await EnsureSeedDataAsync(ownerId, tenantId, ct);
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var thresholdDate = today.AddDays(daysThreshold);
@@ -209,6 +254,11 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
                      && c.Status != ZoneContractStatus.Renewed 
                      && c.Status != ZoneContractStatus.Expired)
             .Where(c => c.EndDate >= today && c.EndDate <= thresholdDate);
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.TenantId == tenantId.Value);
+        }
 
         if (farmId.HasValue && farmId.Value != Guid.Empty)
         {
@@ -232,9 +282,17 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         )).ToList();
     }
 
-    public async Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByZoneAsync(Guid ownerId, Guid zoneId, CancellationToken ct)
+    public async Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct)
     {
-        await EnsureSeedDepreciationsAsync(ownerId, ct);
+        await EnsureSeedDepreciationsAsync(ownerId, tenantId, ct);
+
+        var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
+            ?? throw new KeyNotFoundException($"Không tìm thấy phân khu #{zoneId}");
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty && zone.Field.Farm.TenantId != tenantId.Value)
+        {
+            throw new UnauthorizedAccessException("Bạn không có quyền truy cập dữ liệu phân khu này.");
+        }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var activeContract = await db.ZoneContracts
@@ -244,37 +302,68 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
         var isNearContractRenewal = activeContract != null && (activeContract.EndDate.DayNumber - today.DayNumber <= 45);
 
-        var list = await db.DeviceDepreciations
+        var query = db.DeviceDepreciations
             .Include(d => d.Zone)
             .Include(d => d.Device)
-            .Where(d => d.ZoneId == zoneId)
-            .OrderBy(d => d.StartDate)
-            .ToListAsync(ct);
+            .Where(d => d.ZoneId == zoneId);
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(d => d.TenantId == tenantId.Value);
+        }
+
+        var list = await query.OrderBy(d => d.StartDate).ToListAsync(ct);
 
         return list.Select(d => MapToDepreciationView(d, today, isNearContractRenewal)).ToList();
     }
 
-    public async Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByFarmAsync(Guid ownerId, Guid farmId, CancellationToken ct)
+    public async Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct)
     {
-        await EnsureSeedDepreciationsAsync(ownerId, ct);
+        await EnsureSeedDepreciationsAsync(ownerId, tenantId, ct);
+
+        var farm = await db.Farms.FirstOrDefaultAsync(f => f.Id == farmId, ct)
+            ?? throw new KeyNotFoundException($"Không tìm thấy trang trại #{farmId}");
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty && farm.TenantId != tenantId.Value)
+        {
+            throw new UnauthorizedAccessException("Bạn không có quyền truy cập dữ liệu trang trại này.");
+        }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var zonesInFarm = await db.Zones.Where(z => z.Field.FarmId == farmId).Select(z => z.Id).ToListAsync(ct);
 
-        var list = await db.DeviceDepreciations
+        var query = db.DeviceDepreciations
             .Include(d => d.Zone)
             .Include(d => d.Device)
-            .Where(d => zonesInFarm.Contains(d.ZoneId))
-            .OrderBy(d => d.StartDate)
-            .ToListAsync(ct);
+            .Where(d => zonesInFarm.Contains(d.ZoneId));
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            query = query.Where(d => d.TenantId == tenantId.Value);
+        }
+
+        var list = await query.OrderBy(d => d.StartDate).ToListAsync(ct);
 
         return list.Select(d => MapToDepreciationView(d, today, false)).ToList();
     }
 
-    public async Task<DeviceDepreciationView> CreateDepreciationAsync(Guid ownerId, Guid tenantId, Guid zoneId, CreateDeviceDepreciationCommand command, CancellationToken ct)
+    public async Task<DeviceDepreciationView> CreateDepreciationAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateDeviceDepreciationCommand command, CancellationToken ct)
     {
+        var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
+            ?? throw new KeyNotFoundException($"Không tìm thấy phân khu #{zoneId}");
+
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty && zone.Field.Farm.TenantId != tenantId.Value)
+        {
+            throw new UnauthorizedAccessException("Bạn không có quyền tạo hồ sơ khấu hao cho phân khu thuộc Tenant khác.");
+        }
+
         var device = await db.Devices.FirstOrDefaultAsync(d => d.Id == command.DeviceId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy thiết bị #{command.DeviceId}");
+
+        if (device.ZoneId != zoneId)
+        {
+            throw new InvalidOperationException("Thiết bị không thuộc phân khu được chọn.");
+        }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var lifetime = Math.Max(1, command.DepreciationLifetimeMonths);
@@ -284,9 +373,13 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         var accumulated = Math.Min(command.OriginalCostVnd, monthly * monthsElapsed);
         var bookValue = Math.Max(0, command.OriginalCostVnd - accumulated);
 
+        var effectiveTenantId = tenantId.HasValue && tenantId.Value != Guid.Empty
+            ? tenantId.Value
+            : zone.Field.Farm.TenantId;
+
         var dep = new DeviceDepreciation
         {
-            TenantId = tenantId,
+            TenantId = effectiveTenantId,
             ZoneId = zoneId,
             DeviceId = command.DeviceId,
             CreatedByOwnerId = ownerId,
@@ -304,6 +397,14 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         await db.SaveChangesAsync(ct);
 
         return MapToDepreciationView(dep, today, false);
+    }
+
+    private static string? MaskIdentityNumber(string? idNumber)
+    {
+        if (string.IsNullOrWhiteSpace(idNumber)) return idNumber;
+        var trimmed = idNumber.Trim();
+        if (trimmed.Length <= 6) return new string('*', trimmed.Length);
+        return string.Concat(trimmed.AsSpan(0, 3), new string('*', trimmed.Length - 6), trimmed.AsSpan(trimmed.Length - 3));
     }
 
     private static ZoneContractView MapToView(ZoneContract c, DateOnly today)
@@ -349,7 +450,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             daysRemaining,
             c.LesseeName,
             c.LesseePhone,
-            c.LesseeIdentityNumber,
+            MaskIdentityNumber(c.LesseeIdentityNumber),
             c.LesseeAddress,
             c.SpecialTerms,
             c.Notes,
@@ -407,22 +508,30 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         );
     }
 
-    private async Task EnsureSeedDataAsync(Guid ownerId, CancellationToken ct)
+    private async Task EnsureSeedDataAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
+        if (!IsDevelopment()) return;
         if (await db.ZoneContracts.AnyAsync(ct)) return;
 
-        var zones = await db.Zones.Include(z => z.Field).Take(6).ToListAsync(ct);
+        var zonesQuery = db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsQueryable();
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            zonesQuery = zonesQuery.Where(z => z.Field.Farm.TenantId == tenantId.Value);
+        }
+
+        var zones = await zonesQuery.Take(6).ToListAsync(ct);
         if (zones.Count == 0) return;
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var tenant = await db.Tenants.FirstOrDefaultAsync(ct);
-        var tenantId = tenant?.Id ?? Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var targetTenantId = (tenantId.HasValue && tenantId.Value != Guid.Empty)
+            ? tenantId.Value
+            : zones[0].Field.Farm.TenantId;
 
         // Contract 1: Active
         var z1 = zones[0];
         var c1 = new ZoneContract
         {
-            TenantId = tenantId,
+            TenantId = targetTenantId,
             FarmId = z1.Field.FarmId,
             ZoneId = z1.Id,
             CreatedByOwnerId = ownerId,
@@ -436,7 +545,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             Status = ZoneContractStatus.Active,
             LesseeName = "Hợp tác xã Nông nghiệp Công nghệ cao LangBiang",
             LesseePhone = "0912345678",
-            LesseeIdentityNumber = "049095001234",
+            LesseeIdentityNumber = "049***001234",
             LesseeAddress = "Phường 7, TP. Đà Lạt, Tỉnh Lâm Đồng",
             SpecialTerms = "Cung cấp trọn gói hạ tầng LoRa, cảm biến độ ẩm đất và hệ thống châm phân tự động.",
             Notes = "Hợp đồng triển khai trọn gói 12 tháng, bảo hành thiết bị 2 năm.",
@@ -444,13 +553,13 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         };
         db.ZoneContracts.Add(c1);
 
-        // Contract 2: Expiring Soon (ends in 18 days) - Triggers Requirement 4!
+        // Contract 2: Expiring Soon (ends in 18 days)
         if (zones.Count > 1)
         {
             var z2 = zones[1];
             var c2 = new ZoneContract
             {
-                TenantId = tenantId,
+                TenantId = targetTenantId,
                 FarmId = z2.Field.FarmId,
                 ZoneId = z2.Id,
                 CreatedByOwnerId = ownerId,
@@ -460,11 +569,11 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
                 DepositVnd = 45000000m,
                 TotalContractValueVnd = 90000000m,
                 StartDate = today.AddMonths(-5).AddDays(-12),
-                EndDate = today.AddDays(18), // Sắp hết hạn trong 18 ngày!
+                EndDate = today.AddDays(18),
                 Status = ZoneContractStatus.ExpiringSoon,
                 LesseeName = "Công ty TNHH Nông sản Sạch GreenValley",
                 LesseePhone = "0987654321",
-                LesseeIdentityNumber = "049091005678",
+                LesseeIdentityNumber = "049***005678",
                 LesseeAddress = "Xã Lát, Huyện Lạc Dương, Tỉnh Lâm Đồng",
                 SpecialTerms = "Giữ nguyên đơn giá trong suốt thời hạn hợp đồng. Đạt chuẩn VietGAP.",
                 Notes = "Sắp đến kỳ gia hạn hợp đồng! Khách hàng thân thiết đủ điều kiện nhận chiết khấu 10% khi tái ký.",
@@ -473,10 +582,10 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             db.ZoneContracts.Add(c2);
         }
 
-        // Contract 3: Historical Expired Contract for Zone 1 - Satisfies Requirement 2!
+        // Contract 3: Historical Expired Contract
         var cOld = new ZoneContract
         {
-            TenantId = tenantId,
+            TenantId = targetTenantId,
             FarmId = z1.Field.FarmId,
             ZoneId = z1.Id,
             CreatedByOwnerId = ownerId,
@@ -490,7 +599,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             Status = ZoneContractStatus.Expired,
             LesseeName = "Trang trại Hữu cơ An Nhiên",
             LesseePhone = "0903112233",
-            LesseeIdentityNumber = "049088009876",
+            LesseeIdentityNumber = "049***009876",
             LesseeAddress = "TP. Đà Lạt, Tỉnh Lâm Đồng",
             SpecialTerms = "Thử nghiệm mô hình cảm biến vi khí hậu SHT30.",
             Notes = "Hợp đồng đã kết thúc đúng hạn và bàn giao lại mặt bằng phân khu.",
@@ -501,24 +610,32 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task EnsureSeedDepreciationsAsync(Guid ownerId, CancellationToken ct)
+    private async Task EnsureSeedDepreciationsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
+        if (!IsDevelopment()) return;
         if (await db.DeviceDepreciations.AnyAsync(ct)) return;
 
-        var zones = await db.Zones.Take(4).ToListAsync(ct);
+        var zonesQuery = db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsQueryable();
+        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+        {
+            zonesQuery = zonesQuery.Where(z => z.Field.Farm.TenantId == tenantId.Value);
+        }
+
+        var zones = await zonesQuery.Take(4).ToListAsync(ct);
         if (zones.Count == 0) return;
 
-        var devices = await db.Devices.Take(8).ToListAsync(ct);
-        var tenant = await db.Tenants.FirstOrDefaultAsync(ct);
-        var tenantId = tenant?.Id ?? Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var targetZoneIds = zones.Select(z => (Guid?)z.Id).ToList();
+        var devices = await db.Devices.Where(d => targetZoneIds.Contains(d.ZoneId)).Take(8).ToListAsync(ct);
+        var targetTenantId = (tenantId.HasValue && tenantId.Value != Guid.Empty)
+            ? tenantId.Value
+            : zones[0].Field.Farm.TenantId;
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
 
-        // 1. Central Gateway (Lifetime 36 months, 24 months elapsed -> 12 months remaining -> Active)
         if (devices.Count > 0)
         {
             db.DeviceDepreciations.Add(new DeviceDepreciation
             {
-                TenantId = tenantId,
+                TenantId = targetTenantId,
                 ZoneId = zones[0].Id,
                 DeviceId = devices[0].Id,
                 CreatedByOwnerId = ownerId,
@@ -533,13 +650,11 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             });
         }
 
-        // 2. Air Sensor Node (Lifetime 24 months, 22 months elapsed -> 2 months remaining -> EXPIRING SOON!)
-        // In Zone 2 where Contract is also expiring -> Triggers Requirement 7 alert!
         if (devices.Count > 1 && zones.Count > 1)
         {
             db.DeviceDepreciations.Add(new DeviceDepreciation
             {
-                TenantId = tenantId,
+                TenantId = targetTenantId,
                 ZoneId = zones[1].Id,
                 DeviceId = devices[1].Id,
                 CreatedByOwnerId = ownerId,
@@ -554,13 +669,12 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             });
         }
 
-        // 3. Actuator Valve Controller (Lifetime 24 months, 26 months elapsed -> FULLY DEPRECIATED!)
         if (devices.Count > 2)
         {
             var targetZone = zones.Count > 1 ? zones[1].Id : zones[0].Id;
             db.DeviceDepreciations.Add(new DeviceDepreciation
             {
-                TenantId = tenantId,
+                TenantId = targetTenantId,
                 ZoneId = targetZone,
                 DeviceId = devices[2].Id,
                 CreatedByOwnerId = ownerId,

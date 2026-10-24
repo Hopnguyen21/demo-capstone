@@ -113,14 +113,14 @@ public sealed record ExpiringContractAlertView(
 
 public interface IZoneContractService
 {
-    Task<IReadOnlyList<ZoneContractView>> GetAllContractsAsync(Guid ownerId, CancellationToken ct);
-    Task<IReadOnlyList<ZoneContractView>> GetContractsByZoneAsync(Guid ownerId, Guid zoneId, CancellationToken ct);
-    Task<IReadOnlyList<ZoneContractView>> GetContractsByFarmAsync(Guid ownerId, Guid farmId, CancellationToken ct);
-    Task<ZoneContractView> GetContractByIdAsync(Guid ownerId, Guid contractId, CancellationToken ct);
-    Task<ZoneContractView> CreateContractAsync(Guid ownerId, Guid tenantId, Guid zoneId, CreateZoneContractCommand command, CancellationToken ct);
-    Task<ZoneContractView> RenewContractAsync(Guid ownerId, Guid contractId, RenewZoneContractCommand command, CancellationToken ct);
-    Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? farmId, int daysThreshold, CancellationToken ct);
-    Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByZoneAsync(Guid ownerId, Guid zoneId, CancellationToken ct);
-    Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByFarmAsync(Guid ownerId, Guid farmId, CancellationToken ct);
-    Task<DeviceDepreciationView> CreateDepreciationAsync(Guid ownerId, Guid tenantId, Guid zoneId, CreateDeviceDepreciationCommand command, CancellationToken ct);
+    Task<IReadOnlyList<ZoneContractView>> GetAllContractsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct);
+    Task<IReadOnlyList<ZoneContractView>> GetContractsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct);
+    Task<IReadOnlyList<ZoneContractView>> GetContractsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct);
+    Task<ZoneContractView> GetContractByIdAsync(Guid ownerId, Guid? tenantId, Guid contractId, CancellationToken ct);
+    Task<ZoneContractView> CreateContractAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateZoneContractCommand command, CancellationToken ct);
+    Task<ZoneContractView> RenewContractAsync(Guid ownerId, Guid? tenantId, Guid contractId, RenewZoneContractCommand command, CancellationToken ct);
+    Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct);
+    Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct);
+    Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct);
+    Task<DeviceDepreciationView> CreateDepreciationAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateDeviceDepreciationCommand command, CancellationToken ct);
 }

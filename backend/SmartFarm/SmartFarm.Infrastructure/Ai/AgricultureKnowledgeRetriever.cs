@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pgvector;
@@ -67,6 +69,7 @@ public sealed class AgricultureKnowledgeRetriever(
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(question)) return [];
+        question = question.Normalize(NormalizationForm.FormC).Trim();
         if (topK <= 0) topK = 5;
 
         // ── 1. Tạo embedding cho câu hỏi ─────────────────────────────────────
@@ -205,8 +208,10 @@ public sealed class AgricultureKnowledgeRetriever(
                 c.Document.Category == "general");
         }
 
-        // Tải chunk trong bộ nhớ (giới hạn 300 để tránh OOM)
+        // Tải chunk trong bộ nhớ (sắp xếp rõ ràng và giới hạn 300)
         var chunks = await query
+            .OrderBy(c => c.DocumentId)
+            .ThenBy(c => c.ChunkIndex)
             .Take(300)
             .Select(c => new
             {
@@ -261,17 +266,35 @@ public sealed class AgricultureKnowledgeRetriever(
         if (meaningfulWords.Length == 0) meaningfulWords = qWords.Where(w => w.Length >= 2).ToArray();
         if (meaningfulWords.Length == 0) return 0f;
 
+        var contentNoMark = RemoveDiacritics(contentLower);
+        var keywordsNoMark = RemoveDiacritics(keywordsLower);
+
         int hits = 0;
         foreach (var word in meaningfulWords)
         {
-            if (contentLower.Contains(word, StringComparison.Ordinal)) hits++;
-            else if (keywordsLower.Contains(word, StringComparison.Ordinal)) hits += 2;
+            var wordNoMark = RemoveDiacritics(word);
+            if (contentLower.Contains(word, StringComparison.Ordinal) || contentNoMark.Contains(wordNoMark, StringComparison.Ordinal)) hits++;
+            else if (keywordsLower.Contains(word, StringComparison.Ordinal) || keywordsNoMark.Contains(wordNoMark, StringComparison.Ordinal)) hits += 2;
         }
 
         if (hits >= 2)
             return Math.Min(1f, 0.40f + (hits / (float)meaningfulWords.Length) * 0.60f);
 
         return Math.Min(1f, hits / (float)Math.Max(meaningfulWords.Length, 1));
+    }
+
+    public static string RemoveDiacritics(string text)
+    {
+        var normalizedString = text.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(capacity: normalizedString.Length);
+        foreach (var c in normalizedString)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString().Normalize(NormalizationForm.FormC).Replace('đ', 'd').Replace('Đ', 'D');
     }
 
     private static string[] Tokenize(string text) =>
