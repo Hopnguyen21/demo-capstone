@@ -25,9 +25,9 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quy trình tưới nhỏ giọt và quản lý nước tưới VietGAP cho rau màu nhà màng",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Nông nghiệp và Phát triển Nông thôn (VietGAP)",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
                 Category = "irrigation",
-                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
                 Version = "2024",
                 ContentText = "Quy trình tưới nhỏ giọt VietGAP cho nhà màng."
@@ -39,32 +39,32 @@ public static class KnowledgeBaseSeedData
                     Tưới nhỏ giọt cung cấp nước và dinh dưỡng trực tiếp vào vùng rễ, giảm 40-60% lượng nước so với tưới phun.
                     Chỉ tưới khi độ ẩm đất dưới ngưỡng tiêu chuẩn (thường < 55-60% đối với cà chua, dưa leo).
                     Không tưới khi độ ẩm đất đang ở mức tối ưu (65-75%) hoặc đã vượt ngưỡng trên (> 80%).
-                    Kiểm tra EC (độ dẫn điện) dung dịch dinh dưỡng: cà chua cần EC 2.0-3.5 dS/m, dưa lưới 1.5-2.5 dS/m, dâu tây 1.0-2.0 dS/m.
+                    Kiểm tra EC (độ dẫn điện) dung dịch dinh dưỡng: cà chua cần EC 2.0-3.5 dS/m, dưa lưới 1.5-2.5 dS/m, dâu tây 1.0-2.0 dS/m, xà lách 1.2-1.8 dS/m.
                     pH nước tưới lý tưởng: 5.8-6.5 cho hầu hết rau màu VietGAP.
                     """,
-                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                     "tưới nhỏ giọt,độ ẩm đất,EC,pH,VietGAP,nước tưới"),
 
                 new(1, """
                     LỊCH TƯỚI THEO GIAI ĐOẠN SINH TRƯỞNG:
-                    Cây con (0-15 ngày): Tưới 2-3 lần/ngày, lượng nhỏ (0.5-1 lít/cây/ngày), giữ độ ẩm đất 70-80%.
-                    Sinh trưởng thân lá (15-40 ngày): Tưới 1-2 lần/ngày, 1-2 lít/cây/ngày.
-                    Ra hoa đậu trái: Giảm lượng nước 10-15% để kích thích đậu trái, tránh thừa đạm.
+                    Cây con (0-15 ngày): Tưới 2-3 lần/ngày lượng nhỏ, duy trì độ ẩm đất 70-80%.
+                    Sinh trưởng thân lá (15-40 ngày): Tưới 1-2 lần/ngày theo nhu cầu bốc thoát hơi nước.
+                    Ra hoa đậu trái: Điều chỉnh lượng nước tưới hợp lý để kích thích đậu trái, tránh thừa đạm.
                     Nuôi trái: Tưới đều đặn, tránh chênh lệch độ ẩm đột ngột gây nứt trái (cà chua, dưa lưới).
-                    Thu hoạch: Giảm tưới 5-7 ngày trước thu hoạch để tăng độ Brix.
+                    Thu hoạch: Giảm tưới 5-7 ngày trước thu hoạch để tăng chất lượng đường và độ chắc trái.
                     """,
-                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                     "lịch tưới,giai đoạn sinh trưởng,cây con,ra hoa,đậu trái,nứt trái,thu hoạch"),
 
                 new(2, """
                     PHÂN BÓN THEO PHƯƠNG PHÁP FERTIGATED (CHÂM PHÂN QUA HỆ THỐNG TƯỚI):
-                    Giai đoạn cây con: NPK 20-20-20 + vi lượng, liều lượng 0.5-1g/lít.
-                    Giai đoạn sinh trưởng: Tăng đạm N (NPK 30-10-10), bổ sung Ca-Mg.
-                    Giai đoạn ra hoa: Chuyển sang NPK nhiều lân P và kali K (NPK 10-30-20).
-                    Giai đoạn nuôi trái: Ưu tiên kali K cao (NPK 10-10-40), bổ sung Boron 0.3-0.5 ppm chống rụng trái.
-                    Canxi (Ca): Phun qua lá 0.3-0.5% CaCl2 mỗi 7-10 ngày để phòng đầu thối (BER) ở cà chua, ớt.
+                    Giai đoạn cây con: Dinh dưỡng cân bằng kết hợp vi lượng để kích thích bộ rễ phát triển.
+                    Giai đoạn sinh trưởng: Tăng cường đạm và trung lượng (Ca, Mg) phát triển thân lá.
+                    Giai đoạn ra hoa: Chuyển dịch công thức sang tăng lân và kali thúc đẩy phân hóa mầm hoa.
+                    Giai đoạn nuôi trái: Ưu tiên kali cao và bổ sung canxi bo phòng chống rụng và nứt trái.
+                    Canxi và vi lượng: Bổ sung định kỳ theo hướng dẫn kỹ thuật nông học để phòng bệnh đầu thối (BER) ở cà chua, ớt.
                     """,
-                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                     "phân bón,NPK,fertigated,châm phân,đạm,lân,kali,canxi,boron,đầu thối,BER")
             };
             results.Add((doc, chunks));
@@ -78,7 +78,7 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Bệnh hại phổ biến và quản lý dịch hại tổng hợp IPM cho cà chua VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Cục Bảo vệ Thực vật - Bộ NN&PTNT",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
                 Category = "pest",
                 CropScope = "cà chua,ớt",
                 IsPublic = true,
@@ -90,9 +90,9 @@ public static class KnowledgeBaseSeedData
                 new(0, """
                     BỆNH HÉO RŨ VI KHUẨN (Ralstonia solanacearum) - CÀ CHUA:
                     Triệu chứng: Cây héo đột ngột vào buổi trưa, phục hồi vào sáng sớm, sau đó héo vĩnh viễn. Cắt ngang thân thấy mạch dẫn nâu đen.
-                    Test nhanh: Nhúng đoạn thân vào nước trong, quan sát dòng khuẩn trắng đục chảy ra từ mặt cắt.
-                    Phòng ngừa: Xử lý đất bằng vôi bột (100 kg/1000m²) trước khi trồng, khử trùng nước tưới, dùng giống kháng Ralstonia.
-                    Xử lý: Nhổ bỏ và tiêu hủy cây bệnh ngay. Tưới Copper oxychloride 0.2% quanh vùng cây bệnh.
+                    Test nhanh: Nhúng đoạn thân vào nước trong, quan sát dòng dịch khuẩn trắng đục chảy ra từ mặt cắt.
+                    Phòng ngừa: Xử lý đất bằng vôi bột trước khi trồng, khử trùng nguồn nước tưới, dùng giống kháng bệnh.
+                    Xử lý: Nhổ bỏ và tiêu hủy cây bệnh ngay để tránh lây lan. Xử lý vôi hoặc chế phẩm đồng quanh vùng cây bệnh.
                     """,
                     "cà chua,ớt",
                     "héo rũ,vi khuẩn,Ralstonia,solanacearum,mạch dẫn,vôi,copper,tiêu hủy"),
@@ -100,31 +100,31 @@ public static class KnowledgeBaseSeedData
                 new(1, """
                     BỆNH SƯƠNG MAI (Phytophthora infestans) - CÀ CHUA, ỚT:
                     Triệu chứng: Đốm úng nước trên lá, mặt dưới lá có lớp nấm trắng xám. Trái bị thối nhanh, màu nâu xỉn. Phát triển mạnh khi nhiệt độ 15-20°C, độ ẩm không khí > 85%.
-                    Phòng ngừa IPM: Tỉa lá già phần gốc để thông thoáng, không tưới phun chiều tối.
-                    Xử lý sinh học: Copper hydroxide (Kocide) 0.2%, luân phiên Mancozeb 0.2% mỗi 7 ngày.
-                    Ngưỡng can thiệp: Phun ngay khi phát hiện 1-2 đốm bệnh đầu tiên.
+                    Phòng ngừa IPM: Tỉa lá già phần gốc để thông thoáng tán, tuyệt đối không tưới phun chiều tối.
+                    Xử lý sinh học: Phun chế phẩm sinh học đối kháng hoặc hoạt chất trừ nấm được cấp phép trong danh mục VietGAP.
+                    Ngưỡng can thiệp: Thực hiện biện pháp phòng trừ ngay khi phát hiện đốm bệnh đầu tiên trên luống.
                     """,
                     "cà chua,ớt",
-                    "sương mai,Phytophthora,infestans,nấm,lá,trái,thối,độ ẩm,Copper,Mancozeb,IPM"),
+                    "sương mai,Phytophthora,infestans,nấm,lá,trái,thối,độ ẩm,IPM"),
 
                 new(2, """
                     BỌ TRĨ (Thrips palmi, Frankliniella) - CÀ CHUA, ỚT, DƯA LEO:
-                    Triệu chứng: Lá xoăn lại, đọt non biến dạng, hoa và trái non bị sẹo bạc. Mật độ cao trong mùa khô.
-                    Phòng ngừa: Đặt bẫy dính vàng (yellow sticky trap) 5-10 cái/1000m². Phun nước lên lá buổi sáng.
-                    Xử lý sinh học: Nhện săn mồi Amblyseius cucumeris. Chế phẩm Spinosad 0.1% phun 7-10 ngày/lần.
-                    Cách ly thu hoạch: Spinosad: 3 ngày, Abamectin: 7 ngày.
+                    Triệu chứng: Lá xoăn lại, đọt non biến dạng, hoa và trái non bị sẹo bạc. Mật độ cao trong mùa khô nắng gắt.
+                    Phòng ngừa: Đặt bẫy dính màu vàng theo dõi mật độ côn trùng. Phun nước tạo ẩm bề mặt lá vào buổi sáng.
+                    Xử lý sinh học: Thả thiên địch hoặc sử dụng chế phẩm sinh học thảo mộc / vi sinh theo khuyến cáo IPM.
+                    Cách ly thu hoạch: Tuyệt đối tuân thủ thời gian cách ly (PHI) ghi trên nhãn thuốc bảo vệ thực vật.
                     """,
                     "cà chua,ớt,dưa leo",
-                    "bọ trĩ,Thrips,bẫy dính,vàng,Spinosad,Abamectin,nhện,xoăn lá"),
+                    "bọ trĩ,Thrips,bẫy dính,vàng,thiên địch,nhện,xoăn lá"),
 
                 new(3, """
                     BỆNH PHẤN TRẮNG (Oidium) - CÀ CHUA, DƯA LEO, BÍ:
-                    Triệu chứng: Lớp bột trắng phủ trên mặt lá, sau đó lá vàng và khô. Phát triển khi nhiệt độ 20-25°C.
-                    Xử lý: Lưu huỳnh dạng bột (Sulfur) rắc lên lá sớm; hoặc Myclobutanil 0.1%, phun 7-14 ngày/lần.
-                    Lưu ý: Lưu huỳnh không dùng khi nhiệt độ > 32°C (gây cháy lá).
+                    Triệu chứng: Lớp bột trắng phủ trên mặt lá, sau đó lá vàng và khô rụng. Phát triển khi nhiệt độ 20-25°C.
+                    Xử lý: Sử dụng chế phẩm lưu huỳnh sinh học hoặc thuốc trừ nấm phấn trắng chuyên dụng theo danh mục cho phép.
+                    Lưu ý an toàn: Không phun chế phẩm lưu huỳnh khi nhiệt độ nhà màng > 32°C vì dễ gây cháy sém lá non.
                     """,
                     "cà chua,dưa leo,bí",
-                    "phấn trắng,Oidium,bột trắng,Sulfur,Myclobutanil,lưu huỳnh")
+                    "phấn trắng,Oidium,bột trắng,Sulfur,lưu huỳnh")
             };
             results.Add((doc, chunks));
         }
@@ -137,7 +137,7 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác và phòng trị bệnh dâu tây VietGAP nhà màng",
                 FileType = "seed",
-                AuthorOrganization = "Viện Nghiên cứu Rau quả - Đà Lạt",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
                 Category = "general",
                 CropScope = "dâu tây",
                 IsPublic = true,
@@ -148,32 +148,31 @@ public static class KnowledgeBaseSeedData
             {
                 new(0, """
                     VI KHÍ HẬU TỐI ƯU CHO DÂU TÂY:
-                    Nhiệt độ ban ngày: 18-25°C. Ban đêm: 10-15°C (chênh lệch ngày/đêm kích thích đường).
+                    Nhiệt độ ban ngày: 18-25°C. Ban đêm: 10-15°C (chênh lệch ngày/đêm kích thích tích lũy đường).
                     Độ ẩm không khí: 60-70%. Ẩm độ > 80% tăng nguy cơ nấm xám và thán thư.
                     Ánh sáng: Cần 8-12 giờ/ngày, PAR tối thiểu 300 µmol/m²/s để đậu trái tốt.
                     Độ ẩm đất: 60-70% giai đoạn sinh dưỡng; giảm xuống 50-60% trước thu hoạch 5 ngày.
-                    EC đất/dung dịch: 0.8-1.5 dS/m (dâu tây nhạy với mặn hơn các loại khác).
+                    EC đất/dung dịch: 0.8-1.5 dS/m (dâu tây nhạy cảm với mặn hơn các loại cây rau ăn quả khác).
                     """,
                     "dâu tây",
                     "dâu tây,nhiệt độ,độ ẩm,ánh sáng,EC,vi khí hậu,nhà màng,đường"),
 
                 new(1, """
                     BỆNH THÁN THƯ DÂU TÂY (Colletotrichum fragariae):
-                    Triệu chứng: Đốm nâu đen trên cuống, trái và lá. Trái bị thối nhũn, có vòng đồng tâm.
-                    Phát triển mạnh khi nhiệt độ 25-30°C, ẩm ướt.
-                    Phòng ngừa: Dùng màng phủ luống để hạn chế đất bắn lên trái. Không tưới phun trực tiếp lên trái và lá.
-                    Xử lý: Azoxystrobin + Difenoconazole 0.1%, phun 10-14 ngày/lần. Carbendazim 0.15% phòng ngừa mùa mưa.
-                    Nấm xám Botrytis: Xuất hiện khi ẩm độ > 80%. Xử lý: Iprodione 0.1%, cắt bỏ trái bệnh.
+                    Triệu chứng: Đốm nâu đen trên cuống, trái và lá. Trái bị thối nhũn, có vòng đồng tâm. Phát triển mạnh khi nhiệt độ 25-30°C và ẩm ướt kéo dài.
+                    Phòng ngừa: Dùng màng phủ luống hạn chế đất bắn lên trái. Không tưới phun trực tiếp lên hoa, trái và tán lá.
+                    Xử lý: Sử dụng chế phẩm vi sinh đối kháng Trichoderma hoặc hoạt chất đặc trị nấm theo danh mục VietGAP.
+                    Nấm xám Botrytis: Xuất hiện khi ẩm độ không khí > 80%. Biện pháp: Tăng cường quạt thông gió, thu gom tiêu hủy trái bệnh.
                     """,
                     "dâu tây",
-                    "thán thư,Colletotrichum,nấm xám,Botrytis,trái thối,Azoxystrobin,Carbendazim,màng phủ"),
+                    "thán thư,Colletotrichum,nấm xám,Botrytis,trái thối,màng phủ"),
 
                 new(2, """
                     QUẢN LÝ DINH DƯỠNG DÂU TÂY THEO GIAI ĐOẠN:
                     Cây con (0-30 ngày): N cao, P trung bình, K thấp. EC dung dịch: 0.8-1.0 dS/m.
-                    Ra hoa (30-60 ngày): Giảm N, tăng P và K. Bổ sung Boron 0.3 ppm kích thích đậu hoa.
-                    Nuôi trái (60-90 ngày): K cao nhất. EC: 1.2-1.5 dS/m. Calcium phun lá 0.3% CaCl2.
-                    Lưu ý: Dâu tây rất nhạy với thừa muối. Luôn kiểm tra EC 2 lần/tuần.
+                    Ra hoa (30-60 ngày): Giảm N, tăng P và K. Bổ sung vi lượng Boron kích thích đậu hoa.
+                    Nuôi trái (60-90 ngày): Tăng cường K để trái ngọt và chắc. Bổ sung canxi định kỳ chống nứt thối trái.
+                    Lưu ý: Dâu tây rất mẫn cảm với hiện tượng thừa muối khoáng. Luôn kiểm tra EC định kỳ 2 lần/tuần.
                     """,
                     "dâu tây",
                     "dinh dưỡng,dâu tây,NPK,Boron,Calcium,EC,nuôi trái,đầu thối")
@@ -189,7 +188,7 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác dưa lưới (Cucumis melo) nhà màng theo tiêu chuẩn VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Viện Nghiên cứu Rau quả",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
                 Category = "general",
                 CropScope = "dưa lưới",
                 IsPublic = true,
@@ -200,34 +199,34 @@ public static class KnowledgeBaseSeedData
             {
                 new(0, """
                     VI KHÍ HẬU VÀ ĐIỀU KIỆN TỐI ƯU CHO DƯA LƯỚI:
-                    Nhiệt độ: Ban ngày 28-32°C, ban đêm 20-25°C. Chịu được tới 38°C nhưng ảnh hưởng đến đậu trái.
-                    Độ ẩm không khí: 60-70%. Cao hơn 80% dễ sinh nấm (phấn trắng, sương mai).
-                    Ánh sáng: Ưa sáng mạnh, cần >10 giờ/ngày. Thiếu sáng làm giảm hàm lượng đường.
-                    Độ ẩm đất: 65-75% (tưới nhỏ giọt 2-3 lần/ngày).
-                    EC: Cây con 1.0-1.5; ra hoa 2.0-2.5; nuôi trái 2.5-3.5 dS/m.
+                    Nhiệt độ: Ban ngày 28-32°C, ban đêm 20-25°C. Nhiệt độ > 38°C ảnh hưởng tiêu cực đến thụ phấn đậu trái.
+                    Độ ẩm không khí: 60-70%. Cao hơn 80% tạo điều kiện bùng phát nấm phấn trắng và sương mai.
+                    Ánh sáng: Ưa sáng mạnh, cần >10 giờ chiếu sáng/ngày. Thiếu sáng làm suy giảm độ ngọt (Brix).
+                    Độ ẩm đất: 65-75% (tưới nhỏ giọt chia nhiều lần trong ngày).
+                    EC dung dịch: Cây con 1.0-1.5; ra hoa 2.0-2.5; nuôi trái 2.5-3.5 dS/m.
                     """,
                     "dưa lưới",
                     "dưa lưới,nhiệt độ,độ ẩm,ánh sáng,EC,vi khí hậu,đường"),
 
                 new(1, """
                     KỸ THUẬT TẠO HÌNH VÀ THỤ PHẤN DƯA LƯỚI:
-                    Bấm ngọn lần 1: Khi dây chính được 25-30cm, để 2-3 nhánh phụ.
-                    Bấm ngọn lần 2: Bấm đầu nhánh phụ ở lá thứ 10-12 để kích thích hoa cái.
-                    Thụ phấn nhân tạo: Lấy phấn hoa đực bôi lên nhụy hoa cái vào buổi sáng (6-9h). Có thể nuôi ong mật trong nhà màng.
-                    Chỉ để 1-2 trái/cây cho trái lớn và ngọt. Tỉa bỏ trái xấu, trái bệnh sớm.
+                    Bấm ngọn lần 1: Khi dây chính đạt 25-30cm, chọn giữ 2-3 nhánh phụ phát triển khỏe mạnh.
+                    Bấm ngọn lần 2: Bấm ngọn nhánh phụ ở vị trí thích hợp để tập trung dinh dưỡng nuôi hoa cái.
+                    Thụ phấn: Thụ phấn nhân tạo vào buổi sáng sớm (6h-9h) hoặc đưa ong mật vào nhà màng.
+                    Tuyển trái: Chỉ giữ 1-2 trái đạt chuẩn/cây để đảm bảo kích thước và độ ngọt đồng đều. Tỉa bỏ sớm trái dị hình.
                     """,
                     "dưa lưới",
                     "bấm ngọn,thụ phấn,hoa cái,hoa đực,ong,trái,tỉa"),
 
                 new(2, """
                     SÂU BỆNH PHỔ BIẾN TRÊN DƯA LƯỚI:
-                    Bệnh phấn trắng: Dùng Sulfur dạng bột hoặc Myclobutanil 0.1%.
-                    Bệnh héo đột ngột (Fusarium): Xử lý đất bằng Trichoderma trước khi trồng (5-10 kg/1000m²).
-                    Nhện đỏ (Tetranychus urticae): Tăng độ ẩm không khí. Phun Abamectin 1.8% EC.
-                    Ruồi đục trái (Bactrocera): Đặt bẫy pheromone Methyl eugenol, 3-5 bẫy/1000m².
+                    Bệnh phấn trắng: Sử dụng chế phẩm lưu huỳnh sinh học hoặc thuốc đặc trị được phép theo VietGAP.
+                    Bệnh héo rũ (Fusarium): Xử lý đất và giá thể bằng chế phẩm vi sinh đối kháng Trichoderma trước khi xuống giống.
+                    Nhện đỏ (Tetranychus urticae): Tăng cường ẩm độ không khí, sử dụng chế phẩm dầu khoáng sinh học.
+                    Ruồi đục trái (Bactrocera): Đặt bẫy bả dính pheromone sinh học kiểm soát mật độ trưởng thành.
                     """,
                     "dưa lưới",
-                    "phấn trắng,héo,Fusarium,Trichoderma,nhện đỏ,Abamectin,ruồi đục trái,bẫy pheromone")
+                    "phấn trắng,héo,Fusarium,Trichoderma,nhện đỏ,ruồi đục trái,bẫy pheromone")
             };
             results.Add((doc, chunks));
         }
@@ -240,9 +239,9 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quản lý vi khí hậu và hệ thống thông gió nhà màng VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Trung tâm Khuyến nông Quốc gia",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
                 Category = "climate",
-                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
                 Version = "2024",
                 ContentText = "Quản lý vi khí hậu và thông gió nhà màng."
@@ -251,32 +250,32 @@ public static class KnowledgeBaseSeedData
             {
                 new(0, """
                     THÔNG GIÓ VÀ KIỂM SOÁT NHIỆT ĐỘ NHÀ MÀNG:
-                    Nhiệt độ nhà màng vào mùa hè thường cao hơn ngoài trời 5-15°C.
-                    Mở cửa mái (roof vent) khi nhiệt độ > 30°C. Đóng lại khi có mưa hoặc nhiệt độ < 25°C vào ban đêm.
-                    Quạt đối lưu: Bật khi nhiệt độ > 30°C hoặc độ ẩm không khí > 85%. Tốc độ gió tối ưu: 0.5-1.0 m/s.
-                    Lưới cắt nắng (shading net): Dùng lưới cắt 50-70% ánh sáng vào mùa hè để giảm nhiệt.
+                    Nhiệt độ nhà màng vào mùa nắng nóng thường cao hơn môi trường bên ngoài 5-15°C.
+                    Mở cửa thông gió đỉnh mái khi nhiệt độ vượt 30°C. Đóng lại khi có mưa hoặc nhiệt độ đêm xuống thấp.
+                    Quạt đối lưu: Kích hoạt khi nhiệt độ > 30°C hoặc độ ẩm không khí > 85% để tránh đọng sương trên mặt lá.
+                    Lưới cắt nắng: Triển khai lưới chắn nắng tự động khi bức xạ mặt trời gay gắt vào buổi trưa.
                     """,
-                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                     "thông gió,nhiệt độ,quạt,cửa mái,lưới cắt nắng,làm mát,ẩm độ"),
 
                 new(1, """
                     ĐỘ ẨM KHÔNG KHÍ VÀ PHÒNG NGỪA NẤM BỆNH TRONG NHÀ MÀNG:
-                    Ngưỡng nguy hiểm: Ẩm độ không khí > 85% trong nhiều giờ liên tục tạo điều kiện cho nấm bệnh Botrytis, sương mai, phấn trắng.
-                    Biện pháp: Tăng thông gió, bật quạt đối lưu. Không tưới phun vào chiều tối.
-                    Ẩm độ quá thấp (< 40%): Gây co rút khí khổng, cây mất nước. Giải pháp: Tưới nhỏ giọt liên tục, phun sương mịn.
-                    Đo ẩm độ: Đặt cảm biến SHT31 hoặc DHT22 ở độ cao tán lá (1-1.5m so với mặt luống).
+                    Ngưỡng nguy hiểm: Ẩm độ không khí > 85% trong nhiều giờ liên tục tạo môi trường lý tưởng cho nấm Botrytis, sương mai, phấn trắng.
+                    Biện pháp xử lý: Kích hoạt quạt thông gió đối lưu, không tưới đẫm vào chiều muộn.
+                    Ẩm độ quá thấp (< 40%): Khiến cây khép khí khổng, ức chế quang hợp. Giải pháp: Duy trì tưới nhỏ giọt hoặc phun sương mịn giảm nhiệt.
+                    Giám sát cảm biến: Đặt cảm biến đo vi khí hậu ở độ cao tán cây để phản ánh chính xác môi trường sinh lý.
                     """,
-                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                     "ẩm độ không khí,nấm,Botrytis,thông gió,quạt,cảm biến,phun sương"),
 
                 new(2, """
                     ÁNH SÁNG VÀ QUANG HỢP TRONG NHÀ MÀNG:
-                    Cường độ ánh sáng tối thiểu cho quang hợp: 200 µmol/m²/s PAR.
-                    Điểm bão hòa ánh sáng: Cà chua 700-1000; Dâu tây 400-600; Dưa lưới 800-1000 µmol/m²/s.
-                    Thiếu sáng: Thân yếu, vươn cao bất thường, hoa dễ rụng, trái nhỏ và ít đường.
-                    Cần chiếu sáng bổ sung (LED grow light) khi PAR < 200 µmol/m²/s hoặc ngày nhiều mây liên tục.
+                    Cường độ ánh sáng tối thiểu duy trì quang hợp hiệu quả: 200 µmol/m²/s PAR.
+                    Điểm bão hòa ánh sáng tùy loài: Cà chua 700-1000, Dâu tây 400-600, Dưa lưới 800-1000 µmol/m²/s.
+                    Thiếu sáng kéo dài: Thân vươn dài yếu ớt, hoa rụng nhiều, trái nhỏ và giảm độ ngọt.
+                    Bổ sung ánh sáng bằng đèn chuyên dụng quang hợp khi thời tiết nhiều mây âm u liên tục nhiều ngày.
                     """,
-                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây",
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                     "ánh sáng,PAR,quang hợp,LED,grow light,chiếu sáng")
             };
             results.Add((doc, chunks));
@@ -290,9 +289,9 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác ớt ngọt (Capsicum annuum) nhà màng theo VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Trung tâm Nghiên cứu Rau hoa quả",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
                 Category = "general",
-                CropScope = "ớt,ớt ngọt,ớt chuông",
+                CropScope = "ớt,ớt ngọt,ớt chuông,sweet pepper,capsicum",
                 IsPublic = true,
                 Version = "2024",
                 ContentText = "Kỹ thuật canh tác ớt ngọt VietGAP."
@@ -301,23 +300,181 @@ public static class KnowledgeBaseSeedData
             {
                 new(0, """
                     ĐIỀU KIỆN SINH TRƯỞNG VÀ PHÁT TRIỂN ỚT NGỌT:
-                    Nhiệt độ: 20-30°C tối ưu. Dưới 15°C gây rụng hoa, trên 35°C gây vô phấn (hạt phấn chết).
-                    Độ ẩm đất: 65-75%. Ớt chịu hạn tốt hơn cà chua nhưng không thể ngập úng lâu.
-                    pH đất: 6.0-6.8. EC dung dịch tưới: 2.0-3.0 dS/m sinh trưởng; 3.0-3.5 dS/m nuôi trái.
-                    Ánh sáng: > 8 giờ/ngày. Ớt cần nhiều ánh sáng để tạo màu sắc (đỏ, vàng, cam).
+                    Nhiệt độ tối ưu: 20-30°C. Nhiệt độ < 15°C gây rụng nụ hoa, trên 35°C ảnh hưởng đến sức sống hạt phấn.
+                    Độ ẩm đất: 65-75%. Ớt chịu hạn tương đối nhưng rất mẫn cảm với tình trạng ngập úng bí khí vùng rễ.
+                    pH đất: 6.0-6.8. EC dung dịch tưới: 2.0-3.0 dS/m thời kỳ sinh trưởng; 3.0-3.5 dS/m thời kỳ nuôi trái.
+                    Ánh sáng: Cần đủ ánh sáng quang hợp (> 8 giờ/ngày) để trái lên màu chuẩn và tích lũy vitamin.
                     """,
-                    "ớt,ớt ngọt,ớt chuông",
+                    "ớt,ớt ngọt,ớt chuông,sweet pepper,capsicum",
                     "ớt,nhiệt độ,độ ẩm,EC,pH,ánh sáng,vô phấn,hoa rụng"),
 
                 new(1, """
                     BỆNH LỞ CỔ RỄ VÀ THỐI GỐC ỚT:
-                    Nguyên nhân: Pythium, Phytophthora kết hợp với đất ẩm, thoát nước kém.
-                    Triệu chứng: Cổ rễ bị thắt lại, thâm đen, cây đổ ngã. Thường xảy ra vào mùa mưa.
-                    Phòng ngừa: Lên luống cao, phủ màng ngăn ẩm. Trộn Trichoderma vào đất trước khi trồng.
-                    Xử lý: Tưới gốc Metalaxyl (Ridomil Gold) 0.15% khi phát hiện bệnh. Nhổ bỏ cây bệnh nặng.
+                    Nguyên nhân: Do nấm thủy sinh (Pythium, Phytophthora) kết hợp đất ẩm ướt và thoát nước kém.
+                    Triệu chứng: Vùng cổ rễ teo thắt lại, thâm đen, cây héo đổ gục rạp xuống luống.
+                    Phòng ngừa: Lên luống cao ráo, xử lý nấm đối kháng Trichoderma vào đất/giá thể trước khi trồng.
+                    Xử lý: Sử dụng chế phẩm vi sinh hoặc hoạt chất phòng trừ nấm đất theo khuyến cáo cán bộ kỹ thuật và hướng dẫn trên nhãn. Tiêu hủy triệt để cây bệnh nặng.
                     """,
-                    "ớt,ớt ngọt",
-                    "lở cổ rễ,thối gốc,Pythium,Phytophthora,Trichoderma,Metalaxyl,Ridomil,thoát nước")
+                    "ớt,ớt ngọt,ớt chuông,sweet pepper,capsicum",
+                    "lở cổ rễ,thối gốc,Pythium,Phytophthora,Trichoderma,thoát nước")
+            };
+            results.Add((doc, chunks));
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 7: Xà lách (Lactuca sativa) theo tiêu chuẩn VietGAP
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Kỹ thuật canh tác và dinh dưỡng xà lách (Lactuca sativa) theo tiêu chuẩn VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "general",
+                CropScope = "xà lách,xa lach,lettuce,batavia,rau ăn lá",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Kỹ thuật canh tác và dinh dưỡng xà lách VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    VI KHÍ HẬU VÀ DINH DƯỠNG CHO XÀ LÁCH VIETGAP:
+                    Nhiệt độ tối ưu: 18-24°C, chịu lạnh tốt nhưng nhạy cảm với nhiệt độ cao (> 28°C dễ bật ngồng hoa, đắng lá, cháy mép lá).
+                    Độ ẩm không khí: 65-75%, cần nhà màng thông thoáng để tán lá mau khô ráo sau khi tưới.
+                    Độ ẩm đất/giá thể: 65-75%, duy trì ẩm độ ổn định, tránh khô hạn làm đứt rễ non.
+                    EC dung dịch: 1.2-1.8 dS/m (xà lách mẫn cảm với độ mặn). pH nước tưới lý tưởng: 5.8-6.5.
+                    Kiểm soát Nitrat (NO3-): Ngừng bón phân đạm hóa học trước thu hoạch tối thiểu 14 ngày để đảm bảo dư lượng nitrat an toàn theo tiêu chuẩn VietGAP.
+                    """,
+                    "xà lách,xa lach,lettuce,batavia,rau ăn lá",
+                    "xà lách,nhiệt độ,độ ẩm,EC,pH,nitrat,thủy canh,đắng lá,bật ngồng,rau ăn lá"),
+
+                new(1, """
+                    QUẢN LÝ SÂU BỆNH HẠI TRÊN XÀ LÁCH VIETGAP:
+                    Bệnh thối nhũn vi khuẩn (Pectobacterium / Erwinia): Vết bệnh úng nước, bốc mùi hôi thối đặc trưng. Phòng ngừa: Không tưới phun chiều tối, làm luống cao thoát nước, nhổ bỏ cây bệnh, rắc vôi khử trùng đất.
+                    Bệnh đốm lá nấm: Đốm tròn màu nâu xám trên lá già. Xử lý: Phun chế phẩm sinh học đối kháng Trichoderma hoặc hoạt chất gốc đồng được phép.
+                    Sâu hại (sâu tơ, sâu xanh, bọ nhảy): Đặt bẫy dính màu vàng kết hợp chế phẩm sinh học Bacillus thuringiensis (Bt) hoặc nấm xanh Metarhizium.
+                    """,
+                    "xà lách,xa lach,lettuce,batavia,rau ăn lá",
+                    "thối nhũn,Erwinia,Pectobacterium,đốm lá,sâu tơ,bọ nhảy,Bt,Trichoderma,vôi"),
+
+                new(2, """
+                    QUY TRÌNH THU HOẠCH VÀ SƠ CHẾ XÀ LÁCH VIETGAP:
+                    Thời điểm thu hoạch: Thu hái vào sáng sớm (5h-8h) khi thời tiết mát mẻ, lá căng mọng nước.
+                    Dụng cụ: Kéo và dao cắt chuyên dụng được làm sạch và sát khuẩn trước khi sử dụng.
+                    Nước sơ chế: Nước rửa sơ chế phải đạt quy chuẩn nước sinh hoạt QCVN 01-1:2018/BYT.
+                    Đóng gói: Bao bì an toàn vệ sinh thực phẩm có đục lỗ thoát ẩm, bảo quản trong kho lạnh giữ độ tươi ngon.
+                    """,
+                    "xà lách,xa lach,lettuce,batavia,rau ăn lá",
+                    "thu hoạch,sơ chế,nước rửa,QCVN,đóng gói,bảo quản,nhiệt độ mát,tươi")
+            };
+            results.Add((doc, chunks));
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 8: Dưa leo / Dưa chuột (Cucumis sativus) theo VietGAP
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Quy trình kỹ thuật canh tác và phòng trừ sâu bệnh dưa leo (Cucumis sativus) nhà màng VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "general",
+                CropScope = "dưa leo,dua leo,dưa chuột,dua chuot,cucumber",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Quy trình kỹ thuật canh tác và phòng trừ sâu bệnh dưa leo VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    ĐIỀU KIỆN VI KHÍ HẬU VÀ CHẾ ĐỘ NƯỚC TƯỚI DƯA LEO NHÀ MÀNG:
+                    Nhiệt độ thích hợp: Ban ngày 24-30°C, ban đêm 18-22°C. Nhiệt độ < 15°C hoặc > 35°C khiến hoa dễ rụng, quả cong vẹo dị dạng.
+                    Độ ẩm không khí: 65-75%. Độ ẩm đất tối ưu: 70-80% (dưa leo háo nước do diện tích bản lá lớn).
+                    Tưới nhỏ giọt: Chia nhiều lần tưới ngắn trong ngày duy trì ẩm độ rễ liên tục, tránh tưới ướt đẫm lúc chiều muộn.
+                    EC dung dịch dinh dưỡng: Cây con 1.5-1.8 dS/m, sinh trưởng thân lá 2.0-2.2 dS/m, nuôi quả 2.2-2.5 dS/m. pH: 6.0-6.8.
+                    """,
+                    "dưa leo,dua leo,dưa chuột,dua chuot,cucumber",
+                    "dưa leo,dưa chuột,cucumber,nhiệt độ,độ ẩm đất,nước tưới,tưới nhỏ giọt,EC,pH,cong quả"),
+
+                new(1, """
+                    KỸ THUẬT TỈA CÀNH, BẤM NGỌN VÀ THỤ PHẤN DƯA LEO:
+                    Tỉa nhánh gốc: Từ nách lá thứ 1 đến thứ 5, tỉa sạch toàn bộ nhánh phụ và hoa để tập trung nuôi bộ rễ và thân chính vươn khỏe.
+                    Bấm ngọn nhánh phụ: Từ nách lá thứ 6 trở lên, để nhánh phụ mang 1-2 lá và 1 quả rồi bấm ngọn nhánh phụ.
+                    Treo dây và hạ giàn: Khi ngọn dưa leo chạm đỉnh giàn (2-2.2m), tiến hành hạ giàn 30-50cm và cuộn gốc gọn gàng để cây tiếp tục vươn ngọn cho quả liên tục.
+                    """,
+                    "dưa leo,dua leo,dưa chuột,dua chuot,cucumber",
+                    "tỉa nhánh,bấm ngọn,hạ giàn,treo dây,hoa cái,nuôi quả,dưa leo"),
+
+                new(2, """
+                    PHÒNG TRỪ DỊCH HẠI BẢO VỆ THỰC VẬT DƯA LEO VIETGAP:
+                    Bệnh giả sương mai (Pseudoperonospora cubensis): Đốm góc cạnh màu vàng trên mặt lá, mặt dưới có lớp nấm xám tím. Xử lý: Sử dụng chế phẩm sinh học đối kháng hoặc hoạt chất trừ nấm được cấp phép trong danh mục BVTV VietGAP.
+                    Bệnh phấn trắng: Sử dụng chế phẩm lưu huỳnh sinh học hoặc hoạt chất chuyên dụng cho phép.
+                    Bọ phấn trắng, bọ trĩ: Chích hút nhựa làm xoăn đọt, truyền virus khảm lá. Sử dụng bẫy vàng kết hợp chế phẩm sinh học dầu khoáng hoặc vi sinh.
+                    Cách ly thu hoạch: Tuyệt đối tuân thủ nghiêm ngặt thời gian cách ly (PHI) ghi trên nhãn thuốc trước khi thu hoạch quả.
+                    """,
+                    "dưa leo,dua leo,dưa chuột,dua chuot,cucumber",
+                    "giả sương mai,Pseudoperonospora,phấn trắng,bọ phấn trắng,bọ trĩ,bẫy vàng,dầu khoáng,cách ly,PHI")
+            };
+            results.Add((doc, chunks));
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 9: Quy trình thu hoạch và an toàn vệ sinh sản phẩm
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Quy trình thu hoạch và an toàn vệ sinh sản phẩm theo VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "harvest",
+                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Quy trình thu hoạch và an toàn vệ sinh sản phẩm theo VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    QUY TRÌNH THU HOẠCH AN TOÀN VIETGAP:
+                    Thu hoạch vào thời điểm mát trong ngày (sáng sớm hoặc chiều muộn), tránh thu hái lúc trời mưa hoặc nắng gắt làm giảm phẩm chất.
+                    Dụng cụ thu hái (kéo, dao, giỏ đựng) phải được làm sạch và khử trùng định kỳ.
+                    Nước rửa sơ chế phải đạt quy chuẩn nước sinh hoạt QCVN 01-1:2018/BYT.
+                    Sản phẩm đóng gói bằng bao bì chuyên dụng có tem nhãn mã QR truy xuất nguồn gốc đầy đủ lịch sử canh tác.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "thu hoạch,an toàn vệ sinh,khử trùng,nước rửa,QCVN,bao bì,QR")
+            };
+            results.Add((doc, chunks));
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // TÀI LIỆU 10: Ghi chép nhật ký và truy xuất nguồn gốc
+        // ────────────────────────────────────────────────────────────────────
+        {
+            var doc = new AgricultureDocument
+            {
+                Title = "Ghi chép nhật ký điện tử và truy xuất nguồn gốc VietGAP",
+                FileType = "seed",
+                AuthorOrganization = "Tài liệu nội bộ SmartFarm, chưa thẩm định",
+                Category = "record",
+                CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                IsPublic = true,
+                Version = "2024",
+                ContentText = "Ghi chép nhật ký điện tử và truy xuất nguồn gốc VietGAP."
+            };
+            var chunks = new List<SeedChunkData>
+            {
+                new(0, """
+                    QUY ĐỊNH GHI CHÉP VÀ TRUY XUẤT NGUỒN GỐC VIETGAP:
+                    VietGAP bắt buộc ghi chép minh bạch tất cả các hoạt động nông nghiệp: hạt giống, phân bón, chế phẩm bảo vệ thực vật, tưới tiêu, theo dõi sinh trưởng và thu hoạch.
+                    Hồ sơ số hóa lưu trữ phục vụ truy xuất nguồn gốc khi có kiểm tra đánh giá hoặc kiểm định an toàn thực phẩm.
+                    Mỗi lô sản phẩm phải xác định chính xác khu vực canh tác (Zone), ngày gieo trồng và ngày xuất kho.
+                    """,
+                    "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
+                    "nhật ký điện tử,truy xuất nguồn gốc,lô sản phẩm,Zone,số hóa,VietGAP")
             };
             results.Add((doc, chunks));
         }

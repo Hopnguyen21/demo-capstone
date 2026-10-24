@@ -36,7 +36,7 @@ public sealed class GeminiAiAdvisoryProviderTests
         Assert.Equal(300, result.ProposedControlAction.DurationSeconds);
         Assert.Equal("test-secret-key", handler.ApiKey);
         Assert.DoesNotContain("test-secret-key", handler.Uri!.ToString(), StringComparison.Ordinal);
-        Assert.Contains("responseJsonSchema", handler.Body, StringComparison.Ordinal);
+        Assert.Contains("responseSchema", handler.Body, StringComparison.Ordinal);
     }
 
     [Fact]

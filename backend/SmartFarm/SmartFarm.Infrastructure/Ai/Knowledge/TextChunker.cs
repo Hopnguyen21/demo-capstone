@@ -21,7 +21,8 @@ public static class TextChunker
         if (chunkSize <= 0) throw new ArgumentOutOfRangeException(nameof(chunkSize));
         if (overlap < 0 || overlap >= chunkSize) throw new ArgumentOutOfRangeException(nameof(overlap));
 
-        // Chuẩn hóa: gộp nhiều dòng trống liên tiếp thành một
+        // Chuẩn hóa: thống nhất ngắt dòng Unix và gộp nhiều dòng trống liên tiếp thành một
+        text = text.Replace("\r\n", "\n").Replace('\r', '\n');
         text = System.Text.RegularExpressions.Regex.Replace(text.Trim(), @"\n{3,}", "\n\n");
 
         var result = new List<string>();
@@ -55,7 +56,7 @@ public static class TextChunker
     private static int FindBestBreak(string text, int start, int end)
     {
         // Tìm đoạn văn mới (2 newlines)
-        int pos = text.LastIndexOf("\n\n", end, end - start);
+        int pos = text.LastIndexOf("\n\n", end, end - start, StringComparison.Ordinal);
         if (pos > start + 100) return pos + 2;
 
         // Tìm xuống dòng đơn

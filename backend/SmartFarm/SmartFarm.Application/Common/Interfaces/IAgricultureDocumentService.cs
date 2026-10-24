@@ -45,7 +45,7 @@ public interface IAgricultureDocumentService
     Task<IReadOnlyList<AgricultureDocumentSummaryView>> GetDocumentsAsync(Guid? tenantId, string? category, CancellationToken cancellationToken);
     Task<AgricultureDocumentDetailView?> GetDocumentByIdAsync(Guid documentId, Guid? tenantId, CancellationToken cancellationToken);
     Task<Guid> IngestDocumentAsync(string title, string fileName, string fileType, byte[] fileBytes, string? authorOrganization, string category, string cropScope, Guid? tenantId, bool isPublic, CancellationToken cancellationToken);
-    Task<bool> DeleteDocumentAsync(Guid documentId, Guid? tenantId, CancellationToken cancellationToken);
+    Task<bool> DeleteDocumentAsync(Guid documentId, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
     Task<IReadOnlyList<KnowledgePassageView>> SearchAsync(string query, string? cropName, Guid? tenantId, int topK, CancellationToken cancellationToken);
     Task<int> BackfillEmbeddingsAsync(CancellationToken cancellationToken);
     Task SeedVietGapKnowledgeAsync(CancellationToken cancellationToken = default);

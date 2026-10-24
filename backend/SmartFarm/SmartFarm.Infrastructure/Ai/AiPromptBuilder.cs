@@ -18,6 +18,8 @@ public static class AiPromptBuilder
     4. Khi dùng thông tin từ passage, ghi số thứ tự passage vào citedPassages. Không nêu tên tài liệu trong văn bản.
     5. Không đưa liều lượng thuốc bảo vệ thực vật cụ thể; yêu cầu người dùng đọc nhãn thuốc và hỏi cán bộ kỹ thuật.
     6. TUYỆT ĐỐI KHÔNG hiển thị hay đề cập mã ID thiết bị (như GUID, UUID, mã ID phần cứng, chuỗi hex) trong câu trả lời (summary, details, limitations). Người dùng chỉ cần biết tên thiết bị thân thiện bằng tiếng Việt (ví dụ: máy bơm tưới, quạt thông gió, van tưới). Mã actuatorId chỉ điền ngầm vào trường proposedControlAction.actuatorId của JSON.
+    7. Khi người dùng hỏi về toàn bộ trang trại, các khu vực khác, hoặc danh sách cây trồng trong farm, hãy sử dụng dữ liệu trong thẻ <farm_structure> để liệt kê chi tiết từng khu vực và cây trồng đang canh tác. Nếu không có dữ liệu trong thẻ <farm_structure> (ví dụ tài khoản nông dân chỉ được phân công khu vực hiện tại), hãy nêu rõ bạn chỉ có dữ liệu của khu vực đang phụ trách và không bịa đặt số liệu khu vực khác.
+    8. Định dạng số: Khi nhắc đến các con số nhiệt độ, độ ẩm, ngưỡng đo lường, TUYỆT ĐỐI KHÔNG để các số 0 thừa ở phần thập phân (ví dụ: viết 18°C thay vì 18.0000°C, 25°C thay vì 25.0000°C, 65.5% thay vì 65.5000%). Làm tròn tối đa 1 đến 2 chữ số thập phân khi cần thiết.
     """;
 
     public static readonly object ResponseSchema = new
@@ -39,7 +41,7 @@ public static class AiPromptBuilder
                 properties = new
                 {
                     actuatorId = new { type = "STRING" },
-                    action = new { type = "STRING", @enum = new[] { "TurnOn", "TurnOff" } },
+                    action = new { type = "STRING", @enum = new[] { "TurnOn" } },
                     durationSeconds = new { type = "INTEGER" }
                 }
             }
@@ -53,7 +55,7 @@ public static class AiPromptBuilder
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;");
 
-    private static string N(decimal v) => v.ToString(CultureInfo.InvariantCulture);
+    private static string N(decimal v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
     public static string Build(AiProviderRequest r)
     {
@@ -86,7 +88,24 @@ public static class AiPromptBuilder
             sb.AppendLine($"      <schedule name=\"{Escape(x.Name)}\" in_minutes=\"{x.MinutesUntilRun}\" duration_seconds=\"{x.DurationSeconds}\" />");
         sb.AppendLine("    </upcoming_schedules>");
 
-        sb.AppendLine($"    <weather available=\"{c.Weather.Available.ToString().ToLowerInvariant()}\" temperature_c=\"{c.Weather.TemperatureCelsius}\" rain_probability_6h_percent=\"{c.Weather.RainProbabilityNext6HoursMaxPercent}\" summary=\"{Escape(c.Weather.Summary)}\" />");
+        var tempStr = c.Weather.TemperatureCelsius?.ToString(CultureInfo.InvariantCulture) ?? "";
+        var rainProbStr = c.Weather.RainProbabilityNext6HoursMaxPercent?.ToString(CultureInfo.InvariantCulture) ?? "";
+        sb.AppendLine($"    <weather available=\"{c.Weather.Available.ToString().ToLowerInvariant()}\" temperature_c=\"{tempStr}\" rain_probability_6h_percent=\"{rainProbStr}\" summary=\"{Escape(c.Weather.Summary)}\" />");
+
+        if (c.FarmStructure is not null)
+        {
+            sb.AppendLine($"    <farm_structure total_area_m2=\"{N(c.FarmStructure.TotalAreaM2)}\">");
+            foreach (var field in c.FarmStructure.Fields)
+            {
+                sb.AppendLine($"      <field name=\"{Escape(field.FieldName)}\" area_m2=\"{N(field.AreaM2)}\">");
+                foreach (var z in field.Zones)
+                {
+                    sb.AppendLine($"        <zone id=\"{z.ZoneId}\" name=\"{Escape(z.ZoneName)}\" area_m2=\"{N(z.AreaM2)}\" active_crop=\"{Escape(z.ActiveCrop)}\" stage=\"{Escape(z.GrowthStageName)}\" season_age_days=\"{z.SeasonAgeDays}\" status=\"{z.ZoneStatus}\" />");
+                }
+                sb.AppendLine("      </field>");
+            }
+            sb.AppendLine("    </farm_structure>");
+        }
         sb.AppendLine("  </field_context>");
 
         if (r.KnowledgePassages is { Count: > 0 } passages)
@@ -95,7 +114,8 @@ public static class AiPromptBuilder
             var i = 1;
             foreach (var p in passages)
             {
-                sb.AppendLine($"    <passage index=\"{i++}\" category=\"{Escape(p.Category)}\" similarity=\"{p.SimilarityScore:F2}\">");
+                var simStr = p.SimilarityScore.ToString("F2", CultureInfo.InvariantCulture);
+                sb.AppendLine($"    <passage index=\"{i++}\" category=\"{Escape(p.Category)}\" similarity=\"{simStr}\">");
                 sb.AppendLine($"      {Escape(p.Content)}");
                 sb.AppendLine("    </passage>");
             }

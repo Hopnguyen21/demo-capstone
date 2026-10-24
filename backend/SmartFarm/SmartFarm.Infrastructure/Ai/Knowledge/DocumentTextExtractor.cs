@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
+using UglyToad.PdfPig;
 
 namespace SmartFarm.Infrastructure.Ai.Knowledge;
 
@@ -24,42 +25,29 @@ public static class DocumentTextExtractor
         };
 
     // ────────────────────────────────────────────────────────────────────────
-    //  PDF: parse text stream từ binary theo cú pháp PDF
+    //  PDF: Trích xuất toàn diện trang và text bằng thư viện UglyToad.PdfPig
     // ────────────────────────────────────────────────────────────────────────
     private static string ExtractFromPdf(byte[] fileBytes)
     {
-        // Dùng regex để extract text từ PDF stream content operators (Tj, TJ, ')
-        var pdf = Encoding.Latin1.GetString(fileBytes);
-        var sb = new StringBuilder();
-
-        // Match các text operators trong PDF content stream
-        var matches = Regex.Matches(pdf,
-            @"\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*Tj|" +
-            @"\[([^\[\]]*)\]\s*TJ|" +
-            @"\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*'",
-            RegexOptions.Singleline);
-
-        foreach (Match m in matches)
+        try
         {
-            var raw = m.Groups[1].Value + m.Groups[2].Value + m.Groups[3].Value;
-            if (!string.IsNullOrWhiteSpace(raw))
+            using var pdf = PdfDocument.Open(fileBytes);
+            var sb = new StringBuilder();
+            foreach (var page in pdf.GetPages())
             {
-                // Giải mã escape sequences PDF
-                raw = raw.Replace("\\n", "\n")
-                         .Replace("\\r", "\r")
-                         .Replace("\\t", "\t")
-                         .Replace("\\(", "(")
-                         .Replace("\\)", ")")
-                         .Replace("\\\\", "\\");
-                sb.Append(raw).Append(' ');
+                sb.AppendLine(page.Text).AppendLine();
             }
-        }
 
-        var result = sb.ToString().Trim();
-        // Nếu không extract được gì (PDF scanned/encrypted), trả về thông báo
-        return result.Length < 50
-            ? "[PDF có thể được mã hóa hoặc dạng ảnh scan, không thể trích xuất văn bản]"
-            : result;
+            var text = sb.ToString().Trim();
+            if (text.Length < 50)
+                throw new InvalidOperationException("Không trích xuất được văn bản (PDF dạng ảnh scan hoặc bị mã hóa).");
+
+            return text;
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException($"Lỗi phân tích cú pháp PDF: {ex.Message}", ex);
+        }
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -67,18 +55,29 @@ public static class DocumentTextExtractor
     // ────────────────────────────────────────────────────────────────────────
     private static string ExtractFromDocx(byte[] fileBytes)
     {
-        using var stream = new MemoryStream(fileBytes);
-        using var doc = WordprocessingDocument.Open(stream, false);
-        var body = doc.MainDocumentPart?.Document?.Body;
-        if (body is null) return string.Empty;
-
-        var sb = new StringBuilder();
-        foreach (var paragraph in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+        try
         {
-            var text = paragraph.InnerText;
-            if (!string.IsNullOrWhiteSpace(text))
-                sb.AppendLine(text);
+            using var stream = new MemoryStream(fileBytes);
+            using var doc = WordprocessingDocument.Open(stream, false);
+            var body = doc.MainDocumentPart?.Document?.Body;
+            if (body is null)
+                throw new InvalidOperationException("Tệp DOCX rỗng hoặc không có phần nội dung chính.");
+
+            var sb = new StringBuilder();
+            foreach (var paragraph in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+            {
+                var text = paragraph.InnerText;
+                if (!string.IsNullOrWhiteSpace(text))
+                    sb.AppendLine(text);
+            }
+            var result = sb.ToString().Trim();
+            if (result.Length < 30)
+                throw new InvalidOperationException("Nội dung tệp DOCX quá ngắn hoặc không chứa văn bản có thể trích xuất.");
+            return result;
         }
-        return sb.ToString();
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException($"Lỗi phân tích cú pháp DOCX: {ex.Message}", ex);
+        }
     }
 }

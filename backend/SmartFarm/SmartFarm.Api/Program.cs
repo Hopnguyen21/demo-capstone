@@ -102,6 +102,16 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogWarning(ex, "Knowledge base seeding encountered an issue during startup");
     }
+
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        await SmartFarm.Infrastructure.Persistence.DataIntegrityHealer.HealAsync(db, logger, app.Configuration, app.Environment.IsDevelopment());
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Data integrity auto-healing encountered an issue during startup");
+    }
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();

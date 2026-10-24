@@ -15,7 +15,7 @@ export interface VietGapRegulationDetail {
   title: string;
   cropName: string;
   category: string;
-  fileType: 'PDF' | 'DOCX';
+  fileType: 'PDF' | 'DOCX' | 'TXT';
   fileSize: string;
   uploadDate: string;
   author: string;
@@ -102,299 +102,32 @@ export const VietGapStandardsPage: React.FC = () => {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [expandedSection, setExpandedSection] = useState<'ALL' | 'IPM' | 'SOIL' | 'HARVEST'>('ALL');
 
-  // Kho dữ liệu VietGAP đầy đủ tiêu chuẩn TCVN 11892-1:2017
-  const [documents, setDocuments] = useState<VietGapRegulationDetail[]>([
-    {
-      id: 'VG-DOC-001',
-      code: 'TCVN 11892-1:2017 / DCL-01',
-      title: 'Quy trình Thực hành Nông nghiệp Tốt (VietGAP) Toàn Diện - Cà chua Cherry',
-      cropName: 'Cà chua Cherry',
-      category: 'Rau ăn quả',
-      fileType: 'PDF',
-      fileSize: '3.4 MB',
-      uploadDate: '18/10/2026',
-      author: 'TS. Nguyễn Văn Hùng - Viện Cây Lương Thực',
-      issuingAuthority: 'Cục Trồng trọt - Bộ NN & PTNT',
-      validityPeriod: '2026 - 2029 (Hiệu lực 3 năm)',
-      status: 'VALIDATED',
-      profileGenerated: true,
-      profileId: 'GP-TOMATO-01',
+  // Kho dữ liệu VietGAP nạp trực tiếp từ backend RAG
+  const [documents, setDocuments] = useState<VietGapRegulationDetail[]>([]);
+  const [profileThresholds, setProfileThresholds] = useState({
+    tempMin: 20,
+    tempMax: 28,
+    moistMin: 65,
+    moistMax: 75,
+    phMin: 6.0,
+    phMax: 6.8,
+    ecMin: 1.8,
+    ecMax: 2.5
+  });
 
-      soilManagement: {
-        soilType: 'Đất thịt nhẹ hoặc giá thể mụn dừa đã xử lý Tanin & Lignin, EC < 0.5 mS/cm',
-        heavyMetalLimits: 'Cadmi (Cd) ≤ 1.5 mg/kg; Chì (Pb) ≤ 70 mg/kg; Asen (As) ≤ 15 mg/kg (QCVN 03-MT:2015)',
-        isolationDistance: 'Cách xa nguồn xả thải công nghiệp, bãi rác và khu chăn nuôi tối thiểu 200m',
-        soilPreparation: 'Khử trùng giá thể bằng hơi nước nhiệt độ cao (80°C trong 45 phút) hoặc vôi bột 100g/m² trước 15 ngày trồng'
-      },
-
-      waterManagement: {
-        waterSourceStandard: 'Đạt QCVN 08-MT:2015/BTNMT (Cột A2/B1) - Nước ngầm hoặc nước giếng khoan lọc qua hệ thống cát thạch anh & than hoạt tính',
-        eColiLimit: 'E.Coli < 100 CFU/100ml; Salmonella: Tuyệt đối không phát hiện trong 250ml mẫu nước tưới',
-        phWaterRange: '6.0 - 6.8 (Kiểm soát pH nước hòa dinh dưỡng tự động bằng acid citric/nitric)',
-        irrigationMethod: 'Hệ thống tưới nhỏ giọt bù áp tự động (Drip Irrigation) cắm vào từng gốc, không tưới đọng lên lá để ngăn nấm mốc'
-      },
-
-      fertilizerRules: {
-        organicRequirements: '100% phân hữu cơ đã ủ hoai mục bằng chủng nấm đối kháng Trichoderma harzianum; cấm sử dụng phân tươi',
-        chemicalFertilizerCeiling: 'Định lượng dinh dưỡng tối đa 220kg N - 120kg P2O5 - 280kg K2O / hecta / vụ',
-        preHarvestIntervalDays: 14,
-        forbiddenFertilizers: 'Nghiêm cấm dùng nước tiểu, phân bắc, bùn thải cống rãnh hoặc phân kích thích tăng trưởng chưa có trong Danh mục lưu hành'
-      },
-
-      pestManagementIPM: {
-        ipmPrinciples: 'Áp dụng nguyên tắc IPM 4 Đúng: Đúng thuốc - Đúng lúc - Đúng nồng độ liều lượng - Đúng cách. Ưu tiên bẫy dính vàng & lưới chắn côn trùng 50 mesh',
-        permittedBioPesticides: 'Thuốc trừ sâu sinh học Bacillus thuringiensis (Bt), dầu khoáng SK Enspray 99 EC, chế phẩm nấm ký sinh Beauveria bassiana',
-        isolationQuarantineDays: 7,
-        prohibitedChemicals: 'Tuyệt đối không sử dụng nhóm hóa chất cực độc (Chlorpyrifos, Paraquat, Glyphosate, Carbofuran...)'
-      },
-
-      climateRequirements: {
-        tempOptimal: '21°C - 27°C',
-        moistureOptimal: '65% - 78%',
-        pHOptimal: '6.0 - 6.8',
-        ecOptimal: '1.8 - 2.5 mS/cm',
-        luxOptimal: '25.000 - 45.000 Lux',
-        growthDays: 95,
-        harvestNoticeDays: 7
-      },
-
-      harvestSafety: {
-        harvestToolsStandard: 'Kéo cắt chuyên dụng và sọt nhựa đựng quả được khử trùng cồn 70 độ hoặc dung dịch Cloramin B 0.5% sau mỗi ca làm việc',
-        waterWashingStandard: 'Nước rửa sơ chế đạt chuẩn nước ăn uống QCVN 01-1:2018/BYT, tráng qua dung dịch Ozone 0.5ppm để diệt khuẩn vỏ',
-        packagingMaterial: 'Hộp nhựa PET chuyên dụng có lỗ thoáng khí, dán tem niêm phong đạt chuẩn màng thực phẩm',
-        traceabilityQr: 'Tích hợp mã QR truy xuất nguồn gốc (GTIN-13) hiển thị nhật ký bón phân, tưới nước và ngày thu hoạch thực địa'
-      },
-
-      stagesOverview: [
-        { 
-          name: 'Cây giống / Vườn ươm', 
-          days: 15, 
-          temp: '22-25°C', 
-          moisture: '75-80%', 
-          fertilizerAction: 'Tưới dinh dưỡng EC 1.2 mS/cm, bổ sung vi lượng Bo và Lân hữu cơ kích rễ',
-          ipmAction: 'Phun sương phòng ngừa nấm lở cổ rễ Rhizoctonia bằng Trichoderma'
-        },
-        { 
-          name: 'Phát triển thân lá', 
-          days: 30, 
-          temp: '20-26°C', 
-          moisture: '70-75%', 
-          fertilizerAction: 'Nâng EC lên 1.8 mS/cm, cân đối tỷ lệ N-P-K 2:1:2 kết hợp Magie & Canxi chống rụng chồi',
-          ipmAction: 'Treo bẫy dính màu vàng mật độ 1 bẫy / 25m² để theo dõi bọ trĩ và bướm trắng'
-        },
-        { 
-          name: 'Phân hóa mầm & Ra hoa', 
-          days: 20, 
-          temp: '22-27°C', 
-          moisture: '65-70%', 
-          fertilizerAction: 'Tăng Kali và Canxi Bo, duy trì EC 2.2 mS/cm nhằm tăng tỷ lệ đậu quả và chống nứt cuống',
-          ipmAction: 'Rung hoa thụ phấn cơ học lúc 8:30 - 10:30 sáng, tuyệt đối không phun thuốc hóa học'
-        },
-        { 
-          name: 'Nuôi trái & Chín đỏ (Thu hoạch)', 
-          days: 30, 
-          temp: '21-25°C', 
-          moisture: '65-70%', 
-          fertilizerAction: 'Duy trì EC 2.5 mS/cm, ngừng cấp phân hóa học 14 ngày trước đợt hái cuối cùng',
-          ipmAction: 'Kiểm tra dư lượng nitrat (NO3-) và kim loại nặng trên mẫu quả trước khi xuất xưởng'
-        }
-      ]
-    },
-    {
-      id: 'VG-DOC-002',
-      code: 'TCVN 11892-1:2017 / DCL-02',
-      title: 'Quy chuẩn kỹ thuật sản xuất Dưa lưới nhà màng theo VietGAP chuẩn hóa',
-      cropName: 'Dưa lưới Inthanon',
-      category: 'Rau ăn quả',
-      fileType: 'PDF',
-      fileSize: '4.8 MB',
-      uploadDate: '15/10/2026',
-      author: 'Trung tâm Khuyến nông Quốc Gia',
-      issuingAuthority: 'Sở NN & PTNT Tỉnh Lâm Đồng',
-      validityPeriod: '2025 - 2028',
-      status: 'VALIDATED',
-      profileGenerated: false,
-
-      soilManagement: {
-        soilType: 'Trồng bịch giá thể xơ dừa 100% đã xả chát ngâm vôi, bổ sung tro trấu 20%',
-        heavyMetalLimits: 'Quy chuẩn giá thể không chứa mầm bệnh tuyến trùng Meloidogyne spp. và vi khuẩn Ralstonia',
-        isolationDistance: 'Nhà màng cách ly hoàn toàn bằng lưới côn trùng 50 mesh, cửa đệm 2 lớp',
-        soilPreparation: 'Xử lý bao bầu trước trồng bằng dung dịch Bio-Fungicide diệt nấm Phytophthora'
-      },
-
-      waterManagement: {
-        waterSourceStandard: 'Nước mặt hồ chứa qua hệ thống lắng lọc đĩa 120 mesh + hệ thống lọc RO công nghiệp',
-        eColiLimit: 'Chỉ số vi sinh đạt ngưỡng quy định nước tưới an toàn không có khuẩn Coliform',
-        phWaterRange: '6.2 - 6.8',
-        irrigationMethod: 'Tưới nhỏ giọt que cắm định lượng chính xác 8 - 12 lần/ngày theo chu kỳ bức xạ mặt trời'
-      },
-
-      fertilizerRules: {
-        organicRequirements: 'Bổ sung Amino Acid hữu cơ chiết xuất từ đạm cá thủy phân định kỳ 7 ngày/lần',
-        chemicalFertilizerCeiling: 'Tổng hàm lượng Kali sulphate tối ưu hóa giai đoạn tạo đường Brix ≥ 13°',
-        preHarvestIntervalDays: 10,
-        forbiddenFertilizers: 'Cấm sử dụng đạm Sunfat amon (SA) gây tồn dư Nitrat trong thịt dưa'
-      },
-
-      pestManagementIPM: {
-        ipmPrinciples: 'Thả bọ xít bắt mồi Orius và nhện ăn thịt Neoseiulus californicus để kiểm soát bọ trĩ sinh học',
-        permittedBioPesticides: 'Dầu hạt neem lạnh (Cold-pressed Neem Oil), vi khuẩn Bacillus amyloliquefaciens',
-        isolationQuarantineDays: 10,
-        prohibitedChemicals: 'Nghiêm cấm hoạt chất độc hại thuộc Phụ lục Cấm của Bộ Nông nghiệp'
-      },
-
-      climateRequirements: {
-        tempOptimal: '24°C - 32°C',
-        moistureOptimal: '60% - 72%',
-        pHOptimal: '6.2 - 6.8',
-        ecOptimal: '2.0 - 2.8 mS/cm',
-        luxOptimal: '35.000 - 55.000 Lux',
-        growthDays: 75,
-        harvestNoticeDays: 10
-      },
-
-      harvestSafety: {
-        harvestToolsStandard: 'Kéo cắt có đệm silicon tránh trầy xước vỏ quả lưới, găng tay sạch cho công nhân',
-        waterWashingStandard: 'Dùng khăn vi sợi ẩm lau sạch bụi phấn, không ngâm dưa trong bồn nước',
-        packagingMaterial: 'Lưới xốp bọc bảo vệ cuống chữ T, xếp vào thùng carton 2-4 quả có vách ngăn',
-        traceabilityQr: 'Tem VietGAP chứng nhận điện tử đính kèm kết quả đo độ ngọt Brix và mã số lô nhà màng'
-      },
-
-      stagesOverview: [
-        { 
-          name: 'Giai đoạn cây con', 
-          days: 12, 
-          temp: '25-28°C', 
-          moisture: '70-75%', 
-          fertilizerAction: 'Tưới dinh dưỡng EC 1.2 mS/cm phát triển bộ rễ cám',
-          ipmAction: 'Kiểm soát bọ trĩ ở cửa gió và lối ra vào nhà màng'
-        },
-        { 
-          name: 'Leo giàn & Phát triển sinh khối', 
-          days: 25, 
-          temp: '24-30°C', 
-          moisture: '65-70%', 
-          fertilizerAction: 'Nâng EC 1.8 mS/cm, cân đối Đạm - Lân - Kali 20-20-20',
-          ipmAction: 'Tỉa nhánh phụ từ nách lá 1 đến 9, cuốn dây leo thân chính'
-        },
-        { 
-          name: 'Thụ phấn & Tuyển quả', 
-          days: 10, 
-          temp: '26-32°C', 
-          moisture: '60-65%', 
-          fertilizerAction: 'Giảm nhẹ lượng nước tưới, bổ sung Boron tăng thụ phấn',
-          ipmAction: 'Thụ phấn ong mắt đỏ hoặc thủ công, chọn 1 quả đẹp nhất tại nách lá 10-12'
-        },
-        { 
-          name: 'Tạo lưới & Tích đường', 
-          days: 28, 
-          temp: '23-28°C', 
-          moisture: '55-60%', 
-          fertilizerAction: 'Tăng Kali Nitrat và Magie, cắt nước 5 ngày trước thu hoạch để dưa ngọt đậm',
-          ipmAction: 'Treo quả bằng dây dù chịu lực, kiểm tra vết nứt lưới định kỳ'
-        }
-      ]
-    },
-    {
-      id: 'VG-DOC-003',
-      code: 'TCVN 11892-1:2017 / XLA-04',
-      title: 'Quy chuẩn Canh tác Rau Xà lách thủy canh hồi lưu khép kín an toàn VietGAP',
-      cropName: 'Xà lách Lollo Bionda',
-      category: 'Rau ăn lá',
-      fileType: 'DOCX',
-      fileSize: '1.9 MB',
-      uploadDate: '12/10/2026',
-      author: 'Nhóm Chuyên gia Nông học SmartFarm',
-      issuingAuthority: 'Sở NN & PTNT TP. Hà Nội',
-      validityPeriod: '2026 - 2028',
-      status: 'VALIDATED',
-      profileGenerated: false,
-
-      soilManagement: {
-        soilType: 'Trồng không dùng đất (Giá thể xơ dừa hoặc mút xốp chuyên dụng vô trùng)',
-        heavyMetalLimits: 'Mút xốp chuẩn PE thực phẩm không thôi nhiễm chất độc hại sang rễ rau',
-        isolationDistance: 'Khu vực máng trồng cách mặt đất tối thiểu 80cm chống bắn đất và gián bọ',
-        soilPreparation: 'Khử trùng máng trồng nhựa uPVC bằng nước Javen 1% rửa sạch trước mỗi vụ'
-      },
-
-      waterManagement: {
-        waterSourceStandard: 'Nước tinh khiết qua hệ thống lọc RO, tổng chất rắn hòa tan ban đầu TDS < 30 ppm',
-        eColiLimit: 'Âm tính hoàn toàn với Coliforms và Samonella',
-        phWaterRange: '5.8 - 6.5',
-        irrigationMethod: 'Thủy canh màng dinh dưỡng NFT (Nutrient Film Technique) tuần hoàn 15 phút bơm / 15 phút nghỉ'
-      },
-
-      fertilizerRules: {
-        organicRequirements: 'Bổ sung dịch chiết rong biển hữu cơ tăng sức đề kháng và độ giòn ngọt của lá',
-        chemicalFertilizerCeiling: 'Kiểm soát nghiêm ngặt hàm lượng Nitrat NO3- trước thu hoạch < 1500 mg/kg theo chuẩn VietGAP rau ăn lá',
-        preHarvestIntervalDays: 5,
-        forbiddenFertilizers: 'Tuyệt đối không pha trộn các loại hóa chất công nghiệp không rõ nguồn gốc'
-      },
-
-      pestManagementIPM: {
-        ipmPrinciples: 'Nhà lưới kín hoàn toàn, kiểm soát sâu ăn lá bằng bẫy đèn quang học ban đêm',
-        permittedBioPesticides: 'Chế phẩm vi sinh Bacillus thuringiensis, giấm gỗ sinh học xua đuổi côn trùng',
-        isolationQuarantineDays: 5,
-        prohibitedChemicals: 'Cấm mọi loại thuốc bảo vệ thực vật hóa học tổng hợp trên giàn rau thủy canh'
-      },
-
-      climateRequirements: {
-        tempOptimal: '18°C - 24°C',
-        moistureOptimal: '70% - 85%',
-        pHOptimal: '5.8 - 6.5',
-        ecOptimal: '1.2 - 1.8 mS/cm',
-        luxOptimal: '18.000 - 30.000 Lux',
-        growthDays: 45,
-        harvestNoticeDays: 5
-      },
-
-      harvestSafety: {
-        harvestToolsStandard: 'Kéo cắt tỉa rễ bén, công nhân mặc bảo hộ, đội mũ trùm tóc và đeo khẩu trang y tế',
-        waterWashingStandard: 'Rửa nhẹ bằng nước sục khí Nano Bubbles làm sạch bụi bẩn mà không làm dập lá',
-        packagingMaterial: 'Túi màng OPP thoáng khí có đục vi lỗ thoát ẩm chống đọng giọt nước gây thối',
-        traceabilityQr: 'Dán tem nhãn QR thể hiện giờ thu hoạch và cam kết hàm lượng Nitrat an toàn'
-      },
-
-      stagesOverview: [
-        { 
-          name: 'Ươm mầm giá thể mút xốp', 
-          days: 10, 
-          temp: '20-24°C', 
-          moisture: '80-85%', 
-          fertilizerAction: 'Tưới nước tinh khiết trong tối 2 ngày đầu, sau đó cấp dinh dưỡng EC 0.8 mS/cm',
-          ipmAction: 'Che lưới đen giảm nắng gắt 50%'
-        },
-        { 
-          name: 'Lên giàn dinh dưỡng chính', 
-          days: 20, 
-          temp: '18-23°C', 
-          moisture: '75-80%', 
-          fertilizerAction: 'Duy trì dung dịch dinh dưỡng Hoagland chuẩn cải tiến, EC 1.4 - 1.6 mS/cm, pH 6.0',
-          ipmAction: 'Kiểm tra bẫy dính màu vàng và sục khí oxy hòa tan (DO > 6 mg/L)'
-        },
-        { 
-          name: 'Phát triển tán xòe trước thu hoạch', 
-          days: 15, 
-          temp: '18-22°C', 
-          moisture: '70-75%', 
-          fertilizerAction: 'Giảm EC về 1.0 mS/cm và chỉ cấp nước sạch 3 ngày cuối để giảm tích lũy nitrat',
-          ipmAction: 'Kiểm tra độ giòn ngọt và đóng gói trực tiếp tại nhà kính'
-        }
-      ]
-    }
-  ]);
-
+  
   // Form nạp tài liệu mới với đầy đủ trường tiêu chuẩn VietGAP
   const [uploadFormData, setUploadFormData] = useState({
     title: '',
     cropName: '',
-    category: 'Rau ăn quả',
+    cropGroup: 'Rau ăn quả',
+    category: 'general',
     code: 'TCVN 11892-1:2017 / ',
-    author: 'Admin Nông học SmartFarm',
-    issuingAuthority: 'Sở Nông nghiệp & Phát triển Nông thôn',
-    validityPeriod: '2026 - 2029',
+    author: 'Tài liệu nội bộ SmartFarm, chưa thẩm định',
+    issuingAuthority: 'Tài liệu nội bộ SmartFarm, chưa thẩm định',
+    validityPeriod: '2026 - 2029 (Chưa thẩm định)',
     fileName: '',
-    fileType: 'PDF' as 'PDF' | 'DOCX',
+    fileType: 'PDF' as 'PDF' | 'DOCX' | 'TXT',
     fileSize: '0 MB',
 
     soilType: 'Đất tơi xốp, thoát nước tốt, hàm lượng mùn hữu cơ > 2.5%',
@@ -440,36 +173,36 @@ export const VietGapStandardsPage: React.FC = () => {
           code: `TCVN / ${d.category || 'VietGAP'}`,
           title: d.title,
           cropName: d.cropScope || 'Đa cây trồng',
-          category: d.category === 'irrigation' ? 'Tưới tiêu' : d.category === 'pest' ? 'Sâu bệnh (IPM)' : 'Quy chuẩn chung',
+          category: d.category === 'irrigation' ? 'Tưới tiêu' : d.category === 'pest' ? 'Sâu bệnh (IPM)' : d.category === 'nutrition' ? 'Dinh dưỡng' : d.category === 'climate' ? 'Vi khí hậu' : d.category === 'harvest' ? 'Thu hoạch' : d.category === 'record' ? 'Nhật ký' : 'Quy chuẩn chung',
           fileType: (d.fileType?.toUpperCase() === 'DOCX' ? 'DOCX' : 'PDF') as 'PDF' | 'DOCX',
           fileSize: `${d.chunkCount || 1} đoạn RAG`,
           uploadDate: d.createdAtUtc ? new Date(d.createdAtUtc).toLocaleDateString('vi-VN') : 'Mặc định',
-          author: d.authorOrganization || 'SmartFarm Platform',
-          issuingAuthority: d.authorOrganization || 'Cục Trồng trọt - Bộ NN & PTNT',
-          validityPeriod: '2026 - 2029',
-          status: 'VALIDATED' as const,
+          author: d.authorOrganization || 'Tài liệu nội bộ SmartFarm, chưa thẩm định',
+          issuingAuthority: d.authorOrganization || 'Tài liệu nội bộ SmartFarm, chưa thẩm định',
+          validityPeriod: '2026 - 2029 (Chưa thẩm định)',
+          status: 'DRAFT' as const,
           profileGenerated: false,
           soilManagement: {
-            soilType: 'Đất canh tác tiêu chuẩn VietGAP',
-            heavyMetalLimits: 'QCVN 03-MT:2015',
-            isolationDistance: 'Tối thiểu 100m',
-            soilPreparation: 'Xử lý vôi và chế phẩm sinh học đối kháng'
+            soilType: 'Đất canh tác tiêu chuẩn (Tham khảo tài liệu)',
+            heavyMetalLimits: 'QCVN 03-MT:2015 (Theo quy định hiện hành)',
+            isolationDistance: 'Cách ly nguồn ô nhiễm theo quy trình',
+            soilPreparation: 'Khử trùng đất / giá thể theo tài liệu'
           },
           waterManagement: {
-            waterSourceStandard: 'QCVN 08-MT:2015/BTNMT',
-            eColiLimit: 'Không phát hiện Salmonella, E.Coli đạt ngưỡng',
-            phWaterRange: '6.0 - 6.8',
-            irrigationMethod: 'Tưới nhỏ giọt bù áp tiết kiệm nước'
+            waterSourceStandard: 'QCVN 08-MT:2015/BTNMT (Nguồn nước sạch)',
+            eColiLimit: 'Đạt ngưỡng vi sinh an toàn cho cây trồng',
+            phWaterRange: 'Theo hồ sơ sinh trưởng cây',
+            irrigationMethod: 'Tưới tiết kiệm nhỏ giọt công nghệ cao'
           },
           fertilizerRules: {
-            organicRequirements: 'Ủ hoai mục hoàn toàn bằng vi sinh hữu hiệu',
-            chemicalFertilizerCeiling: 'Theo khuyến cáo khuyến nông',
+            organicRequirements: 'Ủ hoai mục, không dùng phân tươi',
+            chemicalFertilizerCeiling: 'Theo khuyến cáo kỹ thuật canh tác',
             preHarvestIntervalDays: 14,
-            forbiddenFertilizers: 'Không dùng phân tươi và chất cấm'
+            forbiddenFertilizers: 'Không dùng phân tươi và hóa chất cấm'
           },
           pestManagementIPM: {
-            ipmPrinciples: 'IPM 4 Đúng: Đúng thuốc, đúng lúc, đúng liều lượng, đúng cách',
-            permittedBioPesticides: 'Bacillus thuringiensis, Beauveria bassiana, Trichoderma',
+            ipmPrinciples: 'Áp dụng nguyên tắc IPM 4 Đúng: Đúng thuốc, đúng lúc, đúng liều lượng, đúng cách',
+            permittedBioPesticides: 'Thuốc bảo vệ thực vật sinh học, bẫy bả',
             isolationQuarantineDays: 7,
             prohibitedChemicals: 'Tuân thủ danh mục hoạt chất cấm BNN&PTNT'
           },
@@ -496,11 +229,8 @@ export const VietGapStandardsPage: React.FC = () => {
           ]
         }));
 
-        setDocuments(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          const newOnes = mapped.filter(m => !existingIds.has(m.id));
-          return [...prev, ...newOnes];
-        });
+        setDocuments(mapped);
+        setSelectedDoc(prev => (prev && mapped.some(m => m.id === prev.id)) ? prev : mapped[0]);
       }
     } catch (e) {
       console.warn('Không tải được tài liệu RAG từ backend:', e);
@@ -519,11 +249,11 @@ export const VietGapStandardsPage: React.FC = () => {
 
     const ext = file.name.split('.').pop()?.toUpperCase();
     const isPDF = ext === 'PDF';
-    const isDOCX = ext === 'DOC' || ext === 'DOCX';
+    const isDOCX = ext === 'DOCX';
     const isTXT = ext === 'TXT';
 
     if (!isPDF && !isDOCX && !isTXT) {
-      setNotification({ type: 'error', message: 'Vui lòng chỉ tải lên tệp định dạng .PDF, .DOCX hoặc .TXT' });
+      setNotification({ type: 'error', message: 'Vui lòng chỉ tải lên tệp định dạng .PDF, .DOCX hoặc .TXT (.DOC cũ không được hỗ trợ)' });
       return;
     }
 
@@ -532,7 +262,7 @@ export const VietGapStandardsPage: React.FC = () => {
     setUploadFormData(prev => ({
       ...prev,
       fileName: file.name,
-      fileType: isPDF ? 'PDF' : 'DOCX',
+      fileType: isPDF ? 'PDF' : isDOCX ? 'DOCX' : 'TXT',
       fileSize: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
       title: prev.title || `Quy chuẩn kỹ thuật VietGAP canh tác - ${cleanName}`,
       cropName: prev.cropName || cleanName
@@ -541,6 +271,10 @@ export const VietGapStandardsPage: React.FC = () => {
 
   const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedUploadFile) {
+      setNotification({ type: 'error', message: 'Vui lòng chọn tệp tài liệu (.pdf, .docx, .txt) để nạp vào hệ thống!' });
+      return;
+    }
     if (!uploadFormData.title || !uploadFormData.cropName) {
       setNotification({ type: 'error', message: 'Vui lòng nhập tên tài liệu và loại cây trồng liên quan!' });
       return;
@@ -549,43 +283,53 @@ export const VietGapStandardsPage: React.FC = () => {
     setIsUploading(true);
     let backendDocId: string | null = null;
     try {
-      if (selectedUploadFile) {
-        const fd = new FormData();
-        fd.append('file', selectedUploadFile);
-        fd.append('title', uploadFormData.title.trim());
-        fd.append('category', 'general');
-        if (uploadFormData.issuingAuthority || uploadFormData.author) {
-          fd.append('authorOrganization', (uploadFormData.issuingAuthority || uploadFormData.author).trim());
-        }
-        if (uploadFormData.cropName) {
-          fd.append('cropScope', uploadFormData.cropName.trim());
-        }
-        fd.append('isPublic', 'true');
+      const fd = new FormData();
+      fd.append('file', selectedUploadFile);
+      fd.append('title', uploadFormData.title.trim());
+      fd.append('category', uploadFormData.category || 'general');
+      if (uploadFormData.issuingAuthority || uploadFormData.author) {
+        fd.append('authorOrganization', (uploadFormData.issuingAuthority || uploadFormData.author).trim());
+      }
+      if (uploadFormData.cropName) {
+        const cropScopeCombined = uploadFormData.cropGroup 
+          ? `${uploadFormData.cropName.trim()} (${uploadFormData.cropGroup})`
+          : uploadFormData.cropName.trim();
+        fd.append('cropScope', cropScopeCombined);
+      }
+      fd.append('isPublic', 'true');
 
-        const uploadRes = await knowledgeService.uploadDocument(fd);
-        if (uploadRes?.id || uploadRes?.documentId) {
-          backendDocId = uploadRes.id || uploadRes.documentId;
-        }
+      const uploadRes = await knowledgeService.uploadDocument(fd);
+      if (uploadRes?.id || uploadRes?.documentId) {
+        backendDocId = uploadRes.id || uploadRes.documentId;
       }
     } catch (err: any) {
-      console.warn('Backend RAG upload error:', err);
+      console.error('Backend RAG upload error:', err);
+      const errMsg = err?.response?.data?.message || err?.message || 'Tải lên tài liệu lên kho tri thức VietGAP thất bại.';
+      setNotification({ type: 'error', message: `Lỗi tải lên: ${errMsg}` });
+      setIsUploading(false);
+      return;
     } finally {
       setIsUploading(false);
     }
 
+    if (!backendDocId) {
+      setNotification({ type: 'error', message: 'Máy chủ không phản hồi mã tài liệu sau khi tải lên. Vui lòng thử lại.' });
+      return;
+    }
+
     const newDoc: VietGapRegulationDetail = {
-      id: backendDocId || `VG-DOC-${String(documents.length + 1).padStart(3, '0')}`,
+      id: backendDocId,
       code: uploadFormData.code || 'TCVN 11892-1:2017',
       title: uploadFormData.title,
       cropName: uploadFormData.cropName,
-      category: uploadFormData.category,
+      category: uploadFormData.category === 'irrigation' ? 'Tưới tiêu' : uploadFormData.category === 'pest' ? 'Sâu bệnh (IPM)' : uploadFormData.category === 'nutrition' ? 'Dinh dưỡng' : uploadFormData.category === 'climate' ? 'Vi khí hậu' : uploadFormData.category === 'harvest' ? 'Thu hoạch' : uploadFormData.category === 'record' ? 'Nhật ký' : 'Quy chuẩn chung',
       fileType: uploadFormData.fileType,
       fileSize: uploadFormData.fileSize || '2.5 MB',
       uploadDate: new Date().toLocaleDateString('vi-VN'),
       author: uploadFormData.author,
       issuingAuthority: uploadFormData.issuingAuthority,
       validityPeriod: uploadFormData.validityPeriod,
-      status: 'VALIDATED',
+      status: 'DRAFT',
       profileGenerated: false,
 
       soilManagement: {
@@ -604,7 +348,7 @@ export const VietGapStandardsPage: React.FC = () => {
 
       fertilizerRules: {
         organicRequirements: uploadFormData.fertilizerRules,
-        chemicalFertilizerCeiling: 'Theo khuyến cáo của Trung tâm Khuyến nông cho từng loại cây trồng',
+        chemicalFertilizerCeiling: 'Theo khuyến cáo kỹ thuật canh tác cho từng loại cây trồng',
         preHarvestIntervalDays: 14,
         forbiddenFertilizers: 'Nghiêm cấm phân tươi, phân bắc chưa ủ hoai'
       },
@@ -682,15 +426,17 @@ export const VietGapStandardsPage: React.FC = () => {
         if (!id.startsWith('VG-DOC-')) {
           await knowledgeService.deleteDocument(id);
         }
-      } catch (err) {
-        console.warn('Backend delete document error:', err);
+        const remaining = documents.filter(d => d.id !== id);
+        setDocuments(remaining);
+        if (selectedDoc?.id === id) {
+          setSelectedDoc(remaining[0] || null);
+        }
+        setNotification({ type: 'success', message: 'Đã xóa tài liệu VietGAP thành công!' });
+      } catch (err: any) {
+        console.error('Backend delete document error:', err);
+        const errMsg = err?.response?.data?.message || err?.message || 'Lỗi kết nối máy chủ';
+        setNotification({ type: 'error', message: `Xóa tài liệu thất bại: ${errMsg}` });
       }
-      const remaining = documents.filter(d => d.id !== id);
-      setDocuments(remaining);
-      if (selectedDoc?.id === id) {
-        setSelectedDoc(remaining[0] || null);
-      }
-      setNotification({ type: 'success', message: 'Đã xóa tài liệu VietGAP thành công!' });
     }
   };
 
@@ -699,6 +445,27 @@ export const VietGapStandardsPage: React.FC = () => {
     setConvertingDoc(doc);
     const matched = crops.find(c => c.name.toLowerCase().includes(doc.cropName.toLowerCase()));
     setSelectedCropForConvert(matched?.cropId || (crops[0]?.cropId || ''));
+
+    const tMin = matched?.optimalTemperatureMin ?? (Number(doc.climateRequirements?.tempOptimal?.split('-')[0]?.replace(/[^0-9.]/g, '')) || 20);
+    const tMax = matched?.optimalTemperatureMax ?? (Number(doc.climateRequirements?.tempOptimal?.split('-')[1]?.replace(/[^0-9.]/g, '')) || 28);
+    const mMin = matched?.optimalSoilMoistureMin ?? (Number(doc.climateRequirements?.moistureOptimal?.split('-')[0]?.replace(/[^0-9.]/g, '')) || 65);
+    const mMax = matched?.optimalSoilMoistureMax ?? (Number(doc.climateRequirements?.moistureOptimal?.split('-')[1]?.replace(/[^0-9.]/g, '')) || 75);
+    const pMin = matched?.optimalpHMin ?? (Number(doc.climateRequirements?.pHOptimal?.split('-')[0]?.replace(/[^0-9.]/g, '')) || 6.0);
+    const pMax = matched?.optimalpHMax ?? (Number(doc.climateRequirements?.pHOptimal?.split('-')[1]?.replace(/[^0-9.]/g, '')) || 6.8);
+    const eMin = matched?.optimalECMin ?? (Number(doc.climateRequirements?.ecOptimal?.split('-')[0]?.replace(/[^0-9.]/g, '')) || 1.8);
+    const eMax = matched?.optimalECMax ?? (Number(doc.climateRequirements?.ecOptimal?.split('-')[1]?.replace(/[^0-9.]/g, '')) || 2.5);
+
+    setProfileThresholds({
+      tempMin: tMin,
+      tempMax: tMax,
+      moistMin: mMin,
+      moistMax: mMax,
+      phMin: pMin,
+      phMax: pMax,
+      ecMin: eMin,
+      ecMax: eMax
+    });
+
     setIsGenerateModalOpen(true);
   };
 
@@ -717,14 +484,14 @@ export const VietGapStandardsPage: React.FC = () => {
           category: convertingDoc.category,
           growthCycleDays: convertingDoc.climateRequirements.growthDays,
           description: `Giống cây chuẩn hóa từ Quy chuẩn VietGAP ${convertingDoc.code} (${convertingDoc.title})`,
-          optimalTemperatureMin: 20,
-          optimalTemperatureMax: 28,
-          optimalSoilMoistureMin: 65,
-          optimalSoilMoistureMax: 80,
-          optimalpHMin: 6.0,
-          optimalpHMax: 6.8,
-          optimalECMin: 1.8,
-          optimalECMax: 2.5,
+          optimalTemperatureMin: profileThresholds.tempMin,
+          optimalTemperatureMax: profileThresholds.tempMax,
+          optimalSoilMoistureMin: profileThresholds.moistMin,
+          optimalSoilMoistureMax: profileThresholds.moistMax,
+          optimalpHMin: profileThresholds.phMin,
+          optimalpHMax: profileThresholds.phMax,
+          optimalECMin: profileThresholds.ecMin,
+          optimalECMax: profileThresholds.ecMax,
           optimalLux: 25000,
           isSystemDefined: true
         });
@@ -735,20 +502,22 @@ export const VietGapStandardsPage: React.FC = () => {
       const profilePayload = {
         cropId: targetCropId,
         name: `Hồ sơ Sinh trưởng VietGAP - ${convertingDoc.cropName}`,
-        description: `Kịch bản sinh trưởng vi khí hậu & nhật ký tưới bón đồng bộ từ Tiêu chuẩn ${convertingDoc.code}. Được thẩm định cho hệ thống IoT SmartFarm.`,
+        description: `Kịch bản sinh trưởng vi khí hậu và nhật ký tưới bón đồng bộ từ Tiêu chuẩn ${convertingDoc.code} (Hồ sơ bản nháp DRAFT do quản trị viên thiết lập).`,
         isDefault: true,
-        stages: convertingDoc.stagesOverview.map((stg, index) => ({
-          stageName: stg.name,
-          stageOrder: index + 1,
-          durationDays: stg.days,
-          description: `Giai đoạn ${stg.name} - Tuân thủ VietGAP: Nhiệt độ ${stg.temp}, Ẩm đất ${stg.moisture}. Phân bón: ${stg.fertilizerAction}. IPM: ${stg.ipmAction}`,
-          requirements: [
-            { parameterName: 'AirTemperature', minValue: 20, maxValue: 28, optimalValue: 24, unit: '°C' },
-            { parameterName: 'SoilMoisture', minValue: 65, maxValue: 80, optimalValue: 72, unit: '%' },
-            { parameterName: 'SoilPH', minValue: 6.0, maxValue: 6.8, optimalValue: 6.5, unit: 'pH' },
-            { parameterName: 'SoilEC', minValue: 1.8, maxValue: 2.5, optimalValue: 2.2, unit: 'mS/cm' }
-          ]
-        }))
+        stages: convertingDoc.stagesOverview.map((stg, index) => {
+          return {
+            stageName: stg.name,
+            stageOrder: index + 1,
+            durationDays: stg.days,
+            description: `Giai đoạn ${stg.name} - Tham chiếu VietGAP: Nhiệt độ ${profileThresholds.tempMin}-${profileThresholds.tempMax}°C, Ẩm đất ${profileThresholds.moistMin}-${profileThresholds.moistMax}%. Phân bón: ${stg.fertilizerAction}. IPM: ${stg.ipmAction}`,
+            requirements: [
+              { parameterName: 'Temperature', minValue: profileThresholds.tempMin, maxValue: profileThresholds.tempMax, optimalValue: Math.round(((profileThresholds.tempMin + profileThresholds.tempMax) / 2) * 10) / 10, unit: '°C' },
+              { parameterName: 'SoilMoisture', minValue: profileThresholds.moistMin, maxValue: profileThresholds.moistMax, optimalValue: Math.round(((profileThresholds.moistMin + profileThresholds.moistMax) / 2) * 10) / 10, unit: '%' },
+              { parameterName: 'Ph', minValue: profileThresholds.phMin, maxValue: profileThresholds.phMax, optimalValue: Math.round(((profileThresholds.phMin + profileThresholds.phMax) / 2) * 10) / 10, unit: 'pH' },
+              { parameterName: 'Ec', minValue: profileThresholds.ecMin, maxValue: profileThresholds.ecMax, optimalValue: Math.round(((profileThresholds.ecMin + profileThresholds.ecMax) / 2) * 10) / 10, unit: 'mS/cm' }
+            ]
+          };
+        })
       };
 
       await cropService.createGrowthProfile(profilePayload);
@@ -760,13 +529,13 @@ export const VietGapStandardsPage: React.FC = () => {
         message: `Đã sinh thành công Hồ sơ Sinh trưởng (Growth Profile) gồm ${convertingDoc.stagesOverview.length} giai đoạn từ Quy chuẩn VietGAP!`
       });
       setIsGenerateModalOpen(false);
-    } catch {
-      setDocuments(prev => prev.map(d => d.id === convertingDoc.id ? { ...d, profileGenerated: true, profileId: `GP-${convertingDoc.id}` } : d));
+    } catch (err: any) {
+      console.error('Failed to create growth profile:', err);
+      const msg = err?.response?.data?.detail || err?.response?.data?.title || err?.message || 'Lỗi khi tạo hồ sơ sinh trưởng';
       setNotification({
-        type: 'success',
-        message: `Đã khởi tạo Hồ sơ Sinh trưởng VietGAP hoàn tất cho cây "${convertingDoc.cropName}"!`
+        type: 'error',
+        message: `Tạo Hồ sơ Sinh trưởng thất bại: ${msg}`
       });
-      setIsGenerateModalOpen(false);
     } finally {
       setIsProcessing(false);
     }
@@ -1332,7 +1101,7 @@ export const VietGapStandardsPage: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-300 mb-1">Tên cây trồng áp dụng *</label>
                   <input
@@ -1347,14 +1116,31 @@ export const VietGapStandardsPage: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-300 mb-1">Nhóm cây</label>
                   <select
-                    value={uploadFormData.category}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, category: e.target.value })}
+                    value={uploadFormData.cropGroup}
+                    onChange={(e) => setUploadFormData({ ...uploadFormData, cropGroup: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
                   >
                     <option value="Rau ăn quả">Rau ăn quả</option>
                     <option value="Rau ăn lá">Rau ăn lá</option>
                     <option value="Rau ăn củ">Rau ăn củ</option>
                     <option value="Cây ăn trái">Cây ăn trái</option>
+                    <option value="Hoa - Cây cảnh">Hoa - Cây cảnh</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Danh mục kỹ thuật (RAG)</label>
+                  <select
+                    value={uploadFormData.category}
+                    onChange={(e) => setUploadFormData({ ...uploadFormData, category: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                  >
+                    <option value="general">Quy chuẩn chung (general)</option>
+                    <option value="irrigation">Nước & Tưới tiêu (irrigation)</option>
+                    <option value="pest">Sâu bệnh & IPM (pest)</option>
+                    <option value="nutrition">Dinh dưỡng & Phân bón (nutrition)</option>
+                    <option value="climate">Vi khí hậu & Môi trường (climate)</option>
+                    <option value="harvest">Thu hoạch & Bảo quản (harvest)</option>
+                    <option value="record">Nhật ký & Truy xuất (record)</option>
                   </select>
                 </div>
               </div>
@@ -1540,6 +1326,95 @@ export const VietGapStandardsPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200">Thiết lập ngưỡng vận hành Profile (Quản trị viên tinh chỉnh):</span>
+                  <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">Bản nháp DRAFT</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">Nhiệt độ min (°C)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={profileThresholds.tempMin}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, tempMin: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">Nhiệt độ max (°C)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={profileThresholds.tempMax}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, tempMax: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">Ẩm đất min (%)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      value={profileThresholds.moistMin}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, moistMin: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">Ẩm đất max (%)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      value={profileThresholds.moistMax}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, moistMax: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">pH tối thiểu</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={profileThresholds.phMin}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, phMin: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">pH tối đa</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={profileThresholds.phMax}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, phMax: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">EC min (mS/cm)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={profileThresholds.ecMin}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, ecMin: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-0.5">EC max (mS/cm)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={profileThresholds.ecMax}
+                      onChange={(e) => setProfileThresholds({ ...profileThresholds, ecMax: Number(e.target.value) })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>

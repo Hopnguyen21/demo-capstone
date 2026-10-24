@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Bot, 
@@ -24,16 +24,27 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
-import { aiService } from '../../services';
+import { aiService, controlService } from '../../services';
 import { useAuth } from '../../app/providers/AuthContext';
 
-/** Helper loại bỏ mã ID kỹ thuật (GUID / UUID / ID thiết bị) khỏi câu trả lời của AI */
+const COMMAND_LABEL: Record<string, string> = {
+  Pending: 'Lệnh đang chờ gửi',
+  Sent: 'Đã gửi lệnh, chờ thiết bị xác nhận',
+  Acknowledged: 'Thiết bị đã xác nhận lệnh',
+  Failed: 'Gửi lệnh thất bại',
+  TimedOut: 'Thiết bị không xác nhận trước thời hạn',
+  Cancelled: 'Lệnh đã bị hủy',
+};
+
+/** Helper loại bỏ mã ID kỹ thuật (GUID / UUID / ID thiết bị) và các số 0 thừa phần thập phân khỏi câu trả lời của AI */
 const cleanTechnicalIds = (text?: string): string => {
   if (!text) return '';
   return text
     .replace(/\s*\((?:Mã\s*(?:ID|thiết bị)?|ID|ActuatorId)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\)/gi, '')
     .replace(/(?:mã\s*(?:ID|thiết bị)?|ID\s*thiết\s*bị|thiết\s*bị\s*mã)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/gi, '')
     .replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '')
+    .replace(/\b(\d+)\.0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
+    .replace(/\b(\d+\.\d*?[1-9])0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
     .replace(/\(\s*\)/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -300,9 +311,11 @@ const AiPayloadLogViewer: React.FC<{ snapshotJson?: string }> = ({ snapshotJson 
 
 export const AIAssistantPage: React.FC = () => {
   const navigate = useNavigate();
-  const { zones, selectedZoneId, setSelectedZoneId, refreshFarmsAndZones } = useAuth();
+  const { user, zones, selectedZoneId, setSelectedZoneId, refreshFarmsAndZones } = useAuth();
+  const isPrivileged = user?.role === 'PLATFORM_ADMIN' || user?.role === 'PLATFORM_TECHNICIAN';
   const [isRefreshingZones, setIsRefreshingZones] = useState(false);
   const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const pollTimersRef = useRef<NodeJS.Timeout[]>([]);
 
   const handleRefreshZones = async () => {
     setIsRefreshingZones(true);
@@ -344,6 +357,7 @@ export const AIAssistantPage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
+    let contextTimer: any = null;
     if (currentZoneId) {
       setLoadingContext(true);
       setAiContext(null);
@@ -353,13 +367,19 @@ export const AIAssistantPage: React.FC = () => {
       ]);
       setRecommendations([]);
 
-      aiService.getContext(currentZoneId)
-        .then(ctx => { if (active) setAiContext(ctx); })
-        .catch(err => {
-          console.error('Failed to load AI context:', err);
-          if (active) setAiContext(null);
-        })
-        .finally(() => { if (active) setLoadingContext(false); });
+      const loadContext = (isInitial = false) => {
+        aiService.getContext(currentZoneId)
+          .then(ctx => { if (active) setAiContext(ctx); })
+          .catch(err => {
+            console.error('Failed to load AI context:', err);
+            if (active && isInitial) setAiContext(null);
+          })
+          .finally(() => { if (active && isInitial) setLoadingContext(false); });
+      };
+
+      loadContext(true);
+      // Polling bối cảnh cảm biến mỗi 10 giây để đồng bộ với Bảng Điều khiển
+      contextTimer = setInterval(() => loadContext(false), 10000);
 
       aiService.getMessages(currentZoneId)
         .then(hist => {
@@ -422,7 +442,12 @@ export const AIAssistantPage: React.FC = () => {
       setLoadingContext(false);
       setRecommendations([]);
     }
-    return () => { active = false; };
+    return () => { 
+      active = false; 
+      if (contextTimer) clearInterval(contextTimer);
+      pollTimersRef.current.forEach(clearTimeout);
+      pollTimersRef.current = [];
+    };
   }, [currentZoneId]);
 
   const handleClearHistory = async () => {
@@ -491,36 +516,56 @@ export const AIAssistantPage: React.FC = () => {
 
   const handleApply = async (id: string) => {
     try {
-      await aiService.applyRecommendation(currentZoneId, id, 'Accepted');
-      // Phase 1 (0s): Đã gửi lệnh
+      const result = await aiService.applyRecommendation(currentZoneId, id, 'Accepted');
+      const cmd = result?.command;
+      const initialStatus = cmd?.status ?? 'Pending';
+
+      // Cập nhật trạng thái thực tế trả về từ backend API
       setMessages(prev => prev.map(m => {
         if (m.recommendation && m.recommendation.recommendationId === id) {
-          return { ...m, recommendation: { ...m.recommendation, status: 'ACCEPTED', commandStatus: 'Sent' } };
+          return {
+            ...m,
+            recommendation: {
+              ...m.recommendation,
+              status: 'ACCEPTED',
+              commandStatus: initialStatus,
+              commandId: cmd?.commandId
+            }
+          };
         }
         return m;
       }));
-      // Remove from right queue
+
+      // Xóa khỏi danh sách chờ xử lý ở cột bên phải
       setRecommendations(prev => prev.filter(r => (r.recommendationId || r.id) !== id));
 
-      // Phase 2 (1.5s): Thiết bị phản hồi xác nhận và bắt đầu chạy tưới
-      setTimeout(() => {
-        setMessages(prev => prev.map(m => {
-          if (m.recommendation && m.recommendation.recommendationId === id) {
-            return { ...m, recommendation: { ...m.recommendation, commandStatus: 'Running' } };
-          }
-          return m;
-        }));
-      }, 1500);
-
-      // Phase 3 (31.5s): Chu kỳ tưới mô phỏng hoàn tất, thiết bị tự động ngắt và trả về trạng thái Hoàn tất
-      setTimeout(() => {
-        setMessages(prev => prev.map(m => {
-          if (m.recommendation && m.recommendation.recommendationId === id) {
-            return { ...m, recommendation: { ...m.recommendation, commandStatus: 'Completed' } };
-          }
-          return m;
-        }));
-      }, 31500);
+      // Poll command status từ control logs để cập nhật nhãn chính xác từ thiết bị
+      if (cmd?.commandId) {
+        const pollCmdStatus = async () => {
+          try {
+            const logs = await controlService.getControlLogs(currentZoneId);
+            const matchingCmd = Array.isArray(logs) ? logs.find((c: any) => c.commandId === cmd.commandId || c.id === cmd.commandId) : null;
+            const realStatus = matchingCmd?.status;
+            if (realStatus && realStatus in COMMAND_LABEL) {
+              setMessages(prev => prev.map(m => {
+                if (m.recommendation && m.recommendation.recommendationId === id) {
+                  return {
+                    ...m,
+                    recommendation: {
+                      ...m.recommendation,
+                      commandStatus: realStatus
+                    }
+                  };
+                }
+                return m;
+              }));
+            }
+          } catch { }
+        };
+        const t1 = setTimeout(pollCmdStatus, 2500);
+        const t2 = setTimeout(pollCmdStatus, 5500);
+        pollTimersRef.current.push(t1, t2);
+      }
     } catch (err: any) {
       console.error('Failed to apply recommendation:', err);
       const detailMsg = err?.response?.data?.detail || err?.response?.data?.title || 'Điều kiện vi khí hậu không cho phép thực hiện lúc này.';
@@ -613,49 +658,59 @@ export const AIAssistantPage: React.FC = () => {
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col h-[600px] overflow-hidden">
           {/* Chat Context Header */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-700">
-                <span className={`w-2 h-2 rounded-full ${aiContext ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
-                <span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2 text-slate-700 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${aiContext ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+                <span className="flex flex-wrap items-center gap-1.5">
                   Bối cảnh AI: <strong className="text-slate-900">
                     {aiContext?.zoneName || (loadingContext ? 'Đang tải bối cảnh Zone...' : (zones.length === 0 ? 'Chưa đồng bộ danh sách Zone' : 'Chưa có dữ liệu Zone'))}
                   </strong>
                   {aiContext?.cropName && (
-                    <span className="ml-1 text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <span className="text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-full border border-emerald-200">
                       🌿 {aiContext.cropName}{aiContext.growthStageName ? ` • ${aiContext.growthStageName}` : ''}{(aiContext.seasonAgeDays ?? aiContext.daysSinceStart) !== undefined ? ` (Ngày ${aiContext.seasonAgeDays ?? aiContext.daysSinceStart})` : ''}
                       {aiContext.growthProfileName ? ` • 📜 ${aiContext.growthProfileName}` : ''}
                     </span>
                   )}
                 </span>
               </div>
-              <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
-                {loadingContext ? 'Đang cập nhật...' : aiContext ? `${aiContext.telemetry?.filter((x: any) => x.isFresh).length ?? 0} cảm biến realtime · ${aiContext.weather?.available ? '🌤️ Thời tiết thực tế' : '⚠️ Thiếu thời tiết'}` : (zones.length === 0 ? 'Vui lòng bấm tải lại Zone' : 'Chưa tải được dữ liệu')}
+              <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md border border-emerald-200 font-semibold shrink-0 whitespace-nowrap shadow-2xs">
+                {loadingContext ? 'Đang cập nhật...' : aiContext ? `${aiContext.telemetry?.filter((x: any) => x.isFresh && !['ph', 'soilph', 'ec', 'soilec'].includes((x.parameterCode || '').toLowerCase())).length ?? 0} cảm biến realtime · ${aiContext.weather?.available ? '🌤️ Thời tiết thực tế' : '⚠️ Thiếu thời tiết'}` : (zones.length === 0 ? 'Vui lòng bấm tải lại Zone' : 'Chưa tải được dữ liệu')}
               </span>
             </div>
 
-            {/* Micro Sensor Bar */}
+            {/* Micro Sensor Bar: 4 Thông số vi khí hậu & thổ nhưỡng cốt lõi (Đồng bộ với Bảng Điều khiển) */}
             {aiContext?.telemetry && aiContext.telemetry.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pt-1 pb-0.5 text-[11px]">
-                {aiContext.telemetry.map((t: any) => {
-                  const req = aiContext.requirements?.find((r: any) => r.parameterCode === t.parameterCode);
-                  return (
-                    <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
-                      <span className="text-slate-400 font-medium">
-                        {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
-                         t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
-                         t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
-                         t.parameterCode === 'Light' ? '☀️ Ánh sáng' :
-                         t.parameterCode === 'SoilPh' ? '🧪 pH đất' :
-                         t.parameterCode === 'SoilEc' ? '⚡ EC đất' : t.parameterCode}:
-                      </span>
-                      <strong className="text-slate-800 font-mono">{t.value} {t.unit}</strong>
-                      {req && (
-                        <span className="text-[10px] text-emerald-700 font-sans ml-0.5 font-medium">
-                          (chuẩn: {req.minValue}-{req.maxValue})
+              <div className="flex flex-wrap items-center gap-2 pt-1 pb-0.5 text-[11px]">
+                {aiContext.telemetry
+                  .filter((t: any) => !['ph', 'soilph', 'ec', 'soilec'].includes((t.parameterCode || '').toLowerCase()))
+                  .sort((a: any, b: any) => {
+                    const order = ['temperature', 'soilmoisture', 'airhumidity', 'light', 'lightintensity'];
+                    const idxA = order.indexOf((a.parameterCode || '').toLowerCase());
+                    const idxB = order.indexOf((b.parameterCode || '').toLowerCase());
+                    return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+                  })
+                  .map((t: any) => {
+                    const req = aiContext.requirements?.find((r: any) => r.parameterCode === t.parameterCode);
+                    const formattedValue = !isNaN(Number(t.value)) ? Number(t.value) : t.value;
+                    const minVal = req?.minValue !== undefined && !isNaN(Number(req.minValue)) ? Number(req.minValue) : req?.minValue;
+                    const maxVal = req?.maxValue !== undefined && !isNaN(Number(req.maxValue)) ? Number(req.maxValue) : req?.maxValue;
+
+                    return (
+                      <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
+                        <span className="text-slate-400 font-medium">
+                          {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
+                           t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
+                           t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
+                           (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Ánh sáng' : t.parameterCode}:
                         </span>
-                      )}
-                    </div>
-                  );
+                        <strong className="text-slate-800 font-mono">{formattedValue} {t.unit}</strong>
+                        {req && minVal !== undefined && maxVal !== undefined && (
+                          <span className="text-[10px] text-emerald-700 font-sans ml-0.5 font-medium">
+                            (chuẩn: {minVal}-{maxVal})
+                          </span>
+                        )}
+                      </div>
+                    );
                 })}
                 {aiContext.weather?.temperatureCelsius !== undefined && (
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs whitespace-nowrap">
@@ -745,43 +800,38 @@ export const AIAssistantPage: React.FC = () => {
                         <span className="text-[11px] text-slate-500 italic">Xác nhận để kích hoạt thiết bị</span>
                         {msg.recommendation.status === 'ACCEPTED' ? (
                           <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs border transition-all ${
-                            msg.recommendation.commandStatus === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : msg.recommendation.commandStatus === 'Running'
-                              ? 'bg-sky-100 text-sky-800 border-sky-300 animate-pulse'
-                              : msg.recommendation.commandStatus === 'Failed'
-                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            msg.recommendation.commandStatus === 'Failed' || msg.recommendation.commandStatus === 'TimedOut' || msg.recommendation.commandStatus === 'Cancelled'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : msg.recommendation.commandStatus === 'Pending'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : msg.recommendation.commandStatus === 'Sent'
+                              ? 'bg-sky-50 text-sky-700 border-sky-200'
                               : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                           }`}>
-                            {msg.recommendation.commandStatus === 'Completed' ? (
-                              <>
-                                <CheckCircle2 size={14} className="text-emerald-600" />
-                                <span>Đã hoàn thành chu kỳ tưới & thiết bị đã tắt</span>
-                              </>
-                            ) : msg.recommendation.commandStatus === 'Running' ? (
-                              <>
-                                <Droplets size={14} className="text-sky-600 animate-bounce" />
-                                <span>Đang chạy tưới nước (Mô phỏng 30s)...</span>
-                              </>
-                            ) : msg.recommendation.commandStatus === 'Failed' ? (
+                            {msg.recommendation.commandStatus === 'Failed' || msg.recommendation.commandStatus === 'Cancelled' ? (
                               <>
                                 <XCircle size={14} className="text-rose-600" />
-                                <span>Gửi lệnh thất bại</span>
+                                <span>{COMMAND_LABEL[msg.recommendation.commandStatus] || 'Lệnh thất bại'}</span>
+                              </>
+                            ) : msg.recommendation.commandStatus === 'TimedOut' ? (
+                              <>
+                                <Clock size={14} className="text-rose-500" />
+                                <span>{COMMAND_LABEL.TimedOut}</span>
                               </>
                             ) : msg.recommendation.commandStatus === 'Pending' ? (
                               <>
-                                <Clock size={14} className="text-amber-600" />
-                                <span>Lệnh đang chờ gửi</span>
+                                <Clock size={14} className="text-amber-600 animate-pulse" />
+                                <span>{COMMAND_LABEL.Pending}</span>
                               </>
                             ) : msg.recommendation.commandStatus === 'Sent' ? (
                               <>
-                                <CheckCircle2 size={14} className="text-emerald-600" />
-                                <span>Đã gửi lệnh, chờ thiết bị xác nhận...</span>
+                                <RefreshCw size={14} className="text-sky-600 animate-spin" />
+                                <span>{COMMAND_LABEL.Sent}</span>
                               </>
                             ) : (
                               <>
                                 <CheckCircle2 size={14} className="text-emerald-600" />
-                                <span>Đã duyệt & hoàn thành chu kỳ tưới</span>
+                                <span>{COMMAND_LABEL[msg.recommendation.commandStatus] || 'Thiết bị đã xác nhận lệnh'}</span>
                               </>
                             )}
                           </div>
@@ -822,64 +872,51 @@ export const AIAssistantPage: React.FC = () => {
                   )}
 
 
-                  {/* Dữ liệu tìm thấy từ RAG VietGAP */}
-                  {!isUser && (() => {
-                    let ragPassages: any[] = [];
-                    try {
-                      const snapshot = msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson;
-                      if (snapshot) {
-                        const parsed = typeof snapshot === 'string' ? JSON.parse(snapshot) : snapshot;
-                        ragPassages = parsed?.Passages || parsed?.passages || [];
-                      }
-                    } catch {}
-
-                    if (ragPassages.length === 0 && (!msg.sources || msg.sources.length === 0)) return null;
-
-                    return (
-                      <div className="mt-2.5 p-2.5 rounded-lg bg-emerald-50/80 border border-emerald-200/90 text-[11px] space-y-2">
-                        <div className="flex items-center justify-between font-semibold text-emerald-900">
-                          <span className="flex items-center gap-1.5">
-                            <BookOpen size={13} className="text-emerald-700" />
-                            <span>Quy chuẩn VietGAP tìm thấy từ RAG ({ragPassages.length || msg.sources?.length || 0} mục):</span>
-                          </span>
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono border border-emerald-300">
-                            RAG Match
-                          </span>
-                        </div>
-
-                        {ragPassages.length > 0 ? (
-                          <div className="space-y-1.5">
-                            {ragPassages.map((p: any, idx: number) => (
-                              <div key={idx} className="bg-white/90 p-2 rounded-md border border-emerald-100 space-y-1 shadow-2xs">
-                                <div className="flex items-center justify-between text-[10px]">
-                                  <span className="font-bold text-slate-800">
-                                    #{idx + 1} {p.DocumentTitle || p.documentTitle || p.Category || p.category}
-                                  </span>
-                                  <span className="text-emerald-700 font-mono bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                                    {Math.round((p.SimilarityScore ?? p.similarityScore ?? 0.8) * 100)}% khớp
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-slate-700 leading-relaxed font-sans bg-slate-50/70 p-1.5 rounded border border-slate-100 whitespace-pre-wrap">
-                                  {p.Content || p.content}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {msg.sources.map((s: any, idx: number) => (
-                              <span key={idx} className="px-2 py-0.5 rounded bg-white text-emerald-800 border border-emerald-200 text-[10px]">
-                                {s.title || s.name || (typeof s === 'string' ? s : 'Tài liệu VietGAP')}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                  {/* Tài liệu & Quy chuẩn VietGAP trích dẫn từ RAG */}
+                  {!isUser && msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-2.5 p-2.5 rounded-lg bg-emerald-50/80 border border-emerald-200/90 text-[11px] space-y-2">
+                      <div className="flex items-center justify-between font-semibold text-emerald-900">
+                        <span className="flex items-center gap-1.5">
+                          <BookOpen size={13} className="text-emerald-700" />
+                          <span>Tài liệu & Quy chuẩn trích dẫn từ RAG ({msg.sources.length} mục):</span>
+                        </span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono border border-emerald-300">
+                          RAG Match
+                        </span>
                       </div>
-                    );
-                  })()}
 
-                  {/* Log dữ liệu BE gửi cho AI */}
-                  {!isUser && (msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson) && (
+                      <div className="space-y-1.5">
+                        {msg.sources.map((s: any, idx: number) => {
+                          const title = typeof s === 'string' ? s : (s.title || s.name || 'Tài liệu VietGAP');
+                          const org = typeof s === 'object' ? (s.organization || s.authorOrganization) : undefined;
+                          const category = typeof s === 'object' ? s.category : undefined;
+                          const similarity = typeof s === 'object' && s.similarity != null ? Math.round(s.similarity * 100) : undefined;
+
+                          return (
+                            <div key={idx} className="bg-white/95 p-2 rounded-md border border-emerald-100 space-y-1 shadow-2xs">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span className="font-bold text-slate-800">
+                                  #{idx + 1} {title}
+                                </span>
+                                {similarity != null && (
+                                  <span className="text-emerald-700 font-mono bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                    {similarity}% khớp
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                {org && <span>Nguồn: {org}</span>}
+                                {category && <span className="bg-slate-100 px-1 rounded text-slate-600">DM: {category}</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Log dữ liệu BE gửi cho AI (chỉ hiện cho Admin hoặc chế độ debug) */}
+                  {!isUser && isPrivileged && (msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson) && (
                     <AiPayloadLogViewer snapshotJson={msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson} />
                   )}
 

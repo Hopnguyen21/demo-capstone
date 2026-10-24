@@ -54,8 +54,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
             ["temperature"] = 0.2,
             ["maxOutputTokens"] = settings.MaxOutputTokens,
             ["responseMimeType"] = "application/json",
-            ["responseSchema"] = AiPromptBuilder.ResponseSchema,
-            ["responseJsonSchema"] = AiPromptBuilder.ResponseSchema
+            ["responseSchema"] = AiPromptBuilder.ResponseSchema
         };
         if (settings.ThinkingBudget is > 0)
             generationConfig["thinkingConfig"] = new { thinkingBudget = settings.ThinkingBudget.Value };

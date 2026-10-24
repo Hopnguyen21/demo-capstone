@@ -4,6 +4,19 @@ import { Button, Input } from '../../components/ui/BaseUI';
 import { aiService } from '../../services';
 import { useAuth } from '../../app/providers/AuthContext';
 
+const cleanTechnicalIds = (text?: string): string => {
+  if (!text) return '';
+  return text
+    .replace(/\s*\((?:Mã\s*(?:ID|thiết bị)?|ID|ActuatorId)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\)/gi, '')
+    .replace(/(?:mã\s*(?:ID|thiết bị)?|ID\s*thiết\s*bị|thiết\s*bị\s*mã)?:?\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/gi, '')
+    .replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '')
+    .replace(/\b(\d+)\.0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
+    .replace(/\b(\d+\.\d*?[1-9])0{2,4}(?=[°%a-zA-Z\s,;.\)]|$)/g, '$1')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+};
+
 export const FarmerAIPage: React.FC = () => {
   const { zones, selectedZoneId, setSelectedZoneId } = useAuth();
   const zoneId = selectedZoneId || zones[0]?.zoneId || '';
@@ -46,7 +59,7 @@ export const FarmerAIPage: React.FC = () => {
           restored.push({
             id: `ha-${idx}`,
             sender: 'AI',
-            text: h.details || h.summary || 'Trợ lý AI đã ghi nhận câu hỏi.'
+            text: cleanTechnicalIds(h.details || h.summary || 'Trợ lý AI đã ghi nhận câu hỏi.')
           });
         });
         if (restored.length > 0) {
@@ -57,7 +70,20 @@ export const FarmerAIPage: React.FC = () => {
         }
       })
       .catch(() => {});
-    return () => { active = false; };
+
+    // Auto-refresh telemetry & context every 10 seconds
+    const interval = setInterval(() => {
+      if (zoneId) {
+        aiService.getContext(zoneId)
+          .then(ctx => { if (active) setAiContext(ctx); })
+          .catch(() => {});
+      }
+    }, 10000);
+
+    return () => { 
+      active = false; 
+      clearInterval(interval);
+    };
   }, [zoneId]);
 
   const handleSend = async (e: React.FormEvent) => {
@@ -75,7 +101,7 @@ export const FarmerAIPage: React.FC = () => {
     try {
       const res = await aiService.ask(zoneId, userMsg);
       // Correct field mapping: AiRecommendationView uses details/summary
-      const reply = (res as any)?.details || (res as any)?.summary || 'AI chưa trả về kết quả phân tích. Vui lòng tải lại dữ liệu hoặc thử lại sau.';
+      const reply = cleanTechnicalIds((res as any)?.details || (res as any)?.summary || 'AI chưa trả về kết quả phân tích. Vui lòng tải lại dữ liệu hoặc thử lại sau.');
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'AI', text: reply }]);
     } catch {
       setMessages(prev => [
@@ -130,6 +156,49 @@ export const FarmerAIPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Micro Sensor Bar matching Owner AI Page */}
+        {aiContext?.telemetry && aiContext.telemetry.length > 0 && (
+          <div className="px-3 py-1.5 bg-slate-100/70 border-b border-slate-200/80 flex items-center gap-2 overflow-x-auto text-[11px] scrollbar-thin">
+            {aiContext.telemetry
+              .filter((t: any) => !['ph', 'soilph', 'ec', 'soilec'].includes((t.parameterCode || '').toLowerCase()))
+              .sort((a: any, b: any) => {
+                const order = ['temperature', 'soilmoisture', 'airhumidity', 'light', 'lightintensity'];
+                const idxA = order.indexOf((a.parameterCode || '').toLowerCase());
+                const idxB = order.indexOf((b.parameterCode || '').toLowerCase());
+                return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+              })
+              .map((t: any) => {
+                const req = aiContext.requirements?.find((r: any) => r.parameterCode === t.parameterCode);
+                const formattedValue = !isNaN(Number(t.value)) ? Number(t.value) : t.value;
+                const minVal = req?.minValue !== undefined && !isNaN(Number(req.minValue)) ? Number(req.minValue) : req?.minValue;
+                const maxVal = req?.maxValue !== undefined && !isNaN(Number(req.maxValue)) ? Number(req.maxValue) : req?.maxValue;
+
+                return (
+                  <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
+                    <span className="text-slate-400 font-medium">
+                      {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
+                       t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
+                       t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
+                       (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Ánh sáng' : t.parameterCode}:
+                    </span>
+                    <strong className="text-slate-800 font-mono">{formattedValue} {t.unit}</strong>
+                    {req && minVal !== undefined && maxVal !== undefined && (
+                      <span className="text-[10px] text-emerald-700 font-sans ml-0.5 font-medium">
+                        (chuẩn: {minVal}-{maxVal})
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            {aiContext.weather?.temperatureCelsius !== undefined && (
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs whitespace-nowrap">
+                <span>Dự báo 6h:</span>
+                <strong>{aiContext.weather.rainProbabilityNext6HoursMaxPercent ?? 0}% mưa</strong>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
           {messages.map(m => (

@@ -85,7 +85,15 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
             var bytes = ms.ToArray();
 
             var isPlatformAdmin = User.IsInRole("PlatformAdmin");
-            var tenantId = isPlatformAdmin && request.IsPublic ? (Guid?)null : User.GetTenantId();
+            Guid? tenantId = null;
+            if (isPlatformAdmin)
+            {
+                try { tenantId = User.GetOptionalTenantId(); } catch { tenantId = null; }
+            }
+            else
+            {
+                tenantId = User.GetTenantId();
+            }
             var isPublic = isPlatformAdmin ? request.IsPublic : false;
 
             var documentId = await documentService.IngestDocumentAsync(
@@ -102,7 +110,7 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
 
             return CreatedAtAction(nameof(GetDocument), new { documentId }, new { id = documentId, title = request.Title });
         }
-        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException or IOException)
         {
             return BadRequest(new { message = ex.Message });
         }
@@ -115,8 +123,9 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     [Authorize(Roles = "PlatformAdmin,FarmOwner")]
     public async Task<IActionResult> DeleteDocument(Guid documentId, CancellationToken cancellationToken)
     {
-        var tenantId = User.IsInRole("PlatformAdmin") ? (Guid?)null : User.GetTenantId();
-        var deleted = await documentService.DeleteDocumentAsync(documentId, tenantId, cancellationToken);
+        var isPlatformAdmin = User.IsInRole("PlatformAdmin");
+        var tenantId = isPlatformAdmin ? (Guid?)null : User.GetTenantId();
+        var deleted = await documentService.DeleteDocumentAsync(documentId, tenantId, isPlatformAdmin, cancellationToken);
         if (!deleted) return NotFound();
         return NoContent();
     }

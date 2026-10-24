@@ -7,13 +7,14 @@ using SmartFarm.Infrastructure.Persistence;
 namespace SmartFarm.Api.HostedServices;
 
 /// <summary>
-/// Background Service giả lập thiết bị IoT (Virtual IoT Node Simulator).
-/// Tự động sinh dữ liệu cảm biến ngẫu nhiên theo chu kỳ (Nhiệt độ, Độ ẩm đất, Độ ẩm không khí, Ánh sáng, pH, EC)
-/// giúp hệ thống SmartFarm luôn có telemetry thực tế và biểu đồ/cảnh báo hoạt động liên tục.
+/// Generates synthetic sensor telemetry for local development demonstrations only.
+/// This worker is disabled outside the Development host environment and requires
+/// SimulatedIot:Enabled=true. Generated readings are not measurements from hardware.
 /// </summary>
 public sealed class SimulatedIotTelemetryWorker(
     IServiceScopeFactory scopes,
     IConfiguration configuration,
+    IHostEnvironment hostEnvironment,
     ILogger<SimulatedIotTelemetryWorker> logger) : BackgroundService
 {
     private static readonly Random Rnd = new();
@@ -21,12 +22,9 @@ public sealed class SimulatedIotTelemetryWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var environment = configuration.GetValue<string>("ASPNETCORE_ENVIRONMENT") 
-            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
-            ?? string.Empty;
-        if (string.Equals(environment, "Testing", StringComparison.OrdinalIgnoreCase))
+        if (!hostEnvironment.IsDevelopment())
         {
-            logger.LogInformation("Simulated IoT Telemetry Worker is disabled in Testing environment.");
+            logger.LogInformation("Simulated IoT Telemetry Worker is disabled outside Development.");
             return;
         }
 
@@ -37,7 +35,7 @@ public sealed class SimulatedIotTelemetryWorker(
             return;
         }
 
-        var intervalSeconds = configuration.GetValue<int>("SimulatedIot:IntervalSeconds", 300);
+        var intervalSeconds = configuration.GetValue<int>("SimulatedIot:IntervalSeconds", 90);
         if (intervalSeconds < 10) intervalSeconds = 10;
 
         logger.LogInformation("Simulated IoT Telemetry Worker started (Interval: {Interval} seconds).", intervalSeconds);
@@ -467,7 +465,17 @@ public sealed class SimulatedIotTelemetryWorker(
                                 CreatedAtUtc = now
                             });
                         }
-                        if (openAlerts.Count > 0) await db.SaveChangesAsync(ct);
+                        if (openAlerts.Count > 0)
+                        {
+                            try { await db.SaveChangesAsync(ct); }
+                            catch (DbUpdateConcurrencyException)
+                            {
+                                foreach (var oa in openAlerts)
+                                {
+                                    db.Entry(oa).State = EntityState.Detached;
+                                }
+                            }
+                        }
                         continue;
                     }
 
@@ -552,8 +560,16 @@ public sealed class SimulatedIotTelemetryWorker(
 
                     if (alert.PlantingSeasonId != Guid.Empty && alert.GrowthStageId != Guid.Empty)
                     {
-                        db.Alerts.Add(alert);
-                        await db.SaveChangesAsync(ct);
+                        try
+                        {
+                            db.Alerts.Add(alert);
+                            await db.SaveChangesAsync(ct);
+                        }
+                        catch (DbUpdateConcurrencyException)
+                        {
+                            db.Entry(alert).State = EntityState.Detached;
+                            continue;
+                        }
 
                         // Gửi Notification cho cả Owner và Farmer phụ trách (chỉ sau khi lưu alert thành công)
                         var targets = await db.AppUsers.AsNoTracking()

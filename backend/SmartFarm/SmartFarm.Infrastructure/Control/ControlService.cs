@@ -113,7 +113,7 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
 
     public async Task<ActuatorCommandView> CreateAiApprovedCommandAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid recommendationId, Guid actuatorId, ActuatorCommandAction action, int durationSeconds, CancellationToken ct)
     {
-        await EnsureOwnerZoneAsync(ownerId, tenantId, zoneId, ct);
+        await EnsureZoneControlAsync(ownerId, tenantId, zoneId, ct);
         var recommendation = await db.AiRecommendations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == recommendationId && x.TenantId == tenantId && x.ZoneId == zoneId, ct)
             ?? throw new ResourceNotFoundException("AI recommendation was not found in this Zone.");
         if (!recommendation.IsActionable || recommendation.Status != AiRecommendationStatus.Ready || recommendation.ProposedActuatorId != actuatorId || recommendation.ProposedAction != action || recommendation.ProposedDurationSeconds != durationSeconds)

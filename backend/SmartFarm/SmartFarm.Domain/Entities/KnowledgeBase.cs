@@ -44,7 +44,7 @@ public sealed class AgricultureDocument : AuditableEntity
 
 /// <summary>
 /// Một đoạn văn bản (chunk) được chia nhỏ từ AgricultureDocument.
-/// Embedding được lưu dưới dạng pgvector <see cref="Vector"/> (768 chiều — text-embedding-004).
+/// Embedding được lưu dưới dạng pgvector <see cref="Vector"/> (768 chiều — gemini-embedding-001).
 /// </summary>
 public sealed class AgricultureKnowledgeChunk : AuditableEntity
 {
@@ -58,7 +58,7 @@ public sealed class AgricultureKnowledgeChunk : AuditableEntity
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
-    /// Embedding vector 768 chiều (Gemini text-embedding-004).
+    /// Embedding vector 768 chiều (Gemini gemini-embedding-001).
     /// Null khi chưa được tạo embedding.
     /// </summary>
     public Vector? Embedding { get; set; }

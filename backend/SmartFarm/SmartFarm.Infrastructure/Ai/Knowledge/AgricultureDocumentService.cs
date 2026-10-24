@@ -105,11 +105,16 @@ public sealed class AgricultureDocumentService(
         return doc.Id;
     }
 
-    public async Task<bool> DeleteDocumentAsync(Guid documentId, Guid? tenantId, CancellationToken ct)
+    public async Task<bool> DeleteDocumentAsync(Guid documentId, Guid? tenantId, bool isPlatformAdmin, CancellationToken ct)
     {
-        // Chỉ xóa tài liệu thuộc đúng tenant. Tài liệu nền tảng (TenantId null) cần luồng admin riêng.
-        if (tenantId is null) return false;
-        var doc = await db.AgricultureDocuments.FirstOrDefaultAsync(d => d.Id == documentId && d.TenantId == tenantId, ct);
+        var q = db.AgricultureDocuments.Where(d => d.Id == documentId);
+        if (!isPlatformAdmin)
+        {
+            if (tenantId is null) return false;
+            q = q.Where(d => d.TenantId == tenantId);
+        }
+
+        var doc = await q.FirstOrDefaultAsync(ct);
         if (doc is null) return false;
         db.AgricultureDocuments.Remove(doc); // cascade xóa chunks
         await db.SaveChangesAsync(ct);
@@ -162,17 +167,97 @@ public sealed class AgricultureDocumentService(
 
     public async Task SeedVietGapKnowledgeAsync(CancellationToken ct = default)
     {
-        foreach (var (title, category, body) in SeedData.Documents)
-        {
-            if (await db.AgricultureDocuments.AnyAsync(d => d.Title == title, ct)) continue;
+        var seedDocs = KnowledgeBaseSeedData.GetSeedDocuments();
+        var validSeedTitles = seedDocs.Select(x => x.Document.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            await CreateDocumentAsync(title, null, "seed", body, "SmartFarm Platform (Chuẩn hóa VietGAP TCVN 11892-1:2017)",
-                category, string.Empty, "v1", null, true, ct);
+        // Xóa các tài liệu seed cũ trong DB không còn thuộc bộ KnowledgeBaseSeedData hiện hành
+        var obsoleteOldSeedDocs = await db.AgricultureDocuments
+            .Where(d => d.FileType == "seed" && !validSeedTitles.Contains(d.Title))
+            .ToListAsync(ct);
+        if (obsoleteOldSeedDocs.Count > 0)
+        {
+            db.AgricultureDocuments.RemoveRange(obsoleteOldSeedDocs);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("[RAG] Removed {Count} obsolete seed documents from database.", obsoleteOldSeedDocs.Count);
         }
 
-        foreach (var (doc, chunks) in KnowledgeBaseSeedData.GetSeedDocuments())
+        foreach (var (doc, chunks) in seedDocs)
         {
-            if (await db.AgricultureDocuments.AnyAsync(d => d.Title == doc.Title, ct)) continue;
+            var existing = await db.AgricultureDocuments
+                .Include(d => d.Chunks)
+                .FirstOrDefaultAsync(d => d.Title == doc.Title, ct);
+
+            if (existing is not null)
+            {
+                var changed = false;
+                if (existing.CropScope != doc.CropScope ||
+                    existing.AuthorOrganization != doc.AuthorOrganization ||
+                    existing.Category != doc.Category ||
+                    existing.ContentText != doc.ContentText)
+                {
+                    existing.CropScope = doc.CropScope;
+                    existing.AuthorOrganization = doc.AuthorOrganization;
+                    existing.Category = doc.Category;
+                    existing.ContentText = doc.ContentText;
+                    changed = true;
+                }
+
+                foreach (var ch in chunks)
+                {
+                    var targetChunk = existing.Chunks.FirstOrDefault(c => c.ChunkIndex == ch.ChunkIndex);
+                    if (targetChunk is null)
+                    {
+                        existing.Chunks.Add(new AgricultureKnowledgeChunk
+                        {
+                            ChunkIndex = ch.ChunkIndex,
+                            Content = ch.Content,
+                            CropTags = ch.CropTags,
+                            Keywords = ch.Keywords,
+                            Status = KnowledgeChunkStatus.Pending
+                        });
+                        changed = true;
+                        continue;
+                    }
+
+                    if (targetChunk.Content != ch.Content)
+                    {
+                        targetChunk.Content = ch.Content;
+                        targetChunk.Embedding = null;
+                        targetChunk.Status = KnowledgeChunkStatus.Pending;
+                        changed = true;
+                    }
+
+                    if (targetChunk.CropTags != ch.CropTags || targetChunk.Keywords != ch.Keywords)
+                    {
+                        targetChunk.CropTags = ch.CropTags;
+                        targetChunk.Keywords = ch.Keywords;
+                        changed = true;
+                    }
+                }
+
+                var staleChunks = existing.Chunks
+                    .Where(c => chunks.All(x => x.ChunkIndex != c.ChunkIndex))
+                    .ToList();
+                foreach (var stale in staleChunks)
+                {
+                    db.AgricultureKnowledgeChunks.Remove(stale);
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    await db.SaveChangesAsync(ct);
+                    try
+                    {
+                        await EmbedChunksAsync(db.AgricultureKnowledgeChunks.Where(c => c.DocumentId == existing.Id && c.Status == KnowledgeChunkStatus.Pending), ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        logger.LogWarning(ex, "[RAG] Re-embedding failed for updated seed document {Title}.", doc.Title);
+                    }
+                }
+                continue;
+            }
 
             doc.ContentText = doc.ContentText ?? string.Empty;
             foreach (var ch in chunks)
@@ -208,28 +293,4 @@ public sealed class AgricultureDocumentService(
         if (found.Count == 0 && !string.IsNullOrWhiteSpace(scope)) return scope;
         return string.Join(',', found);
     }
-}
-
-internal static class SeedData
-{
-    public static readonly (string Title, string Category, string Body)[] Documents =
-    [
-        ("Nguyên tắc tưới nước theo VietGAP", "irrigation",
-         "Nguồn nước tưới phải được kiểm tra định kỳ để bảo đảm không bị ô nhiễm theo quy chuẩn QCVN 08-MT:2015/BTNMT.\n\nNên tưới vào sáng sớm hoặc chiều mát, tránh tưới lúc nắng gắt. Điều chỉnh lượng nước theo giai đoạn sinh trưởng và độ ẩm đất thực tế thay vì tưới theo thói quen.\n\nHạn chế để lá ướt kéo dài vào ban đêm vì làm tăng nguy cơ nấm bệnh. Tưới nhỏ giọt bù áp tự động giúp tiết kiệm nước, tối ưu phân bón và giảm thiểu tối đa các bệnh nấm hại rễ lá."),
-
-        ("Quản lý dịch hại tổng hợp (IPM)", "pest",
-         "Ưu tiên các biện pháp phòng ngừa sinh học và canh tác: vệ sinh đồng ruộng, chọn giống kháng bệnh, luân canh hợp lý, dùng bẫy dính màu vàng và lưới chắn côn trùng 50 mesh.\n\nThường xuyên thăm đồng phát hiện sớm. Chỉ dùng thuốc bảo vệ thực vật khi thật sự cần thiết và mật độ dịch hại vượt ngưỡng gây hại kinh tế. Dùng thuốc sinh học (Bt, Trichoderma, dầu khoáng), tuyệt đối tuân thủ thời gian cách ly (PHI) ghi trên nhãn.\n\nGhi chép đầy đủ tên hoạt chất, liều lượng, ngày phun và người thực hiện vào nhật ký số."),
-
-        ("Quản lý phân bón và dinh dưỡng an toàn VietGAP", "nutrition",
-         "Chỉ sử dụng phân bón thuộc danh mục được phép lưu hành tại Việt Nam. Ưu tiên phân hữu cơ đã ủ hoai mục bằng chế phẩm vi sinh đối kháng.\n\nCân đối tỷ lệ N-P-K theo từng thời kỳ sinh trưởng: giai đoạn cây con cần lân và humic kích rễ, giai đoạn thân lá cần đạm và trung lượng, giai đoạn ra hoa đậu trái cần tăng cường kali và canxi bo chống rụng hoa trái.\n\nNgừng bón phân hóa học và đạm trước thu hoạch tối thiểu 14 ngày để kiểm soát dư lượng nitrat (NO3-) an toàn cho người tiêu dùng."),
-
-        ("Kiểm soát vi khí hậu và thông gió nhà màng", "climate",
-         "Duy trì dải nhiệt độ và ẩm độ không khí thích hợp theo yêu cầu sinh lý của cây trồng. Khi nhiệt độ vượt ngưỡng, kích hoạt lưới cắt nắng và quạt đối lưu hoặc phun sương giảm nhiệt.\n\nTránh để độ ẩm không khí vượt quá 85% trong thời gian dài vì tạo điều kiện cho nấm mốc phát triển (phấn trắng, sương mai, thán thư). Mở quạt thông gió để trao đổi không khí và giảm ẩm mặt luống."),
-
-        ("Quy trình thu hoạch và an toàn vệ sinh sản phẩm", "harvest",
-         "Thu hoạch vào thời điểm mát trong ngày (sáng sớm hoặc chiều muộn), tránh thu hái lúc trời mưa hoặc nắng gắt.\n\nDụng cụ thu hái (kéo, dao, giỏ đựng) phải được làm sạch và khử trùng bằng cồn hoặc dung dịch sát khuẩn. Nước rửa sơ chế phải đạt quy chuẩn nước sinh hoạt QCVN 01-1:2018/BYT.\n\nSản phẩm đóng gói bằng bao bì chuyên dụng có tem nhãn mã QR truy xuất nguồn gốc đầy đủ lịch sử canh tác."),
-
-        ("Ghi chép nhật ký và truy xuất nguồn gốc", "record",
-         "VietGAP bắt buộc ghi chép minh bạch tất cả các hoạt động nông nghiệp: hạt giống, phân bón, thuốc bảo vệ thực vật, tưới tiêu, theo dõi sinh trưởng và thu hoạch.\n\nHồ sơ số hóa lưu trữ phục vụ truy xuất nguồn gốc khi có kiểm tra đánh giá. Mỗi lô sản phẩm phải xác định chính xác khu vực canh tác (Zone), ngày gieo trồng và ngày xuất kho.")
-    ];
 }

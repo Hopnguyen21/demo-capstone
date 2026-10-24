@@ -9,7 +9,7 @@ public sealed class GeminiEmbeddingOptions
 {
     public const string SectionName = "Ai:Embedding";
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "text-embedding-004";
+    public string Model { get; set; } = "gemini-embedding-001";
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int Dimensions { get; set; } = 768;
     public int MaxRetries { get; set; } = 3;
@@ -17,7 +17,7 @@ public sealed class GeminiEmbeddingOptions
 }
 
 /// <summary>
-/// Tạo embedding vector cho một đoạn văn bản bằng Gemini text-embedding-004 API.
+/// Tạo embedding vector cho một đoạn văn bản bằng Gemini gemini-embedding-001 API.
 /// Output: vector chuẩn hóa độ dài đơn vị (unit vector), dùng thống nhất cho cả indexing và retrieval.
 /// </summary>
 public sealed class GeminiEmbeddingProvider
@@ -56,7 +56,7 @@ public sealed class GeminiEmbeddingProvider
         try { return await EmbedStrictAsync(text, "RETRIEVAL_DOCUMENT", ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "[Embedding] Failed to embed document.");
+            logger.LogError(ex, "[Embedding] Failed to embed document with model '{Model}'.", settings.Model);
             return null;
         }
     }
@@ -66,7 +66,7 @@ public sealed class GeminiEmbeddingProvider
         try { return await EmbedStrictAsync(text, "RETRIEVAL_QUERY", ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "[Embedding] Failed to embed query.");
+            logger.LogError(ex, "[Embedding] Failed to embed query with model '{Model}'. Falling back to keyword search.", settings.Model);
             return null;
         }
     }
@@ -85,7 +85,8 @@ public sealed class GeminiEmbeddingProvider
         {
             model = $"models/{settings.Model}",
             content = new { parts = new[] { new { text } } },
-            taskType
+            taskType,
+            outputDimensionality = settings.Dimensions
         };
 
         var maxRetries = Math.Max(1, settings.MaxRetries);

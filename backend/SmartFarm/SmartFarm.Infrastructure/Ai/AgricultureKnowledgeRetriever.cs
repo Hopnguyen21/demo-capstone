@@ -9,7 +9,7 @@ namespace SmartFarm.Infrastructure.Ai.Knowledge;
 
 /// <summary>
 /// Triển khai <see cref="IAgricultureKnowledgeRetriever"/> sử dụng:
-/// 1. Gemini text-embedding-004 để tạo embedding cho câu hỏi.
+/// 1. Gemini gemini-embedding-001 (768 chiều) để tạo embedding cho câu hỏi.
 /// 2. pgvector cosine distance query trong PostgreSQL để tìm chunks gần nhất.
 /// 3. Keyword-based scoring làm fallback khi không có embedding API key.
 /// </summary>
@@ -22,15 +22,40 @@ public sealed class AgricultureKnowledgeRetriever(
     // Cosine distance trong pgvector = 1 - cosine_similarity
     // Ngưỡng distance < 0.60 ≈ similarity > 0.40
     private const float MaxCosineDistance = 0.60f;
-    private const float MinKeywordScore = 0.10f;
+    private const float MinKeywordScore = 0.05f;
 
-    private static readonly string[] KnownCrops =
-        ["cà chua", "ca chua", "dưa leo", "dua leo", "dưa chuột", "ớt", "ot", "xà lách", "xa lach", "rau muống", "cải", "dưa lưới", "dua luoi", "dâu tây", "dau tay", "lúa", "cà phê", "hồ tiêu"];
+    private static readonly (string[] Aliases, string Canonical)[] CropSynonyms =
+    [
+        (["cà chua", "ca chua", "tomato"], "cà chua"),
+        (["dưa leo", "dua leo", "dưa chuột", "dua chuot", "cucumber"], "dưa leo"),
+        (["dâu tây", "dau tay", "strawberry"], "dâu tây"),
+        (["dưa lưới", "dua luoi", "melon", "cantaloupe"], "dưa lưới"),
+        (["ớt", "ot", "ớt chuông", "ot chuong", "ớt ngọt", "sweet pepper", "bell pepper", "chili", "capsicum"], "ớt"),
+        (["xà lách", "xa lach", "lettuce", "batavia", "salad"], "xà lách"),
+        (["rau cải", "cải", "cai", "cabbage", "pak choi"], "cải"),
+        (["rau muống", "rau muong", "water spinach"], "rau muống")
+    ];
 
     private static string NormalizeCrop(string cropName)
     {
         var lower = cropName.ToLowerInvariant();
-        return KnownCrops.FirstOrDefault(k => lower.Contains(k)) ?? lower.Split(' ')[0];
+        var words = lower.Split([' ', '(', ')', '-', ':', '/', ',', '.', ';'], StringSplitOptions.RemoveEmptyEntries);
+        foreach (var (aliases, canonical) in CropSynonyms)
+        {
+            foreach (var alias in aliases)
+            {
+                if (alias.Contains(' '))
+                {
+                    if (lower.Contains(alias)) return canonical;
+                }
+                else
+                {
+                    if (words.Contains(alias)) return canonical;
+                }
+            }
+        }
+        var first = words.FirstOrDefault();
+        return first ?? lower;
     }
 
     public async Task<IReadOnlyList<KnowledgePassageView>> RetrievePassagesAsync(
@@ -49,14 +74,21 @@ public sealed class AgricultureKnowledgeRetriever(
 
         if (questionEmbedding is not null)
         {
-            var vectorResults = await SearchByVectorAsync(question, questionEmbedding, cropName, category, tenantId, topK, cancellationToken);
-            if (vectorResults.Count > 0) return vectorResults;
-
-            // Nếu lọc theo cropName không ra kết quả, mở rộng tìm kiếm toàn bộ tài liệu VietGAP
-            if (!string.IsNullOrWhiteSpace(cropName))
+            try
             {
-                vectorResults = await SearchByVectorAsync(question, questionEmbedding, null, category, tenantId, topK, cancellationToken);
+                var vectorResults = await SearchByVectorAsync(question, questionEmbedding, cropName, category, tenantId, topK, cancellationToken);
                 if (vectorResults.Count > 0) return vectorResults;
+
+                // Nếu lọc theo cropName không ra kết quả, mở rộng tìm kiếm toàn bộ tài liệu VietGAP
+                if (!string.IsNullOrWhiteSpace(cropName))
+                {
+                    vectorResults = await SearchByVectorAsync(question, questionEmbedding, null, category, tenantId, topK, cancellationToken);
+                    if (vectorResults.Count > 0) return vectorResults;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "[RAG] Vector query failed (e.g. pgvector not installed in PostgreSQL). Falling back gracefully to keyword search.");
             }
         }
 
@@ -212,25 +244,38 @@ public sealed class AgricultureKnowledgeRetriever(
     // ────────────────────────────────────────────────────────────────────────
     //  Helpers
     // ────────────────────────────────────────────────────────────────────────
+    private static readonly HashSet<string> VietnameseStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "xin", "hỏi", "cho", "tôi", "em", "hãy", "biết", "có", "nên", "không", "ở", "tại", "với", "và", 
+        "là", "được", "trong", "vào", "ra", "đang", "như", "thế", "nào", "gì", "sao", "giúp", "về", 
+        "của", "các", "những", "một", "này", "đó", "khi", "thì", "do", "bị", "đã", "sẽ", "phải", "làm"
+    };
+
     private static float ComputeKeywordScore(string[] qWords, string content, string keywords)
     {
         if (qWords.Length == 0) return 0f;
         var contentLower = content.ToLowerInvariant();
         var keywordsLower = keywords.ToLowerInvariant();
 
+        var meaningfulWords = qWords.Where(w => w.Length >= 2 && !VietnameseStopWords.Contains(w)).ToArray();
+        if (meaningfulWords.Length == 0) meaningfulWords = qWords.Where(w => w.Length >= 2).ToArray();
+        if (meaningfulWords.Length == 0) return 0f;
+
         int hits = 0;
-        foreach (var word in qWords)
+        foreach (var word in meaningfulWords)
         {
-            if (word.Length < 2) continue;
             if (contentLower.Contains(word, StringComparison.Ordinal)) hits++;
-            // Keyword field có trọng số 2x
             else if (keywordsLower.Contains(word, StringComparison.Ordinal)) hits += 2;
         }
-        return Math.Min(1f, hits / (float)Math.Max(qWords.Length, 1));
+
+        if (hits >= 2)
+            return Math.Min(1f, 0.40f + (hits / (float)meaningfulWords.Length) * 0.60f);
+
+        return Math.Min(1f, hits / (float)Math.Max(meaningfulWords.Length, 1));
     }
 
     private static string[] Tokenize(string text) =>
         text.ToLowerInvariant()
-            .Split([' ', ',', '.', '?', '!', ':', ';', '\n', '\r', '\t', '(', ')', '[', ']'],
+            .Split([' ', ',', '.', '?', '!', ':', ';', '\n', '\r', '\t', '(', ')', '[', ']', '-', '_', '"', '\''],
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

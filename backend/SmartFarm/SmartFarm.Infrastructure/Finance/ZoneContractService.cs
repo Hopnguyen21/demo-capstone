@@ -205,8 +205,10 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         var query = db.ZoneContracts
             .Include(c => c.Farm)
             .Include(c => c.Zone)
-            .Where(c => c.Status != ZoneContractStatus.Terminated && c.Status != ZoneContractStatus.Renewed)
-            .Where(c => c.EndDate <= thresholdDate);
+            .Where(c => c.Status != ZoneContractStatus.Terminated 
+                     && c.Status != ZoneContractStatus.Renewed 
+                     && c.Status != ZoneContractStatus.Expired)
+            .Where(c => c.EndDate >= today && c.EndDate <= thresholdDate);
 
         if (farmId.HasValue && farmId.Value != Guid.Empty)
         {

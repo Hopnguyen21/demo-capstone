@@ -61,7 +61,16 @@ export const Topbar: React.FC = () => {
         zoneContractService.getExpiringContracts(undefined, 30).catch(() => []),
       ]);
 
-      const contractNotifs: NotificationItem[] = (expContracts || []).map((c: any) => ({
+      // Deduplicate contracts by contractNumber and only show actively expiring ones (0 to 30 days)
+      const validContracts = Array.from(
+        new Map(
+          (expContracts || [])
+            .filter((c: any) => c.daysRemaining >= 0 && c.daysRemaining <= 30)
+            .map((c: any) => [c.contractNumber || c.contractId, c])
+        ).values()
+      );
+
+      const contractNotifs: NotificationItem[] = validContracts.map((c: any) => ({
         notificationId: `contract-${c.contractId}`,
         userId: user?.userId || '',
         title: `⚠️ Hợp đồng [${c.contractNumber}] sắp hết hạn`,
@@ -347,6 +356,20 @@ export const Topbar: React.FC = () => {
                     <div className="text-center py-6 text-slate-400 text-xs">Không có thông báo nào</div>
                   )
                 )}
+              </div>
+
+              {/* Footer: View All Alerts */}
+              <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">Hiển thị {notifications.length} cảnh báo gần nhất</span>
+                <button
+                  onClick={() => {
+                    setShowNotificationMenu(false);
+                    navigate(role === 'FARMER' ? '/farmer/alerts' : '/owner/alerts');
+                  }}
+                  className="text-xs font-semibold text-[#119653] hover:underline flex items-center gap-1 hover:text-[#0c733f] transition-colors"
+                >
+                  Xem tất cả cảnh báo <ExternalLink size={11} />
+                </button>
               </div>
             </div>
           )}

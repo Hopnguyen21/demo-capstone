@@ -44,7 +44,7 @@ internal sealed class AgricultureKnowledgeChunkConfiguration : IEntityTypeConfig
         b.Property(x => x.DocumentId).HasColumnName("document_id");
         b.Property(x => x.ChunkIndex).HasColumnName("chunk_index");
         b.Property(x => x.Content).HasColumnName("content").HasColumnType("text").IsRequired();
-        // pgvector: kiểu VECTOR(768) — 768 chiều tương ứng với Gemini text-embedding-004
+        // pgvector: kiểu VECTOR(768) — 768 chiều tương ứng với Gemini gemini-embedding-001
         b.Property(x => x.Embedding).HasColumnName("embedding").HasColumnType("vector(768)");
         b.Property(x => x.CropTags).HasColumnName("crop_tags").HasMaxLength(500).HasDefaultValue(string.Empty);
         b.Property(x => x.Keywords).HasColumnName("keywords").HasMaxLength(1000).HasDefaultValue(string.Empty);

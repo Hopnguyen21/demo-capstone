@@ -12,164 +12,174 @@ using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Control;
 
-public sealed class MqttActuatorCommandTransport(IServiceProvider? serviceProvider = null) : IActuatorCommandTransport
+public sealed class MqttActuatorCommandTransport(
+    IServiceProvider serviceProvider,
+    IConfiguration configuration) : IActuatorCommandTransport
 {
+    private bool IsSimulationEnabled
+    {
+        get
+        {
+            var env = configuration.GetValue<string>("ASPNETCORE_ENVIRONMENT")
+                ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                ?? "Production";
+            var isDev = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
+            return isDev && configuration.GetValue<bool>("SimulatedIot:Enabled", false);
+        }
+    }
+
     public Task<CommandTransportResult> PublishAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken)
     {
-        // Khi hoạt động trong môi trường demo/development hoặc chưa kết nối broker MQTT vật lý,
-        // cho phép gửi lệnh thành công (Status = Sent), kích hoạt mô phỏng xác nhận từ thiết bị sau 1.5 giây
-        // và mô phỏng chu kỳ tưới: sau khi tưới hết thời gian thì thiết bị tự động ngắt và trả về kết quả cho hệ thống.
-        if (serviceProvider is not null)
+        if (!IsSimulationEnabled)
         {
-            _ = Task.Run(async () =>
+            return Task.FromResult(new CommandTransportResult(
+                false,
+                "MQTT_NOT_CONFIGURED",
+                "No MQTT downlink publisher is configured; simulated dispatch is disabled."));
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
             {
+                await Task.Delay(1500, CancellationToken.None);
+                using (var scope = serviceProvider.CreateScope())
+                {
+                    var control = scope.ServiceProvider.GetRequiredService<IControlService>();
+                    await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
+                        command.GatewayId,
+                        command.CommandId,
+                        command.DeviceId,
+                        ActuatorCommandStatus.Acknowledged,
+                        command.Action == ActuatorCommandAction.TurnOn ? "Running" : "Off",
+                        DateTime.UtcNow,
+                        null,
+                        null), CancellationToken.None);
+                }
+
+                if (command.Action != ActuatorCommandAction.TurnOn)
+                {
+                    return;
+                }
+
+                var demoDuration = configuration.GetValue<int>("SimulatedIot:DemoIrrigationSeconds", 30);
+                var runSeconds = demoDuration > 0 ? demoDuration : command.DurationSeconds;
+                await Task.Delay(TimeSpan.FromSeconds(runSeconds), CancellationToken.None);
+
+                using var completionScope = serviceProvider.CreateScope();
+                var db = completionScope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+                var notif = completionScope.ServiceProvider.GetRequiredService<INotificationService>();
+                var cmd = await db.ActuatorCommands
+                    .Include(c => c.Events)
+                    .Include(c => c.Zone)
+                    .Include(c => c.Actuator)
+                    .SingleOrDefaultAsync(c => c.Id == command.CommandId, CancellationToken.None);
+
+                if (cmd == null || cmd.Status != ActuatorCommandStatus.Acknowledged || cmd.CancellationRequestedAtUtc != null)
+                {
+                    return;
+                }
+
+                var now = DateTime.UtcNow;
+                cmd.TerminalAtUtc = now;
+                cmd.ExecutionEndsAtUtc = now;
+                cmd.ObservedState = "Off";
+                db.ActuatorCommandEvents.Add(new ActuatorCommandEvent
+                {
+                    CommandId = cmd.Id,
+                    EventKind = CommandEventKind.Feedback,
+                    Status = ActuatorCommandStatus.Acknowledged,
+                    OccurredAtUtc = now,
+                    Detail = $"Hoàn tất chu kỳ tưới mô phỏng ({command.DurationSeconds / 60} phút).",
+                    ObservedState = "Off"
+                });
+                db.TelemetryReadings.Add(new TelemetryReading
+                {
+                    TenantId = cmd.TenantId,
+                    FarmId = cmd.FarmId,
+                    ZoneId = cmd.ZoneId,
+                    DeviceId = cmd.DeviceId,
+                    GatewayId = cmd.GatewayId,
+                    MessageId = $"sim-irrigation-complete-{now.Ticks}",
+                    ParameterCode = EnvironmentalParameterCode.SoilMoisture,
+                    Value = (decimal)(72.0 + Random.Shared.NextDouble() * 5.0),
+                    Unit = "%",
+                    CapturedAtUtc = now,
+                    ReceivedAtUtc = now
+                });
+                await db.SaveChangesAsync(CancellationToken.None);
+
                 try
                 {
-                    // 1. Phản hồi xác nhận thiết bị nhận lệnh (Status = Acknowledged, State = Running)
-                    await Task.Delay(1500, CancellationToken.None);
-                    using (var scope = serviceProvider.CreateScope())
+                    var zoneName = cmd.Zone?.Name ?? "Khu vực canh tác";
+                    var actuatorName = cmd.Actuator?.ActuatorType ?? "Máy bơm tưới";
+                    var recipients = await db.AppUsers.AsNoTracking()
+                        .Where(u => u.TenantId == cmd.TenantId && (
+                            u.Role == UserRole.FarmOwner ||
+                            (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(za => za.ZoneId == cmd.ZoneId))))
+                        .Select(u => u.Id)
+                        .ToListAsync(CancellationToken.None);
+
+                    foreach (var recipientId in recipients)
                     {
-                        var control = scope.ServiceProvider.GetRequiredService<IControlService>();
-                        await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
-                            command.GatewayId,
-                            command.CommandId,
-                            command.DeviceId,
-                            ActuatorCommandStatus.Acknowledged,
-                            command.Action == ActuatorCommandAction.TurnOn ? "Running" : "Off",
-                            DateTime.UtcNow,
-                            null,
-                            null), CancellationToken.None);
-                    }
-
-                    // 2. Nếu là lệnh Bật tưới (TurnOn), mô phỏng thời gian chạy tưới và sau đó thiết bị tự ngắt, trả về trạng thái Hoàn tất cho hệ thống
-                    if (command.Action == ActuatorCommandAction.TurnOn)
-                    {
-                        using var configScope = serviceProvider.CreateScope();
-                        var config = configScope.ServiceProvider.GetService<IConfiguration>();
-                        var demoDuration = config?.GetValue<int>("SimulatedIot:DemoIrrigationSeconds", 30) ?? 30;
-                        var runSeconds = demoDuration > 0 ? demoDuration : command.DurationSeconds;
-
-                        // Chờ hết thời gian tưới mô phỏng (mặc định 30 giây để tiện trình chiếu)
-                        await Task.Delay(TimeSpan.FromSeconds(runSeconds), CancellationToken.None);
-
-                        using var completionScope = serviceProvider.CreateScope();
-                        var db = completionScope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
-                        var notif = completionScope.ServiceProvider.GetRequiredService<INotificationService>();
-
-                        var cmd = await db.ActuatorCommands
-                            .Include(c => c.Events)
-                            .Include(c => c.Zone)
-                            .Include(c => c.Actuator)
-                            .SingleOrDefaultAsync(c => c.Id == command.CommandId);
-
-                        if (cmd != null && cmd.Status == ActuatorCommandStatus.Acknowledged && cmd.CancellationRequestedAtUtc == null)
-                        {
-                            var now = DateTime.UtcNow;
-                            cmd.TerminalAtUtc = now;
-                            cmd.ExecutionEndsAtUtc = now;
-                            cmd.ObservedState = "Off";
-
-                            // Thêm sự kiện phản hồi hoàn tất chu kỳ tưới từ thiết bị
-                            var compEvent = new ActuatorCommandEvent
-                            {
-                                CommandId = cmd.Id,
-                                EventKind = CommandEventKind.Feedback,
-                                Status = ActuatorCommandStatus.Acknowledged,
-                                OccurredAtUtc = now,
-                                Detail = $"Hoàn tất chu kỳ tưới ({command.DurationSeconds / 60} phút). Rơ-le đã tự ngắt an toàn, thiết bị trả về trạng thái Tắt (Off).",
-                                ObservedState = "Off"
-                            };
-                            db.ActuatorCommandEvents.Add(compEvent);
-
-                            // Cập nhật độ ẩm đất tăng lên mức tối ưu (72% - 76%) sau khi tưới
-                            var soilReading = new TelemetryReading
-                            {
-                                TenantId = cmd.TenantId,
-                                FarmId = cmd.FarmId,
-                                ZoneId = cmd.ZoneId,
-                                DeviceId = cmd.DeviceId,
-                                GatewayId = cmd.GatewayId,
-                                MessageId = $"sim-irrigation-complete-{now.Ticks}",
-                                ParameterCode = EnvironmentalParameterCode.SoilMoisture,
-                                Value = (decimal)(72.0 + Random.Shared.NextDouble() * 5.0),
-                                Unit = "%",
-                                CapturedAtUtc = now,
-                                ReceivedAtUtc = now
-                            };
-                            db.TelemetryReadings.Add(soilReading);
-
-                            await db.SaveChangesAsync(CancellationToken.None);
-
-                            // Gửi thông báo đến Chủ nông trại (Owner) & Nông dân phụ trách (Farmer)
-                            try
-                            {
-                                var zoneName = cmd.Zone?.Name ?? "Khu vực canh tác";
-                                var actuatorName = cmd.Actuator?.ActuatorType ?? "Máy bơm tưới";
-                                var recipients = await db.AppUsers.AsNoTracking()
-                                    .Where(u => u.TenantId == cmd.TenantId && (
-                                        u.Role == UserRole.FarmOwner ||
-                                        (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(za => za.ZoneId == cmd.ZoneId))
-                                    ))
-                                    .Select(u => u.Id)
-                                    .ToListAsync();
-
-                                foreach (var recipientId in recipients)
-                                {
-                                    await notif.CreateNotificationAsync(new(
-                                        UserId: recipientId,
-                                        TenantId: cmd.TenantId,
-                                        Title: $"[HOÀN TẤT TƯỚI] {actuatorName} tại {zoneName} đã tưới xong",
-                                        Message: $"Thiết bị đã hoàn tất chu kỳ tưới ({command.DurationSeconds / 60} phút), rơ-le đã ngắt an toàn. Độ ẩm đất đã được cân bằng lại mức tối ưu.",
-                                        Type: NotificationType.System,
-                                        Severity: AlertSeverity.Info,
-                                        TargetUrl: "/owner/ai-assistant",
-                                        ReferenceId: cmd.Id.ToString()
-                                    ), CancellationToken.None);
-                                }
-                            }
-                            catch
-                            {
-                                // Bỏ qua lỗi gửi thông báo nếu có
-                            }
-                        }
+                        await notif.CreateNotificationAsync(new(
+                            UserId: recipientId,
+                            TenantId: cmd.TenantId,
+                            Title: $"[HOÀN TẤT TƯỚI MÔ PHỎNG] {actuatorName} tại {zoneName}",
+                            Message: $"Chu kỳ tưới mô phỏng đã hoàn tất ({command.DurationSeconds / 60} phút). Không có xác nhận từ thiết bị phần cứng.",
+                            Type: NotificationType.System,
+                            Severity: AlertSeverity.Info,
+                            TargetUrl: "/owner/ai-assistant",
+                            ReferenceId: cmd.Id.ToString()
+                        ), CancellationToken.None);
                     }
                 }
                 catch
                 {
-                    // Bỏ qua lỗi ngầm trong feedback mô phỏng
+                    // Notification failure must not alter the command execution record.
                 }
-            });
-        }
+            }
+            catch
+            {
+                // Failed simulated feedback remains unconfirmed and will follow command timeout handling.
+            }
+        }, CancellationToken.None);
 
         return Task.FromResult(new CommandTransportResult(true));
     }
 
     public Task<CommandTransportResult> PublishEmergencyStopAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken)
     {
-        if (serviceProvider is not null)
+        if (!IsSimulationEnabled)
         {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(1000, CancellationToken.None);
-                    using var scope = serviceProvider.CreateScope();
-                    var control = scope.ServiceProvider.GetRequiredService<IControlService>();
-                    await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
-                        command.GatewayId,
-                        command.CommandId,
-                        command.DeviceId,
-                        ActuatorCommandStatus.Cancelled,
-                        "Off",
-                        DateTime.UtcNow,
-                        null,
-                        null), CancellationToken.None);
-                }
-                catch
-                {
-                }
-            });
+            return Task.FromResult(new CommandTransportResult(
+                false,
+                "MQTT_NOT_CONFIGURED",
+                "No MQTT emergency-stop publisher is configured; simulated dispatch is disabled."));
         }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(1000, CancellationToken.None);
+                using var scope = serviceProvider.CreateScope();
+                var control = scope.ServiceProvider.GetRequiredService<IControlService>();
+                await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
+                    command.GatewayId,
+                    command.CommandId,
+                    command.DeviceId,
+                    ActuatorCommandStatus.Cancelled,
+                    "Off",
+                    DateTime.UtcNow,
+                    null,
+                    null), CancellationToken.None);
+            }
+            catch
+            {
+                // Failed simulated feedback remains unconfirmed and will follow command timeout handling.
+            }
+        }, CancellationToken.None);
 
         return Task.FromResult(new CommandTransportResult(true));
     }
@@ -185,11 +195,16 @@ public sealed class UnavailableRainForecastProvider(IServiceProvider serviceProv
             if (weatherProvider is not null)
             {
                 var weather = await weatherProvider.GetAsync(farmId, Guid.Empty, cancellationToken);
-                if (weather.Available)
+                var probability = weather.RainProbabilityNext6HoursMaxPercent;
+                if (weather.Available && probability is >= 0 and <= 100)
                 {
-                    return new RainForecastResult(true, weather.RainProbabilityNext6HoursMaxPercent ?? 0);
+                    return new RainForecastResult(true, probability);
                 }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
