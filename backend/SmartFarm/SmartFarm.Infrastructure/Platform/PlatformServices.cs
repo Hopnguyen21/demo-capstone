@@ -202,7 +202,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
 
     public async Task<ServiceRequestPaymentView> SignContractDepositAsync(Guid ownerId, Guid serviceRequestId, SignContractDepositCommand command, CancellationToken ct)
     {
-        var sr = await db.ServiceRequests.Include(x => x.Quotations).FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+        var sr = await db.ServiceRequests
+            .Include(x => x.Quotations)
+                .ThenInclude(q => q.Items)
+            .FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
         var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists for this Service Request.");
         var payment = new ServiceRequestPayment
@@ -216,6 +219,60 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         sr.IsDepositPaid = true;
         quotation.Status = "SignedByOwner";
         db.ServiceRequestPayments.Add(payment);
+
+        // Synchronize unified ZoneContract for this Zone
+        if (sr.ZoneId != Guid.Empty)
+        {
+            var zoneId = sr.ZoneId;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var contractNum = $"HD-SR-{quotation.Id.ToString()[..8].ToUpper()}";
+
+            var existingContract = await db.ZoneContracts.FirstOrDefaultAsync(c => c.ZoneId == zoneId && c.ContractNumber == contractNum, ct);
+            if (existingContract == null)
+            {
+                var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+                var farmId = sr.FarmId != Guid.Empty ? sr.FarmId : (zone?.Field?.FarmId ?? Guid.Empty);
+                var effectiveTenantId = sr.TenantId != Guid.Empty ? sr.TenantId : (zone?.Field?.Farm?.TenantId ?? Guid.Empty);
+
+                var hardwareItems = quotation.Items != null && quotation.Items.Count > 0
+                    ? string.Join(", ", quotation.Items.Select(i => $"{i.Quantity}x {i.HardwareItemName}"))
+                    : "Gói thiết bị IoT & Cảm biến vi khí hậu theo hợp đồng dịch vụ";
+
+                var zoneContract = new ZoneContract
+                {
+                    TenantId = effectiveTenantId,
+                    FarmId = farmId,
+                    ZoneId = zoneId,
+                    CreatedByOwnerId = ownerId,
+                    ContractNumber = contractNum,
+                    CropType = zone?.Notes ?? "Cây trồng VietGAP trong nhà màng",
+                    MonthlyRentVnd = Math.Round(quotation.TotalAmount / 12),
+                    DepositVnd = quotation.Deposit30Percent,
+                    TotalContractValueVnd = quotation.TotalAmount,
+                    StartDate = today,
+                    EndDate = today.AddMonths(12),
+                    Status = ZoneContractStatus.Active,
+                    LesseeName = command.SignerFullName ?? "Chủ Trang Trại",
+                    LesseePhone = "0903666888",
+                    LesseeAddress = "Trang trại thông minh SmartFarm",
+                    SignedAtUtc = DateTime.UtcNow,
+                    SpecialTerms = $"Thiết bị bao gồm: {hardwareItems}. Tạm ứng 30%: {quotation.Deposit30Percent:N0} đ, Còn lại 70%: {quotation.Remaining70Percent:N0} đ. Thuế VAT 8%: {quotation.VatAmount:N0} đ.",
+                    Notes = $"[Hợp đồng ký từ Cổng Dịch vụ #{sr.Id.ToString()[..8].ToUpper()}] {quotation.Notes}"
+                };
+
+                // Previous active contracts for this zone become renewed/superseded
+                var oldActiveContracts = await db.ZoneContracts
+                    .Where(c => c.ZoneId == zoneId && (c.Status == ZoneContractStatus.Active || c.Status == ZoneContractStatus.ExpiringSoon))
+                    .ToListAsync(ct);
+                foreach (var old in oldActiveContracts)
+                {
+                    old.Status = ZoneContractStatus.Renewed;
+                }
+
+                db.ZoneContracts.Add(zoneContract);
+            }
+        }
+
         await db.SaveChangesAsync(ct);
         return new(payment.Id, payment.PaymentStage, payment.Amount, payment.PaymentMethod, payment.TransactionReference, payment.SignerFullName, payment.Status, payment.PaidAtUtc);
     }

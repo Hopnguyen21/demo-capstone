@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { ServiceRequest } from '../../types';
-import { supportService } from '../../services';
+import { ServiceRequest, ZoneContract } from '../../types';
+import { supportService, zoneContractService } from '../../services';
 import { useAuth } from '../../app/providers/AuthContext';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Headphones, Plus, CheckSquare, CheckCircle2, Clock, Wrench,
   Building2, User, AlertCircle, Info, Layers, FileText, DollarSign,
   QrCode, CreditCard, ShieldCheck, Lock, ChevronDown, ChevronUp, Package,
-  RefreshCw, Loader2
+  RefreshCw, Loader2, Sparkles, ArrowUpRight, ExternalLink, Sprout
 } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
 export const SupportPage: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { farms, zones } = useAuth();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [zoneContracts, setZoneContracts] = useState<ZoneContract[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -23,8 +27,12 @@ export const SupportPage: React.FC = () => {
     try {
       setIsLoading(true);
       setErrorMsg(null);
-      const data = await supportService.getServiceRequests();
+      const [data, cData] = await Promise.all([
+        supportService.getServiceRequests(),
+        zoneContractService.getAllContracts().catch(() => []),
+      ]);
       if (Array.isArray(data)) setRequests(data);
+      if (Array.isArray(cData)) setZoneContracts(cData);
     } catch (err: any) {
       console.error('Failed to load support requests:', err);
       setErrorMsg('Không thể tải danh sách phiếu yêu cầu từ máy chủ API.');
@@ -33,9 +41,30 @@ export const SupportPage: React.FC = () => {
     }
   };
 
+  const getZoneContract = (zoneId: string) => {
+    return zoneContracts.find(c => c.zoneId === zoneId && (c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1))))
+      || zoneContracts.find(c => c.zoneId === zoneId);
+  };
+
   useEffect(() => {
     loadRequests();
   }, []);
+
+  useEffect(() => {
+    if (location.state && (location.state as any).createRequest) {
+      const { farmId, zoneId, zoneName } = location.state as any;
+      setNewReq(prev => ({
+        ...prev,
+        farmId: farmId || prev.farmId,
+        zoneId: zoneId || prev.zoneId,
+        requestType: 'INSTALLATION',
+        title: `Khảo sát & Báo giá Hợp đồng thiết bị IoT cho ${zoneName || 'Phân khu'}`,
+        description: `Kính gửi phòng Kỹ thuật: Trang trại đề nghị khảo sát thực địa, báo giá thiết bị IoT và lập Hợp đồng phân khu cho ${zoneName || 'Zone'}.`,
+        priority: 'HIGH'
+      }));
+      setIsModalOpen(true);
+    }
+  }, [location.state]);
 
   // State for Payment Success Screen / Receipt Modal
   interface PaymentSuccessModalData {
@@ -154,6 +183,15 @@ export const SupportPage: React.FC = () => {
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const existingContract = getZoneContract(newReq.zoneId);
+    if (newReq.requestType === 'INSTALLATION' && existingContract) {
+      alert(`Zone này đã có hợp đồng (#${existingContract.contractNumber}). Hệ thống không hỗ trợ tạo yêu cầu lắp đặt mới, vui lòng chọn "Tái kí hợp đồng".`);
+      setIsModalOpen(false);
+      navigate('/owner/farms', { state: { zoneId: newReq.zoneId, openContract: true } });
+      return;
+    }
+
     setIsCreating(true);
     setErrorMsg(null);
 
@@ -341,6 +379,32 @@ export const SupportPage: React.FC = () => {
           const isContractSigned = Boolean(contract?.isSignedByOwner && contract?.is30PercentPaid);
           const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
 
+          // Resolve exact Zone name of the contract
+          const matchingContract = zoneContracts.find(c => 
+            (req.zoneId && c.zoneId === req.zoneId) ||
+            (req.contractDetails?.contractId && c.id === req.contractDetails.contractId)
+          );
+          const matchingZone = zones.find(z => 
+            (req.zoneId && (z.zoneId === req.zoneId || (z as any).id === req.zoneId)) ||
+            (matchingContract?.zoneId && (z.zoneId === matchingContract.zoneId || (z as any).id === matchingContract.zoneId))
+          );
+          const descZoneMatch = req.description?.match(/cho\s+["']?(?:Nhà\s+màng|Zone)\s+["']?([^"'\.\,\n]+)["']?/i)
+            || req.description?.match(/(?:Nhà\s+màng|Zone)\s+["']([^"'\.\,\n]+)["']/i);
+          const extractedZone = descZoneMatch ? descZoneMatch[1].trim() : '';
+
+          const rawContractZoneName = 
+            matchingZone?.name ||
+            matchingContract?.zoneName ||
+            (extractedZone ? (extractedZone.toLowerCase().startsWith('nhà màng') ? extractedZone : `Nhà màng "${extractedZone}"`) : '') ||
+            (req.zoneName && req.zoneName !== 'Nhà màng Z01' ? req.zoneName : '') ||
+            req.zoneName ||
+            'Zone hợp đồng';
+
+          const contractZoneDisplayName = 
+            rawContractZoneName.toLowerCase().startsWith('nhà màng') || rawContractZoneName.toLowerCase().startsWith('zone')
+              ? rawContractZoneName
+              : `Zone ${rawContractZoneName}`;
+
           return (
             <div key={req.serviceRequestId} className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-5 hover:border-slate-300 transition-all">
               {/* Header Info */}
@@ -373,13 +437,32 @@ export const SupportPage: React.FC = () => {
                   </div>
 
                   <h3 className="text-base font-bold text-slate-900 mt-1">{req.title}</h3>
-                  <p className="text-xs text-slate-500 flex items-center gap-2">
-                    <span className="font-semibold text-emerald-800 flex items-center gap-1">
-                      <Building2 size={13} /> {req.farmName} ({req.zoneName})
-                    </span>
+                  <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigate('/owner/farms', {
+                          state: {
+                            farmId: req.farmId,
+                            farmName: req.farmName,
+                            zoneId: req.zoneId,
+                            zoneName: rawContractZoneName,
+                            openContract: true,
+                          }
+                        });
+                      }}
+                      className="font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100/90 px-2.5 py-1 rounded-lg border border-emerald-200/90 hover:border-emerald-300 transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-2xs group"
+                      title={`Nhấn để chuyển đến ${contractZoneDisplayName} và mở Hợp đồng phân khu`}
+                    >
+                      <Sprout size={13} className="text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
+                      <span className="underline decoration-emerald-500/50 underline-offset-2 group-hover:decoration-emerald-800">
+                        {contractZoneDisplayName}
+                      </span>
+                      <ArrowUpRight size={13} className="text-emerald-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
+                    </button>
                     <span>•</span>
                     <span>Kỹ thuật viên: <strong>{req.assignedTechnicianName || 'Trần Minh Trí'}</strong></span>
-                  </p>
+                  </div>
                 </div>
 
                 <div className="text-right text-xs shrink-0 font-mono">
@@ -398,20 +481,41 @@ export const SupportPage: React.FC = () => {
                 {/* SECTION 1: HỢP ĐỒNG & BÁO GIÁ LẮP ĐẶT (BƯỚC 1: KÝ HĐ & THANH TOÁN TẠM ỨNG 30%) */}
                 {/* ========================================================================= */}
                 <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <h4 className="font-bold text-amber-950 flex items-center gap-2 text-xs uppercase tracking-wider">
                       <FileText size={16} className="text-amber-700" />
                       1. Hợp đồng Báo giá Thiết bị & Thanh toán Tạm ứng 30%
                     </h4>
-                    {isContractSigned ? (
-                      <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1">
-                        <CheckCircle2 size={12} /> Đã Ký & Thanh toán 30%
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[10px]">
-                        Cần Owner Ký tên & Cọc 30%
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/owner/farms', {
+                            state: {
+                              farmId: req.farmId,
+                              farmName: req.farmName,
+                              zoneId: req.zoneId,
+                              zoneName: rawContractZoneName,
+                              openContract: true,
+                            }
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300 transition-all shadow-2xs cursor-pointer"
+                        title={`Xem hồ sơ hợp đồng của ${contractZoneDisplayName} tại Trang trại`}
+                      >
+                        <ExternalLink size={12} className="text-amber-700" />
+                        <span>Xem HĐ của Zone</span>
+                      </button>
+                      {isContractSigned ? (
+                        <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1">
+                          <CheckCircle2 size={12} /> Đã Ký & Thanh toán 30%
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[10px]">
+                          Cần Owner Ký tên & Cọc 30%
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {contract && contract.items && contract.items.length > 0 ? (
@@ -453,6 +557,12 @@ export const SupportPage: React.FC = () => {
 
                       {/* Contract Totals & Deposit summary */}
                       <div className="p-3 bg-white border border-amber-200 rounded-xl space-y-2 text-xs">
+                        {contract.notes?.includes('lần 2 trong 2 tháng') && (
+                          <div className="flex items-center gap-1.5 p-2 bg-gradient-to-r from-amber-100 to-orange-100 text-amber-950 rounded-lg font-bold text-xs border border-amber-300">
+                            <Sparkles size={15} className="text-amber-600 shrink-0" />
+                            <span>🎉 Hợp đồng đã áp dụng Ưu đãi Mua lần 2 trong vòng 2 tháng (Giảm giá 15%)!</span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-slate-600">
                           <span>Tổng cộng (gồm VAT 8%):</span>
                           <strong className="font-mono text-slate-900">{contract.totalAmount.toLocaleString('vi-VN')} VNĐ</strong>
@@ -586,8 +696,28 @@ export const SupportPage: React.FC = () => {
                             ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC (NÚT ĐÃ KHÓA HOÀN TOÀN)
                           </button>
 
-                          <p className="text-[11px] text-emerald-900 font-semibold pt-0.5 flex items-center gap-1.5">
-                            <span>🚀</span> Kỹ thuật viên hiện đã được mở khóa quyền Vào Zone Chấm Node (Node Mapper) trên bản đồ!
+                          <p className="text-[11px] text-emerald-900 font-semibold pt-0.5 flex items-center justify-between gap-2 flex-wrap">
+                            <span className="flex items-center gap-1.5">
+                              <span>🚀</span> Kỹ thuật viên hiện đã được mở khóa quyền Vào Zone Chấm Node (Node Mapper) trên bản đồ!
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigate('/owner/farms', {
+                                  state: {
+                                    farmId: req.farmId,
+                                    farmName: req.farmName,
+                                    zoneId: req.zoneId,
+                                    zoneName: rawContractZoneName,
+                                    openContract: true,
+                                  }
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 text-emerald-800 hover:text-emerald-950 font-bold underline text-[11px] cursor-pointer"
+                            >
+                              <span>Đi đến Zone & Hợp đồng</span>
+                              <ArrowUpRight size={12} />
+                            </button>
                           </p>
                         </div>
                       )}
@@ -753,29 +883,78 @@ export const SupportPage: React.FC = () => {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Gửi Yêu cầu Hỗ trợ Kỹ thuật / Bảo trì">
         <form onSubmit={handleCreateRequest} className="space-y-4 text-xs">
           <div>
+            <label className="block text-slate-700 font-bold mb-1">Chọn Khu vực / Zone cần xử lý *</label>
+            <select
+              value={newReq.zoneId}
+              onChange={e => {
+                const zid = e.target.value;
+                const c = getZoneContract(zid);
+                setNewReq(prev => ({
+                  ...prev,
+                  zoneId: zid,
+                  requestType: c && prev.requestType === 'INSTALLATION' ? 'MAINTENANCE' : prev.requestType
+                }));
+              }}
+              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
+            >
+              {zones.map(z => {
+                const c = getZoneContract(z.zoneId);
+                return (
+                  <option key={z.zoneId} value={z.zoneId}>
+                    {z.name} ({z.currentCrop}) {c ? `• [Đã có HĐ #${c.contractNumber}]` : ''}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div>
             <label className="block text-slate-700 font-bold mb-1">Loại Yêu cầu *</label>
             <select
               value={newReq.requestType}
               onChange={e => setNewReq({ ...newReq, requestType: e.target.value as any })}
               className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 font-bold focus:outline-none focus:border-[#119653]"
             >
-              <option value="INSTALLATION">⚡ Lắp đặt Thiết bị Mới & Chấm Node</option>
+              {!getZoneContract(newReq.zoneId) && (
+                <option value="INSTALLATION">⚡ Lắp đặt Thiết bị Mới & Chấm Node</option>
+              )}
+              {getZoneContract(newReq.zoneId) && (
+                <option value="INSTALLATION" disabled>
+                  ⚡ Lắp đặt Mới (Zone đã có HĐ - Vui lòng chọn Tái kí HĐ)
+                </option>
+              )}
               <option value="MAINTENANCE">🛠️ Bảo trì & Thay thế Phần cứng</option>
             </select>
           </div>
 
-          <div>
-            <label className="block text-slate-700 font-bold mb-1">Chọn Khu vực / Zone cần xử lý *</label>
-            <select
-              value={newReq.zoneId}
-              onChange={e => setNewReq({ ...newReq, zoneId: e.target.value })}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
-            >
-              {zones.map(z => (
-                <option key={z.zoneId} value={z.zoneId}>{z.name} ({z.currentCrop})</option>
-              ))}
-            </select>
-          </div>
+          {/* Warning banner when a zone with contract is selected */}
+          {(() => {
+            const targetZoneContract = getZoneContract(newReq.zoneId);
+            if (!targetZoneContract) return null;
+            return (
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs space-y-2 text-indigo-950">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-indigo-900">
+                    <RefreshCw size={14} className="text-indigo-600" />
+                    <span>Zone đã có Hợp đồng #{targetZoneContract.contractNumber}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      navigate('/owner/farms', { state: { zoneId: newReq.zoneId, openContract: true } });
+                    }}
+                    className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <span>Tái kí hợp đồng</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-indigo-800">
+                  Khu vực này đã có hợp đồng hoạt động. Hệ thống không mở yêu cầu lắp đặt mới cho Zone này mà hỗ trợ <strong>Tái kí hợp đồng</strong> hoặc <strong>🛠️ Bảo trì & Thay thế Phần cứng</strong>.
+                </p>
+              </div>
+            );
+          })()}
 
           <div>
             <label className="block text-slate-700 font-bold mb-1">Tiêu đề Yêu cầu *</label>

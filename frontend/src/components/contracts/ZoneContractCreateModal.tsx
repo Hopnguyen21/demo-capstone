@@ -40,11 +40,36 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
   // Selected parent contract for returning customer link
   const [selectedParentId, setSelectedParentId] = useState<string>(parentContract?.id || '');
 
+  // Check if user has an existing contract signed/created within the last 2 months (60 days)
+  const recentTwoMonthsContract = React.useMemo(() => {
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60);
+
+    const match = existingContracts.find(c => {
+      const dateStr = c.createdAtUtc || c.signedAtUtc || c.startDate;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      return !isNaN(d.getTime()) && d >= twoMonthsAgo;
+    });
+
+    if (match) return match;
+    if (parentContract) {
+      const pDateStr = parentContract.createdAtUtc || parentContract.signedAtUtc || parentContract.startDate;
+      if (pDateStr) {
+        const pd = new Date(pDateStr);
+        if (!isNaN(pd.getTime()) && pd >= twoMonthsAgo) return parentContract;
+      }
+    }
+    return null;
+  }, [existingContracts, parentContract]);
+
+  const isSecondPurchaseInTwoMonths = Boolean(recentTwoMonthsContract);
+
   // Pricing inputs
   const [monthlyRent, setMonthlyRent] = useState<number>(12000000); // 12,000,000 đ/tháng
   const [vatPercent, setVatPercent] = useState<number>(8); // 8% VAT
   const [depositPercent, setDepositPercent] = useState<number>(30); // 30% cọc
-  const [discountPercent, setDiscountPercent] = useState<number>(parentContract ? 10 : 0); // 10% discount if returning customer
+  const [discountPercent, setDiscountPercent] = useState<number>(parentContract ? 10 : 0); // default
 
   const [specialTerms, setSpecialTerms] = useState<string>(
     'Hợp đồng bao gồm dịch vụ kết nối mạng LoRa, bảo trì định kỳ trạm cảm biến và hỗ trợ kỹ thuật 24/7.'
@@ -56,14 +81,20 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
     if (isOpen) {
       setContractNumber(`HD-ZN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`);
       if (zone?.currentCrop) setCropType(zone.currentCrop);
-      if (parentContract) {
+      if (recentTwoMonthsContract) {
+        setSelectedParentId(parentContract?.id || recentTwoMonthsContract.id);
+        setLesseeName(parentContract?.lesseeName || recentTwoMonthsContract.lesseeName || lesseeName);
+        setLesseePhone(parentContract?.lesseePhone || recentTwoMonthsContract.lesseePhone || lesseePhone);
+        setDiscountPercent(15); // 15% discount for 2nd purchase within 2 months!
+        setNotes(`Áp dụng ưu đãi Giảm giá 15% cho khách hàng mua/ký hợp đồng lần thứ 2 trong vòng 2 tháng (HĐ trước: #${recentTwoMonthsContract.contractNumber}).`);
+      } else if (parentContract) {
         setSelectedParentId(parentContract.id);
         setLesseeName(parentContract.lesseeName || lesseeName);
         setLesseePhone(parentContract.lesseePhone || lesseePhone);
         setDiscountPercent(10);
       }
     }
-  }, [isOpen, parentContract, zone]);
+  }, [isOpen, parentContract, zone, recentTwoMonthsContract]);
 
   // Compute End Date
   const calculateEndDate = (): string => {
@@ -149,6 +180,25 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
             Trang trại: <strong>{farm?.name || 'Trang trại'}</strong> ➔ Zone: <strong>{zone?.name || 'Zone'}</strong> ({zone?.areaM2 || 0} m²)
           </p>
         </div>
+
+        {/* Banner for 2nd purchase within 2 months */}
+        {isSecondPurchaseInTwoMonths && (
+          <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400 rounded-xl space-y-1.5 text-amber-950 shadow-xs animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-amber-950 text-xs">
+                <Sparkles size={16} className="text-amber-600 animate-pulse" />
+                <span>🎉 ƯU ĐÃI ĐẶC QUYỀN: GIẢM GIÁ MUA LẦN 2 TRONG VÒNG 2 THÁNG</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-extrabold text-xs shadow-2xs">
+                GIẢM NGAY 15%
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-900 leading-snug">
+              Hệ thống nhận diện bạn đã có hợp đồng <strong>#{recentTwoMonthsContract?.contractNumber}</strong> ký vào ngày <strong>{recentTwoMonthsContract?.startDate || recentTwoMonthsContract?.createdAtUtc?.split('T')[0]}</strong> (trong vòng 60 ngày qua). 
+              Hệ thống tự động áp dụng chính sách chiết khấu <strong>15%</strong> cho lần mua thứ 2 này!
+            </p>
+          </div>
+        )}
 
         {/* 1. Returning Customer Link & Discount Option */}
         <div className={`p-3.5 rounded-xl border transition-all ${
@@ -346,9 +396,12 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
               <span className="font-mono">{totalWithVat.toLocaleString('vi-VN')} đ</span>
             </div>
             {discountPercent > 0 && (
-              <div className="flex justify-between text-indigo-700 font-semibold">
-                <span>• Chiết khấu khách hàng ({discountPercent}%) = Tổng tiền × {discountPercent}%:</span>
-                <span className="font-mono">-{discountAmount.toLocaleString('vi-VN')} đ</span>
+              <div className="flex justify-between text-indigo-700 font-semibold bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-200">
+                <span className="flex items-center gap-1">
+                  <Sparkles size={13} className="text-amber-500" />
+                  • Chiết khấu {isSecondPurchaseInTwoMonths ? 'Mua lần 2 trong 2 tháng' : 'khách hàng'} ({discountPercent}%) = Tổng tiền × {discountPercent}%:
+                </span>
+                <span className="font-mono text-purple-800 font-bold">-{discountAmount.toLocaleString('vi-VN')} đ</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-emerald-950 text-sm bg-emerald-100/70 p-2 rounded-lg border border-emerald-300">

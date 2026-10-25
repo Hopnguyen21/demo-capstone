@@ -1309,6 +1309,30 @@ export const supportService = {
     const rawList: any[] = res.data?.value ?? res.data ?? [];
     if (!Array.isArray(rawList)) return [];
 
+    // Lookup zones & farms map to enrich accurate names
+    let allZonesMap: Record<string, any> = {};
+    let allFarmsMap: Record<string, any> = {};
+    try {
+      const [zRes, fRes] = await Promise.all([
+        apiClient.get('/api/v1/zones').catch(() => null),
+        apiClient.get('/api/v1/farms').catch(() => null),
+      ]);
+      const zList = zRes?.data?.value ?? zRes?.data ?? [];
+      const fList = fRes?.data?.value ?? fRes?.data ?? [];
+      if (Array.isArray(zList)) {
+        zList.forEach((z: any) => {
+          const zid = z.zoneId || z.id;
+          if (zid) allZonesMap[zid] = z;
+        });
+      }
+      if (Array.isArray(fList)) {
+        fList.forEach((f: any) => {
+          const fid = f.farmId || f.id;
+          if (fid) allFarmsMap[fid] = f;
+        });
+      }
+    } catch { }
+
     // Parallel lookup for quotation & zone devices
     const enriched = await Promise.all(
       rawList.map(async (sr: any) => {
@@ -1398,13 +1422,40 @@ export const supportService = {
           derivedStatus = 'CLOSED';
         }
 
+        // Resolve accurate zone name & farm name
+        const zoneObj = sr.zoneId ? allZonesMap[sr.zoneId] : null;
+        const farmObj = sr.farmId ? allFarmsMap[sr.farmId] : (zoneObj?.farmId ? allFarmsMap[zoneObj.farmId] : null);
+
+        const descZoneMatch = sr.description?.match(/cho\s+["']?(?:Nhà\s+màng|Zone)\s+["']?([^"'\.\,\n]+)["']?/i)
+          || sr.description?.match(/(?:Nhà\s+màng|Zone)\s+["']([^"'\.\,\n]+)["']/i);
+        const extractedZone = descZoneMatch ? descZoneMatch[1].trim() : '';
+
+        let effectiveZoneId = sr.zoneId;
+        if (!effectiveZoneId && extractedZone) {
+          const matchedZone: any = Object.values(allZonesMap).find((z: any) =>
+            z.name?.toLowerCase().trim() === extractedZone.toLowerCase().trim() ||
+            z.name?.toLowerCase().includes(extractedZone.toLowerCase().trim()) ||
+            extractedZone.toLowerCase().includes(z.name?.toLowerCase().trim())
+          );
+          if (matchedZone) {
+            effectiveZoneId = matchedZone.zoneId || matchedZone.id;
+          }
+        }
+
+        const resolvedZoneName = zoneObj?.name 
+          || (extractedZone ? (extractedZone.toLowerCase().startsWith('nhà màng') ? extractedZone : `Nhà màng "${extractedZone}"`) : '')
+          || sr.zoneName 
+          || (zoneObj ? `Zone ${zoneObj.name}` : 'Nhà màng');
+
+        const resolvedFarmName = farmObj?.name || sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao';
+
         return {
           serviceRequestId: id,
           tenantId: sr.tenantId,
-          farmId: sr.farmId,
-          farmName: sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao Đà Lạt',
-          zoneId: sr.zoneId,
-          zoneName: sr.zoneName || 'Nhà màng Z01',
+          farmId: sr.farmId || farmObj?.farmId || zoneObj?.farmId,
+          farmName: resolvedFarmName,
+          zoneId: effectiveZoneId || sr.zoneId,
+          zoneName: resolvedZoneName,
           deviceId: sr.originalDeviceId || sr.currentDeviceId,
           deviceName: sr.failureCode || 'Cụm thiết bị IoT',
           title: sr.description?.split('.')[0] || sr.failureCode || 'Yêu cầu Hỗ trợ Kỹ thuật',
@@ -1768,8 +1819,67 @@ export const zoneContractService = {
   /** GET /api/v1/zone-contracts */
   getAllContracts: async (): Promise<any[]> => {
     try {
-      const res = await apiClient.get('/api/v1/zone-contracts');
-      return res.data ?? [];
+      const [res, reqs] = await Promise.all([
+        apiClient.get('/api/v1/zone-contracts').catch(() => ({ data: [] })),
+        supportService.getServiceRequests().catch(() => [])
+      ]);
+      const list: any[] = Array.isArray(res.data) ? [...res.data] : (Array.isArray(res.data?.value) ? [...res.data.value] : []);
+
+      // Merge contracts originating from Service Requests (Owner Portal)
+      if (Array.isArray(reqs)) {
+        reqs.forEach((sr: any) => {
+          const c = sr.contractDetails;
+          if (c && (c.isSignedByOwner || c.is30PercentPaid || c.isContractSent)) {
+            const contractNum = `HD-SR-${(c.contractId || sr.serviceRequestId).substring(0, 8).toUpperCase()}`;
+            const exists = list.some((x: any) => x.contractNumber === contractNum || x.id === c.contractId);
+            if (!exists && sr.zoneId) {
+              const startDate = (c.signedAtByOwner || c.contractSentAt || sr.createdAt || new Date().toISOString()).split('T')[0];
+              const startDt = new Date(startDate);
+              const endDt = new Date(startDt);
+              endDt.setFullYear(endDt.getFullYear() + 1);
+              const endDate = endDt.toISOString().split('T')[0];
+              const today = new Date();
+              const daysRemaining = Math.round((endDt.getTime() - today.getTime()) / (1000 * 3600 * 24));
+
+              const hardwareSummary = c.items && c.items.length > 0
+                ? c.items.map((i: any) => `${i.quantity}x ${i.name}`).join(', ')
+                : 'Cụm trạm cảm biến LoRa & rơ-le điều khiển tự động';
+
+              list.unshift({
+                id: c.contractId || sr.serviceRequestId,
+                tenantId: sr.tenantId,
+                farmId: sr.farmId,
+                farmName: sr.farmName,
+                zoneId: sr.zoneId,
+                zoneName: sr.zoneName,
+                contractNumber: contractNum,
+                cropType: 'Cây trồng VietGAP trong nhà màng',
+                monthlyRentVnd: Math.round(c.totalAmount / 12),
+                depositVnd: c.deposit30Percent,
+                totalContractValueVnd: c.totalAmount,
+                subtotalVnd: c.subtotal || Math.round(c.totalAmount / 1.08),
+                vatAmountVnd: c.vatTotal || (c.totalAmount - (c.subtotal || Math.round(c.totalAmount / 1.08))),
+                discountPercent: c.notes?.includes('15%') ? 15 : 0,
+                discountVnd: c.notes?.includes('15%') ? Math.round((c.subtotal || c.totalAmount) * 0.15) : 0,
+                startDate: startDate,
+                endDate: endDate,
+                durationMonths: 12,
+                daysRemaining: daysRemaining,
+                status: c.isSignedByOwner ? 'Active' : 'ExpiringSoon',
+                statusText: c.isSignedByOwner ? 'Còn hiệu lực (Đã cọc 30%)' : 'Chờ Ký Duyệt & Cọc 30%',
+                lesseeName: c.ownerSignatureName || 'Lê Văn An (Chủ Trang Trại)',
+                lesseePhone: '0903666888',
+                lesseeAddress: 'Trang trại thông minh SmartFarm',
+                hardwareIncluded: hardwareSummary,
+                notes: c.notes || `Hợp đồng tạo qua Cổng Yêu cầu Kỹ thuật #${sr.serviceRequestId.substring(0, 8)}`,
+                renewals: []
+              });
+            }
+          }
+        });
+      }
+
+      return list;
     } catch {
       return [];
     }
@@ -1778,8 +1888,8 @@ export const zoneContractService = {
   /** GET /api/v1/farms/{farmId}/zone-contracts */
   getContractsByFarm: async (farmId: string): Promise<any[]> => {
     try {
-      const res = await apiClient.get(`/api/v1/farms/${farmId}/zone-contracts`);
-      return res.data ?? [];
+      const all = await zoneContractService.getAllContracts();
+      return all.filter((c: any) => c.farmId === farmId);
     } catch {
       return [];
     }
@@ -1788,8 +1898,8 @@ export const zoneContractService = {
   /** GET /api/v1/zones/{zoneId}/contracts */
   getContractsByZone: async (zoneId: string): Promise<any[]> => {
     try {
-      const res = await apiClient.get(`/api/v1/zones/${zoneId}/contracts`);
-      return res.data ?? [];
+      const all = await zoneContractService.getAllContracts();
+      return all.filter((c: any) => c.zoneId === zoneId);
     } catch {
       return [];
     }

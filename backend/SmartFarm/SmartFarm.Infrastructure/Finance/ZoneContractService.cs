@@ -131,10 +131,27 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             ? command.TotalContractValueVnd
             : command.MonthlyRentVnd * totalMonths;
 
-        // Apply discount for returning customer if provided
-        var discount = command.DiscountAmount ?? (command.DiscountPercent.HasValue ? rawTotal * (command.DiscountPercent.Value / 100m) : 0m);
+        // Check if user is purchasing for the 2nd time within 2 months (60 days)
+        var twoMonthsAgo = DateTime.UtcNow.AddDays(-60);
+        var previousRecentContract = await db.ZoneContracts
+            .Where(c => (c.CreatedByOwnerId == ownerId || (tenantId.HasValue && c.TenantId == tenantId.Value))
+                     && (c.CreatedAtUtc >= twoMonthsAgo || (c.SignedAtUtc.HasValue && c.SignedAtUtc.Value >= twoMonthsAgo)))
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        var isRepeatPurchaseInTwoMonths = previousRecentContract != null;
+        var discountPercent = command.DiscountPercent ?? (isRepeatPurchaseInTwoMonths ? 15m : (command.ParentContractId.HasValue ? 10m : 0m));
+
+        var discount = command.DiscountAmount ?? (discountPercent > 0 ? rawTotal * (discountPercent / 100m) : 0m);
         var finalTotal = Math.Max(0, rawTotal - discount);
         var deposit = command.DepositVnd > 0 ? command.DepositVnd : Math.Round(finalTotal * 0.30m);
+
+        var notes = command.Notes;
+        if (isRepeatPurchaseInTwoMonths && (notes == null || !notes.Contains("lần 2 trong 2 tháng")))
+        {
+            var notePrefix = $"[Ưu đãi Tri ân: Giảm {discountPercent}% cho khách hàng mua/ký hợp đồng lần thứ 2 trong vòng 2 tháng (HĐ trước: #{previousRecentContract!.ContractNumber})]. ";
+            notes = notePrefix + (notes ?? string.Empty);
+        }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var status = command.EndDate < today
@@ -161,7 +178,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             LesseeIdentityNumber = command.LesseeIdentityNumber,
             LesseeAddress = command.LesseeAddress,
             SpecialTerms = command.SpecialTerms,
-            Notes = command.Notes,
+            Notes = notes,
             SignedAtUtc = DateTime.UtcNow
         };
 
@@ -203,11 +220,25 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             _ => command.CustomEndDate ?? baseEndDate.AddYears(1)
         };
 
+        // Check if renewing / purchasing for 2nd time within 2 months (60 days)
+        var twoMonthsAgo = DateTime.UtcNow.AddDays(-60);
+        var isRepeatWithinTwoMonths = contract.CreatedAtUtc >= twoMonthsAgo ||
+            (contract.SignedAtUtc.HasValue && contract.SignedAtUtc.Value >= twoMonthsAgo) ||
+            (contract.Renewals != null && contract.Renewals.Any(r => r.CreatedAtUtc >= twoMonthsAgo));
+
+        var discountPercent = command.DiscountPercent ?? (isRepeatWithinTwoMonths ? 15m : 10m);
         var monthsAdded = Math.Max(1, ((newEndDate.Year - baseEndDate.Year) * 12) + newEndDate.Month - baseEndDate.Month);
         var rentPerMonth = command.NewMonthlyRentVnd ?? contract.MonthlyRentVnd;
         var rawRenewalValue = rentPerMonth * monthsAdded;
-        var discount = command.DiscountAmount ?? (command.DiscountPercent.HasValue ? rawRenewalValue * (command.DiscountPercent.Value / 100m) : 0m);
+        var discount = command.DiscountAmount ?? (discountPercent > 0 ? rawRenewalValue * (discountPercent / 100m) : 0m);
         var finalRenewalValue = Math.Max(0, rawRenewalValue - discount);
+
+        var notes = command.Notes;
+        if (isRepeatWithinTwoMonths && (notes == null || !notes.Contains("lần 2 trong 2 tháng")))
+        {
+            var notePrefix = $"[Ưu đãi Tái ký / Mua lần 2 trong 2 tháng: Chiết khấu {discountPercent}%]. ";
+            notes = notePrefix + (notes ?? string.Empty);
+        }
 
         var renewal = new ZoneContractRenewal
         {
@@ -216,7 +247,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             NewEndDate = newEndDate,
             NewMonthlyRentVnd = command.NewMonthlyRentVnd,
             RenewalValueVnd = finalRenewalValue,
-            Notes = command.Notes ?? $"Gia hạn thêm {monthsAdded} tháng (đến {newEndDate:dd/MM/yyyy}). Chiết khấu: {discount:N0} VNĐ."
+            Notes = notes ?? $"Gia hạn thêm {monthsAdded} tháng (đến {newEndDate:dd/MM/yyyy}). Chiết khấu: {discount:N0} VNĐ."
         };
 
         db.ZoneContractRenewals.Add(renewal);

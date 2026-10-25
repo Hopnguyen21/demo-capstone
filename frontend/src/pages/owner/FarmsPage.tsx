@@ -18,7 +18,6 @@ import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 import { OpenMeteoWeatherWidget } from '../../components/weather/OpenMeteoWeatherWidget';
 import { ZoneContractDetailsModal } from '../../components/contracts/ZoneContractDetailsModal';
 import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
-import { ZoneContractCreateModal } from '../../components/contracts/ZoneContractCreateModal';
 import { DeviceDepreciationModal } from '../../components/contracts/DeviceDepreciationModal';
 
 export const FarmsPage: React.FC = () => {
@@ -36,10 +35,8 @@ export const FarmsPage: React.FC = () => {
   const [zoneDepreciations, setZoneDepreciations] = useState<DeviceDepreciation[]>([]);
   const [selectedContractForDetail, setSelectedContractForDetail] = useState<ZoneContract | null>(null);
   const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
-  const [parentContractForNew, setParentContractForNew] = useState<ZoneContract | null>(null);
   const [showContractDetailModal, setShowContractDetailModal] = useState<boolean>(false);
   const [showRenewContractModal, setShowRenewContractModal] = useState<boolean>(false);
-  const [showCreateContractModal, setShowCreateContractModal] = useState<boolean>(false);
   const [showCreateDepreciationModal, setShowCreateDepreciationModal] = useState<boolean>(false);
   const [zoneActiveTab, setZoneActiveTab] = useState<'OVERVIEW' | 'CONTRACTS' | 'DEPRECIATION' | 'CF3'>('OVERVIEW');
 
@@ -188,22 +185,67 @@ export const FarmsPage: React.FC = () => {
     }
   }, [selectedZone]);
 
-  // Deep-linking from OwnerDashboard or other pages
+  // Deep-linking from OwnerDashboard, SupportPage or other pages
+  const handledDeepLinkRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (location.state && farms.length > 0 && fields.length > 0 && zones.length > 0) {
-      const { farmId, zoneId, openContract } = location.state as any;
-      if (farmId) {
-        const targetFarm = farms.find(f => f.farmId === farmId);
-        if (targetFarm) setSelectedFarm(targetFarm);
+    if (location.state && (farms.length > 0 || fields.length > 0 || zones.length > 0)) {
+      const { farmId, farmName, zoneId, zoneName, openContract } = location.state as any;
+      const stateKey = `${farmId || ''}_${farmName || ''}_${zoneId || ''}_${zoneName || ''}_${openContract || ''}`;
+      
+      if (handledDeepLinkRef.current === stateKey) return;
+
+      // 1. Find Target Zone (match by zoneId or name)
+      let targetZone: Zone | undefined = undefined;
+      if (zones.length > 0) {
+        targetZone = zones.find(z =>
+          (zoneId && (z.zoneId === zoneId || (z as any).id === zoneId)) ||
+          (zoneName && (
+            z.name?.toLowerCase().trim() === zoneName.toLowerCase().trim() ||
+            z.name?.toLowerCase().includes(zoneName.toLowerCase().trim()) ||
+            zoneName.toLowerCase().includes(z.name?.toLowerCase().trim())
+          ))
+        );
       }
-      if (zoneId) {
-        const targetZone = zones.find(z => z.zoneId === zoneId);
-        if (targetZone) {
-          const targetField = fields.find(fd => fd.fieldId === targetZone.fieldId);
-          if (targetField) setSelectedField(targetField);
-          setSelectedZone(targetZone);
-          if (openContract) setZoneActiveTab('CONTRACTS');
+
+      // 2. Find Target Field (from targetZone.fieldId)
+      let targetField: Field | undefined = undefined;
+      if (targetZone && fields.length > 0) {
+        targetField = fields.find(fd => fd.fieldId === targetZone?.fieldId || (fd as any).id === targetZone?.fieldId);
+      }
+
+      // 3. Find Target Farm (from farmId, farmName, targetField.farmId, or targetZone.farmId)
+      let targetFarm: Farm | undefined = undefined;
+      if (farms.length > 0) {
+        targetFarm = farms.find(f =>
+          (farmId && (f.farmId === farmId || (f as any).id === farmId)) ||
+          (farmName && (
+            f.name?.toLowerCase().trim() === farmName.toLowerCase().trim() ||
+            f.name?.toLowerCase().includes(farmName.toLowerCase().trim()) ||
+            farmName.toLowerCase().includes(f.name?.toLowerCase().trim())
+          )) ||
+          (targetField && (f.farmId === targetField.farmId || (f as any).id === targetField.farmId)) ||
+          (targetZone?.farmId && (f.farmId === targetZone.farmId || (f as any).id === targetZone.farmId))
+        );
+      }
+
+      // If we found targetZone:
+      if (targetZone) {
+        if (targetFarm) setSelectedFarm(targetFarm);
+        if (targetField) setSelectedField(targetField);
+        setSelectedZone(targetZone);
+        if (openContract) {
+          setZoneActiveTab('CONTRACTS');
         }
+        handledDeepLinkRef.current = stateKey;
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 150);
+      } else if (targetFarm && zones.length > 0) {
+        // If specific zone not found but farm is found
+        setSelectedFarm(targetFarm);
+        if (targetField) setSelectedField(targetField);
+        handledDeepLinkRef.current = stateKey;
       }
     }
   }, [location.state, farms, fields, zones]);
@@ -213,13 +255,6 @@ export const FarmsPage: React.FC = () => {
     setShowRenewContractModal(false);
     setSelectedContractForRenew(null);
     alert(`🎉 Đã gia hạn hợp đồng #${updatedContract.contractNumber} thành công! Thời hạn mới: ${updatedContract.endDate}`);
-  };
-
-  const handleCreateContractSuccess = (newContract: ZoneContract) => {
-    setAllContracts(prev => [newContract, ...prev.filter(c => c.id !== newContract.id)]);
-    setShowCreateContractModal(false);
-    setParentContractForNew(null);
-    alert(`🎉 Đã lập và kích hoạt hợp đồng #${newContract.contractNumber} cho Zone thành công!`);
   };
 
   const handleCreateDepreciationSuccess = (newDep: DeviceDepreciation) => {
@@ -769,6 +804,13 @@ export const FarmsPage: React.FC = () => {
   };
 
   const openInstallModalForZone = (zone: Zone) => {
+    const zid = zone.zoneId || (zone as any).id;
+    const existingContract = getZoneActiveContract(zid);
+    if (existingContract) {
+      setSelectedContractForRenew(existingContract);
+      setShowRenewContractModal(true);
+      return;
+    }
     const parentField = fields.find(f => f.fieldId === zone.fieldId) || selectedField;
     if (parentField) setInstallTargetField(parentField);
     setInstallTargetZone(zone);
@@ -786,6 +828,17 @@ export const FarmsPage: React.FC = () => {
     }
     const farmId = selectedFarm?.farmId || (installTargetField ? installTargetField.farmId : '30000000-0000-0000-0000-000000000001');
     const zoneId = installTargetZone?.zoneId || (zones.find(z => z.farmId === farmId)?.zoneId || '32000000-0000-0000-0000-000000000001');
+
+    if (installTargetZone) {
+      const existingContract = getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id);
+      if (existingContract) {
+        alert(`Zone "${installTargetZone.name}" đã có hợp đồng #${existingContract.contractNumber}. Hệ thống chuyển hướng sang Tái kí hợp đồng.`);
+        setShowInstallModal(false);
+        setSelectedContractForRenew(existingContract);
+        setShowRenewContractModal(true);
+        return;
+      }
+    }
 
     setIsSubmittingInstall(true);
     try {
@@ -1194,12 +1247,20 @@ export const FarmsPage: React.FC = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedZone(zone);
-                              setShowCreateContractModal(true);
+                              navigate('/owner/support', {
+                                state: {
+                                  farmId: selectedFarm?.farmId,
+                                  farmName: selectedFarm?.name,
+                                  zoneId: zone.zoneId || (zone as any).id,
+                                  zoneName: zone.name,
+                                  createRequest: true,
+                                },
+                              });
                             }}
                             className="text-emerald-700 font-bold hover:underline flex items-center gap-0.5"
+                            title="Chuyển đến Cổng Dịch vụ để tạo yêu cầu khảo sát và ký hợp đồng thiết bị IoT"
                           >
-                            + Lập hợp đồng
+                            + Yêu cầu ký HĐ
                           </button>
                         </div>
                       )}
@@ -1209,18 +1270,40 @@ export const FarmsPage: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openInstallModalForZone(zone);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
-                      title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
-                    >
-                      <Wrench size={13} className="text-emerald-700" />
-                      <span>Yêu cầu thiết bị</span>
-                    </button>
+                    {(() => {
+                      const zoneContract = getZoneActiveContract(zone.zoneId || (zone as any).id);
+                      if (zoneContract) {
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedContractForRenew(zoneContract);
+                              setShowRenewContractModal(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-all shadow-2xs cursor-pointer"
+                            title={`Zone đã có Hợp đồng #${zoneContract.contractNumber} - Nhấn để Tái kí hợp đồng`}
+                          >
+                            <RefreshCw size={13} className="text-indigo-700" />
+                            <span>Tái kí hợp đồng</span>
+                          </button>
+                        );
+                      }
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openInstallModalForZone(zone);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs cursor-pointer"
+                          title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
+                        >
+                          <Wrench size={13} className="text-emerald-700" />
+                          <span>Yêu cầu lắp đặt</span>
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1257,13 +1340,27 @@ export const FarmsPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  size="sm"
-                  onClick={() => openInstallModalForZone(selectedZone)}
-                  className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm border border-emerald-200"
-                >
-                  <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
-                </Button>
+                {activeZoneContract ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedContractForRenew(activeZoneContract);
+                      setShowRenewContractModal(true);
+                    }}
+                    className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold shadow-sm border border-indigo-200 cursor-pointer"
+                    title={`Zone đã có Hợp đồng #${activeZoneContract.contractNumber} - Nhấn để Tái kí hợp đồng`}
+                  >
+                    <RefreshCw size={14} className="mr-1.5 text-indigo-600" /> Tái kí hợp đồng
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => openInstallModalForZone(selectedZone)}
+                    className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm border border-emerald-200"
+                  >
+                    <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -1418,12 +1515,20 @@ export const FarmsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setParentContractForNew(null);
-                      setShowCreateContractModal(true);
+                      navigate('/owner/support', {
+                        state: {
+                          farmId: selectedFarm?.farmId,
+                          farmName: selectedFarm?.name,
+                          zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                          zoneName: selectedZone?.name,
+                          createRequest: true,
+                        },
+                      });
                     }}
                     className="text-emerald-700 font-bold hover:underline flex items-center gap-1"
+                    title="Chuyển đến Cổng Dịch vụ để tạo yêu cầu khảo sát và ký hợp đồng"
                   >
-                    <Plus size={13} /> Lập hợp đồng mới
+                    <Plus size={13} /> Tạo yêu cầu ký HĐ
                   </button>
                 </div>
               )}
@@ -1719,12 +1824,20 @@ export const FarmsPage: React.FC = () => {
                   <Button
                     size="sm"
                     onClick={() => {
-                      setParentContractForNew(null);
-                      setShowCreateContractModal(true);
+                      navigate('/owner/support', {
+                        state: {
+                          farmId: selectedFarm?.farmId,
+                          farmName: selectedFarm?.name,
+                          zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                          zoneName: selectedZone?.name,
+                          createRequest: true,
+                        },
+                      });
                     }}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xs cursor-pointer"
+                    title="Hợp đồng được tạo tập trung qua Cổng Dịch vụ & Hợp đồng (Owner Portal)"
                   >
-                    <Plus size={14} className="mr-1" /> Lập Hợp Đồng Mới
+                    <Plus size={14} className="mr-1" /> Tạo Yêu Cầu Ký HĐ Mới
                   </Button>
                 </div>
               </div>
@@ -1788,14 +1901,21 @@ export const FarmsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            setParentContractForNew(activeZoneContract);
-                            setShowCreateContractModal(true);
+                            navigate('/owner/support', {
+                              state: {
+                                farmId: selectedFarm?.farmId,
+                                farmName: selectedFarm?.name,
+                                zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                                zoneName: selectedZone?.name,
+                                createRequest: true,
+                              },
+                            });
                           }}
                           className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                          title="Tái ký hợp đồng mới khi có thay đổi thiết bị hoặc diện tích, hưởng chiết khấu khách hàng cũ"
+                          title="Chuyển đến Cổng Dịch vụ để tạo yêu cầu khảo sát, báo giá và ký hợp đồng mở rộng thiết bị"
                         >
                           <PlusCircle size={14} className="text-purple-600" />
-                          <span>Tái Ký Mở Rộng HĐ Mới</span>
+                          <span>Yêu Cầu Mở Rộng HĐ Mới</span>
                         </button>
 
                         <button
@@ -1966,18 +2086,25 @@ export const FarmsPage: React.FC = () => {
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm">Chưa có hợp đồng nào đang áp dụng cho Zone này</h4>
                       <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                        Tạo hợp đồng mới để quy định bên thuê phân khu, thời hạn hiệu lực, loại cây trồng và cấu hình thiết bị IoT gắn với Zone.
+                        Hợp đồng phân khu và thiết bị IoT được tạo tập trung duy nhất tại Cổng Dịch vụ & Hợp đồng (Owner Portal). Gửi yêu cầu để kỹ thuật viên khảo sát, gửi báo giá và tiến hành ký hợp đồng (cọc 30%).
                       </p>
                     </div>
                     <Button
                       size="sm"
                       onClick={() => {
-                        setParentContractForNew(null);
-                        setShowCreateContractModal(true);
+                        navigate('/owner/support', {
+                          state: {
+                            farmId: selectedFarm?.farmId,
+                            farmName: selectedFarm?.name,
+                            zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                            zoneName: selectedZone?.name,
+                            createRequest: true,
+                          },
+                        });
                       }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs cursor-pointer"
                     >
-                      <Plus size={14} className="mr-1.5" /> Lập Hợp Đồng Đầu Tiên Cho Zone
+                      <Plus size={14} className="mr-1.5" /> Chuyển Đến Cổng Dịch Vụ Để Tạo Yêu Cầu Ký HĐ
                     </Button>
                   </div>
                 )}
@@ -2628,12 +2755,42 @@ export const FarmsPage: React.FC = () => {
                 <option value="">-- Toàn bộ Lô đất (Khảo sát đo đạc thực địa / Đặt hàng mới) --</option>
                 {zones
                   .filter(z => z.fieldId === installTargetField.fieldId)
-                  .map(z => (
-                    <option key={z.zoneId} value={z.zoneId}>
-                      {z.name} ({z.areaM2} m² - {z.currentCrop || 'Zone'})
-                    </option>
-                  ))}
+                  .map(z => {
+                    const c = getZoneActiveContract(z.zoneId || (z as any).id);
+                    return (
+                      <option key={z.zoneId} value={z.zoneId}>
+                        {z.name} ({z.areaM2} m² - {z.currentCrop || 'Zone'}) {c ? `• [ĐÃ CÓ HỢP ĐỒNG #${c.contractNumber} - Cần Tái ký]` : ''}
+                      </option>
+                    );
+                  })}
               </select>
+            </div>
+          )}
+
+          {/* Warning banner when a zone with contract is selected */}
+          {installTargetZone && getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id) && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-900">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  Zone <strong>{installTargetZone.name}</strong> đã có hợp đồng <strong>#{getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id)?.contractNumber}</strong>. Không cần yêu cầu lắp đặt mới!
+                </span>
+              </div>
+              <Button
+                size="sm"
+                type="button"
+                onClick={() => {
+                  const c = getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id);
+                  setShowInstallModal(false);
+                  if (c) {
+                    setSelectedContractForRenew(c);
+                    setShowRenewContractModal(true);
+                  }
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold ml-2 shrink-0"
+              >
+                <RefreshCw size={12} className="mr-1" /> Tái kí hợp đồng
+              </Button>
             </div>
           )}
 
@@ -2835,9 +2992,17 @@ export const FarmsPage: React.FC = () => {
           setSelectedContractForRenew(contract);
           setShowRenewContractModal(true);
         }}
-        onOpenNewContractModal={(parentContract) => {
-          setParentContractForNew(parentContract);
-          setShowCreateContractModal(true);
+        onOpenNewContractModal={(_parentContract) => {
+          setShowContractDetailModal(false);
+          navigate('/owner/support', {
+            state: {
+              farmId: selectedFarm?.farmId,
+              farmName: selectedFarm?.name,
+              zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+              zoneName: selectedZone?.name,
+              createRequest: true,
+            },
+          });
         }}
       />
 
@@ -2846,16 +3011,6 @@ export const FarmsPage: React.FC = () => {
         onClose={() => setShowRenewContractModal(false)}
         contract={selectedContractForRenew}
         onSuccess={handleRenewSuccess}
-      />
-
-      <ZoneContractCreateModal
-        isOpen={showCreateContractModal}
-        onClose={() => setShowCreateContractModal(false)}
-        farm={selectedFarm}
-        zone={selectedZone}
-        existingContracts={currentZoneContracts}
-        parentContract={parentContractForNew}
-        onSuccess={handleCreateContractSuccess}
       />
 
       <DeviceDepreciationModal

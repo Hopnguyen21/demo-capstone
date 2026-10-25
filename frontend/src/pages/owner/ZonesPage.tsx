@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Zone, Field, Farm } from '../../types';
-import { zoneService, fieldService, farmService, extractApiError } from '../../services';
+import { Zone, Field, Farm, ZoneContract } from '../../types';
+import { zoneService, fieldService, farmService, zoneContractService, extractApiError } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
-import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers, Wrench, CheckCircle2 } from 'lucide-react';
+import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers, Wrench, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
+import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
 
 export const ZonesPage: React.FC = () => {
   const navigate = useNavigate();
   const [zones, setZones] = useState<Zone[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
   const [farms, setFarms] = useState<Farm[]>([]);
+  const [contracts, setContracts] = useState<ZoneContract[]>([]);
+  const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
+  const [showRenewModal, setShowRenewModal] = useState<boolean>(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState('31000000-0000-0000-0000-000000000001');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('32000000-0000-0000-0000-000000000001');
@@ -39,10 +43,11 @@ export const ZonesPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [zData, fdData, fData] = await Promise.all([
-        zoneService.getZones(),
-        fieldService.getFields(),
-        farmService.getFarms(),
+      const [zData, fdData, fData, contractsData] = await Promise.all([
+        zoneService.getZones().catch(() => []),
+        fieldService.getFields().catch(() => []),
+        farmService.getFarms().catch(() => []),
+        zoneContractService.getAllContracts().catch(() => []),
       ]);
       if (Array.isArray(zData)) {
         setZones(zData);
@@ -53,9 +58,16 @@ export const ZonesPage: React.FC = () => {
         if (fdData.length > 0 && !selectedFieldId) setSelectedFieldId(fdData[0].fieldId);
       }
       if (Array.isArray(fData)) setFarms(fData);
+      if (Array.isArray(contractsData)) setContracts(contractsData);
     } catch (err) {
       console.error('Failed to load zones data:', err);
     }
+  };
+
+  const getZoneActiveContract = (zoneId: string): ZoneContract | undefined => {
+    const list = contracts.filter(c => c.zoneId === zoneId);
+    return list.find(c => c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1)))
+      || list[0];
   };
 
   const handleCreateZone = async () => {
@@ -197,18 +209,40 @@ export const ZonesPage: React.FC = () => {
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate('/owner/support');
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs"
-                  title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
-                >
-                  <Wrench size={13} className="text-emerald-700" />
-                  <span>Gửi yêu cầu thiết bị</span>
-                </button>
+                {(() => {
+                  const zContract = getZoneActiveContract(z.zoneId);
+                  if (zContract) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedContractForRenew(zContract);
+                          setShowRenewModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer"
+                        title={`Zone đã có Hợp đồng #${zContract.contractNumber} - Nhấn để Tái kí hợp đồng`}
+                      >
+                        <RefreshCw size={13} className="text-indigo-700" />
+                        <span>Tái kí hợp đồng</span>
+                      </button>
+                    );
+                  }
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/owner/support');
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-2xs cursor-pointer"
+                      title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
+                    >
+                      <Wrench size={13} className="text-emerald-700" />
+                      <span>Yêu cầu lắp đặt</span>
+                    </button>
+                  );
+                })()}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={(e) => {
@@ -404,6 +438,22 @@ export const ZonesPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Modal Tái kí Hợp đồng cho Zone */}
+      <ZoneContractRenewModal
+        isOpen={showRenewModal}
+        onClose={() => {
+          setShowRenewModal(false);
+          setSelectedContractForRenew(null);
+        }}
+        contract={selectedContractForRenew}
+        onSuccess={(updated) => {
+          setContracts(prev => prev.map(c => c.id === updated.id ? updated : c));
+          setShowRenewModal(false);
+          setSelectedContractForRenew(null);
+          alert(`🎉 Đã gia hạn / tái ký hợp đồng #${updated.contractNumber} thành công! Thời hạn mới: ${updated.endDate}`);
+        }}
+      />
     </div>
   );
 };
