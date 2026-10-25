@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/BaseUI';
 import { supportService, zoneService, fieldService } from '../../services';
-import { extractPolygonPoints, calculatePolygonAreaM2 } from '../maps/GISLocationPicker';
+import { extractPolygonPoints, calculatePolygonAreaM2, toGeoJsonPolygon } from '../maps/GISLocationPicker';
 
 interface ZoneNodeMapperModalProps {
   isOpen: boolean;
@@ -664,6 +664,29 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   const handleSave = async () => {
     try {
       setIsSaving(true);
+      const zoneId = request.zoneId || currentZoneData?.id || currentZoneData?.zoneId || '32000000-0000-0000-0000-000000000001';
+
+      // 1. If polygon was adjusted, save updated boundary to Zone entity
+      if (zonePolygon.length >= 3 && zoneId && currentZoneData) {
+        try {
+          const geoJson = toGeoJsonPolygon(zonePolygon);
+          const computedArea = Math.max(1, Math.round(calculatePolygonAreaM2(zonePolygon) || Number(currentZoneData.areaM2) || 100));
+          await zoneService.updateZone(zoneId, {
+            name: currentZoneData.name,
+            areaM2: computedArea,
+            polygonGeoJson: geoJson,
+          });
+        } catch (zErr) {
+          console.warn('Could not update zone GIS boundary:', zErr);
+        }
+      }
+
+      // 2. Persist mapped nodes to database
+      if (zoneId) {
+        await supportService.updateMappedNodes(zoneId, nodes, request.serviceRequestId);
+      }
+
+      // 3. Callback if provided
       if (onSaveMapping) {
         await onSaveMapping(nodes, nodes.length);
       }

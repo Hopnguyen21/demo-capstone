@@ -215,6 +215,41 @@ export const FarmsPage: React.FC = () => {
       zoneContractService.getDepreciationsByZone(zid).then(deps => {
         if (Array.isArray(deps)) setZoneDepreciations(deps);
       }).catch(() => {});
+
+      // Fetch mapped nodes for this zone so Owner can view them on the GIS map and Live Telemetry card
+      supportService.getMappedNodes(zid).then(mapped => {
+        if (Array.isArray(mapped) && mapped.length > 0) {
+          const formatted = mapped.map((m: any, idx: number) => ({
+            ...m,
+            nodeId: m.deviceId || m.id || `node-${idx}`,
+            id: m.deviceId || m.id || `node-${idx}`,
+            name: m.deviceName || m.installationNotes || m.hardwareAddress || `Node ${idx + 1}`,
+            nodeCode: m.hardwareAddress || `NODE-0${idx + 1}`,
+            hardwareAddress: m.hardwareAddress,
+            zoneId: zid,
+            latitude: typeof m.latitude === 'number' ? m.latitude : (typeof m.gpsLatitude === 'number' ? m.gpsLatitude : 11.9404),
+            longitude: typeof m.longitude === 'number' ? m.longitude : (typeof m.gpsLongitude === 'number' ? m.gpsLongitude : 108.4583),
+            batteryLevel: m.batteryLevel ?? 95,
+            status: m.status?.toUpperCase() || 'ONLINE',
+            rssi: m.rssi ?? -70,
+            deviceType: m.deviceType || (m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT') ? 'ActuatorNode' : 'SensorNode'),
+            actuatorsCount: (m.deviceType === 'ActuatorNode' || m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT')) ? 1 : 0,
+            sensorsCount: (m.deviceType === 'SensorNode' || m.hardwareAddress?.includes('SN') || m.hardwareAddress?.includes('AIR') || m.hardwareAddress?.includes('SOIL')) ? 2 : 0,
+            telemetry: [
+              { label: 'Nhiệt độ KK', value: '25.8 °C' },
+              { label: 'Độ ẩm KK', value: '74.2 %' },
+              { label: 'Độ ẩm đất', value: '68.5 %' },
+            ]
+          }));
+
+          setNodes(prev => {
+            const others = prev.filter(n => n.zoneId !== zid);
+            return [...others, ...formatted];
+          });
+        }
+      }).catch(err => {
+        console.warn('Could not load mapped nodes for zone:', err);
+      });
     }
   }, [selectedZone]);
 
@@ -546,6 +581,23 @@ export const FarmsPage: React.FC = () => {
     }
     return [11.9408, 108.4582] as [number, number];
   }, [currentZonePoints, currentFieldPolygon, selectedFarm]);
+
+  const zoneDeviceMarkers = React.useMemo(() => {
+    if (!selectedZone) return [];
+    const zid = selectedZone.zoneId || (selectedZone as any).id;
+    const zoneNodes = nodes.filter(n => n.zoneId === zid || !n.zoneId);
+    return zoneNodes
+      .filter(n => typeof n.latitude === 'number' && typeof n.longitude === 'number' && n.latitude > 0 && n.longitude > 0)
+      .map((n, idx) => ({
+        id: n.nodeId || n.deviceId || n.id || `node-${idx}`,
+        name: n.name || n.nodeCode || n.hardwareAddress || `Node ${idx + 1}`,
+        code: n.nodeCode || n.hardwareAddress || `N-0${idx + 1}`,
+        type: (n.actuatorsCount && n.actuatorsCount > 0) || (n.deviceType?.includes('Actuator')) || (n.hardwareAddress?.includes('VALVE')) ? 'ACTUATOR' : 'SENSOR',
+        status: n.status || 'ONLINE',
+        batteryLevel: n.batteryLevel ?? 100,
+        coords: [n.latitude, n.longitude] as [number, number],
+      }));
+  }, [selectedZone, nodes]);
 
   // Memoized zone contract and depreciation helpers
   const currentZoneContracts = React.useMemo(() => {
@@ -1631,6 +1683,7 @@ export const FarmsPage: React.FC = () => {
                       polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
                       onPolygonChange={setZoneEditPolygon}
                       parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
+                      deviceMarkers={zoneDeviceMarkers}
                       height="280px"
                       readOnly={!isEditingZoneGIS}
                     />
