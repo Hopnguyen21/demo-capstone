@@ -27,7 +27,11 @@ public sealed class AiAdvisoryService(
     public async Task<AiZoneContext> GetContextAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
         var (zone, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
-        return await BuildContextAsync(zone, includeFarmStructure: role == UserRole.FarmOwner, cancellationToken);
+        // [CODE CŨ]: Lấy cấu trúc toàn farm khi là FarmOwner
+        // return await BuildContextAsync(zone, includeFarmStructure: role == UserRole.FarmOwner, cancellationToken);
+
+        // [CODE MỚI]: Chỉ lấy ngữ cảnh phần Zone hiện tại, không lấy Field hay Farm
+        return await BuildContextAsync(zone, includeFarmStructure: false, includeHistory: false, cancellationToken);
     }
 
     public Task<AiRecommendationView> AskAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, CancellationToken cancellationToken) =>
@@ -133,7 +137,7 @@ public sealed class AiAdvisoryService(
 
     public async Task HideHistoryAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
-        var (zone, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
+        var (_, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
         var now = clock.GetUtcNow().UtcDateTime;
         var query = db.AiConsultationRequests.Where(x => x.TenantId == tenantId && x.ZoneId == zoneId && x.HiddenAtUtc == null);
 
@@ -158,7 +162,12 @@ public sealed class AiAdvisoryService(
             throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
 
         var now = clock.GetUtcNow().UtcDateTime;
-        var context = await BuildContextAsync(zone, includeFarmStructure: role == UserRole.FarmOwner, cancellationToken);
+        // [CODE CŨ]: Lấy cấu trúc toàn farm khi là FarmOwner
+        // var context = await BuildContextAsync(zone, includeFarmStructure: role == UserRole.FarmOwner, cancellationToken);
+
+        // [CODE MỚI]: Tùy vào câu hỏi, chỉ lấy lịch sử khi người dùng thực sự hỏi về lịch sử/xu hướng
+        var isHistoryQuery = IsHistoryOrTrendQuestion(question);
+        var context = await BuildContextAsync(zone, includeFarmStructure: false, includeHistory: isHistoryQuery, cancellationToken);
         var request = new AiConsultationRequest
         {
             TenantId = tenantId,
@@ -231,17 +240,17 @@ public sealed class AiAdvisoryService(
                     .Where(i => passages is not null && i >= 1 && i <= passages.Count)
                     .Select(i => passages![i - 1])
                     .GroupBy(p => p.DocumentId).Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
-                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore))
+                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content))
                     .ToList();
 
-                // Fallback nếu model không trích dẫn số thứ tự nhưng có passage liên quan cao
+                // Tự động gán nguồn RAG nếu model trích dẫn hoặc passage có độ tương đồng ngữ nghĩa vector thực sự cao (>= 0.70)
                 if (sources.Count == 0 && passages is { Count: > 0 })
                 {
                     sources = passages
                         .Where(p => p.SimilarityScore >= 0.70f)
                         .GroupBy(p => p.DocumentId)
                         .Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
-                        .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore))
+                        .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content))
                         .ToList();
                 }
 
@@ -328,7 +337,7 @@ public sealed class AiAdvisoryService(
             actuatorId = null;
             action = null;
             duration = null;
-            limitations.Add("Không khả dụng đề xuất điều khiển thiết bị tự động do thiếu dữ liệu cảm biến thời gian thực hoặc dự báo thời tiết.");
+            limitations.Add("Không khả dụng đề xuất điều khiển thiết bị tự động do thiếu dữ liệu cảm biến vi khí hậu thời gian thực.");
         }
 
         if (status == AiRecommendationStatus.LowConfidence)
@@ -355,7 +364,15 @@ public sealed class AiAdvisoryService(
         };
     }
 
-    private async Task<AiZoneContext> BuildContextAsync(Zone zone, bool includeFarmStructure, CancellationToken cancellationToken)
+    private static bool IsHistoryOrTrendQuestion(string q)
+    {
+        var lower = q.ToLowerInvariant();
+        return lower.Contains("lịch sử") || lower.Contains("xu hướng") || lower.Contains("biến thiên") ||
+               lower.Contains("diễn biến") || lower.Contains("mấy lần") || lower.Contains("mốc đo") ||
+               lower.Contains("gần đây nhất") || lower.Contains("qua các mốc") || lower.Contains("thay đổi");
+    }
+
+    private async Task<AiZoneContext> BuildContextAsync(Zone zone, bool includeFarmStructure, bool includeHistory, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var season = await db.PlantingSeasons.AsNoTracking()
@@ -373,6 +390,24 @@ public sealed class AiAdvisoryService(
             var isFresh = reading.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes) && reading.CapturedAtUtc <= now;
             return new AiTelemetryContextItem(reading.ParameterCode, reading.Value, reading.Unit, reading.CapturedAtUtc, isFresh);
         }).ToList();
+
+        // ─── Lịch sử đo đạc: Tùy vào câu hỏi, chỉ truy vấn khi người dùng thực sự hỏi về lịch sử / xu hướng ───
+        List<AiTelemetryHistoryItem>? telemetryHistory = null;
+        if (includeHistory)
+        {
+            var recentReadingsRaw = await db.TelemetryReadings.AsNoTracking()
+                .Where(x => x.ZoneId == zone.Id && x.CapturedAtUtc <= now && x.CapturedAtUtc >= now.AddHours(-12))
+                .OrderByDescending(x => x.CapturedAtUtc)
+                .Take(60)
+                .ToListAsync(cancellationToken);
+
+            telemetryHistory = recentReadingsRaw
+                .GroupBy(x => x.ParameterCode)
+                .SelectMany(g => g.OrderByDescending(x => x.CapturedAtUtc).Take(5))
+                .OrderBy(x => x.ParameterCode).ThenBy(x => x.CapturedAtUtc)
+                .Select(x => new AiTelemetryHistoryItem(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc))
+                .ToList();
+        }
         var actuators = await db.DeviceActuators.AsNoTracking().Include(x => x.Device)
             .Where(x => x.Device.ZoneId == zone.Id && x.Device.DecommissionedAtUtc == null)
             .Select(x => new AiActuatorContextItem(x.Id, x.ActuatorType, Math.Min(1800, x.MaxDurationMinutes * 60), x.Device.Status == DeviceStatus.Online))
@@ -416,8 +451,8 @@ public sealed class AiAdvisoryService(
             return new AiUpcomingScheduleContextItem(x.Name, x.NextRunAtUtc, formatted, x.DurationSeconds, minutesUntil);
         }).ToList();
 
-        // ─── Private Farm Structure: chỉ đưa vào context khi người gọi là FarmOwner ──
-        // Bảo mật: Nông dân (Farmer) không được truy cập cấu trúc toàn bộ các farm/field/zone khác
+        // ─── [CODE CŨ]: Private Farm Structure: truy vấn toàn bộ các Field và Zone khác trong Farm ──
+        /*
         AiFarmStructureContext? farmStructure = null;
         if (includeFarmStructure)
         {
@@ -452,6 +487,10 @@ public sealed class AiAdvisoryService(
             farmStructure = new AiFarmStructureContext(
                 zone.Field.FarmId, zone.Field.Farm.Name, totalTenantArea > 0 ? totalTenantArea : zone.Field.Farm.TotalAreaM2, fieldItems);
         }
+        */
+
+        // ─── [CODE MỚI]: Giới hạn nghiêm ngặt chỉ lấy ngữ cảnh của đúng Zone này, không lấy Field hay Farm ──
+        AiFarmStructureContext? farmStructure = null;
 
         return new AiZoneContext(
             zone.Field.FarmId, zone.Field.Farm.Name, zone.Field.Farm.TimeZone, zone.FieldId, zone.Field.Name, zone.Id, zone.Name, zone.AreaM2,
@@ -464,8 +503,9 @@ public sealed class AiAdvisoryService(
             upcomingSchedules,
             new AiWeatherContext(weather.Available, weather.Summary, weather.RainProbabilityNext6HoursMaxPercent, weather.TemperatureCelsius, weather.ObservedAtUtc, weather.Limitation),
             missing,
-            missing.Count == 0,
-            farmStructure);
+            !missing.Contains("active planting season") && !missing.Contains("fresh telemetry"),
+            farmStructure,
+            telemetryHistory);
     }
 
 
@@ -684,7 +724,7 @@ public sealed class AiAdvisoryService(
                     return sProp.EnumerateArray()
                         .Select(e => e.GetString())
                         .Where(s => !string.IsNullOrWhiteSpace(s))
-                        .Select(s => new AiSourceView(Guid.Empty, s!, null, "VietGAP", 0.9f))
+                        .Select(s => new AiSourceView(Guid.Empty, s!, null, "VietGAP", 0.0f))
                         .ToList();
                 }
             }
@@ -697,10 +737,29 @@ public sealed class AiAdvisoryService(
     private static bool IsRealtimeTelemetryOrControlQuestion(string question)
     {
         var q = question.ToLowerInvariant();
-        return q.Contains("hiện tại") || q.Contains("bây giờ") || q.Contains("hôm nay") ||
-               q.Contains("thế nào") || q.Contains("bao nhiêu") || q.Contains("đo được") ||
-               q.Contains("tưới không") || q.Contains("có nên tưới") || q.Contains("bật") ||
-               q.Contains("tắt") || q.Contains("điều khiển") || q.Contains("thời tiết");
+        
+        // 1. Ý định điều khiển thiết bị hoặc quyết định tưới
+        if (q.Contains("có nên tưới") || q.Contains("tưới không") || q.Contains("cần tưới") ||
+            q.Contains("bật bơm") || q.Contains("bật máy bơm") || q.Contains("bật quạt") || q.Contains("bật tưới") ||
+            q.Contains("tắt bơm") || q.Contains("tắt máy bơm") || q.Contains("tắt quạt") ||
+            q.Contains("điều khiển bơm") || q.Contains("kích hoạt bơm") || q.Contains("vận hành thiết bị"))
+        {
+            return true;
+        }
+
+        // 2. Ý định xem số liệu cảm biến vi khí hậu đo đạc tức thời
+        if ((q.Contains("hiện tại") || q.Contains("bây giờ") || q.Contains("đang là")) &&
+            (q.Contains("nhiệt độ") || q.Contains("độ ẩm") || q.Contains("chỉ số") || q.Contains("thông số") || q.Contains("cảm biến")))
+        {
+            return true;
+        }
+
+        if (q.Contains("đo được") || q.Contains("cảm biến báo") || q.Contains("chỉ số đo"))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static AiRecommendationView ToView(AiRecommendation x) => new(

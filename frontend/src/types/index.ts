@@ -774,6 +774,8 @@ export interface AiSource {
   category: string;
   similarity?: number;
   similarityScore?: number;
+  contentSnippet?: string;
+  content?: string;
 }
 
 export interface AiRecommendationView {

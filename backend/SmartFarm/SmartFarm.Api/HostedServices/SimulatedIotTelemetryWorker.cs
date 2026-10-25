@@ -502,9 +502,9 @@ public sealed class SimulatedIotTelemetryWorker(
                         .OrderByDescending(a => a.CreatedAtUtc)
                         .FirstOrDefaultAsync(ct);
 
-                    if (recentAlert != null && recentAlert.CreatedAtUtc > now.AddMinutes(-5))
+                    if (recentAlert != null)
                     {
-                        // Đã có cảnh báo vừa gửi cách đây ít hơn 5 phút -> không spam
+                        // Đã có cảnh báo đang mở (Open hoặc Acknowledged) cho thông số này -> không tạo thêm cảnh báo mới để tránh spam chuông
                         continue;
                     }
 

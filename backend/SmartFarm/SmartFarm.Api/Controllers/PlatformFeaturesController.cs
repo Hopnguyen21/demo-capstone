@@ -22,8 +22,8 @@ public sealed class PlatformFeaturesController(
     [HttpGet("api/v1/audit-logs")]
     [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<AuditLogPagedResult>> GetAuditLogs(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50,
+        [FromQuery, Range(1, int.MaxValue)] int page = 1,
+        [FromQuery, Range(1, 100)] int pageSize = 50,
         [FromQuery] string? search = null,
         [FromQuery] string? action = null,
         [FromQuery] string? entity = null,

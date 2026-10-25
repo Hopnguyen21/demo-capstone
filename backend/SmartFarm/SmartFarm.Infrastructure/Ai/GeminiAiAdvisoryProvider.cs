@@ -20,7 +20,7 @@ public sealed class GeminiOptions
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int TimeoutSeconds { get; set; } = 30;
     public int MaxOutputTokens { get; set; } = 8192;
-    public int? ThinkingBudget { get; set; } = 0;
+    public int? ThinkingBudget { get; set; }
     public int MaxQuestionLength { get; set; } = 1000;
 }
 
@@ -56,7 +56,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
             ["responseMimeType"] = "application/json",
             ["responseSchema"] = AiPromptBuilder.ResponseSchema
         };
-        if (settings.ThinkingBudget.HasValue)
+        if (settings.ThinkingBudget is > 0)
             generationConfig["thinkingConfig"] = new { thinkingBudget = settings.ThinkingBudget.Value };
 
         var body = new

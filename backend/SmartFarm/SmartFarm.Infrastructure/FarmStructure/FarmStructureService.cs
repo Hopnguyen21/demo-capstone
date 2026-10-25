@@ -476,7 +476,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             throw new AuthorizationException("The user account is inactive or not found.");
         }
 
-        if (user.Role == UserRole.PlatformAdmin || user.Role == UserRole.PlatformTechnician)
+        if (user.Role is UserRole.PlatformAdmin or UserRole.PlatformTechnician)
         {
             return;
         }

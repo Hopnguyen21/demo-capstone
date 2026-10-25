@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartFarm.Api.Extensions;
@@ -14,8 +15,8 @@ public sealed class NotificationsController(INotificationService notificationSer
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<NotificationView>>> GetNotifications(
         [FromQuery] bool? isRead,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
+        [FromQuery, Range(1, int.MaxValue)] int page = 1,
+        [FromQuery, Range(1, 100)] int pageSize = 20,
         CancellationToken ct = default)
     {
         var userId = User.GetUserId();

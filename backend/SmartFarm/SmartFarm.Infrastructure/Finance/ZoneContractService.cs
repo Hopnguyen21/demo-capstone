@@ -185,7 +185,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         // If this replaces an existing contract, update parent contract status to Renewed
         if (command.ParentContractId.HasValue)
         {
-            var parent = await db.ZoneContracts.FirstOrDefaultAsync(c => c.Id == command.ParentContractId.Value && (tenantId == null || c.TenantId == tenantId.Value), ct);
+            var parent = await db.ZoneContracts.FirstOrDefaultAsync(c => c.Id == command.ParentContractId.Value && c.TenantId == effectiveTenantId, ct);
             if (parent != null && parent.Status != ZoneContractStatus.Renewed)
             {
                 parent.Status = ZoneContractStatus.Renewed;
@@ -281,6 +281,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         var query = db.ZoneContracts
             .Include(c => c.Farm)
             .Include(c => c.Zone)
+            .AsNoTracking()
             .Where(c => c.Status != ZoneContractStatus.Terminated 
                      && c.Status != ZoneContractStatus.Renewed 
                      && c.Status != ZoneContractStatus.Expired)
@@ -560,10 +561,17 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         );
     }
 
+    private static bool _contractsSeedChecked;
+    private static bool _deprecSeedChecked;
+
     private async Task EnsureSeedDataAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
-        if (!IsDevelopment()) return;
-        if (await db.ZoneContracts.AnyAsync(ct)) return;
+        if (!IsDevelopment() || _contractsSeedChecked) return;
+        if (await db.ZoneContracts.AnyAsync(ct))
+        {
+            _contractsSeedChecked = true;
+            return;
+        }
 
         var zonesQuery = db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsQueryable();
         if (tenantId.HasValue && tenantId.Value != Guid.Empty)
@@ -664,8 +672,12 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     private async Task EnsureSeedDepreciationsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
-        if (!IsDevelopment()) return;
-        if (await db.DeviceDepreciations.AnyAsync(ct)) return;
+        if (!IsDevelopment() || _deprecSeedChecked) return;
+        if (await db.DeviceDepreciations.AnyAsync(ct))
+        {
+            _deprecSeedChecked = true;
+            return;
+        }
 
         var zonesQuery = db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsQueryable();
         if (tenantId.HasValue && tenantId.Value != Guid.Empty)

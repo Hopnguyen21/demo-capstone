@@ -5,6 +5,7 @@ using SmartFarm.Domain.Enums;
 namespace SmartFarm.Application.Features.Ai;
 
 public sealed record AiTelemetryContextItem(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc, bool IsFresh);
+public sealed record AiTelemetryHistoryItem(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc);
 public sealed record AiRequirementContextItem(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
 public sealed record AiActuatorContextItem(Guid ActuatorId, string ActuatorType, int MaxDurationSeconds, bool IsOnline);
 public sealed record AiUpcomingScheduleContextItem(string Name, DateTime NextRunAtUtc, string NextRunTimeFormatted, int DurationSeconds, int MinutesUntilRun);
@@ -32,11 +33,12 @@ public sealed record AiZoneContext(
     AiWeatherContext Weather,
     IReadOnlyList<string> MissingData,
     bool IsSufficientForAdvice,
-    AiFarmStructureContext? FarmStructure = null);
+    AiFarmStructureContext? FarmStructure = null,
+    IReadOnlyList<AiTelemetryHistoryItem>? TelemetryHistory = null);
 
 
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);
-public sealed record AiSourceView(Guid DocumentId, string Title, string? Organization, string Category, float Similarity);
+public sealed record AiSourceView(Guid DocumentId, string Title, string? Organization, string Category, float Similarity, string? ContentSnippet = null);
 public sealed record AiProviderRequest(
     string Question,
     AiZoneContext Context,

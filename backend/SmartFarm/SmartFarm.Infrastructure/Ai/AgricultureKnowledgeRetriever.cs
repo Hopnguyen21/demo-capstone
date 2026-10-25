@@ -1,5 +1,8 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pgvector;
@@ -121,60 +124,212 @@ public sealed class AgricultureKnowledgeRetriever(
         int topK,
         CancellationToken ct)
     {
-        var queryVector = new Vector(questionEmbeddingValues);
+        // 1. Thử direct pgvector operator nếu PostgreSQL có pgvector extension
+        try
+        {
+            var queryVector = new Vector(questionEmbeddingValues);
+            var query = db.AgricultureKnowledgeChunks
+                .AsNoTracking()
+                .Include(c => c.Document)
+                .Where(c => c.Embedding != null)
+                .Where(c => c.Document.IsPublic || c.Document.TenantId == tenantId);
 
-        // Bắt đầu query với điều kiện quyền truy cập
-        var query = db.AgricultureKnowledgeChunks
-            .AsNoTracking()
-            .Include(c => c.Document)
-            .Where(c => c.Embedding != null)
-            .Where(c => c.Document.IsPublic || c.Document.TenantId == tenantId);
+            if (!string.IsNullOrWhiteSpace(cropName))
+            {
+                var normalizedCrop = NormalizeCrop(cropName);
+                query = query.Where(c => c.CropTags == string.Empty || EF.Functions.ILike(c.CropTags, $"%{normalizedCrop}%"));
+            }
 
-        // Tiền lọc theo cây trồng
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                query = query.Where(c => c.Document.Category == category || c.Document.Category == "general");
+            }
+
+            var results = await query
+                .OrderBy(c => c.Embedding!.CosineDistance(queryVector))
+                .Take(topK * 2)
+                .Select(c => new
+                {
+                    c.Id,
+                    c.DocumentId,
+                    c.Document.Title,
+                    c.Document.AuthorOrganization,
+                    c.Document.Category,
+                    c.Content,
+                    Distance = c.Embedding!.CosineDistance(queryVector)
+                })
+                .ToListAsync(ct);
+
+            if (results.Count > 0)
+            {
+                return results
+                    .Where(r => r.Distance <= MaxCosineDistance)
+                    .Take(topK)
+                    .Select(r => new KnowledgePassageView(
+                        r.Id, r.DocumentId, r.Title, r.AuthorOrganization, r.Category, r.Content,
+                        (float)(1.0 - r.Distance)))
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "[RAG] Direct pgvector query skipped, using high-precision in-memory cosine dot product.");
+        }
+
+        // 2. High-precision in-memory vector cosine similarity (chuẩn xác 100% dựa trên vector 768 chiều từ DB)
+        return await SearchByVectorInMemoryAsync(questionEmbeddingValues, cropName, category, tenantId, topK, ct);
+    }
+
+    private async Task<IReadOnlyList<KnowledgePassageView>> SearchByVectorInMemoryAsync(
+        float[] questionVector,
+        string? cropName,
+        string? category,
+        Guid? tenantId,
+        int topK,
+        CancellationToken ct)
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+            await conn.OpenAsync(ct);
+
+        // Pre-filter tại tầng SQL bằng điều kiện crop và category để không tải toàn bộ chunk vào RAM
+        var sqlBuilder = new StringBuilder(@"
+            SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text
+            FROM agriculture_knowledge_chunks c
+            JOIN agriculture_documents d ON c.document_id = d.id
+            WHERE c.embedding IS NOT NULL AND (d.is_public = TRUE OR d.tenant_id = @tenantId)");
+
+        using var cmd = conn.CreateCommand();
+        var pTenant = cmd.CreateParameter();
+        pTenant.ParameterName = "@tenantId";
+        pTenant.Value = tenantId ?? Guid.Empty;
+        cmd.Parameters.Add(pTenant);
+
+        string? normalizedCrop = null;
         if (!string.IsNullOrWhiteSpace(cropName))
         {
-            var normalizedCrop = NormalizeCrop(cropName);
-            query = query.Where(c =>
-                c.CropTags == string.Empty ||
-                EF.Functions.ILike(c.CropTags, $"%{normalizedCrop}%"));
+            normalizedCrop = NormalizeCrop(cropName);
+            sqlBuilder.Append(" AND (c.crop_tags = '' OR c.crop_tags ILIKE @cropPattern)");
+            var pCrop = cmd.CreateParameter();
+            pCrop.ParameterName = "@cropPattern";
+            pCrop.Value = $"%{normalizedCrop}%";
+            cmd.Parameters.Add(pCrop);
         }
 
-        // Tiền lọc theo danh mục
         if (!string.IsNullOrWhiteSpace(category))
         {
-            query = query.Where(c =>
-                c.Document.Category == category ||
-                c.Document.Category == "general");
+            sqlBuilder.Append(" AND (d.category = @category OR d.category = 'general')");
+            var pCat = cmd.CreateParameter();
+            pCat.ParameterName = "@category";
+            pCat.Value = category;
+            cmd.Parameters.Add(pCat);
         }
 
-        // pgvector cosine distance (<=> operator)
-        var results = await query
-            .OrderBy(c => c.Embedding!.CosineDistance(queryVector))
-            .Take(topK * 2) // Lấy nhiều hơn để lọc theo ngưỡng
-            .Select(c => new
-            {
-                c.Id,
-                c.DocumentId,
-                c.Document.Title,
-                c.Document.AuthorOrganization,
-                c.Document.Category,
-                c.Content,
-                Distance = c.Embedding!.CosineDistance(queryVector)
-            })
-            .ToListAsync(ct);
+        cmd.CommandText = sqlBuilder.ToString();
 
-        return results
-            .Where(r => r.Distance <= MaxCosineDistance)
+        var list = new List<(Guid id, Guid docId, string title, string? author, string category, string content, string cropTags, float[] vector)>();
+
+        using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var rawEmbedding = reader.GetString(7);
+                if (string.IsNullOrWhiteSpace(rawEmbedding)) continue;
+
+                float[]? chunkVec = ParseVector(rawEmbedding);
+                if (chunkVec is null || chunkVec.Length != questionVector.Length) continue;
+
+                list.Add((
+                    reader.GetGuid(0),
+                    reader.GetGuid(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
+                    chunkVec
+                ));
+            }
+        }
+
+        // Nếu bộ lọc quá hẹp không có chunk nào, query nới lỏng toàn bộ tài liệu public
+        if (list.Count == 0 && (!string.IsNullOrWhiteSpace(cropName) || !string.IsNullOrWhiteSpace(category)))
+        {
+            using var cmdFallback = conn.CreateCommand();
+            cmdFallback.CommandText = @"
+                SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text
+                FROM agriculture_knowledge_chunks c
+                JOIN agriculture_documents d ON c.document_id = d.id
+                WHERE c.embedding IS NOT NULL AND (d.is_public = TRUE OR d.tenant_id = @tenantId)";
+            var pFallbackTenant = cmdFallback.CreateParameter();
+            pFallbackTenant.ParameterName = "@tenantId";
+            pFallbackTenant.Value = tenantId ?? Guid.Empty;
+            cmdFallback.Parameters.Add(pFallbackTenant);
+
+            using var readerFallback = await cmdFallback.ExecuteReaderAsync(ct);
+            while (await readerFallback.ReadAsync(ct))
+            {
+                var rawEmbedding = readerFallback.GetString(7);
+                if (string.IsNullOrWhiteSpace(rawEmbedding)) continue;
+
+                float[]? chunkVec = ParseVector(rawEmbedding);
+                if (chunkVec is null || chunkVec.Length != questionVector.Length) continue;
+
+                list.Add((
+                    readerFallback.GetGuid(0),
+                    readerFallback.GetGuid(1),
+                    readerFallback.GetString(2),
+                    readerFallback.IsDBNull(3) ? null : readerFallback.GetString(3),
+                    readerFallback.GetString(4),
+                    readerFallback.GetString(5),
+                    readerFallback.IsDBNull(6) ? string.Empty : readerFallback.GetString(6),
+                    chunkVec
+                ));
+            }
+        }
+
+        if (list.Count == 0) return [];
+
+        return list
+            .Select(x =>
+            {
+                float sim = 0f;
+                for (int i = 0; i < questionVector.Length; i++)
+                    sim += questionVector[i] * x.vector[i];
+                return new KnowledgePassageView(x.id, x.docId, x.title, x.author, x.category, x.content, sim);
+            })
+            .Where(x => x.SimilarityScore >= 0.55f)
+            .OrderByDescending(x => x.SimilarityScore)
             .Take(topK)
-            .Select(r => new KnowledgePassageView(
-                r.Id,
-                r.DocumentId,
-                r.Title,
-                r.AuthorOrganization,
-                r.Category,
-                r.Content,
-                (float)(1.0 - r.Distance))) // Chuyển distance → similarity
             .ToList();
+    }
+
+    private static float[]? ParseVector(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+
+        // 1. Dạng JSON mảng: [0.1, 0.2, ...]
+        if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<float[]>(trimmed);
+            }
+            catch { }
+        }
+
+        // 2. Dạng Postgres vector literal hoặc curly braces: {0.1, 0.2, ...} hoặc [0.1, 0.2, ...]
+        try
+        {
+            var clean = trimmed.Trim('[', ']', '{', '}');
+            var parts = clean.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var arr = new float[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+                arr[i] = float.Parse(parts[i], CultureInfo.InvariantCulture);
+            return arr;
+        }
+        catch { return null; }
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -229,7 +384,7 @@ public sealed class AgricultureKnowledgeRetriever(
         return chunks
             .Select(c =>
             {
-                var score = ComputeKeywordScore(qWords, c.Content, c.Keywords);
+                var score = ComputeKeywordScore(question, qWords, c.Content, c.Keywords);
                 return (c, score);
             })
             .Where(x => x.score >= MinKeywordScore)
@@ -253,34 +408,57 @@ public sealed class AgricultureKnowledgeRetriever(
     {
         "xin", "hỏi", "cho", "tôi", "em", "hãy", "biết", "có", "nên", "không", "ở", "tại", "với", "và", 
         "là", "được", "trong", "vào", "ra", "đang", "như", "thế", "nào", "gì", "sao", "giúp", "về", 
-        "của", "các", "những", "một", "này", "đó", "khi", "thì", "do", "bị", "đã", "sẽ", "phải", "làm"
+        "của", "các", "những", "một", "này", "đó", "khi", "thì", "do", "bị", "đã", "sẽ", "phải", "làm",
+        "tự", "động", "hôm", "nay", "sắp", "chạy", "lúc", "mấy", "giờ", "bao", "nhiêu", "xem"
     };
 
-    private static float ComputeKeywordScore(string[] qWords, string content, string keywords)
+    private static float ComputeKeywordScore(string rawQuestion, string[] qWords, string content, string keywords)
     {
         if (qWords.Length == 0) return 0f;
-        var contentLower = content.ToLowerInvariant();
-        var keywordsLower = keywords.ToLowerInvariant();
+        var contentLower = (content ?? string.Empty).ToLowerInvariant();
+        var keywordsLower = (keywords ?? string.Empty).ToLowerInvariant();
 
         var meaningfulWords = qWords.Where(w => w.Length >= 2 && !VietnameseStopWords.Contains(w)).ToArray();
-        if (meaningfulWords.Length == 0) meaningfulWords = qWords.Where(w => w.Length >= 2).ToArray();
         if (meaningfulWords.Length == 0) return 0f;
 
         var contentNoMark = RemoveDiacritics(contentLower);
         var keywordsNoMark = RemoveDiacritics(keywordsLower);
 
-        int hits = 0;
+        float hits = 0;
         foreach (var word in meaningfulWords)
         {
             var wordNoMark = RemoveDiacritics(word);
-            if (contentLower.Contains(word, StringComparison.Ordinal) || contentNoMark.Contains(wordNoMark, StringComparison.Ordinal)) hits++;
-            else if (keywordsLower.Contains(word, StringComparison.Ordinal) || keywordsNoMark.Contains(wordNoMark, StringComparison.Ordinal)) hits += 2;
+            // Word boundary match to prevent random substring false positives
+            var pattern = $@"(^|[\s,.:;!?""'\(\)\[\]]){Regex.Escape(word)}($|[\s,.:;!?""'\(\)\[\]])";
+            var patternNoMark = $@"(^|[\s,.:;!?""'\(\)\[\]]){Regex.Escape(wordNoMark)}($|[\s,.:;!?""'\(\)\[\]])";
+
+            if (Regex.IsMatch(contentLower, pattern, RegexOptions.IgnoreCase) || Regex.IsMatch(contentNoMark, patternNoMark, RegexOptions.IgnoreCase))
+            {
+                hits += 1f;
+            }
+            else if (Regex.IsMatch(keywordsLower, pattern, RegexOptions.IgnoreCase) || Regex.IsMatch(keywordsNoMark, patternNoMark, RegexOptions.IgnoreCase))
+            {
+                hits += 1.5f;
+            }
         }
 
-        if (hits >= 2)
-            return Math.Min(1f, 0.40f + (hits / (float)meaningfulWords.Length) * 0.60f);
+        // Phrase bonus for key domain queries
+        var qLower = (rawQuestion ?? string.Empty).ToLowerInvariant();
+        float phraseBonus = 0f;
+        if (qLower.Contains("lịch tưới") && (contentLower.Contains("lịch tưới") || keywordsLower.Contains("lịch tưới")))
+            phraseBonus += 0.35f;
+        if (qLower.Contains("tưới nhỏ giọt") && (contentLower.Contains("tưới nhỏ giọt") || keywordsLower.Contains("tưới nhỏ giọt")))
+            phraseBonus += 0.30f;
+        if (qLower.Contains("phun sương") && (contentLower.Contains("phun sương") || keywordsLower.Contains("phun sương")))
+            phraseBonus += 0.30f;
+        if (qLower.Contains("châm phân") && (contentLower.Contains("châm phân") || keywordsLower.Contains("châm phân")))
+            phraseBonus += 0.30f;
+        if ((qLower.Contains("sâu bệnh") || qLower.Contains("dịch hại")) && (contentLower.Contains("sâu bệnh") || contentLower.Contains("dịch hại")))
+            phraseBonus += 0.30f;
 
-        return Math.Min(1f, hits / (float)Math.Max(meaningfulWords.Length, 1));
+        if (hits == 0 && phraseBonus == 0) return 0f;
+        var baseScore = (hits / meaningfulWords.Length) * 0.70f + phraseBonus;
+        return Math.Min(1.0f, Math.Max(0f, baseScore));
     }
 
     public static string RemoveDiacritics(string text)

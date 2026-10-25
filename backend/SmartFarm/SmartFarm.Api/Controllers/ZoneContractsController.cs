@@ -9,12 +9,23 @@ namespace SmartFarm.Api.Controllers;
 [Authorize]
 public sealed class ZoneContractsController(IZoneContractService contractService) : ControllerBase
 {
+    private Guid? GetEnforcedTenantId()
+    {
+        var isPlatformAdmin = User.IsInRole("PlatformAdmin");
+        var tenantId = User.GetOptionalTenantId();
+        if (!isPlatformAdmin && (!tenantId.HasValue || tenantId.Value == Guid.Empty))
+        {
+            throw new UnauthorizedAccessException("Tài khoản yêu cầu TenantId hợp lệ để truy cập tài nguyên tài chính hợp đồng.");
+        }
+        return isPlatformAdmin ? tenantId : tenantId!.Value;
+    }
+
     /// <summary>Danh sách tất cả hợp đồng Zone</summary>
     [HttpGet("api/v1/zone-contracts")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<ZoneContractView>>> GetAll(CancellationToken ct)
     {
-        return Ok(await contractService.GetAllContractsAsync(User.GetUserId(), User.GetOptionalTenantId(), ct));
+        return Ok(await contractService.GetAllContractsAsync(User.GetUserId(), GetEnforcedTenantId(), ct));
     }
 
     /// <summary>Danh sách hợp đồng thuộc Farm</summary>
@@ -22,7 +33,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<ZoneContractView>>> GetByFarm(Guid farmId, CancellationToken ct)
     {
-        return Ok(await contractService.GetContractsByFarmAsync(User.GetUserId(), User.GetOptionalTenantId(), farmId, ct));
+        return Ok(await contractService.GetContractsByFarmAsync(User.GetUserId(), GetEnforcedTenantId(), farmId, ct));
     }
 
     /// <summary>Lịch sử hợp đồng của từng Zone (Contract History)</summary>
@@ -30,7 +41,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<ZoneContractView>>> GetByZone(Guid zoneId, CancellationToken ct)
     {
-        return Ok(await contractService.GetContractsByZoneAsync(User.GetUserId(), User.GetOptionalTenantId(), zoneId, ct));
+        return Ok(await contractService.GetContractsByZoneAsync(User.GetUserId(), GetEnforcedTenantId(), zoneId, ct));
     }
 
     /// <summary>Xem chi tiết một hợp đồng</summary>
@@ -38,7 +49,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<ZoneContractView>> GetById(Guid id, CancellationToken ct)
     {
-        return Ok(await contractService.GetContractByIdAsync(User.GetUserId(), User.GetOptionalTenantId(), id, ct));
+        return Ok(await contractService.GetContractByIdAsync(User.GetUserId(), GetEnforcedTenantId(), id, ct));
     }
 
     /// <summary>Tạo hợp đồng mới cho Zone (hỗ trợ liên kết ParentContractId cho khách hàng cũ kèm chiết khấu)</summary>
@@ -51,7 +62,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     {
         var result = await contractService.CreateContractAsync(
             User.GetUserId(),
-            User.GetOptionalTenantId(),
+            GetEnforcedTenantId(),
             zoneId,
             command,
             ct);
@@ -66,7 +77,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
         [FromBody] RenewZoneContractCommand command,
         CancellationToken ct)
     {
-        return Ok(await contractService.RenewContractAsync(User.GetUserId(), User.GetOptionalTenantId(), id, command, ct));
+        return Ok(await contractService.RenewContractAsync(User.GetUserId(), GetEnforcedTenantId(), id, command, ct));
     }
 
     /// <summary>Cảnh báo các hợp đồng sắp hết hạn (mặc định nhắc trước ít nhất 30 ngày)</summary>
@@ -77,7 +88,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
         [FromQuery] int daysThreshold = 30,
         CancellationToken ct = default)
     {
-        return Ok(await contractService.GetExpiringContractsAsync(User.GetUserId(), User.GetOptionalTenantId(), farmId, daysThreshold, ct));
+        return Ok(await contractService.GetExpiringContractsAsync(User.GetUserId(), GetEnforcedTenantId(), farmId, daysThreshold, ct));
     }
 
     /// <summary>Danh sách khấu hao thiết bị theo Zone</summary>
@@ -85,7 +96,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<DeviceDepreciationView>>> GetDepreciationsByZone(Guid zoneId, CancellationToken ct)
     {
-        return Ok(await contractService.GetDepreciationsByZoneAsync(User.GetUserId(), User.GetOptionalTenantId(), zoneId, ct));
+        return Ok(await contractService.GetDepreciationsByZoneAsync(User.GetUserId(), GetEnforcedTenantId(), zoneId, ct));
     }
 
     /// <summary>Danh sách khấu hao thiết bị theo Farm</summary>
@@ -93,7 +104,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<DeviceDepreciationView>>> GetDepreciationsByFarm(Guid farmId, CancellationToken ct)
     {
-        return Ok(await contractService.GetDepreciationsByFarmAsync(User.GetUserId(), User.GetOptionalTenantId(), farmId, ct));
+        return Ok(await contractService.GetDepreciationsByFarmAsync(User.GetUserId(), GetEnforcedTenantId(), farmId, ct));
     }
 
     /// <summary>Thêm hồ sơ khấu hao thiết bị cho Zone</summary>
@@ -106,7 +117,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     {
         var result = await contractService.CreateDepreciationAsync(
             User.GetUserId(),
-            User.GetOptionalTenantId(),
+            GetEnforcedTenantId(),
             zoneId,
             command,
             ct);

@@ -86,6 +86,15 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddOptions<GeminiOptions>()
             .Bind(configuration.GetSection(GeminiOptions.SectionName))
+            .PostConfigure(opts =>
+            {
+                if (string.IsNullOrWhiteSpace(opts.ApiKey))
+                {
+                    opts.ApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+                               ?? Environment.GetEnvironmentVariable("Gemini__ApiKey")
+                               ?? string.Empty;
+                }
+            })
             .Validate(x => string.IsNullOrWhiteSpace(x.ApiKey) || !string.IsNullOrWhiteSpace(x.Model), "Gemini:Model is required when an API key is configured.")
             .Validate(x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps, "Gemini:BaseUrl must be an absolute HTTPS URL.")
             .Validate(x => x.TimeoutSeconds is >= 1 and <= 120, "Gemini:TimeoutSeconds must be between 1 and 120.")
