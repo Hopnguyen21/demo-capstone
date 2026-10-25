@@ -7,7 +7,7 @@ public sealed record UpdateFinanceCommand(decimal Amount, DateTime OccurredAtUtc
 public sealed record FinanceTransactionView(Guid Id, Guid FarmId, FinanceTransactionType Type, ExpenseCategory? ExpenseCategory, decimal Amount, DateTime OccurredAtUtc, string Description, string? Reference, DateTime CreatedAtUtc);
 public sealed record CashFlowReportView(Guid FarmId, DateTime? FromUtc, DateTime? ToUtc, decimal Revenue, decimal Expense, decimal NetCashFlow, IReadOnlyDictionary<ExpenseCategory, decimal> ExpensesByCategory);
 
-public sealed record CreateServiceRequestCommand(Guid ZoneId, Guid DeviceId, string FailureCode, string Description);
+public sealed record CreateServiceRequestCommand(Guid ZoneId, Guid? DeviceId, string FailureCode, string Description);
 public sealed record AssignServiceRequestCommand(Guid TechnicianUserId, string? Notes);
 public sealed record DiagnoseServiceRequestCommand(string InspectionNotes, string Diagnosis, ServiceResolutionAction ResolutionAction);
 public sealed record RecordServiceWorkCommand(string WorkPerformed);

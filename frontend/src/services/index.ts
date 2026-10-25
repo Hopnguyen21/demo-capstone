@@ -1505,13 +1505,11 @@ export const supportService = {
         }
       } catch { }
     }
-    if (!deviceId) deviceId = '52000000-0000-0000-0000-000000000002';
-
     const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
-      zoneId: data.zoneId || '32000000-0000-0000-0000-000000000001',
-      deviceId,
-      failureCode: data.failureCode || data.requestType || 'MAINTENANCE',
-      description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Owner Portal',
+      zoneId: data.zoneId,
+      deviceId: deviceId || null,
+      failureCode: data.failureCode || data.requestType || 'NEW_INSTALL',
+      description: data.description || data.title || 'Yêu cầu lắp đặt thiết bị IoT từ Owner Portal',
     });
     return res.data;
   },
@@ -1656,18 +1654,34 @@ export const supportService = {
     const zoneId = zoneIdOrRequestId;
     const reqId = serviceRequestId || (typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined);
 
-    const formattedNodes = nodes.map((n: any, idx: number) => {
+    const generateUUID = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
+    const formattedNodes = nodes.map((n: any) => {
       let devId = n.deviceId || n.nodeId || n.id;
       const isGuid = typeof devId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(devId);
       if (!isGuid) {
-        devId = `52000000-0000-0000-0000-${String(idx + 1).padStart(12, '0')}`;
+        devId = generateUUID();
       }
+      const isActuator = (n.actuatorsCount && n.actuatorsCount > 0)
+        || (n.nodeCode && (n.nodeCode.includes('VALVE') || n.nodeCode.includes('PUMP')))
+        || (n.name && (n.name.includes('Van') || n.name.includes('Bơm')));
+
       return {
         deviceId: devId,
         latitude: typeof n.latitude === 'number' ? n.latitude : (typeof n.lat === 'number' ? n.lat : 11.9404),
         longitude: typeof n.longitude === 'number' ? n.longitude : (typeof n.lng === 'number' ? n.lng : 108.4583),
         batteryLevel: n.batteryLevel ?? 100,
-        rssi: n.rssi ?? -70
+        rssi: n.rssi ?? -70,
+        hardwareAddress: n.serialNumber || n.nodeCode,
+        deviceType: isActuator ? 'ActuatorNode' : 'SensorNode',
+        deviceName: n.name
       };
     });
 
@@ -1939,7 +1953,14 @@ export const zoneContractService = {
   getDepreciationsByZone: async (zoneId: string): Promise<any[]> => {
     try {
       const res = await apiClient.get(`/api/v1/zones/${zoneId}/depreciations`);
-      return res.data ?? [];
+      const raw = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      return list.map((d: any) => ({
+        ...d,
+        status: d.depreciationStatus || d.status || 'Active',
+        depreciationStatus: d.depreciationStatus || d.status || 'Active',
+        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths ?? 24,
+      }));
     } catch {
       return [];
     }
@@ -1949,7 +1970,14 @@ export const zoneContractService = {
   getDepreciationsByFarm: async (farmId: string): Promise<any[]> => {
     try {
       const res = await apiClient.get(`/api/v1/farms/${farmId}/depreciations`);
-      return res.data ?? [];
+      const raw = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      return list.map((d: any) => ({
+        ...d,
+        status: d.depreciationStatus || d.status || 'Active',
+        depreciationStatus: d.depreciationStatus || d.status || 'Active',
+        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths ?? 24,
+      }));
     } catch {
       return [];
     }
@@ -1958,7 +1986,16 @@ export const zoneContractService = {
   /** POST /api/v1/zones/{zoneId}/depreciations */
   createDepreciation: async (zoneId: string, data: any): Promise<any> => {
     const res = await apiClient.post(`/api/v1/zones/${zoneId}/depreciations`, data);
-    return res.data;
+    const d = res.data?.value ?? res.data;
+    if (d) {
+      return {
+        ...d,
+        status: d.depreciationStatus || d.status || 'Active',
+        depreciationStatus: d.depreciationStatus || d.status || 'Active',
+        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths ?? 24,
+      };
+    }
+    return d;
   },
 };
 

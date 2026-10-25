@@ -14,7 +14,7 @@ export const ProvisioningPage: React.FC = () => {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [selectedRequestForExperiment, setSelectedRequestForExperiment] = useState<ServiceRequest | null>(null);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
-  const [selectedHardwareItems, setSelectedHardwareItems] = useState<HardwareItem[]>([]);
+  const [selectedHardwareItems, setSelectedHardwareItems] = useState<any[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // QR Provisioning tool state
@@ -254,7 +254,10 @@ export const ProvisioningPage: React.FC = () => {
 
                     {/* BUTTON 2: SỬA / CHẤM BIỂU ĐỒ GIS CHO REQUEST (TECHNICIAN CAN ALWAYS EDIT GIS) */}
                     <Button
-                      onClick={() => setSelectedRequestForMapper(req)}
+                      onClick={() => {
+                        setSelectedHardwareItems(req.contractDetails?.items || []);
+                        setSelectedRequestForMapper(req);
+                      }}
                       className="bg-sky-700 hover:bg-sky-800 text-white font-bold flex items-center gap-1.5 shadow-sm"
                     >
                       <Layers size={15} className="text-sky-300" />
@@ -264,7 +267,10 @@ export const ProvisioningPage: React.FC = () => {
                     {/* BUTTON 2B: THỰC ĐỊA CHẤM NODE KHI OWNER ĐÃ CỌC 30% */}
                     {is30Paid ? (
                       <Button
-                        onClick={() => setSelectedRequestForMapper(req)}
+                        onClick={() => {
+                          setSelectedHardwareItems(req.contractDetails?.items || []);
+                          setSelectedRequestForMapper(req);
+                        }}
                         className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex items-center gap-1.5 shadow-md border border-emerald-500/50 ring-2 ring-emerald-500/30 animate-pulse"
                       >
                         <MapPin size={15} className="text-emerald-300" />
@@ -328,7 +334,7 @@ export const ProvisioningPage: React.FC = () => {
           isOpen={Boolean(selectedRequestForMapper)}
           onClose={() => setSelectedRequestForMapper(null)}
           request={selectedRequestForMapper}
-          selectedHardwareItems={selectedHardwareItems}
+          selectedHardwareItems={selectedHardwareItems.length > 0 ? selectedHardwareItems : (selectedRequestForMapper.contractDetails?.items || [])}
           onSaveMapping={(nodes, count) => handleSaveMapping(selectedRequestForMapper.serviceRequestId, nodes, count)}
         />
       )}

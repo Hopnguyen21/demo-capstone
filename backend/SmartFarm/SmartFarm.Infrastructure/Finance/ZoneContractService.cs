@@ -389,11 +389,32 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         }
 
         var device = await db.Devices.FirstOrDefaultAsync(d => d.Id == command.DeviceId, ct)
-            ?? throw new KeyNotFoundException($"Không tìm thấy thiết bị #{command.DeviceId}");
+                  ?? await db.Devices.FirstOrDefaultAsync(d => d.ZoneId == zoneId, ct);
 
-        if (device.ZoneId != zoneId)
+        if (device == null)
         {
-            throw new InvalidOperationException("Thiết bị không thuộc phân khu được chọn.");
+            var gw = await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == zone.Field.FarmId, ct)
+                  ?? await db.Gateways.FirstOrDefaultAsync(ct);
+            var depReq = await db.DeploymentRequests.FirstOrDefaultAsync(r => r.ZoneId == zoneId, ct)
+                      ?? await db.DeploymentRequests.FirstOrDefaultAsync(ct);
+
+            device = new Device
+            {
+                FarmId = zone.Field.FarmId,
+                ZoneId = zoneId,
+                GatewayId = gw?.Id ?? Guid.Empty,
+                DeploymentRequestId = depReq?.Id ?? Guid.Empty,
+                DeviceType = DeviceType.SensorNode,
+                HardwareAddress = $"NODE-INSTALL-{Random.Shared.Next(100000, 999999)}",
+                Status = DeviceStatus.Online,
+                InstallationNotes = "Thiết bị trạm vi khí hậu phân khu tự động khởi tạo cho hồ sơ khấu hao"
+            };
+            db.Devices.Add(device);
+            await db.SaveChangesAsync(ct);
+        }
+        else if (device.ZoneId == null || device.ZoneId == Guid.Empty)
+        {
+            device.ZoneId = zoneId;
         }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
@@ -412,7 +433,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         {
             TenantId = effectiveTenantId,
             ZoneId = zoneId,
-            DeviceId = command.DeviceId,
+            DeviceId = device.Id,
             CreatedByOwnerId = ownerId,
             OriginalCostVnd = command.OriginalCostVnd,
             MonthlyDepreciationVnd = monthly,

@@ -140,21 +140,38 @@ public sealed class SimulatedIotTelemetryWorker(
                 else
                 {
                     // Tạo một virtual IoT device gắn vào zone
-                    device = new Device
+                    var simHw = $"SIM-NODE-{zone.Id.ToString()[..8].ToUpperInvariant()}";
+                    var existingDev = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == simHw, ct);
+                    if (existingDev != null)
                     {
-                        Id = Guid.NewGuid(),
-                        FarmId = farm.Id,
-                        GatewayId = gateway.Id,
-                        DeploymentRequestId = gateway.DeploymentRequestId,
-                        ZoneId = zone.Id,
-                        HardwareAddress = $"SIM-NODE-{zone.Id.ToString()[..8].ToUpperInvariant()}",
-                        DeviceType = DeviceType.SensorNode,
-                        Status = DeviceStatus.Online,
-                        InstallationNotes = "Auto-provisioned virtual IoT telemetry simulator node.",
-                        CreatedAtUtc = now
-                    };
-                    db.Devices.Add(device);
-                    await db.SaveChangesAsync(ct);
+                        device = existingDev;
+                    }
+                    else
+                    {
+                        device = new Device
+                        {
+                            Id = Guid.NewGuid(),
+                            FarmId = farm.Id,
+                            GatewayId = gateway.Id,
+                            DeploymentRequestId = gateway.DeploymentRequestId,
+                            ZoneId = zone.Id,
+                            HardwareAddress = simHw,
+                            DeviceType = DeviceType.SensorNode,
+                            Status = DeviceStatus.Online,
+                            InstallationNotes = "Auto-provisioned virtual IoT telemetry simulator node.",
+                            CreatedAtUtc = now
+                        };
+                        db.Devices.Add(device);
+                        try
+                        {
+                            await db.SaveChangesAsync(ct);
+                        }
+                        catch (DbUpdateException)
+                        {
+                            db.Entry(device).State = EntityState.Detached;
+                            device = await db.Devices.FirstOrDefaultAsync(d => d.ZoneId == zone.Id, ct);
+                        }
+                    }
                 }
             }
             else if (device == null && gateway == null)

@@ -116,6 +116,39 @@ export const FarmsPage: React.FC = () => {
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
 
+  // Auto drill-down to Zone when navigated from Service Request / Contract / GIS Map
+  useEffect(() => {
+    const state = location.state as any;
+    if (!state || (!state.zoneId && !state.farmId)) return;
+
+    if (zones.length > 0 && fields.length > 0 && farms.length > 0) {
+      if (state.zoneId) {
+        const targetZone = zones.find(z => z.zoneId === state.zoneId || (z as any).id === state.zoneId);
+        if (targetZone) {
+          const targetField = fields.find(f => f.fieldId === targetZone.fieldId || (f as any).id === targetZone.fieldId);
+          const targetFarm = farms.find(farm => farm.farmId === targetField?.farmId || (farm as any).id === targetField?.farmId);
+          if (targetFarm) setSelectedFarm(targetFarm);
+          if (targetField) setSelectedField(targetField);
+          setSelectedZone(targetZone);
+
+          if (state.openContract) {
+            setZoneActiveTab('CONTRACTS');
+          } else if (state.openDepreciation) {
+            setZoneActiveTab('DEPRECIATION');
+          } else {
+            setZoneActiveTab('OVERVIEW');
+          }
+          return;
+        }
+      }
+
+      if (state.farmId) {
+        const targetFarm = farms.find(f => f.farmId === state.farmId || (f as any).id === state.farmId);
+        if (targetFarm) setSelectedFarm(targetFarm);
+      }
+    }
+  }, [location.state, zones, fields, farms]);
+
   // Helper to find the active contract for a Zone
   const getZoneActiveContract = (zoneId: string): ZoneContract | undefined => {
     const list = allContracts.filter(c => c.zoneId === zoneId);
@@ -826,8 +859,9 @@ export const FarmsPage: React.FC = () => {
       alert('Vui lòng nhập tiêu đề yêu cầu lắp đặt!');
       return;
     }
-    const farmId = selectedFarm?.farmId || (installTargetField ? installTargetField.farmId : '30000000-0000-0000-0000-000000000001');
-    const zoneId = installTargetZone?.zoneId || (zones.find(z => z.farmId === farmId)?.zoneId || '32000000-0000-0000-0000-000000000001');
+    const farmId = selectedFarm?.farmId || (selectedFarm as any)?.id || (installTargetZone as any)?.farmId || (installTargetField ? (installTargetField.farmId || (installTargetField as any).id) : '30000000-0000-0000-0000-000000000001');
+    const zoneId = installTargetZone?.zoneId || (installTargetZone as any)?.id || selectedZone?.zoneId || (selectedZone as any)?.id || (zones.find(z => (z.farmId === farmId || (z as any).id === farmId))?.zoneId || (zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001'));
+
 
     if (installTargetZone) {
       const existingContract = getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id);
@@ -1535,103 +1569,148 @@ export const FarmsPage: React.FC = () => {
 
               {/* GIS Map Location of Zone & Telemetry */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-                {/* GIS Map Location of Zone */}
-                <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                        <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
-                      </h4>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
-                        </span>
-                        <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
+                {/* Left Column: GIS Map Location of Zone & Node Telemetry Return Directly Below */}
+                <div className="space-y-5">
+                  {/* Card 1: GIS Map Location of Zone */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                          <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
+                        </h4>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
+                          </span>
+                          <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      {!isEditingZoneGIS ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
-                          onClick={() => {
-                            setIsEditingZoneGIS(true);
-                            setZoneEditPolygon(currentZonePoints);
-                            setZoneEditCenter(currentZoneCenter);
-                          }}
-                        >
-                          <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
-                        </Button>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
+                      <div>
+                        {!isEditingZoneGIS ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs"
-                            onClick={() => setIsEditingZoneGIS(false)}
-                            disabled={isSavingZoneGIS}
+                            className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+                            onClick={() => {
+                              setIsEditingZoneGIS(true);
+                              setZoneEditPolygon(currentZonePoints);
+                              setZoneEditCenter(currentZoneCenter);
+                            }}
                           >
-                            Hủy
+                            <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
                           </Button>
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                            onClick={handleSaveZoneGIS}
-                            disabled={isSavingZoneGIS}
-                          >
-                            <Save size={13} className="mr-1" />
-                            {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
-                          </Button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => setIsEditingZoneGIS(false)}
+                              disabled={isSavingZoneGIS}
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                              onClick={handleSaveZoneGIS}
+                              disabled={isSavingZoneGIS}
+                            >
+                              <Save size={13} className="mr-1" />
+                              {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <GISLocationPicker
+                      level="ZONE"
+                      center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
+                      onCenterChange={setZoneEditCenter}
+                      polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
+                      onPolygonChange={setZoneEditPolygon}
+                      parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
+                      height="280px"
+                      readOnly={!isEditingZoneGIS}
+                    />
+                  </div>
+
+                  {/* Card 2: Thông tin Node & Cảm biến Trả về của Zone này (Đặt ngay dưới Vị trí GIS Map của Zone này) */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                        <Cpu size={16} className="text-[#119653]" /> Thông tin Node Cảm biến & Vi khí hậu Trả về (Live Telemetry)
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                        {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length} Node kết nối
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
+                        <div className="p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-xs space-y-2">
+                          <Radio size={24} className="mx-auto text-slate-400" />
+                          <div className="font-medium text-slate-700">Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.</div>
+                          <p className="text-[11px] text-slate-500">
+                            Bấm nút <strong>"Gửi yêu cầu lắp đặt thiết bị"</strong> ở trên để phòng Kỹ thuật khảo sát & gắn trạm Node cảm biến vi khí hậu vào Zone.
+                          </p>
                         </div>
+                      ) : (
+                        nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
+                          <div key={node.nodeId || node.deviceId || node.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                                  <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Trạm Cảm Biến IoT'}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono">
+                                  Mã: {node.nodeCode || node.hardwareAddress || 'NODE'} • Model: {node.model || node.deviceType || 'LoRa Sensor Node'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">
+                                  🔋 {node.batteryLevel ?? 92}%
+                                </span>
+                                <StatusBadge status={node.status || 'ONLINE'} />
+                              </div>
+                            </div>
+
+                            {/* Node Sensors / Telemetry Readings */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                              {(node.telemetry || node.sensors || [
+                                { label: 'Nhiệt độ', value: '27.4 °C' },
+                                { label: 'Độ ẩm KK', value: '72.0 %' },
+                                { label: 'Độ ẩm đất', value: '65.2 %' },
+                              ]).map((s: any, idx: number) => {
+                                const sLabel = typeof s === 'string' ? s : (s.label || s.sensorType || s.name || 'Sensor');
+                                const sVal = typeof s === 'string' ? 'Đang đọc' : (s.value || s.reading || (s.sensorType === 'AirTemperature' ? '27.4 °C' : s.sensorType === 'AirHumidity' ? '72.0 %' : 'Bình thường'));
+                                return (
+                                  <div key={idx} className="p-2 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
+                                    <span className="text-slate-600 text-[10px]">{sLabel}</span>
+                                    <strong className="text-slate-800 font-mono text-[11px]">{sVal}</strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
-
-                  <GISLocationPicker
-                    level="ZONE"
-                    center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
-                    onCenterChange={setZoneEditCenter}
-                    polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
-                    onPolygonChange={setZoneEditPolygon}
-                    parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
-                    height="280px"
-                    readOnly={!isEditingZoneGIS}
-                  />
                 </div>
 
-                {/* Right Column: Telemetry, Yield Tracking, and Employee Assignment */}
+                {/* Right Column: Crop Stage, Yield Tracking, and Employee Assignment */}
                 <div className="space-y-5">
-                  {/* Zone Telemetry & Connected Devices */}
-                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
+                  {/* Crop Info Card */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
                     <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                      <Cpu size={16} className="text-sky-700" /> Cảm biến LoRa & Cây trồng đang canh tác
+                      <Sprout size={16} className="text-[#119653]" /> Cây trồng & Giai đoạn Sinh trưởng
                     </h4>
 
                     <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
                       <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop || 'Chưa có dữ liệu'}</strong></div>
                       <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage || 'Chưa có dữ liệu'}</strong></div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
-                      {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
-                        <div className="p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-[11px]">
-                          Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.
-                        </div>
-                      ) : (
-                        nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
-                          <div key={node.nodeId || node.deviceId || node.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                            <div>
-                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                                <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Thiết bị IoT'}
-                              </div>
-                              <div className="text-[11px] text-slate-500">Mã: {node.nodeCode || node.hardwareAddress || node.deviceType || 'NODE'} • Pin: {node.batteryLevel ?? 92}%</div>
-                            </div>
-                            <StatusBadge status={node.status || 'ONLINE'} />
-                          </div>
-                        ))
-                      )}
                     </div>
                   </div>
 
@@ -2271,7 +2350,7 @@ export const FarmsPage: React.FC = () => {
                 <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
                   <div className="text-amber-700 font-medium text-[11px]">Tình Trạng Tuổi Thọ</div>
                   <div className="text-lg font-black text-amber-700 font-mono">
-                    {currentZoneDepreciations.filter(d => d.status === 'Active').length} / {currentZoneDepreciations.length}
+                    {currentZoneDepreciations.filter(d => (d.status === 'Active' || d.depreciationStatus === 'Active' || (d.remainingLifespanMonths ?? d.remainingMonths ?? 0) > 0)).length} / {currentZoneDepreciations.length}
                   </div>
                   <div className="text-[10px] text-slate-500">Thiết bị còn trong thời hạn sử dụng</div>
                 </div>
@@ -2395,6 +2474,7 @@ export const FarmsPage: React.FC = () => {
                 farmId={selectedFarm?.farmId}
                 fieldId={selectedField?.fieldId}
                 zoneId={selectedZone.zoneId}
+                nodes={nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id))}
                 title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
                 subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
               />

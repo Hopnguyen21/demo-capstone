@@ -34,7 +34,7 @@ public sealed class ServiceRequestsController(IServiceRequestService service) : 
     public async Task<ActionResult<ServiceRequestView>> Close(Guid id, CancellationToken ct) => Ok(await service.CloseAsync(User.GetUserId(), id, ct));
 }
 
-public sealed class CreateServiceRequest { public Guid ZoneId { get; init; } public Guid DeviceId { get; init; } [Required, StringLength(100)] public string FailureCode { get; init; } = ""; [Required, StringLength(2000)] public string Description { get; init; } = ""; }
+public sealed class CreateServiceRequest { public Guid ZoneId { get; init; } public Guid? DeviceId { get; init; } [Required, StringLength(100)] public string FailureCode { get; init; } = ""; [Required, StringLength(2000)] public string Description { get; init; } = ""; }
 public sealed class AssignServiceRequest { public Guid TechnicianUserId { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class DiagnoseServiceRequest { [Required, StringLength(2000)] public string InspectionNotes { get; init; } = ""; [Required, StringLength(2000)] public string Diagnosis { get; init; } = ""; public ServiceResolutionAction ResolutionAction { get; init; } }
 public sealed class ServiceWorkRequest { [Required, StringLength(2000)] public string WorkPerformed { get; init; } = ""; }
