@@ -38,6 +38,7 @@ public static class DataIntegrityHealer
                 if (crop.GrowthProfiles.Count == 0)
                 {
                     logger.LogInformation("[DataIntegrityHealer] Phát hiện Cây '{Crop}' chưa có GrowthProfile. Đang tự động bổ sung...", crop.Name);
+                    var isSys = crop.TenantId == null;
                     var newProfile = new GrowthProfile
                     {
                         Id = Guid.NewGuid(),
@@ -47,7 +48,7 @@ public static class DataIntegrityHealer
                         NormalizedName = $"quy-trinh-chuan-vietgap-{crop.NormalizedName}",
                         Description = $"Tiêu chuẩn vi khí hậu chuẩn VietGAP cho {crop.Name}",
                         IsDefault = true,
-                        IsSystemDefined = true,
+                        IsSystemDefined = isSys,
                         CreatedAtUtc = now
                     };
 
@@ -70,6 +71,7 @@ public static class DataIntegrityHealer
 
                     newProfile.Stages.Add(stage);
                     db.GrowthProfiles.Add(newProfile);
+                    crop.GrowthProfiles.Add(newProfile);
                     modified = true;
                 }
             }
@@ -91,6 +93,8 @@ public static class DataIntegrityHealer
                 .Where(s => s.Status == PlantingSeasonStatus.InProgress)
                 .ToListAsync(ct);
 
+            var activeFarmingSeason = await db.FarmingSeasons.FirstOrDefaultAsync(fs => fs.IsActive, ct);
+
             foreach (var zone in zones)
             {
                 var hasActive = activeSeasons.Any(s => s.ZoneId == zone.Id);
@@ -98,7 +102,7 @@ public static class DataIntegrityHealer
                 {
                     logger.LogInformation("[DataIntegrityHealer] Zone '{Zone}' chưa có vụ mùa hoạt động. Đang gán mùa vụ VietGAP...", zone.Name);
 
-                    var zoneLower = zone.Name.ToLowerInvariant();
+                    var zoneLower = (zone.Name + " " + (zone.Notes ?? "")).ToLowerInvariant();
                     var tenantId = zone.Field.Farm.TenantId;
                     var candidateCrops = crops.Where(c => c.TenantId == null || c.TenantId == tenantId).ToList();
                     Crop? matchedCrop = null;
@@ -113,11 +117,17 @@ public static class DataIntegrityHealer
                     else if (zoneLower.Contains("ớt") || zoneLower.Contains("ot") || zoneLower.Contains("pepper"))
                         matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Ớt", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Ot", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Pepper", StringComparison.OrdinalIgnoreCase));
 
+                    // NẾU KHÔNG KHỚP TỪ KHÓA: LẤY CÂY TRỒNG MẪU ĐẦU TIÊN (Ví dụ Cà chua hoặc Dưa leo VietGAP) THAY VÌ BỎ QUA
+                    matchedCrop ??= candidateCrops.FirstOrDefault(c => c.Name.Contains("Cà chua", StringComparison.OrdinalIgnoreCase)) ?? candidateCrops.FirstOrDefault();
+
                     if (matchedCrop is null) continue;
 
                     var variety = await db.CropVarieties.FirstOrDefaultAsync(v => v.CropId == matchedCrop.Id, ct);
                     var profile = await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements)
-                        .FirstOrDefaultAsync(p => p.CropId == matchedCrop.Id && (p.TenantId == null || p.TenantId == tenantId), ct);
+                        .FirstOrDefaultAsync(p => p.CropId == matchedCrop.Id && (p.TenantId == null || p.TenantId == tenantId), ct)
+                        ?? await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements)
+                        .FirstOrDefaultAsync(p => p.CropId == matchedCrop.Id, ct);
+
                     if (profile is null) continue;
 
                     var stage = profile.Stages.FirstOrDefault()
@@ -133,6 +143,7 @@ public static class DataIntegrityHealer
                         VarietyId = variety?.Id,
                         GrowthProfileId = profile.Id,
                         CurrentGrowthStageId = stage.Id,
+                        FarmingSeasonId = activeFarmingSeason?.Id,
                         Name = $"Vụ {matchedCrop.Name} {now.Year}",
                         StartDate = DateOnly.FromDateTime(now.AddDays(-15)),
                         ExpectedEndDate = DateOnly.FromDateTime(now.AddDays(75)),
@@ -140,6 +151,7 @@ public static class DataIntegrityHealer
                         CreatedAtUtc = now
                     };
                     db.PlantingSeasons.Add(season);
+                    activeSeasons.Add(season);
 
                     if (stage.Requirements.Count > 0)
                     {

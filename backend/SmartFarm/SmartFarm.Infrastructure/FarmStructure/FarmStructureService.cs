@@ -281,9 +281,14 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
     {
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
         await GetFieldEntityAsync(tenantId, fieldId, tracking: false, cancellationToken);
-        var query = dbContext.Zones.AsNoTracking().Where(x => x.FieldId == fieldId);
+        var query = dbContext.Zones.AsNoTracking()
+            .Include(x => x.Field)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
+            .Where(x => x.FieldId == fieldId);
         query = status.HasValue ? query.Where(x => x.Status == status) : query.Where(x => x.Status != ZoneStatus.Archived);
-        var zones = await query.Include(x => x.Field).OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        var zones = await query.OrderBy(x => x.Name).ToListAsync(cancellationToken);
         return zones.Select(x => ToZoneView(x, x.Field.FarmId)).ToList();
     }
 
@@ -292,7 +297,11 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
     {
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
         var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
-        var query = dbContext.Zones.AsNoTracking().Include(x => x.Field).ThenInclude(f => f.Farm)
+        var query = dbContext.Zones.AsNoTracking()
+            .Include(x => x.Field).ThenInclude(f => f.Farm)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
             .Where(x => x.ArchivedAtUtc == null);
         if (caller?.Role != UserRole.PlatformAdmin && caller?.Role != UserRole.PlatformTechnician)
         {
@@ -508,7 +517,11 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
 
     private async Task<Zone> GetZoneEntityAsync(Guid tenantId, Guid zoneId, bool tracking, CancellationToken cancellationToken)
     {
-        var query = dbContext.Zones.Include(x => x.Field).ThenInclude(x => x.Farm)
+        var query = dbContext.Zones
+            .Include(x => x.Field).ThenInclude(x => x.Farm)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
+            .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
             .Where(x => x.Id == zoneId && (tenantId == Guid.Empty || x.Field.Farm.TenantId == tenantId));
         if (!tracking) query = query.AsNoTracking();
         return await query.SingleOrDefaultAsync(cancellationToken)
@@ -529,9 +542,26 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         field.Latitude, field.Longitude, ParseJson(field.BoundaryGeoJson), zones,
         field.CreatedAtUtc, field.UpdatedAtUtc, field.ArchivedAtUtc);
 
-    private static ZoneView ToZoneView(Zone zone, Guid farmId) => new(
-        zone.Id, zone.FieldId, farmId, zone.Name, zone.AreaM2, zone.ZoneType, zone.Notes, zone.Status,
-        ParseJson(zone.BoundaryGeoJson), zone.CreatedAtUtc, zone.UpdatedAtUtc, zone.ArchivedAtUtc);
+    private static ZoneView ToZoneView(Zone zone, Guid farmId)
+    {
+        var activeSeason = zone.PlantingSeasons
+            .Where(ps => ps.Status == PlantingSeasonStatus.InProgress || ps.Status == PlantingSeasonStatus.Planned)
+            .OrderByDescending(ps => ps.StartDate)
+            .FirstOrDefault()
+            ?? zone.PlantingSeasons.OrderByDescending(ps => ps.StartDate).FirstOrDefault();
+
+        var cropName = activeSeason?.Crop?.Name;
+        var varietyName = activeSeason?.Variety?.Name;
+        var currentCrop = !string.IsNullOrWhiteSpace(cropName)
+            ? (!string.IsNullOrWhiteSpace(varietyName) && !varietyName.Equals(cropName, StringComparison.OrdinalIgnoreCase) ? $"{cropName} ({varietyName})" : cropName)
+            : (!string.IsNullOrWhiteSpace(varietyName) ? varietyName : zone.Notes);
+        var currentStage = activeSeason?.CurrentGrowthStage?.Name ?? (activeSeason != null ? "Đang canh tác" : null);
+
+        return new(
+            zone.Id, zone.FieldId, farmId, zone.Name, zone.AreaM2, zone.ZoneType, zone.Notes, zone.Status,
+            ParseJson(zone.BoundaryGeoJson), zone.CreatedAtUtc, zone.UpdatedAtUtc, zone.ArchivedAtUtc,
+            currentCrop, currentStage);
+    }
 
     private static JsonElement? ParseJson(string? value)
     {

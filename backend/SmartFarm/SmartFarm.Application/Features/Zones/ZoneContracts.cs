@@ -38,4 +38,6 @@ public sealed record ZoneView(
     JsonElement? BoundaryGeoJson,
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc,
-    DateTime? ArchivedAtUtc);
+    DateTime? ArchivedAtUtc,
+    string? CurrentCrop = null,
+    string? CurrentStage = null);
