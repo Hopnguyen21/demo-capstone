@@ -27,26 +27,13 @@ const RagSourceCard: React.FC<{ source: any; index: number }> = ({ source, index
   const similarity = typeof source === 'object' && source.similarity != null ? Math.round(source.similarity * 100) : undefined;
   const docId = typeof source === 'object' ? (source.documentId || source.DocumentId) : undefined;
   const snippet = typeof source === 'object' ? (source.contentSnippet || source.content) : undefined;
+  // Trang và mục của đoạn được trích (SRS 3.4: trích nguồn tới mục liên quan).
+  const location = typeof source === 'object'
+    ? [source.pageNumber ? `Trang ${source.pageNumber}` : null, source.sectionTitle ? `Mục: ${source.sectionTitle}` : null].filter(Boolean).join(' · ')
+    : '';
 
-  const handleToggle = async () => {
-    const nextState = !isExpanded;
-    setIsExpanded(nextState);
-
-    if (nextState && !detailContent && !snippet && docId) {
-      try {
-        setIsLoadingContent(true);
-        const doc = await knowledgeService.getDocument(docId);
-        if (doc) {
-          setDetailContent(doc.contentText || null);
-          setChunks(doc.chunks || []);
-        }
-      } catch (err) {
-        console.warn('Lỗi tải chi tiết nguồn RAG:', err);
-      } finally {
-        setIsLoadingContent(false);
-      }
-    }
-  };
+  // Chỉ hiển thị đoạn trích server gửi kèm câu trả lời: FarmOwner/Farmer không có quyền xem toàn văn tài liệu.
+  const handleToggle = () => setIsExpanded(!isExpanded);
 
   return (
     <div className="bg-white rounded-lg border border-emerald-200/90 shadow-2xs overflow-hidden transition-all text-xs">
@@ -68,6 +55,7 @@ const RagSourceCard: React.FC<{ source: any; index: number }> = ({ source, index
 
         <div className="flex items-center justify-between text-[10px] text-slate-500 flex-wrap gap-1">
           <div className="flex items-center gap-1.5 flex-wrap">
+            {location && <span className="font-semibold text-sky-700">{location}</span>}
             {org && (
               <span className="font-medium text-slate-700">
                 Thẩm định: <strong className="text-emerald-800">{org}</strong>
@@ -86,7 +74,7 @@ const RagSourceCard: React.FC<{ source: any; index: number }> = ({ source, index
             {isExpanded ? (
               <>Thu gọn <ChevronUp size={11} /></>
             ) : (
-              <>Xem nội dung & vị trí lưu trữ <ChevronDown size={11} /></>
+              <>Xem trích đoạn tri thức <ChevronDown size={11} /></>
             )}
           </button>
         </div>
@@ -94,17 +82,38 @@ const RagSourceCard: React.FC<{ source: any; index: number }> = ({ source, index
 
       {isExpanded && (
         <div className="p-2.5 bg-slate-900 text-slate-200 border-t border-emerald-200/60 text-[11px] space-y-2">
-          {/* Vị trí lưu trữ thực tế trong hệ thống */}
-          <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-800 space-y-1 text-[10px]">
-            <div className="text-cyan-400 font-bold flex items-center gap-1">
-              <Database size={12} className="text-cyan-400" />
-              <span>Vị Trí Lưu Trữ Dữ Liệu Trong Hệ Thống:</span>
+          {/* Vị trí lưu trữ dữ liệu & Database */}
+          <div className="p-2 rounded bg-slate-950/80 border border-slate-800 text-[10px] space-y-1">
+            <div className="flex items-center justify-between text-emerald-400 font-bold text-[10.5px]">
+              <span className="flex items-center gap-1.5">
+                <Database size={12} className="text-emerald-400" />
+                <span>Vị Trí Lưu Trữ Dữ Liệu Trong Hệ Thống:</span>
+              </span>
+              <span className="text-[9px] text-slate-400 font-mono">PostgreSQL pgvector</span>
             </div>
-            <div className="text-slate-300 font-mono text-[9.5px] space-y-0.5 pl-1">
-              <div>• Hệ quản trị CSDL: <strong className="text-white">PostgreSQL</strong> (Database: <span className="text-amber-300">SmartFarmDB01</span>)</div>
-              <div>• Bảng tài liệu quy chuẩn: <code className="text-emerald-300">agriculture_documents</code> {docId ? `(ID: ${docId})` : ''}</div>
-              <div>• Bảng vector chunks RAG: <code className="text-purple-300">agriculture_knowledge_chunks</code> (Đã nhúng 768 chiều pgvector)</div>
-              <div>• Nguồn gốc tài liệu: <span className="text-slate-300">Tài liệu lưu trữ cơ sở tri thức hệ thống (RAG)</span></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-[10px] text-slate-300 font-mono">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Cơ sở dữ liệu:</span>
+                <span className="text-emerald-300 font-bold">SmartFarmDB01</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Bảng metadata:</span>
+                <span className="text-slate-200">public.agriculture_documents</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Bảng vector chunk:</span>
+                <span className="text-slate-200">public.agriculture_knowledge_chunks</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Thuật toán khớp:</span>
+                <span className="text-amber-300 font-bold">Cosine (768 chiều Gemini)</span>
+              </div>
+              {docId && (
+                <div className="col-span-1 md:col-span-2 flex items-center gap-1 text-[9.5px] text-slate-400">
+                  <span className="text-slate-500">Document ID:</span>
+                  <span className="text-slate-300 select-all">{docId}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -121,7 +130,7 @@ const RagSourceCard: React.FC<{ source: any; index: number }> = ({ source, index
             {isLoadingContent ? (
               <div className="p-2 rounded-lg bg-slate-950/60 flex items-center gap-1.5 text-slate-400 text-[10px]">
                 <RefreshCw size={11} className="animate-spin text-emerald-400" />
-                Đang truy vấn nội dung từ PostgreSQL...
+                Đang nạp trích đoạn tiêu chuẩn từ Database...
               </div>
             ) : (snippet || detailContent || chunks.length > 0) ? (
               <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-800 text-[10.5px] text-slate-200 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line font-sans">
@@ -374,9 +383,8 @@ export const FarmerAIPage: React.FC = () => {
         {aiContext?.telemetry && aiContext.telemetry.length > 0 && (
           <div className="px-3 py-1.5 bg-slate-100/70 border-b border-slate-200/80 flex items-center gap-2 overflow-x-auto text-[11px] scrollbar-thin">
             {aiContext.telemetry
-              .filter((t: any) => !['ph', 'soilph', 'ec', 'soilec'].includes((t.parameterCode || '').toLowerCase()))
               .sort((a: any, b: any) => {
-                const order = ['temperature', 'soilmoisture', 'airhumidity', 'light', 'lightintensity'];
+                const order = ['temperature', 'soilmoisture', 'airhumidity', 'light', 'lightintensity', 'ph', 'ec'];
                 const idxA = order.indexOf((a.parameterCode || '').toLowerCase());
                 const idxB = order.indexOf((b.parameterCode || '').toLowerCase());
                 return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
@@ -393,7 +401,9 @@ export const FarmerAIPage: React.FC = () => {
                       {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
                        t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
                        t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
-                       (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Ánh sáng' : t.parameterCode}:
+                       (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Ánh sáng' :
+                       (t.parameterCode === 'Ph' || t.parameterCode?.toLowerCase() === 'ph') ? '🧪 Độ pH' :
+                       (t.parameterCode === 'Ec' || t.parameterCode?.toLowerCase() === 'ec') ? '⚡ Dinh dưỡng EC' : t.parameterCode}:
                     </span>
                     <strong className="text-slate-800 font-mono">{formattedValue} {t.unit}</strong>
                     {req && minVal !== undefined && maxVal !== undefined && (
@@ -415,12 +425,12 @@ export const FarmerAIPage: React.FC = () => {
 
         <div className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
           {messages.map(m => (
-            <div key={m.id} className={`p-3 rounded-lg max-w-[85%] leading-relaxed ${
+            <div key={m.id} className={`p-3.5 rounded-xl max-w-[85%] leading-relaxed shadow-xs transition-all ${
               m.sender === 'USER'
-                ? 'ml-auto bg-[#119653] text-white shadow-xs'
-                : 'bg-slate-50 text-slate-800 border border-slate-200 shadow-xs'
+                ? 'ml-auto bg-[#119653] text-white rounded-br-sm'
+                : 'bg-slate-50 text-slate-800 border border-slate-200 rounded-bl-sm'
             }`}>
-              <div className="whitespace-pre-line">{m.text}</div>
+              <div className="whitespace-pre-line break-words [overflow-wrap:anywhere] text-[13px]">{m.text}</div>
 
               {/* Tài liệu & Quy chuẩn trích dẫn từ RAG */}
               {m.sources && m.sources.length > 0 && (

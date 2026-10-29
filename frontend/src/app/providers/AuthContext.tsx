@@ -67,6 +67,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [user, setUser] = useState<User | null>(() => {
+    if (!getAccessToken()) {
+      localStorage.removeItem('smartfarm_user');
+      return null;
+    }
     const saved = localStorage.getItem('smartfarm_user');
     if (saved) {
       try { return JSON.parse(saved); } catch {}
@@ -116,21 +120,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Keep the selected zone inside the selected farm; AI and dashboard must use the same scope.
+  // Load all accessible zones for the farm / tenant so AI, Control, and Dashboard can switch freely
   useEffect(() => {
     let active = true;
-    setZones([]);
-    setSelectedZoneId('');
-    if (!selectedFarmId || !getAccessToken()) return () => { active = false; };
+    if (!getAccessToken()) {
+      setZones([]);
+      setSelectedZoneId('');
+      return () => { active = false; };
+    }
 
     const loadFarmZones = async () => {
       try {
-        const fields = await fieldService.getFields(selectedFarmId);
-        const zoneGroups = await Promise.all(fields.map((field: any) => zoneService.getZones(field.fieldId)));
+        // Tải toàn bộ Zone của hệ thống / trang trại qua /api/v1/zones
+        const allZones = await zoneService.getZones();
         if (!active) return;
-        const farmZones = zoneGroups.flat().filter((zone: Zone) => zone.farmId === selectedFarmId);
-        setZones(farmZones);
-        setSelectedZoneId(farmZones[0]?.zoneId || '');
+        
+        // Keep the selected zone inside the selected farm; AI and dashboard must use the same scope.
+        const scopedZones = Array.isArray(allZones)
+          ? allZones.filter((zone: Zone) => !selectedFarmId || zone.farmId === selectedFarmId)
+          : [];
+
+        let targetZones: Zone[] = [];
+        if (scopedZones.length > 0) {
+          targetZones = scopedZones;
+        } else if (selectedFarmId) {
+          const fields = await fieldService.getFields(selectedFarmId);
+          const zoneGroups = await Promise.all(fields.map((field: any) => zoneService.getZones(field.fieldId || field.id)));
+          if (!active) return;
+          targetZones = zoneGroups.flat();
+        }
+
+        setZones(targetZones);
+        setSelectedZoneId(prev => {
+          if (prev && targetZones.some(z => z.zoneId === prev)) return prev;
+          return targetZones[0]?.zoneId || '';
+        });
       } catch {
         if (active) {
           setZones([]);

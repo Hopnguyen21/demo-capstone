@@ -10,7 +10,9 @@ public sealed record KnowledgePassageView(
     string? AuthorOrganization,
     string Category,
     string Content,
-    float SimilarityScore);
+    float SimilarityScore,
+    int? PageNumber = null,
+    string? SectionTitle = null);
 
 /// <summary>
 /// Tìm kiếm các đoạn tài liệu nông học phù hợp nhất với câu hỏi

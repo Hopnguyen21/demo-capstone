@@ -1,12 +1,13 @@
+import { Link } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
-import { cropService, zoneService } from '../../services';
+import { cropService, zoneService, knowledgeService } from '../../services';
 import { Crop, CalendarIrrigationPlan, Zone, CropVariety } from '../../types';
 import { Button, Input, Modal, StatusBadge } from '../../components/ui/BaseUI';
 import { CropCalendarView } from '../../components/crops/CropCalendarView';
 import { 
   Sprout, Plus, Search, Layers, BookOpen, Calendar as CalendarIcon, 
   Thermometer, Droplets, Zap, Sun, RefreshCw, CheckCircle2, Sliders, Info, ChevronRight, Sunrise, Sunset,
-  FileUp, FileText, Upload, Trash2, Check, AlertTriangle, FileCheck, GitBranch, Tag, Sparkles
+  FileUp, FileText, Upload, Trash2, Check, AlertTriangle, FileCheck, GitBranch, Tag, Sparkles, Activity
 } from 'lucide-react';
 
 export const CropsPage: React.FC = () => {
@@ -14,9 +15,13 @@ export const CropsPage: React.FC = () => {
   const [zones, setZones] = useState<Zone[]>([]);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeModalTab, setActiveModalTab] = useState<'INFO' | 'CALENDAR' | 'SYNC'>('INFO');
-  const [selectedZoneIdForSync, setSelectedZoneIdForSync] = useState<string>('zone-01');
+  const [activeModalTab, setActiveModalTab] = useState<'INFO' | 'CALENDAR' | 'SYNC' | 'PROFILE'>('INFO');
+  const [selectedZoneIdForSync, setSelectedZoneIdForSync] = useState<string>('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Growth Profile modal state
+  const [cropGrowthProfile, setCropGrowthProfile] = useState<any | null>(null);
+  const [loadingCropProfile, setLoadingCropProfile] = useState<boolean>(false);
 
   // Variety Management state (Item 10)
   const [varietiesByCrop, setVarietiesByCrop] = useState<Record<string, CropVariety[]>>({});
@@ -56,49 +61,41 @@ export const CropsPage: React.FC = () => {
 
   const [editingCropId, setEditingCropId] = useState<string | null>(null);
 
-  // VietGAP Document Upload Modal & Document Library
-  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [isParsingDoc, setIsParsingDoc] = useState(false);
-  const [vietgapDocs, setVietgapDocs] = useState<Array<{
-    id: string;
-    fileName: string;
-    fileType: 'PDF' | 'DOCX';
-    fileSizeKb: number;
-    uploadedAt: string;
-    extractedCropName?: string;
-    status: 'PARSED' | 'APPLIED';
-    notes?: string;
-  }>>([
-    {
-      id: 'doc-1',
-      fileName: 'Quy_trinh_ky_thuat_canh_tac_Dua_Leo_VietGAP.pdf',
-      fileType: 'PDF',
-      fileSizeKb: 1420,
-      uploadedAt: '18/10/2026 09:30',
-      extractedCropName: 'Dưa leo Baby (Cucumber)',
-      status: 'APPLIED',
-      notes: 'Độ ẩm đất 65-80%, nhiệt độ 20-28°C, pH 6.0-6.8'
-    },
-    {
-      id: 'doc-2',
-      fileName: 'Huong_dan_IPM_va_vi_khi_hau_Xa_Lach_Thuy_Canh.docx',
-      fileType: 'DOCX',
-      fileSizeKb: 850,
-      uploadedAt: '19/10/2026 14:15',
-      extractedCropName: 'Xà lách cuộn (Batavia)',
-      status: 'APPLIED',
-      notes: 'Ngưỡng EC 1.6-2.2 mS/cm, tưới 3 ca Sáng-Trưa-Chiều'
-    }
-  ]);
+  // VietGAP Documents count loaded from DB
+  const [vietgapDocCount, setVietgapDocCount] = useState<number>(0);
+
+  // Chuẩn hóa dữ liệu cây trồng (ưu tiên 100% dữ liệu thật từ Backend PostgreSQL, chỉ fallback tối thiểu nếu chưa cấu hình)
+  const normalizeCrop = (c: Crop): Crop => {
+    return {
+      ...c,
+      category: c.category || 'Rau ăn quả',
+      growthCycleDays: c.growthCycleDays ?? 90,
+      optimalTemperatureMin: c.optimalTemperatureMin ?? 20,
+      optimalTemperatureMax: c.optimalTemperatureMax ?? 28,
+      optimalSoilMoistureMin: c.optimalSoilMoistureMin ?? 65,
+      optimalSoilMoistureMax: c.optimalSoilMoistureMax ?? 80,
+      optimalECMin: c.optimalECMin ?? 1.8,
+      optimalECMax: c.optimalECMax ?? 2.5,
+      optimalpHMin: c.optimalpHMin ?? 6.0,
+      optimalpHMax: c.optimalpHMax ?? 6.8,
+      optimalLux: c.optimalLux ?? 30000,
+    };
+  };
 
   const loadData = async () => {
-    const [fetchedCrops, fetchedZones, allVarieties] = await Promise.all([
+    const [fetchedCrops, fetchedZones, allVarieties, docs] = await Promise.all([
       cropService.getCrops(),
       zoneService.getZones(),
       cropService.getAllVarieties().catch(() => []),
+      knowledgeService.getDocuments().catch(() => []),
     ]);
-    setCrops([...fetchedCrops]);
+    const enriched = (fetchedCrops || []).map(normalizeCrop);
+    setCrops([...enriched]);
     setZones(fetchedZones);
+    if (fetchedZones && fetchedZones.length > 0) {
+      setSelectedZoneIdForSync(prev => prev || fetchedZones[0]?.zoneId || '');
+    }
+    setVietgapDocCount(Array.isArray(docs) ? docs.length : 0);
 
     const varMap: Record<string, CropVariety[]> = {};
     if (Array.isArray(allVarieties)) {
@@ -150,6 +147,45 @@ export const CropsPage: React.FC = () => {
     setFormData({ ...crop });
     setActiveModalTab('INFO');
     setIsModalOpen(true);
+    loadProfileForCrop(crop.cropId);
+  };
+
+  const loadProfileForCrop = async (cropId: string) => {
+    if (!cropId) return;
+    setLoadingCropProfile(true);
+    try {
+      const res = await cropService.getGrowthProfiles(cropId).catch(() => []);
+      let targetProfile = Array.isArray(res) && res.length > 0 ? (res.find((p: any) => p.isDefault) || res[0]) : null;
+
+      if (!targetProfile) {
+        const all = await cropService.getAllGrowthProfiles().catch(() => []);
+        targetProfile = (all || []).find((p: any) => String(p.cropId).toLowerCase() === String(cropId).toLowerCase());
+      }
+
+      if (targetProfile) {
+        const profId = targetProfile.profileId || targetProfile.id || targetProfile.growthProfileId;
+        let stages = targetProfile.stages || [];
+        if (!stages || stages.length === 0) {
+          stages = await cropService.getGrowthStages(profId).catch(() => []);
+        }
+        setCropGrowthProfile({ ...targetProfile, stages });
+      } else {
+        setCropGrowthProfile(null);
+      }
+    } catch (e) {
+      console.warn('Lỗi tải hồ sơ sinh trưởng cho crop:', e);
+      setCropGrowthProfile(null);
+    } finally {
+      setLoadingCropProfile(false);
+    }
+  };
+
+  const openProfileModal = async (crop: Crop) => {
+    setEditingCropId(crop.cropId);
+    setFormData({ ...crop });
+    setActiveModalTab('PROFILE');
+    setIsModalOpen(true);
+    await loadProfileForCrop(crop.cropId);
   };
 
   const openVarietyModal = async (crop: Crop) => {
@@ -264,14 +300,21 @@ export const CropsPage: React.FC = () => {
     const cId = cropId || editingCropId || crops[0]?.cropId;
     const zId = targetZoneId || selectedZoneIdForSync;
 
-    if (!cId || !zId) return;
+    if (!cId) {
+      setNotification({ type: 'error', message: 'Vui lòng chọn Cây trồng để đồng bộ lịch tưới.' });
+      return;
+    }
+    if (!zId) {
+      setNotification({ type: 'error', message: 'Vui lòng chọn một Khu vực (Zone) hợp lệ từ danh sách.' });
+      return;
+    }
 
     try {
       const res = await cropService.syncCropScheduleToZone(cId, zId);
       if (res.success) {
         setNotification({
           type: 'success',
-          message: `⚡ Đã đồng bộ thành công ${res.createdSchedulesCount} lịch tưới Sáng-Trưa-Chiều & Ngưỡng Vi khí hậu sang Zone "${res.zoneName}"!`
+          message: `⚡ Đã đồng bộ thành công ${res.createdSchedulesCount} lịch tưới tự động sang Zone "${res.zoneName}"!`
         });
         await loadData();
       }
@@ -282,175 +325,6 @@ export const CropsPage: React.FC = () => {
     }
   };
 
-  const handleDocumentFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const fileName = file.name;
-    const isPdf = fileName.toLowerCase().endsWith('.pdf');
-    const isDocx = fileName.toLowerCase().endsWith('.docx');
-
-    if (!isPdf && !isDocx) {
-      setNotification({
-        type: 'error',
-        message: 'Định dạng tài liệu không hỗ trợ. Vui lòng chọn tệp định dạng .PDF hoặc .DOCX chuẩn VietGAP.'
-      });
-      return;
-    }
-
-    setIsParsingDoc(true);
-
-    try {
-      // Giả lập đọc và bóc tách các tham số nông học từ tài liệu PDF/DOCX
-      await new Promise(r => setTimeout(r, 1200));
-
-      let cropName = 'Dưa leo Baby VietGAP';
-      let scientificName = 'Cucumis sativus L.';
-      let category = 'Rau ăn quả';
-      let growthCycle = 75;
-      let tempMin = 22, tempMax = 30;
-      let soilMoistureMin = 70, soilMoistureMax = 85;
-      let phMin = 6.0, phMax = 6.8;
-      let ecMin = 1.8, ecMax = 2.4;
-      let description = 'Quy chuẩn VietGAP trích xuất từ tài liệu: Bón lót hữu cơ hoai mục, duy trì độ ẩm tầng đất 15-20cm, tưới nhỏ giọt 3 ca/ngày.';
-
-      const lower = fileName.toLowerCase();
-      if (lower.includes('xa lach') || lower.includes('lettuce') || lower.includes('xà lách')) {
-        cropName = 'Xà lách cuộn Batavia VietGAP';
-        scientificName = 'Lactuca sativa var. capitata';
-        category = 'Rau ăn lá';
-        growthCycle = 45;
-        tempMin = 18; tempMax = 25;
-        soilMoistureMin = 75; soilMoistureMax = 88;
-        phMin = 5.8; phMax = 6.5;
-        ecMin = 1.4; ecMax = 2.0;
-        description = 'Quy chuẩn kỹ thuật VietGAP cho Xà lách: Ưa mát, độ ẩm đất cao, phòng ngừa thối nhũn và bọ trĩ bằng chế phẩm sinh học.';
-      } else if (lower.includes('dau tay') || lower.includes('strawberry') || lower.includes('dâu tây')) {
-        cropName = 'Dâu tây Hana New Zealand VietGAP';
-        scientificName = 'Fragaria × ananassa Duch.';
-        category = 'Cây ăn trái';
-        growthCycle = 120;
-        tempMin = 16; tempMax = 24;
-        soilMoistureMin = 65; soilMoistureMax = 78;
-        phMin = 5.5; phMax = 6.5;
-        ecMin = 1.2; ecMax = 1.8;
-        description = 'Quy chuẩn VietGAP Dâu tây: Đất tơi xốp, thoát nước tốt, tưới vào sáng sớm và chiều mát, kiểm soát phấn trắng.';
-      } else if (lower.includes('ca chua') || lower.includes('tomato') || lower.includes('cà chua')) {
-        cropName = 'Cà chua Nova VietGAP';
-        scientificName = 'Solanum lycopersicum';
-        category = 'Rau ăn quả';
-        growthCycle = 100;
-        tempMin = 20; tempMax = 28;
-        soilMoistureMin = 65; soilMoistureMax = 80;
-        phMin = 6.0; phMax = 6.8;
-        ecMin = 2.0; ecMax = 2.8;
-        description = 'Quy chuẩn VietGAP Cà chua: Chế độ tưới nhỏ giọt định lượng, bổ sung Canxi/Bo chống nứt trái.';
-      }
-
-      const newDoc = {
-        id: `doc-${Date.now()}`,
-        fileName: file.name,
-        fileType: (isPdf ? 'PDF' : 'DOCX') as 'PDF' | 'DOCX',
-        fileSizeKb: Math.round(file.size / 1024),
-        uploadedAt: new Date().toLocaleDateString('vi-VN') + ' ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        extractedCropName: cropName,
-        status: 'APPLIED' as const,
-        notes: `Tự động trích xuất: Nhiệt độ ${tempMin}-${tempMax}°C, Độ ẩm đất ${soilMoistureMin}-${soilMoistureMax}%, pH ${phMin}-${phMax}, EC ${ecMin}-${ecMax} mS/cm`
-      };
-
-      setVietgapDocs(prev => [newDoc, ...prev]);
-
-      // Tự động tạo bản ghi Cây trồng mẫu trong Thư viện hệ thống
-      const newCropPayload: Partial<Crop> = {
-        name: cropName,
-        scientificName,
-        category,
-        growthCycleDays: growthCycle,
-        description,
-        optimalTemperatureMin: tempMin,
-        optimalTemperatureMax: tempMax,
-        optimalSoilMoistureMin: soilMoistureMin,
-        optimalSoilMoistureMax: soilMoistureMax,
-        optimalpHMin: phMin,
-        optimalpHMax: phMax,
-        optimalECMin: ecMin,
-        optimalECMax: ecMax,
-        optimalLux: 28000,
-        isSystemDefined: true,
-        calendarIrrigationPlan: {
-          repeatType: 'DAILY',
-          lunarSyncEnabled: true,
-          sessions: [
-            { session: 'MORNING', title: 'Tưới Sáng Bù Nước', startTime: '07:30', durationMinutes: 20, volumeMl: 550, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-            { session: 'NOON', title: 'Tưới Trưa Hạ Nhiệt', startTime: '12:00', durationMinutes: 10, volumeMl: 300, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-            { session: 'AFTERNOON', title: 'Tưới Chiều Nuôi Dưỡng', startTime: '16:30', durationMinutes: 15, volumeMl: 400, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }
-          ]
-        }
-      };
-
-      // Cập nhật ngay vào danh sách crops trên giao diện nếu chưa có
-      setCrops(prev => {
-        const exists = prev.some(c => c.name.toLowerCase() === cropName.toLowerCase());
-        if (exists) return prev;
-        const mockCrop: Crop = {
-          cropId: `crop-${Date.now()}`,
-          name: cropName,
-          scientificName,
-          category,
-          growthCycleDays: growthCycle,
-          description,
-          optimalTemperatureMin: tempMin,
-          optimalTemperatureMax: tempMax,
-          optimalSoilMoistureMin: soilMoistureMin,
-          optimalSoilMoistureMax: soilMoistureMax,
-          optimalpHMin: phMin,
-          optimalpHMax: phMax,
-          optimalECMin: ecMin,
-          optimalECMax: ecMax,
-          optimalLux: 28000,
-          isSystemDefined: true,
-          createdAt: new Date().toISOString(),
-          calendarIrrigationPlan: newCropPayload.calendarIrrigationPlan
-        };
-        return [mockCrop, ...prev];
-      });
-
-      try {
-        const created = await cropService.createCrop(newCropPayload);
-        const createdCropId = created?.cropId || created?.id;
-        
-        // Tự động tạo Hồ sơ sinh trưởng (GrowthProfile) chuẩn 4 giai đoạn từ tài liệu VietGAP này
-        if (createdCropId) {
-          try {
-            await cropService.createGrowthProfile({
-              cropId: createdCropId,
-              name: `Hồ sơ VietGAP Chuẩn - ${cropName} (${growthCycle} ngày)`,
-              description: `Quy chuẩn vi khí hậu bóc tách từ tài liệu VietGAP ${fileName}`
-            });
-          } catch (profileErr) {
-            console.warn('Auto createGrowthProfile info:', profileErr);
-          }
-        }
-      } catch (err: any) {
-        console.warn('Backend createCrop warning (possibly already exists):', err?.message);
-      }
-
-      setNotification({
-        type: 'success',
-        message: `📄 Đã đọc thành công tệp "${file.name}"! Đã tạo Cây trồng & Hồ sơ Sinh trưởng (Growth Profile) VietGAP vào CSDL!`
-      });
-      await loadData();
-    } catch (err: any) {
-      console.error('Document parsing error:', err);
-      setNotification({
-        type: 'error',
-        message: 'Không thể phân tích tài liệu: ' + (err?.message || 'Lỗi không xác định')
-      });
-    } finally {
-      setIsParsingDoc(false);
-      event.target.value = '';
-    }
-  };
 
   const filtered = (crops || []).filter(c => {
     if (!c) return false;
@@ -487,13 +361,6 @@ export const CropsPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Button 
-            variant="outline" 
-            onClick={() => setIsDocModalOpen(true)}
-            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 bg-white"
-          >
-            <FileUp size={16} className="mr-1.5 text-emerald-600" /> Nhập Dữ liệu VietGAP (PDF / DOCX)
-          </Button>
           <Button onClick={openCreateModal}>
             <Plus size={16} className="mr-1.5" /> Thêm Cây trồng Thủ công
           </Button>
@@ -509,7 +376,7 @@ export const CropsPage: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-white">Quy chuẩn Nông nghiệp VietGAP Hệ thống Hiện hành</h3>
+                <h3 className="font-bold text-sm sm:text-base text-white">Quy chuẩn Nông nghiệp VietGAP Hệ thống (Dải Tham Chiếu Kỹ Thuật Mẫu)</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-400 text-emerald-950 uppercase">
                   TCVN 11892-1:2017
                 </span>
@@ -521,7 +388,7 @@ export const CropsPage: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-700/60 border border-emerald-500/40 text-emerald-100 font-mono">
-              📑 {vietgapDocs.length} tài liệu PDF/DOCX đã nạp
+              📑 {vietgapDocCount} tài liệu VietGAP trong CSDL
             </span>
           </div>
         </div>
@@ -588,19 +455,19 @@ export const CropsPage: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 text-[11px]">
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Thermometer size={13} className="text-rose-600" />
-                    <span>Nhiệt độ: <strong>{c.optimalTemperatureMin || 20}-{c.optimalTemperatureMax || 28}°C</strong></span>
+                    <span>Nhiệt độ: <strong>{(c.optimalTemperatureMin ?? 20)}-{(c.optimalTemperatureMax ?? 28)}°C</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Droplets size={13} className="text-sky-600" />
-                    <span>Độ ẩm đất: <strong>{c.optimalSoilMoistureMin || 65}-{c.optimalSoilMoistureMax || 80}%</strong></span>
+                    <span>Độ ẩm đất: <strong>{(c.optimalSoilMoistureMin ?? 65)}-{(c.optimalSoilMoistureMax ?? 80)}%</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Zap size={13} className="text-amber-600" />
-                    <span>EC: <strong>{c.optimalECMin || 1.8}-{c.optimalECMax || 2.5} mS/cm</strong></span>
+                    <span>EC: <strong>{(c.optimalECMin ?? 1.8)}-{(c.optimalECMax ?? 2.5)} mS/cm</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Sun size={13} className="text-yellow-600" />
-                    <span>pH: <strong>{c.optimalpHMin || 6.0}-{c.optimalpHMax || 6.8}</strong></span>
+                    <span>pH: <strong>{(c.optimalpHMin ?? 6.0)}-{(c.optimalpHMax ?? 6.8)}</strong></span>
                   </div>
                 </div>
 
@@ -655,7 +522,7 @@ export const CropsPage: React.FC = () => {
               </div>
 
               {/* Action Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs gap-2">
                 <div className="flex items-center gap-3">
                   <button onClick={() => openEditModal(c)} className="text-[#119653] hover:underline font-semibold flex items-center gap-1 cursor-pointer">
                     ✏️ Xem & Sửa
@@ -668,7 +535,15 @@ export const CropsPage: React.FC = () => {
                     <Trash2 size={13} /> Xóa
                   </button>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => openProfileModal(c)}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 text-[11px] transition-all cursor-pointer shadow-2xs"
+                    title="Xem và mở hồ sơ sinh trưởng của cây này"
+                  >
+                    <Activity size={12} className="text-emerald-600" /> Hồ sơ sinh trưởng
+                  </button>
                   <button
                     type="button"
                     onClick={() => openVarietyModal(c)}
@@ -682,7 +557,7 @@ export const CropsPage: React.FC = () => {
                       openEditModal(c);
                       setActiveModalTab('SYNC');
                     }}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-1.5 rounded-lg font-medium flex items-center gap-1 text-[11px] shadow-2xs transition-all cursor-pointer"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 text-[11px] transition-all cursor-pointer shadow-2xs"
                   >
                     <RefreshCw size={12} /> Đồng bộ Zone
                   </button>
@@ -729,6 +604,20 @@ export const CropsPage: React.FC = () => {
             >
               <RefreshCw size={14} /> 3. Đồng bộ với Zone Owner
             </button>
+            {editingCropId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveModalTab('PROFILE');
+                  loadProfileForCrop(editingCropId);
+                }}
+                className={`py-2 px-3 border-b-2 transition-all flex items-center gap-1.5 ${
+                  activeModalTab === 'PROFILE' ? 'border-[#119653] text-[#119653]' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Activity size={14} /> 4. Hồ Sơ Sinh Trưởng
+              </button>
+            )}
           </div>
 
           <form onSubmit={handleSave} className="space-y-4">
@@ -763,7 +652,7 @@ export const CropsPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block font-medium text-slate-700 mb-1">Chu kỳ sinh trưởng vụ mùa (số ngày)</label>
-                    <Input type="number" min={10} max={365} value={formData.growthCycleDays || 90} onChange={e => setFormData({ ...formData, growthCycleDays: Number(e.target.value) })} />
+                    <Input type="number" min={10} max={365} value={formData.growthCycleDays ?? 90} onChange={e => setFormData({ ...formData, growthCycleDays: Number(e.target.value) })} />
                   </div>
                 </div>
 
@@ -802,7 +691,7 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
                           <Input
                             type="number"
-                            value={formData.optimalTemperatureMin || 20}
+                            value={formData.optimalTemperatureMin ?? 20}
                             onChange={e => setFormData({ ...formData, optimalTemperatureMin: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -811,7 +700,7 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
                           <Input
                             type="number"
-                            value={formData.optimalTemperatureMax || 28}
+                            value={formData.optimalTemperatureMax ?? 28}
                             onChange={e => setFormData({ ...formData, optimalTemperatureMax: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -832,7 +721,7 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
                           <Input
                             type="number"
-                            value={formData.optimalSoilMoistureMin || 65}
+                            value={formData.optimalSoilMoistureMin ?? 65}
                             onChange={e => setFormData({ ...formData, optimalSoilMoistureMin: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -841,7 +730,7 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
                           <Input
                             type="number"
-                            value={formData.optimalSoilMoistureMax || 80}
+                            value={formData.optimalSoilMoistureMax ?? 80}
                             onChange={e => setFormData({ ...formData, optimalSoilMoistureMax: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -863,7 +752,7 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalpHMin || 6.0}
+                            value={formData.optimalpHMin ?? 6.0}
                             onChange={e => setFormData({ ...formData, optimalpHMin: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -873,7 +762,7 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalpHMax || 6.8}
+                            value={formData.optimalpHMax ?? 6.8}
                             onChange={e => setFormData({ ...formData, optimalpHMax: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -895,7 +784,7 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalECMin || 1.8}
+                            value={formData.optimalECMin ?? 1.8}
                             onChange={e => setFormData({ ...formData, optimalECMin: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -905,7 +794,7 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalECMax || 2.5}
+                            value={formData.optimalECMax ?? 2.5}
                             onChange={e => setFormData({ ...formData, optimalECMax: Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
@@ -984,16 +873,127 @@ export const CropsPage: React.FC = () => {
               </div>
             )}
 
+            {/* TAB 4: Growth Profile & Stages */}
+            {activeModalTab === 'PROFILE' && (
+              <div className="space-y-4 text-xs">
+                {loadingCropProfile ? (
+                  <div className="p-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+                    <RefreshCw size={24} className="animate-spin text-emerald-600" />
+                    <span>Đang tải hồ sơ sinh trưởng từ CSDL...</span>
+                  </div>
+                ) : cropGrowthProfile ? (
+                  <div className="space-y-4">
+                    {/* Header Hồ Sơ */}
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900 border border-emerald-300">
+                            {cropGrowthProfile.isSystemDefined ? '✓ HỒ SƠ VIETGAP CHUẨN' : '🌾 HỒ SƠ TÙY BIẾN'}
+                          </span>
+                          <span className="text-slate-600 font-semibold">• Cây: {formData.name}</span>
+                        </div>
+                        <h4 className="font-bold text-slate-900 text-sm">{cropGrowthProfile.name || cropGrowthProfile.profileName}</h4>
+                        <p className="text-[11px] text-slate-600 mt-0.5">{cropGrowthProfile.description}</p>
+                      </div>
+                      <div className="text-left sm:text-right shrink-0">
+                        <span className="text-[10px] text-slate-500 block">Tổng chu kỳ</span>
+                        <span className="text-xl font-bold font-mono text-emerald-700">{cropGrowthProfile.totalDays || formData.growthCycleDays || 90} Ngày</span>
+                        <span className="text-[10px] text-slate-500 block">({(cropGrowthProfile.stages || []).length} giai đoạn)</span>
+                      </div>
+                    </div>
+
+                    {/* Danh sách các giai đoạn sinh trưởng */}
+                    <div className="space-y-2">
+                      <div className="font-bold text-slate-900 flex items-center justify-between">
+                        <span>Các Phân Kỳ Giai Đoạn Sinh Trưởng (Growth Stages):</span>
+                        <span className="text-[10px] text-emerald-700 font-mono font-bold">100% Đồng bộ CSDL</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                        {(cropGrowthProfile.stages || []).map((st: any, idx: number) => {
+                          const reqs = st.requirements || [];
+                          const getVal = (code: string) => reqs.find((r: any) => (r.parameterCode || r.parameterName || '').toUpperCase().includes(code.toUpperCase()));
+                          const tReq = getVal('TEMP');
+                          const mReq = getVal('SOIL');
+                          const pReq = getVal('PH');
+                          const eReq = getVal('EC');
+
+                          return (
+                            <div key={st.stageId || st.growthStageId || idx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 hover:border-emerald-300 transition-colors">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-900 flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center justify-center">
+                                    {st.stageOrder || idx + 1}
+                                  </span>
+                                  {st.name || st.stageName}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono font-bold text-[11px] border border-emerald-200">
+                                  {st.durationDays} ngày
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 line-clamp-2">{st.description}</p>
+                              <div className="grid grid-cols-4 gap-1.5 p-2 bg-slate-50 rounded-lg text-[10px] font-mono">
+                                <div>Nhiệt: <strong className="text-emerald-700">{tReq ? `${tReq.minValue}-${tReq.maxValue}°C` : `${formData.optimalTemperatureMin}-${formData.optimalTemperatureMax}°C`}</strong></div>
+                                <div>Ẩm đất: <strong className="text-sky-700">{mReq ? `${mReq.minValue}-${mReq.maxValue}%` : `${formData.optimalSoilMoistureMin}-${formData.optimalSoilMoistureMax}%`}</strong></div>
+                                <div>pH: <strong className="text-amber-800">{pReq ? `${pReq.minValue}-${pReq.maxValue}` : `${formData.optimalpHMin}-${formData.optimalpHMax}`}</strong></div>
+                                <div>EC: <strong className="text-purple-700">{eReq ? `${eReq.minValue}-${eReq.maxValue}` : `${formData.optimalECMin}-${formData.optimalECMax}`}</strong></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Nút điều hướng mở chi tiết trang GrowthProfilesPage */}
+                    <div className="pt-2 flex gap-3">
+                      <Link
+                        to={`/admin/growth-profiles?cropId=${editingCropId || formData.cropId}`}
+                        className="flex-1 py-2.5 rounded-xl bg-[#119653] hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                      >
+                        <Activity size={14} /> Mở Trang Quản Lý Chi Tiết Hồ Sơ Sinh Trưởng ➔
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-center space-y-3">
+                    <AlertTriangle size={32} className="mx-auto text-amber-500" />
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm">Chưa có Hồ sơ sinh trưởng cho cây này trong CSDL</h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Bạn có thể chuyển sang trang Tiêu Chuẩn VietGAP để sinh tự động Hồ Sơ Sinh Trưởng chuẩn xác từ hồ sơ tài liệu.
+                      </p>
+                    </div>
+                    <a
+                      href="/admin/vietgap-standards"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs"
+                    >
+                      <Sparkles size={14} /> Đi Đến Trung Tâm Tiêu Chuẩn VietGAP
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Modal Actions */}
             <div className="flex justify-between items-center pt-3 border-t border-slate-100">
               <div className="text-[11px] text-slate-500">
-                {activeModalTab === 'INFO' ? 'Bước 1: Nhập thông tin & vi khí hậu' : activeModalTab === 'CALENDAR' ? 'Bước 2: Chỉnh lịch tưới Cuốn Lịch' : 'Bước 3: Đồng bộ với Owner Zone'}
+                {activeModalTab === 'INFO' ? 'Bước 1: Nhập thông tin & vi khí hậu' : activeModalTab === 'CALENDAR' ? 'Bước 2: Chỉnh lịch tưới Cuốn Lịch' : activeModalTab === 'SYNC' ? 'Bước 3: Đồng bộ với Owner Zone' : 'Bước 4: Xem phân kỳ Hồ sơ sinh trưởng'}
               </div>
               <div className="flex gap-2">
                 <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Hủy</Button>
-                {activeModalTab !== 'SYNC' ? (
-                  <Button type="button" onClick={() => setActiveModalTab(activeModalTab === 'INFO' ? 'CALENDAR' : 'SYNC')}>
+                {activeModalTab === 'INFO' ? (
+                  <Button type="button" onClick={() => setActiveModalTab('CALENDAR')}>
                     Tiếp theo <ChevronRight size={14} className="ml-1" />
+                  </Button>
+                ) : activeModalTab === 'CALENDAR' ? (
+                  <Button type="button" onClick={() => setActiveModalTab('SYNC')}>
+                    Tiếp theo <ChevronRight size={14} className="ml-1" />
+                  </Button>
+                ) : activeModalTab === 'SYNC' && editingCropId ? (
+                  <Button type="button" onClick={() => {
+                    setActiveModalTab('PROFILE');
+                    loadProfileForCrop(editingCropId);
+                  }}>
+                    Xem Hồ Sơ Sinh Trưởng <ChevronRight size={14} className="ml-1" />
                   </Button>
                 ) : (
                   <Button type="submit">Lưu Cây trồng vào Thư viện</Button>
@@ -1004,139 +1004,6 @@ export const CropsPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* MODAL: Nhập Dữ liệu VietGAP từ tệp PDF & DOCX */}
-      <Modal
-        isOpen={isDocModalOpen}
-        onClose={() => setIsDocModalOpen(false)}
-        title="Nhập Dữ liệu Quy chuẩn VietGAP (Tệp PDF / DOCX)"
-      >
-        <div className="space-y-5 text-xs max-h-[80vh] overflow-y-auto pr-1">
-          {/* Upload Dropzone */}
-          <div className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 rounded-2xl p-6 bg-emerald-50/40 text-center space-y-3 transition-colors">
-            <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shadow-xs">
-              <FileUp size={24} />
-            </div>
-            <div className="space-y-1">
-              <h4 className="font-bold text-slate-900 text-sm">Tải lên Tài liệu Kỹ thuật Nông nghiệp VietGAP</h4>
-              <p className="text-slate-500 text-[11px]">Hỗ trợ định dạng tài liệu <strong>.PDF</strong> và <strong>.DOCX</strong> (dung lượng tối đa 15MB)</p>
-            </div>
-
-            <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer shadow-xs transition-all text-xs">
-              <Upload size={14} /> Chọn tệp PDF hoặc DOCX
-              <input
-                type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={handleDocumentFileUpload}
-                disabled={isParsingDoc}
-                className="hidden"
-              />
-            </label>
-
-            {isParsingDoc && (
-              <div className="flex items-center justify-center gap-2 text-emerald-800 font-medium pt-2">
-                <RefreshCw size={14} className="animate-spin text-emerald-600" />
-                <span>AI đang đọc và bóc tách dữ liệu vi khí hậu, ngưỡng tưới và kỹ thuật VietGAP...</span>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Demo Pre-load Files */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-            <div className="font-bold text-slate-800 flex items-center gap-1.5">
-              <BookOpen size={14} className="text-emerald-600" /> Hoặc chọn nhanh mẫu tài liệu VietGAP có sẵn:
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  handleDocumentFileUpload({
-                    target: {
-                      files: [new File(['dummy'], 'Quy_trinh_VietGAP_Dua_Leo_Baby_2026.pdf', { type: 'application/pdf' })],
-                      value: ''
-                    }
-                  } as any);
-                }}
-                disabled={isParsingDoc}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-400 rounded-lg text-slate-700 hover:text-emerald-800 flex items-center gap-1.5 transition-all shadow-2xs text-[11px]"
-              >
-                <FileText size={13} className="text-rose-500" /> PDF: VietGAP Dưa Leo Baby
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDocumentFileUpload({
-                    target: {
-                      files: [new File(['dummy'], 'Tai_lieu_IPM_Xa_Lach_Batavia_VietGAP.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })],
-                      value: ''
-                    }
-                  } as any);
-                }}
-                disabled={isParsingDoc}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-400 rounded-lg text-slate-700 hover:text-emerald-800 flex items-center gap-1.5 transition-all shadow-2xs text-[11px]"
-              >
-                <FileText size={13} className="text-sky-600" /> DOCX: IPM Xà Lách Batavia
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDocumentFileUpload({
-                    target: {
-                      files: [new File(['dummy'], 'So_tay_canh_tac_Dau_Tay_Hana_VietGAP.pdf', { type: 'application/pdf' })],
-                      value: ''
-                    }
-                  } as any);
-                }}
-                disabled={isParsingDoc}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-emerald-400 rounded-lg text-slate-700 hover:text-emerald-800 flex items-center gap-1.5 transition-all shadow-2xs text-[11px]"
-              >
-                <FileText size={13} className="text-rose-500" /> PDF: Sổ tay Dâu Tây Hana
-              </button>
-            </div>
-          </div>
-
-          {/* List of Imported Documents */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h5 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                <FileCheck size={15} className="text-emerald-600" /> Danh sách Tài liệu VietGAP Đã Nạp ({vietgapDocs.length})
-              </h5>
-            </div>
-
-            <div className="space-y-2">
-              {vietgapDocs.map(doc => (
-                <div key={doc.id} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5 shadow-2xs hover:border-emerald-300 transition-all">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${doc.fileType === 'PDF' ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-sky-100 text-sky-800 border border-sky-200'}`}>
-                        {doc.fileType}
-                      </span>
-                      <span className="truncate max-w-[280px] sm:max-w-[360px]">{doc.fileName}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono">{doc.fileSizeKb} KB</span>
-                  </div>
-
-                  <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-2">
-                    <span>Loài cây trích xuất: <strong className="text-emerald-800">{doc.extractedCropName}</strong></span>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-slate-400">Thời gian nạp: {doc.uploadedAt}</span>
-                  </div>
-
-                  {doc.notes && (
-                    <div className="p-2 bg-emerald-50/70 rounded-lg text-[11px] text-emerald-900 border border-emerald-100 font-medium">
-                      ✓ {doc.notes}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Footer Action */}
-          <div className="flex justify-end pt-3 border-t border-slate-100">
-            <Button variant="ghost" onClick={() => setIsDocModalOpen(false)}>Đóng</Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* DEDICATED MODAL: Plant Variety Management (Item 10) */}
       <Modal

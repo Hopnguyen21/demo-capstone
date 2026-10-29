@@ -747,28 +747,52 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
 {
     public async Task<IReadOnlyList<object>> SyncFromCropAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid cropId, Guid actuatorId, CancellationToken ct)
     {
-        // Find growth profile for crop
-        var profile = await db.GrowthProfiles.Include(x => x.Stages).AsNoTracking()
-            .FirstOrDefaultAsync(x => x.CropId == cropId, ct)
-            ?? await db.GrowthProfiles.Include(x => x.Stages).AsNoTracking().FirstOrDefaultAsync(ct);
-
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).SingleOrDefaultAsync(z => z.Id == zoneId, ct)
-            ?? throw new ResourceNotFoundException("Zone not found.");
+            ?? throw new ResourceNotFoundException("Không tìm thấy Khu vực canh tác (Zone).");
 
-        // Find actuator: use provided actuatorId if exists, otherwise pick first actuator in this zone or in the farm
-        var actuator = await db.DeviceActuators.Include(a => a.Device).SingleOrDefaultAsync(x => x.Id == actuatorId, ct);
-        if (actuator is null)
+        var caller = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == ownerId, ct)
+            ?? throw new AuthorizationException();
+        if (caller.Role != UserRole.PlatformAdmin)
         {
-            actuator = await db.DeviceActuators.Include(a => a.Device)
-                .FirstOrDefaultAsync(x => x.Device.ZoneId == zoneId, ct)
-                ?? await db.DeviceActuators.Include(a => a.Device)
-                .FirstOrDefaultAsync(x => x.Device.FarmId == zone.Field.FarmId, ct)
-                ?? await db.DeviceActuators.FirstOrDefaultAsync(ct);
+            // Tenant lấy từ token phải khớp cả tài khoản lẫn chuỗi Farm → Zone; Farmer cần được cấp quyền vào zone.
+            if (tenantId == Guid.Empty || caller.TenantId != tenantId || zone.Field.Farm.TenantId != tenantId)
+                throw new AuthorizationException("Bạn không có quyền truy cập vào Khu vực canh tác này.");
+            if (caller.Role == UserRole.Farmer &&
+                !await db.UserZoneAccesses.AnyAsync(x => x.AppUserId == ownerId && x.ZoneId == zoneId, ct))
+                throw new AuthorizationException("Bạn không có quyền truy cập vào Khu vực canh tác này.");
+        }
+        // PlatformAdmin không thuộc tenant: tra cứu cây/profile theo tenant sở hữu zone.
+        tenantId = zone.Field.Farm.TenantId;
+
+        var crop = await db.Crops.AsNoTracking().SingleOrDefaultAsync(c => c.Id == cropId && (c.TenantId == null || c.TenantId == tenantId), ct)
+            ?? throw new ResourceNotFoundException("Không tìm thấy cây trồng yêu cầu đồng bộ.");
+
+        // Tìm đúng Hồ sơ sinh trưởng của cây trồng này (ưu tiên theo tenant hoặc system profile) - KHÔNG fallback bừa cây khác
+        var profile = await db.GrowthProfiles.Include(x => x.Stages).AsNoTracking()
+            .Where(x => x.CropId == cropId && (x.TenantId == tenantId || (x.TenantId == null && x.IsSystemDefined)))
+            .OrderByDescending(x => x.TenantId == tenantId)
+            .ThenByDescending(x => x.IsDefault)
+            .FirstOrDefaultAsync(ct);
+
+        if (profile is null)
+        {
+            throw new ResourceConflictException($"Chưa cấu hình Hồ sơ sinh trưởng (Growth Profile) cho cây '{crop.Name}'. Vui lòng tạo Profile trước khi đồng bộ lịch tưới.");
         }
 
+        // Tìm thiết bị Actuator: BẮT BUỘC phải nằm trong CHÍNH ZONE ĐÓ - KHÔNG fallback sang Farm khác
+        DeviceActuator? actuator = null;
+        if (actuatorId != Guid.Empty)
+        {
+            actuator = await db.DeviceActuators.Include(a => a.Device)
+                .SingleOrDefaultAsync(x => x.Id == actuatorId && x.Device.ZoneId == zoneId, ct);
+        }
+
+        actuator ??= await db.DeviceActuators.Include(a => a.Device)
+            .FirstOrDefaultAsync(x => x.Device.ZoneId == zoneId, ct);
+
         if (actuator is null)
         {
-            throw new ResourceNotFoundException("No actuator available for this zone or farm.");
+            throw new ResourceConflictException($"Khu vực '{zone.Name}' chưa có thiết bị van hoặc máy bơm tưới (Actuator). Vui lòng cấu hình thiết bị trước khi đồng bộ lịch.");
         }
 
         actuatorId = actuator.Id;
@@ -788,7 +812,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
                 FarmId = zone.Field.FarmId,
                 ZoneId = zoneId,
                 ActuatorId = actuatorId,
-                Name = $"[AutoSync] {profile?.Name ?? "Lịch tưới Chuẩn"} {h:D2}:{m:D2}",
+                Name = $"[AutoSync] {profile.Name} {h:D2}:{m:D2}",
                 CronExpression = $"0 {m} {h} * * *",
                 DurationSeconds = dur * 60,
                 EnableRainDelay = true,
@@ -876,17 +900,38 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
 
     public async Task<IReadOnlyList<EnvironmentalTargetConfigView>> GetEnvironmentalConfigsAsync(Guid userId, Guid tenantId, Guid? zoneId, CancellationToken ct)
     {
-        var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, ct);
-        var effectiveTenantId = caller?.Role == UserRole.PlatformAdmin ? (caller.TenantId ?? tenantId) : tenantId;
+        var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, ct)
+            ?? throw new AuthorizationException();
+        var effectiveTenantId = (caller.TenantId != null && caller.TenantId != Guid.Empty)
+            ? caller.TenantId.Value
+            : tenantId;
 
         var zonesQuery = db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsNoTracking();
         if (zoneId.HasValue)
         {
             zonesQuery = zonesQuery.Where(z => z.Id == zoneId.Value);
         }
-        else if (caller?.Role != UserRole.PlatformAdmin)
+
+        // Ngoài PlatformAdmin, luôn giới hạn theo tenant/farm của người gọi — kể cả khi truyền zoneId.
+        if (caller.Role != UserRole.PlatformAdmin)
         {
-            zonesQuery = zonesQuery.Where(z => z.Field.Farm.TenantId == effectiveTenantId);
+            if (effectiveTenantId != Guid.Empty)
+            {
+                zonesQuery = zonesQuery.Where(z => z.Field.Farm.TenantId == effectiveTenantId);
+            }
+            else if (caller.FarmId != null && caller.FarmId != Guid.Empty)
+            {
+                zonesQuery = zonesQuery.Where(z => z.Field.FarmId == caller.FarmId.Value);
+            }
+            else
+            {
+                return [];
+            }
+
+            if (caller.Role == UserRole.Farmer)
+            {
+                zonesQuery = zonesQuery.Where(z => db.UserZoneAccesses.Any(a => a.AppUserId == userId && a.ZoneId == z.Id));
+            }
         }
 
         var zones = await zonesQuery.OrderBy(z => z.Name).ToListAsync(ct);

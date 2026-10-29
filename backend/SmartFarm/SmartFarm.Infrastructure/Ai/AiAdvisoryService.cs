@@ -240,7 +240,7 @@ public sealed class AiAdvisoryService(
                     .Where(i => passages is not null && i >= 1 && i <= passages.Count)
                     .Select(i => passages![i - 1])
                     .GroupBy(p => p.DocumentId).Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
-                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content))
+                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content, p.PageNumber, p.SectionTitle))
                     .ToList();
 
                 // Tự động gán nguồn RAG nếu model trích dẫn hoặc passage có độ tương đồng ngữ nghĩa vector thực sự cao (>= 0.70)
@@ -250,7 +250,7 @@ public sealed class AiAdvisoryService(
                         .Where(p => p.SimilarityScore >= 0.70f)
                         .GroupBy(p => p.DocumentId)
                         .Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
-                        .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content))
+                        .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content, p.PageNumber, p.SectionTitle))
                         .ToList();
                 }
 
@@ -269,8 +269,8 @@ public sealed class AiAdvisoryService(
             {
                 logger.LogError(ex, "AI advisory provider execution failed: {Message}", ex.Message);
                 recommendation = CreateLimited(request, context, AiRecommendationStatus.ProviderUnavailable,
-                    "AI analysis is currently unavailable",
-                    "No advice was generated because the configured AI provider failed.",
+                    "Trợ lý AI tạm thời không khả dụng",
+                    "Hệ thống chưa nhận được phản hồi từ dịch vụ AI (có thể do hết hạn mức sử dụng hoặc quá tải). Chưa có khuyến nghị nào được tạo. Vui lòng thử lại sau ít phút.",
                     [SafeProviderFailure(ex)], now);
                 request.ProviderName = "Unavailable";
                 request.Status = AiConsultationStatus.Failed;
@@ -492,6 +492,51 @@ public sealed class AiAdvisoryService(
         // ─── [CODE MỚI]: Giới hạn nghiêm ngặt chỉ lấy ngữ cảnh của đúng Zone này, không lấy Field hay Farm ──
         AiFarmStructureContext? farmStructure = null;
 
+        // ─── [TẠM COMMENT - ĐA TRẠM ĐO NODE: Mở lại khi cần lấy danh sách nhiều Node trong Zone] ───
+        /*
+        var zoneDevices = await db.Devices.AsNoTracking()
+            .Include(d => d.Actuators)
+            .Where(d => d.ZoneId == zone.Id && d.DecommissionedAtUtc == null)
+            .OrderBy(d => d.DeviceType)
+            .ThenBy(d => d.HardwareAddress)
+            .ToListAsync(cancellationToken);
+
+        var deviceIds = zoneDevices.Select(d => d.Id).ToList();
+        var deviceReadingsRaw = await db.TelemetryReadings.AsNoTracking()
+            .Where(x => deviceIds.Contains(x.DeviceId) && x.CapturedAtUtc <= now && x.CapturedAtUtc >= now.AddHours(-1))
+            .OrderByDescending(x => x.CapturedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        var deviceNodes = zoneDevices.Select(d =>
+        {
+            var nodeTelemetry = deviceReadingsRaw
+                .Where(r => r.DeviceId == d.Id)
+                .GroupBy(r => r.ParameterCode)
+                .Select(g => g.First())
+                .Select(r => new AiTelemetryContextItem(
+                    r.ParameterCode,
+                    r.Value,
+                    r.Unit,
+                    r.CapturedAtUtc,
+                    r.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes) && r.CapturedAtUtc <= now
+                ))
+                .ToList();
+
+            var nodeActuators = d.Actuators.Select(a => a.ActuatorType).ToList();
+
+            return new AiDeviceNodeItem(
+                d.Id,
+                d.HardwareAddress,
+                d.DeviceType.ToString(),
+                d.Status.ToString(),
+                d.InstallationNotes,
+                nodeTelemetry,
+                nodeActuators
+            );
+        }).ToList();
+        */
+        List<AiDeviceNodeItem>? deviceNodes = null;
+
         return new AiZoneContext(
             zone.Field.FarmId, zone.Field.Farm.Name, zone.Field.Farm.TimeZone, zone.FieldId, zone.Field.Name, zone.Id, zone.Name, zone.AreaM2,
             season?.Id, season?.Crop?.Name, season?.Variety?.Name, season?.GrowthProfileId, season?.GrowthProfile?.Name,
@@ -505,7 +550,8 @@ public sealed class AiAdvisoryService(
             missing,
             !missing.Contains("active planting season") && !missing.Contains("fresh telemetry"),
             farmStructure,
-            telemetryHistory);
+            telemetryHistory,
+            deviceNodes);
     }
 
 
@@ -654,7 +700,15 @@ public sealed class AiAdvisoryService(
 
     private static void RejectPromptInjection(string question)
     {
-        var normalized = question.ToLowerInvariant();
+        // Loại bỏ các ký tự ẩn độ rộng bằng 0 và ký tự điều khiển Unicode trước khi kiểm tra để chống vượt rào lọc
+        var sanitized = question
+            .Replace("\u200B", "") // Zero-Width Space
+            .Replace("\u200C", "") // Zero-Width Non-Joiner
+            .Replace("\u200D", "") // Zero-Width Joiner
+            .Replace("\uFEFF", "") // Byte Order Mark
+            .Replace("\u00AD", "") // Soft Hyphen
+            .ToLowerInvariant();
+
         string[] blocked = [
             "ignore previous instructions", 
             "ignore all instructions", 
@@ -666,9 +720,10 @@ public sealed class AiAdvisoryService(
             "tiết lộ prompt",
             "tiết lộ system prompt",
             "bỏ qua luật an toàn",
-            "bỏ qua mệnh lệnh trước"
+            "bỏ qua mệnh lệnh trước",
+            "jailbreak"
         ];
-        if (question.IndexOf('\0') >= 0 || blocked.Any(normalized.Contains))
+        if (question.IndexOf('\0') >= 0 || blocked.Any(sanitized.Contains))
             throw new RequestValidationException("question", "Question contains instruction-manipulation content and was not sent to the AI provider.");
     }
 

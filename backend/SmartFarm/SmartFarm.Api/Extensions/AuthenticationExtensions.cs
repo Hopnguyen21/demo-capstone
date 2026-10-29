@@ -14,12 +14,17 @@ namespace SmartFarm.Api.Extensions;
 
 public static class AuthenticationExtensions
 {
-    public static IServiceCollection AddSmartFarmAuthentication(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddSmartFarmAuthentication(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment? environment = null)
     {
         var jwt = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         if (jwt.SigningKey.Length < 32)
         {
             throw new InvalidOperationException("Jwt:SigningKey must be supplied by environment and contain at least 32 characters.");
+        }
+
+        if (environment != null && !environment.IsDevelopment() && jwt.SigningKey.Contains("replace-with-a-random-secret"))
+        {
+            throw new InvalidOperationException("CRITICAL: Không được sử dụng SigningKey mặc định khi chạy trên môi trường Production! Hãy cấu hình Jwt:SigningKey ngẫu nhiên qua biến môi trường.");
         }
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

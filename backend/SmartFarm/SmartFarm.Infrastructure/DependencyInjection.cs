@@ -115,7 +115,9 @@ public static class DependencyInjection
             .Validate(x => x.TimeoutSeconds is >= 1 and <= 60, "OpenMeteo:TimeoutSeconds must be between 1 and 60.")
             .ValidateOnStart();
         services.AddMemoryCache();
-        services.AddSingleton<HttpClient>();
+        // Gemini có thể mất vài chục giây đến hơn 1 phút cho tài liệu dài; mặc định 100 giây của HttpClient cắt sớm hơn
+        // thời gian chờ của từng lần gọi (mỗi lệnh gọi vẫn tự đặt giới hạn riêng bằng CancellationToken).
+        services.AddSingleton(new HttpClient { Timeout = TimeSpan.FromSeconds(180) });
         services.AddScoped<IAiAdvisoryService, AiAdvisoryService>();
         services.AddScoped<GeminiAiAdvisoryProvider>();
         services.AddScoped<UnavailableAiAdvisoryProvider>();
@@ -124,6 +126,8 @@ public static class DependencyInjection
                 ? provider.GetRequiredService<UnavailableAiAdvisoryProvider>()
                 : provider.GetRequiredService<GeminiAiAdvisoryProvider>());
         services.AddScoped<GeminiEmbeddingProvider>();
+        services.AddScoped<IDocumentSufficiencyValidator, VietGapDocumentAiValidator>();
+        services.AddScoped<VietGapStructuredExtractor>();
         services.AddScoped<AgricultureDocumentService>();
         services.AddScoped<IAgricultureDocumentService>(sp => sp.GetRequiredService<AgricultureDocumentService>());
         services.AddScoped<IAgricultureKnowledgeRetriever, AgricultureKnowledgeRetriever>();

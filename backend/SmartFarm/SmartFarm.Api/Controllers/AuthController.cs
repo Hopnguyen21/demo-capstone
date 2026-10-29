@@ -6,6 +6,8 @@ using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Auth;
 using SmartFarm.Domain.Enums;
 
+using Microsoft.AspNetCore.RateLimiting;
+
 namespace SmartFarm.Api.Controllers;
 
 [ApiController]
@@ -13,6 +15,7 @@ namespace SmartFarm.Api.Controllers;
 public sealed class AuthController(IAuthService authService) : ControllerBase
 {
     [AllowAnonymous]
+    [EnableRateLimiting("LoginPolicy")]
     [HttpPost("register")]
     [ProducesResponseType<UserView>(StatusCodes.Status201Created)]
     public async Task<ActionResult<UserView>> Register(RegisterRequest request, CancellationToken cancellationToken)
@@ -25,6 +28,7 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
 
     // API catalog #1
     [AllowAnonymous]
+    [EnableRateLimiting("LoginPolicy")]
     [HttpPost("login")]
     public async Task<ActionResult<AuthTokenView>> Login(LoginRequest request, CancellationToken cancellationToken)
     {

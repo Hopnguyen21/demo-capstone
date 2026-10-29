@@ -61,3 +61,60 @@ are stored as `geometry(Polygon,4326)` with GiST indexes and `ST_IsValid` constr
 contract remains GeoJSON, and an Infrastructure value converter keeps NetTopologySuite out of the
 Domain project. Migration `UsePostGisBoundaries` backfills the new spatial columns from the former
 JSONB values and retains renamed legacy columns for rollback until a later cleanup migration.
+
+# 25. Agriculture documents require source review before AI use (2026-10-29)
+
+Uploaded files are retained in PostgreSQL alongside extracted text so reviewers can download
+the byte-for-byte original while correcting OCR. New uploads and content replacements enter
+`PendingReview`; only `Approved` documents are embedded, returned by RAG, or accepted as a
+Growth Profile source. Existing rows migrate as `Approved` to preserve current behavior. The
+review endpoint saves corrected text/chunks and the decision together. This is a human source
+comparison workflow, not an automated claim that OCR or VietGAP compliance is correct.
+
+# 26. Upload-time sufficiency check, typed requirements and cited extraction (2026-10-29)
+
+Supersedes the "existing rows migrate as `Approved`" part of decision 25: migration
+`ResetUnreviewedDocumentApprovals` returns uploaded rows that no reviewer ever approved
+(`reviewed_at_utc IS NULL`, `file_type <> 'seed'`) to `PendingReview`. Seed rows stay `Approved`.
+
+Uploads now pass a sufficiency check before anything is stored: a fixed checklist, then a Gemini
+assessment. Both must pass; an insufficient document returns `422` with the missing items and an
+unavailable AI returns `503`. Neither stores the document. A document that passes is still saved
+as `PendingReview`. The AI only judges that information is *present*, and a human reviewer
+confirms it is *correct* before RAG use (SRS 4.2.4 "curated and traceable").
+
+Required sections depend on the declared document type, because the SDD and the AI/RAG test plan
+expect thematic documents (irrigation, IPM, nitrate control) in the knowledge base:
+`OfficialStandard` needs a standard code and all seven VietGAP core sections; `TechnicalGuide`
+needs a traceable publisher plus soil, fertiliser, pest and harvest content; `Thematic` needs a
+publisher plus the section matching its `Category`.
+
+At upload the AI also fills a fixed 26-field template plus growth stages. A value is kept only
+when its quotation is found verbatim in the stored text, and numbers must appear in that quotation.
+The page number is computed from `[TRANG n]` markers rather than taken from the AI. Fields without
+a matching quotation are shown as absent from the source; the system does not fill them from model
+knowledge (SRS BR-12).
+
+# 27. Documents are independent RAG sources; Growth Profile is built per crop (2026-10-29)
+
+Supersedes the upload-time sufficiency gate of decision 26, which was already removed from the
+upload path. A document no longer has to contain every VietGAP section. Each document is an
+independent source with metadata: crops, document type, `topics` (several allowed), publisher,
+version and a content hash. Each chunk records page, section and topic. Review requires only a
+traceable source, a standard code for official standards, and content for the topics the document
+declares.
+
+Retrieval combines passages from several approved documents. It boosts the question's topics,
+caps each document at two passages, and cites document, page and section. Approving a document
+with the same title and publisher as an older approved one marks the older one `Superseded`, so
+outdated figures leave RAG. Identical content in the same scope is rejected with `409`.
+
+The Growth Profile draft can gather all approved documents of a crop instead of exactly one, so
+documents covering only harvest, pests or irrigation each contribute. The existing generator still
+requires every stage, duration and threshold to quote the source verbatim. Insufficient cited data
+returns `409` rather than template values (SRS BR-12), and each quotation is attributed to its
+source document.
+
+Cited extraction moved to the background worker so uploads return quickly. Truncated Gemini
+replies are retried. The shared `Gemini:FallbackModels` list replaces per-call model lists after the
+configured `gemini-2.5-flash` began returning 404.

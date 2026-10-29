@@ -11,10 +11,49 @@ namespace SmartFarm.Infrastructure.Tests;
 
 public class DataAuditTests(ITestOutputHelper output)
 {
+    private static async Task EnsureSchemaCompatibilityAsync(SmartFarmDbContext db)
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("SMARTFARM_ALLOW_SCHEMA_REPAIR"), "1", StringComparison.Ordinal))
+            return;
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+            {
+                await conn.OpenAsync();
+            }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                ALTER TABLE growth_stages ADD COLUMN IF NOT EXISTS description varchar(4000);
+                ALTER TABLE growth_stages ADD COLUMN IF NOT EXISTS fertilizer_action varchar(2000);
+                ALTER TABLE growth_stages ADD COLUMN IF NOT EXISTS ipm_action varchar(2000);
+                ALTER TABLE growth_profiles ALTER COLUMN description TYPE varchar(4000);
+                ALTER TABLE crops ALTER COLUMN description TYPE varchar(4000);
+                ALTER TABLE crop_varieties ALTER COLUMN description TYPE varchar(4000);
+
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS category varchar(100);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS growth_cycle_days integer;
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_temperature_min numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_temperature_max numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_soil_moisture_min numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_soil_moisture_max numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_ph_min numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_ph_max numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_ec_min numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_ec_max numeric(5,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS optimal_lux numeric(10,2);
+                ALTER TABLE crops ADD COLUMN IF NOT EXISTS calendar_irrigation_plan text;
+            ";
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+        }
+    }
+
     private static SmartFarmDbContext CreateLiveContext()
     {
-        var connStr = Environment.GetEnvironmentVariable("SMARTFARM_TEST_DB")
-            ?? "Host=localhost;Port=5432;Database=SmartFarmDB01;Username=postgres";
+        var connStr = Environment.GetEnvironmentVariable("SMARTFARM_TEST_DB")!;
         var options = new DbContextOptionsBuilder<SmartFarmDbContext>()
             .UseNpgsql(connStr, opts =>
             {
@@ -25,9 +64,14 @@ public class DataAuditTests(ITestOutputHelper output)
         return new SmartFarmDbContext(options);
     }
 
-    [Fact(Skip = "Integration test: requires live Postgres database")]
+    [Fact]
     public async Task Audit_database_data_integrity_and_report_all_gaps()
     {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SMARTFARM_TEST_DB")))
+        {
+            output.WriteLine("Skipped live database audit: set SMARTFARM_TEST_DB to an isolated test database.");
+            return;
+        }
         using var db = CreateLiveContext();
         var canConnect = await db.Database.CanConnectAsync();
         if (!canConnect)
@@ -35,6 +79,8 @@ public class DataAuditTests(ITestOutputHelper output)
             output.WriteLine("[WARN] Cannot connect to PostgreSQL database SmartFarmDB01 on localhost:5432. Check service status.");
             return;
         }
+
+        await EnsureSchemaCompatibilityAsync(db);
 
         var sb = new StringBuilder();
         sb.AppendLine("=== BÁO CÁO KIỂM TRA LỖ HỔNG DỮ LIỆU SMARTFARM ===");
@@ -44,6 +90,33 @@ public class DataAuditTests(ITestOutputHelper output)
         var tenants = await db.Tenants.AsNoTracking().ToListAsync();
         var farms = await db.Farms.AsNoTracking().ToListAsync();
         sb.AppendLine($"[1] HỆ THỐNG CƠ SỞ: {tenants.Count} Tenant, {farms.Count} Trang trại.");
+
+        // Kiểm tra Extension vector và kiểu dữ liệu cột embedding
+        using (var cmd = db.Database.GetDbConnection().CreateCommand())
+        {
+            await db.Database.OpenConnectionAsync();
+            try
+            {
+                cmd.CommandText = "CREATE EXTENSION IF NOT EXISTS vector;";
+                await cmd.ExecuteNonQueryAsync();
+                sb.AppendLine("  - Thực hiện 'CREATE EXTENSION IF NOT EXISTS vector': THÀNH CÔNG");
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"  - Thực hiện 'CREATE EXTENSION vector' KHÔNG THÀNH CÔNG: {ex.Message}");
+            }
+
+            cmd.CommandText = "SELECT extname FROM pg_extension WHERE extname = 'vector';";
+            var hasVectorExt = await cmd.ExecuteScalarAsync();
+            sb.AppendLine($"  - Extension vector trong Postgres: {(hasVectorExt != null ? "ĐÃ BẬT" : "CHƯA BẬT")}");
+
+            cmd.CommandText = "SELECT column_name, data_type, udt_name FROM information_schema.columns WHERE table_name = 'agriculture_knowledge_chunks' AND column_name = 'embedding';";
+            using var rdr = await cmd.ExecuteReaderAsync();
+            if (await rdr.ReadAsync())
+            {
+                sb.AppendLine($"  - Cột 'embedding': data_type='{rdr["data_type"]}', udt_name='{rdr["udt_name"]}'");
+            }
+        }
 
         // 2. Kiểm tra Fields & Zones
         var zones = await db.Zones.AsNoTracking()
@@ -147,25 +220,41 @@ public class DataAuditTests(ITestOutputHelper output)
         }
 
         // 8. Kiểm tra Kho tài liệu VietGAP trong DB
-        var docs = await db.AgricultureDocuments.AsNoTracking().Include(d => d.Chunks).ToListAsync();
-        sb.AppendLine($"[6] KHO TRI THỨC VIETGAP: {docs.Count} Tài liệu, {docs.Sum(d => d.Chunks.Count)} Chunks.");
-        foreach (var d in docs)
+        try
         {
-            sb.AppendLine($"  - '{d.Title}' (Scope: {d.CropScope}, Chunks: {d.Chunks.Count})");
+            var docs = await db.AgricultureDocuments.AsNoTracking().Include(d => d.Chunks).ToListAsync();
+            sb.AppendLine($"[6] KHO TRI THỨC VIETGAP: {docs.Count} Tài liệu, {docs.Sum(d => d.Chunks.Count)} Chunks.");
+            foreach (var d in docs)
+            {
+                sb.AppendLine($"  - '{d.Title}' (Scope: {d.CropScope}, Chunks: {d.Chunks.Count})");
+            }
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"[LỖ HỔNG RAG & PGVECTOR] Lỗi truy vấn Chunks tài liệu: {ex.Message}");
+            var docsOnly = await db.AgricultureDocuments.AsNoTracking().ToListAsync();
+            sb.AppendLine($"  - Có {docsOnly.Count} tài liệu gốc trong bảng agriculture_documents.");
         }
 
         output.WriteLine(sb.ToString());
     }
 
-    [Fact(Skip = "Integration test: requires live Postgres database")]
+    [Fact]
     public async Task Deep_Audit_Data_Integrity()
     {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SMARTFARM_TEST_DB")))
+        {
+            output.WriteLine("Skipped live database audit: set SMARTFARM_TEST_DB to an isolated test database.");
+            return;
+        }
         using var db = CreateLiveContext();
         if (!await db.Database.CanConnectAsync())
         {
             output.WriteLine("[WARN] Không thể kết nối cơ sở dữ liệu để audit chuyên sâu.");
             return;
         }
+
+        await EnsureSchemaCompatibilityAsync(db);
 
         var sb = new StringBuilder();
         sb.AppendLine("=== KẾT QUẢ KIỂM TRA CHUYÊN SÂU LỖ HỔNG & TÍNH TOÀN VẸN DỮ LIỆU ===");

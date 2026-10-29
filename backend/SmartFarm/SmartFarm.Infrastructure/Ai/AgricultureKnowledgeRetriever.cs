@@ -31,7 +31,7 @@ public sealed class AgricultureKnowledgeRetriever(
 
     private static readonly (string[] Aliases, string Canonical)[] CropSynonyms =
     [
-        (["cà chua", "ca chua", "tomato"], "cà chua"),
+        (["cà chua", "ca chua", "tomato", "beefsteak", "cà chua beefsteak"], "cà chua"),
         (["dưa leo", "dua leo", "dưa chuột", "dua chuot", "cucumber"], "dưa leo"),
         (["dâu tây", "dau tay", "strawberry"], "dâu tây"),
         (["dưa lưới", "dua luoi", "melon", "cantaloupe"], "dưa lưới"),
@@ -63,6 +63,11 @@ public sealed class AgricultureKnowledgeRetriever(
         return first ?? lower;
     }
 
+    // Một tài liệu đóng góp tối đa ngần này đoạn, để câu trả lời tổng hợp từ nhiều tài liệu đã duyệt.
+    private const int MaxPassagesPerDocument = 2;
+    // Điểm cộng cho đoạn cùng chủ đề với câu hỏi (ưu tiên, không loại đoạn khác chủ đề).
+    private const float TopicBoost = 0.05f;
+
     public async Task<IReadOnlyList<KnowledgePassageView>> RetrievePassagesAsync(
         string question,
         string? cropName,
@@ -74,6 +79,43 @@ public sealed class AgricultureKnowledgeRetriever(
         if (string.IsNullOrWhiteSpace(question)) return [];
         question = question.Normalize(NormalizationForm.FormC).Trim();
         if (topK <= 0) topK = 5;
+
+        // Lấy dư ứng viên rồi mới chọn: ưu tiên chủ đề câu hỏi và giới hạn số đoạn mỗi tài liệu.
+        var candidates = await RetrieveCandidatesAsync(question, cropName, category, tenantId, topK * 3, cancellationToken);
+        return await DiversifyAsync(question, candidates, topK, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<KnowledgePassageView>> DiversifyAsync(
+        string question, IReadOnlyList<KnowledgePassageView> candidates, int topK, CancellationToken ct)
+    {
+        if (candidates.Count == 0) return candidates;
+        var questionTopics = SmartFarm.Infrastructure.Ai.Knowledge.TopicClassifier.ClassifyQuestion(question);
+        var ids = candidates.Select(c => c.ChunkId).ToList();
+        var topics = questionTopics.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.AgricultureKnowledgeChunks.AsNoTracking().Where(c => ids.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Topic, ct);
+
+        return candidates
+            .Select(c => (Passage: c, Score: c.SimilarityScore +
+                (topics.TryGetValue(c.ChunkId, out var t) && questionTopics.Contains(t) ? TopicBoost : 0f)))
+            .OrderByDescending(x => x.Score)
+            .GroupBy(x => x.Passage.DocumentId)
+            .SelectMany(g => g.Take(MaxPassagesPerDocument))
+            .OrderByDescending(x => x.Score)
+            .Take(topK)
+            .Select(x => x.Passage)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<KnowledgePassageView>> RetrieveCandidatesAsync(
+        string question,
+        string? cropName,
+        string? category,
+        Guid? tenantId,
+        int topK,
+        CancellationToken cancellationToken)
+    {
 
         // ── 1. Tạo embedding cho câu hỏi ─────────────────────────────────────
         var questionEmbedding = await embeddingProvider.EmbedQueryAsync(question, cancellationToken);
@@ -132,6 +174,7 @@ public sealed class AgricultureKnowledgeRetriever(
                 .AsNoTracking()
                 .Include(c => c.Document)
                 .Where(c => c.Embedding != null)
+                .Where(c => c.Document.ReviewStatus == SmartFarm.Domain.Entities.AgricultureDocumentReviewStatus.Approved)
                 .Where(c => c.Document.IsPublic || c.Document.TenantId == tenantId);
 
             if (!string.IsNullOrWhiteSpace(cropName))
@@ -156,6 +199,8 @@ public sealed class AgricultureKnowledgeRetriever(
                     c.Document.AuthorOrganization,
                     c.Document.Category,
                     c.Content,
+                    c.PageNumber,
+                    c.SectionTitle,
                     Distance = c.Embedding!.CosineDistance(queryVector)
                 })
                 .ToListAsync(ct);
@@ -167,7 +212,7 @@ public sealed class AgricultureKnowledgeRetriever(
                     .Take(topK)
                     .Select(r => new KnowledgePassageView(
                         r.Id, r.DocumentId, r.Title, r.AuthorOrganization, r.Category, r.Content,
-                        (float)(1.0 - r.Distance)))
+                        (float)(1.0 - r.Distance), r.PageNumber, r.SectionTitle))
                     .ToList();
             }
         }
@@ -194,10 +239,10 @@ public sealed class AgricultureKnowledgeRetriever(
 
         // Pre-filter tại tầng SQL bằng điều kiện crop và category để không tải toàn bộ chunk vào RAM
         var sqlBuilder = new StringBuilder(@"
-            SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text
+            SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text, c.page_number, c.section_title
             FROM agriculture_knowledge_chunks c
             JOIN agriculture_documents d ON c.document_id = d.id
-            WHERE c.embedding IS NOT NULL AND (d.is_public = TRUE OR d.tenant_id = @tenantId)");
+            WHERE c.embedding IS NOT NULL AND d.review_status = 'Approved' AND (d.is_public = TRUE OR d.tenant_id = @tenantId)");
 
         using var cmd = conn.CreateCommand();
         var pTenant = cmd.CreateParameter();
@@ -227,7 +272,7 @@ public sealed class AgricultureKnowledgeRetriever(
 
         cmd.CommandText = sqlBuilder.ToString();
 
-        var list = new List<(Guid id, Guid docId, string title, string? author, string category, string content, string cropTags, float[] vector)>();
+        var list = new List<(Guid id, Guid docId, string title, string? author, string category, string content, string cropTags, float[] vector, int? page, string? section)>();
 
         using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
@@ -247,7 +292,9 @@ public sealed class AgricultureKnowledgeRetriever(
                     reader.GetString(4),
                     reader.GetString(5),
                     reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
-                    chunkVec
+                    chunkVec,
+                    reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                    reader.IsDBNull(9) ? null : reader.GetString(9)
                 ));
             }
         }
@@ -257,10 +304,10 @@ public sealed class AgricultureKnowledgeRetriever(
         {
             using var cmdFallback = conn.CreateCommand();
             cmdFallback.CommandText = @"
-                SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text
+                SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text, c.page_number, c.section_title
                 FROM agriculture_knowledge_chunks c
                 JOIN agriculture_documents d ON c.document_id = d.id
-                WHERE c.embedding IS NOT NULL AND (d.is_public = TRUE OR d.tenant_id = @tenantId)";
+                WHERE c.embedding IS NOT NULL AND d.review_status = 'Approved' AND (d.is_public = TRUE OR d.tenant_id = @tenantId)";
             var pFallbackTenant = cmdFallback.CreateParameter();
             pFallbackTenant.ParameterName = "@tenantId";
             pFallbackTenant.Value = tenantId ?? Guid.Empty;
@@ -283,7 +330,9 @@ public sealed class AgricultureKnowledgeRetriever(
                     readerFallback.GetString(4),
                     readerFallback.GetString(5),
                     readerFallback.IsDBNull(6) ? string.Empty : readerFallback.GetString(6),
-                    chunkVec
+                    chunkVec,
+                    readerFallback.IsDBNull(8) ? null : readerFallback.GetInt32(8),
+                    readerFallback.IsDBNull(9) ? null : readerFallback.GetString(9)
                 ));
             }
         }
@@ -296,7 +345,7 @@ public sealed class AgricultureKnowledgeRetriever(
                 float sim = 0f;
                 for (int i = 0; i < questionVector.Length; i++)
                     sim += questionVector[i] * x.vector[i];
-                return new KnowledgePassageView(x.id, x.docId, x.title, x.author, x.category, x.content, sim);
+                return new KnowledgePassageView(x.id, x.docId, x.title, x.author, x.category, x.content, sim, x.page, x.section);
             })
             .Where(x => x.SimilarityScore >= 0.55f)
             .OrderByDescending(x => x.SimilarityScore)
@@ -346,6 +395,7 @@ public sealed class AgricultureKnowledgeRetriever(
         var query = db.AgricultureKnowledgeChunks
             .AsNoTracking()
             .Include(c => c.Document)
+            .Where(c => c.Document.ReviewStatus == SmartFarm.Domain.Entities.AgricultureDocumentReviewStatus.Approved)
             .Where(c => c.Document.IsPublic || c.Document.TenantId == tenantId);
 
         if (!string.IsNullOrWhiteSpace(cropName))
@@ -376,7 +426,9 @@ public sealed class AgricultureKnowledgeRetriever(
                 c.Document.AuthorOrganization,
                 c.Document.Category,
                 c.Content,
-                c.Keywords
+                c.Keywords,
+                c.PageNumber,
+                c.SectionTitle
             })
             .ToListAsync(ct);
 
@@ -397,7 +449,9 @@ public sealed class AgricultureKnowledgeRetriever(
                 x.c.AuthorOrganization,
                 x.c.Category,
                 x.c.Content,
-                x.score))
+                x.score,
+                x.c.PageNumber,
+                x.c.SectionTitle))
             .ToList();
     }
 

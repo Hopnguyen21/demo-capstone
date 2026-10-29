@@ -18,6 +18,29 @@ let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
 let _refreshPromise: Promise<string | null> | null = null;
 
+export function isJwtExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return true;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const jsonStr = typeof window !== 'undefined'
+      ? decodeURIComponent(
+          atob(base64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        )
+      : Buffer.from(base64, 'base64').toString('utf8');
+    const payload = JSON.parse(jsonStr) as { exp?: number };
+    if (!payload.exp) return false;
+    // Consider token expired 10 seconds before actual exp timestamp
+    return Date.now() >= (payload.exp * 1000 - 10000);
+  } catch {
+    return true;
+  }
+}
+
 export function setTokens(access: string, refresh: string) {
   _accessToken = access;
   _refreshToken = refresh;
@@ -40,6 +63,11 @@ export function getAccessToken(): string | null {
   if (!_accessToken) {
     _accessToken = sessionStorage.getItem('sf_access_token') || localStorage.getItem('sf_access_token');
   }
+  // If access token is expired and there is no refresh token, clean up stale credentials
+  if (_accessToken && isJwtExpired(_accessToken) && !getRefreshToken()) {
+    clearTokens();
+    return null;
+  }
   return _accessToken; 
 }
 
@@ -52,17 +80,53 @@ export function getRefreshToken(): string | null {
 
 export function isAuthenticated() { return !!getAccessToken(); }
 
+export async function refreshSessionToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    clearTokens();
+    return null;
+  }
+  if (!_refreshPromise) {
+    _refreshPromise = axios
+      .post(`${BASE_URL}/api/v1/auth/refresh`, { refreshToken })
+      .then((res) => {
+        const { accessToken, refreshToken: newRefresh } = res.data as { accessToken: string; refreshToken: string };
+        setTokens(accessToken, newRefresh);
+        return accessToken;
+      })
+      .catch(() => {
+        clearTokens();
+        window.dispatchEvent(new CustomEvent('sf:unauthenticated'));
+        const isPublicPath = typeof window !== 'undefined' && ['/', '/home', '/login', '/register'].includes(window.location.pathname);
+        if (!isPublicPath && typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+        return null;
+      })
+      .finally(() => {
+        _refreshPromise = null;
+      });
+  }
+  return _refreshPromise;
+}
+
 // ─── Axios instance ───────────────────────────────────────────────────────────
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-  timeout: 45_000,
+  timeout: 120_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// ── Request interceptor: attach Bearer token ──────────────────────────────────
-apiClient.interceptors.request.use((config) => {
-  const token = getAccessToken();
+// ── Request interceptor: proactive refresh & attach Bearer token ──────────────
+apiClient.interceptors.request.use(async (config) => {
+  let token = getAccessToken();
+
+  // If token is expired but we have a refresh token, proactively refresh before sending
+  if (token && isJwtExpired(token)) {
+    token = await refreshSessionToken();
+  }
+
   if (token) {
     config.headers = config.headers ?? {};
     config.headers['Authorization'] = `Bearer ${token}`;
@@ -70,7 +134,7 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// ── Response interceptor: refresh on 401 ─────────────────────────────────────
+// ── Response interceptor: refresh on 401 fallback ─────────────────────────────
 apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
@@ -79,25 +143,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       if (!originalRequest._retried && refreshToken) {
         originalRequest._retried = true;
-        if (!_refreshPromise) {
-          _refreshPromise = axios
-            .post(`${BASE_URL}/api/v1/auth/refresh`, { refreshToken })
-            .then((res) => {
-              const { accessToken, refreshToken } = res.data as { accessToken: string; refreshToken: string };
-              setTokens(accessToken, refreshToken);
-              return accessToken;
-            })
-            .catch(() => {
-              clearTokens();
-              window.dispatchEvent(new CustomEvent('sf:unauthenticated'));
-              if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
-              }
-              return null;
-            })
-            .finally(() => { _refreshPromise = null; });
-        }
-        const newToken = await _refreshPromise;
+        const newToken = await refreshSessionToken();
         if (newToken && originalRequest.headers) {
           originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
           return apiClient(originalRequest);
@@ -105,7 +151,8 @@ apiClient.interceptors.response.use(
       } else {
         clearTokens();
         window.dispatchEvent(new CustomEvent('sf:unauthenticated'));
-        if (window.location.pathname !== '/login') {
+        const isPublicPath = typeof window !== 'undefined' && ['/', '/home', '/login', '/register'].includes(window.location.pathname);
+        if (!isPublicPath && typeof window !== 'undefined') {
           window.location.href = '/login';
         }
       }

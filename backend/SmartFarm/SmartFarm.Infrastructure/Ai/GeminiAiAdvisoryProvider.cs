@@ -16,12 +16,27 @@ public sealed class GeminiOptions
 {
     public const string SectionName = "Gemini";
     public string ApiKey { get; set; } = string.Empty;
-    public string Model { get; set; } = "gemini-2.5-flash";
+    /// <summary>Danh sách nhiều API key (mỗi key thuộc project khác nhau để cộng dồn quota). Dùng chung với ApiKey.</summary>
+    public List<string> ApiKeys { get; set; } = [];
+    public string Model { get; set; } = "gemini-3.5-flash-lite";
+
+    /// <summary>
+    /// Model thử tiếp khi model chính lỗi (Google ngừng cấp model cũ cho tài khoản mới trả HTTP 404).
+    /// Dùng chung cho tư vấn, OCR, kiểm tra tài liệu, trích xuất và soạn nháp; cấu hình được qua Gemini:FallbackModels.
+    /// </summary>
+    public List<string> FallbackModels { get; set; } = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"];
+
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int TimeoutSeconds { get; set; } = 30;
     public int MaxOutputTokens { get; set; } = 8192;
-    public int? ThinkingBudget { get; set; }
+    public int? ThinkingBudget { get; set; } = 0;
     public int MaxQuestionLength { get; set; } = 1000;
+
+    /// <summary>Model chính rồi tới các model dự phòng, không trùng lặp.</summary>
+    public List<string> CandidateModels() =>
+        new[] { Model }.Concat(FallbackModels ?? [])
+            .Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 }
 
 public sealed partial class GeminiAiAdvisoryProvider(
@@ -34,12 +49,17 @@ public sealed partial class GeminiAiAdvisoryProvider(
 
     public async Task<AiProviderResult> GenerateAsync(AiProviderRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        var apiKeys = (settings.ApiKeys ?? [])
+            .Append(settings.ApiKey)
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Select(k => k.Trim())
+            .Distinct()
+            .ToList();
+        if (apiKeys.Count == 0)
             throw new InvalidOperationException("Gemini API key is not configured.");
         if (!ModelName().IsMatch(settings.Model))
             throw new InvalidOperationException("Gemini model name is invalid.");
 
-        var endpoint = new Uri(new Uri(settings.BaseUrl, UriKind.Absolute), $"models/{settings.Model}:generateContent");
         var promptText = AiPromptBuilder.Build(request);
 
         logger.LogInformation(
@@ -56,8 +76,6 @@ public sealed partial class GeminiAiAdvisoryProvider(
             ["responseMimeType"] = "application/json",
             ["responseSchema"] = AiPromptBuilder.ResponseSchema
         };
-        if (settings.ThinkingBudget is > 0)
-            generationConfig["thinkingConfig"] = new { thinkingBudget = settings.ThinkingBudget.Value };
 
         var body = new
         {
@@ -66,31 +84,71 @@ public sealed partial class GeminiAiAdvisoryProvider(
             generationConfig
         };
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        var candidateModels = settings.CandidateModels();
+
+        string? responseBody = null;
+        string? activeModel = null;
+
+        // Thử lần lượt: mỗi model × mỗi API key. Model ưu tiên được thử với mọi key trước khi hạ cấp sang model dự phòng.
+        var attempts = candidateModels.SelectMany(m => apiKeys.Select((k, i) => (Model: m, Key: k, KeyIndex: i))).ToList();
+
+        for (var attemptNo = 0; attemptNo < attempts.Count; attemptNo++)
         {
-            Content = JsonContent.Create(body, options: JsonOptions)
-        };
-        message.Headers.Add("x-goog-api-key", settings.ApiKey);
-
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
-
-        string responseBody;
-        try
-        {
-            using var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            responseBody = await response.Content.ReadAsStringAsync(timeout.Token);
-
-            if (!response.IsSuccessStatusCode)
+            var (model, apiKey, keyIndex) = attempts[attemptNo];
+            var isLastAttempt = attemptNo == attempts.Count - 1;
+            activeModel = model;
+            // thinkingBudget chỉ áp dụng cho dòng gemini-2.5; model mới hơn có thể từ chối tham số này (HTTP 400).
+            if (settings.ThinkingBudget is >= 0 && model.StartsWith("gemini-2.5", StringComparison.OrdinalIgnoreCase))
+                generationConfig["thinkingConfig"] = new { thinkingBudget = settings.ThinkingBudget.Value };
+            else
+                generationConfig.Remove("thinkingConfig");
+            var endpoint = new Uri(new Uri(settings.BaseUrl, UriKind.Absolute), $"models/{model}:generateContent");
+            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint)
             {
-                logger.LogWarning("[Gemini] HTTP {StatusCode}. Body: {Body}", (int)response.StatusCode, Truncate(responseBody, 1000));
-                throw new HttpRequestException($"Gemini returned HTTP {(int)response.StatusCode}.", null, response.StatusCode);
+                Content = JsonContent.Create(body, options: JsonOptions)
+            };
+            message.Headers.Add("x-goog-api-key", apiKey);
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
+
+            try
+            {
+                using var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+                var currentBody = await response.Content.ReadAsStringAsync(timeout.Token);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    responseBody = currentBody;
+                    break;
+                }
+
+                var statusCode = (int)response.StatusCode;
+                logger.LogWarning("[Gemini] Model {Model} (key #{KeyIndex}) returned HTTP {StatusCode}. Body: {Body}", model, keyIndex + 1, statusCode, Truncate(currentBody, 1000));
+
+                var retriable = statusCode is 400 or 401 or 403 or 404 or 429 or 500 or 502 or 503 or 504;
+                if (retriable && !isLastAttempt)
+                {
+                    logger.LogInformation("[Gemini] Model {Model} with key #{KeyIndex} unavailable (HTTP {Status}), trying next model/key...", model, keyIndex + 1, statusCode);
+                    continue;
+                }
+
+                throw new HttpRequestException($"Gemini returned HTTP {statusCode}.", null, response.StatusCode);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                if (!isLastAttempt)
+                {
+                    logger.LogWarning("[Gemini] Model {Model} (key #{KeyIndex}) timed out, trying next model/key...", model, keyIndex + 1);
+                    continue;
+                }
+                throw new TimeoutException($"Gemini ({model}) did not respond within {settings.TimeoutSeconds}s.");
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+
+        if (string.IsNullOrWhiteSpace(responseBody))
         {
-            throw new TimeoutException($"Gemini did not respond within {settings.TimeoutSeconds}s.");
+            throw new HttpRequestException("Gemini returned an empty response.");
         }
 
         string text;

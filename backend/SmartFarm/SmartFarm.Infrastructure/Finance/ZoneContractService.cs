@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Features.Finance;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
@@ -10,10 +11,9 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 {
     private static bool IsDevelopment() =>
         string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+
     public async Task<IReadOnlyList<ZoneContractView>> GetAllContractsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, tenantId, ct);
-
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var query = db.ZoneContracts
             .Include(c => c.Farm)
@@ -36,8 +36,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<IReadOnlyList<ZoneContractView>> GetContractsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, tenantId, ct);
-
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var query = db.ZoneContracts
             .Include(c => c.Farm)
@@ -61,8 +59,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<IReadOnlyList<ZoneContractView>> GetContractsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, tenantId, ct);
-
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var query = db.ZoneContracts
             .Include(c => c.Farm)
@@ -107,6 +103,15 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<ZoneContractView> CreateContractAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateZoneContractCommand command, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(command.LesseeName))
+            throw new RequestValidationException("lesseeName", "Tên bên thuê là bắt buộc.");
+        if (command.EndDate <= command.StartDate)
+            throw new RequestValidationException("endDate", "Ngày kết thúc phải sau ngày bắt đầu.");
+        if (command.MonthlyRentVnd < 0 || command.DepositVnd < 0 || command.TotalContractValueVnd < 0)
+            throw new RequestValidationException("amount", "Giá trị tiền không được âm.");
+        if (command.DiscountPercent is < 0 or > 50)
+            throw new RequestValidationException("discountPercent", "Chiết khấu phải từ 0 đến 50%.");
+
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy Zone #{zoneId}");
 
@@ -120,10 +125,15 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             : zone.Field.Farm.TenantId;
         var farmId = command.FarmId != Guid.Empty ? command.FarmId : zone.Field.FarmId;
 
-        // Auto-generate Contract Number if not provided
+        // Auto-generate Contract Number if not provided, ensuring no collision
         var contractNumber = !string.IsNullOrWhiteSpace(command.ContractNumber)
             ? command.ContractNumber.Trim()
             : $"HD-ZN-{DateTime.UtcNow:yyyyMM}-{Random.Shared.Next(100, 999)}";
+
+        while (await db.ZoneContracts.AnyAsync(c => c.TenantId == effectiveTenantId && c.ContractNumber == contractNumber, ct))
+        {
+            contractNumber = $"HD-ZN-{DateTime.UtcNow:yyyyMM}-{Random.Shared.Next(100, 999)}-{Guid.NewGuid().ToString("N")[..4].ToUpperInvariant()}";
+        }
 
         // Auto calculate financials
         var totalMonths = Math.Max(1, ((command.EndDate.Year - command.StartDate.Year) * 12) + command.EndDate.Month - command.StartDate.Month);
@@ -131,10 +141,12 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             ? command.TotalContractValueVnd
             : command.MonthlyRentVnd * totalMonths;
 
-        // Check if user is purchasing for the 2nd time within 2 months (60 days)
+        // Check if the same lessee is purchasing for the 2nd time within 2 months (60 days) in the same tenant
         var twoMonthsAgo = DateTime.UtcNow.AddDays(-60);
+        var trimmedLessee = command.LesseeName.Trim();
         var previousRecentContract = await db.ZoneContracts
-            .Where(c => (c.CreatedByOwnerId == ownerId || (tenantId.HasValue && c.TenantId == tenantId.Value))
+            .Where(c => c.TenantId == effectiveTenantId
+                     && c.LesseeName == trimmedLessee
                      && (c.CreatedAtUtc >= twoMonthsAgo || (c.SignedAtUtc.HasValue && c.SignedAtUtc.Value >= twoMonthsAgo)))
             .OrderByDescending(c => c.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
@@ -149,7 +161,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         var notes = command.Notes;
         if (isRepeatPurchaseInTwoMonths && (notes == null || !notes.Contains("lần 2 trong 2 tháng")))
         {
-            var notePrefix = $"[Ưu đãi Tri ân: Giảm {discountPercent}% cho khách hàng mua/ký hợp đồng lần thứ 2 trong vòng 2 tháng (HĐ trước: #{previousRecentContract!.ContractNumber})]. ";
+            var notePrefix = $"[Ưu đãi Tri ân: Giảm {discountPercent}% cho khách hàng {trimmedLessee} mua/ký hợp đồng lần thứ 2 trong vòng 2 tháng (HĐ trước: #{previousRecentContract!.ContractNumber})]. ";
             notes = notePrefix + (notes ?? string.Empty);
         }
 
@@ -273,8 +285,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct)
     {
-        await EnsureSeedDataAsync(ownerId, tenantId, ct);
-
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var thresholdDate = today.AddDays(daysThreshold);
 
@@ -316,8 +326,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct)
     {
-        await EnsureSeedDepreciationsAsync(ownerId, tenantId, ct);
-
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy phân khu #{zoneId}");
 
@@ -351,8 +359,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct)
     {
-        await EnsureSeedDepreciationsAsync(ownerId, tenantId, ct);
-
         var farm = await db.Farms.FirstOrDefaultAsync(f => f.Id == farmId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy trang trại #{farmId}");
 
@@ -381,6 +387,11 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
     public async Task<DeviceDepreciationView> CreateDepreciationAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateDeviceDepreciationCommand command, CancellationToken ct)
     {
+        if (command.OriginalCostVnd <= 0)
+            throw new RequestValidationException("originalCostVnd", "Giá trị thiết bị phải lớn hơn 0.");
+        if (command.DepreciationLifetimeMonths is < 1 or > 120)
+            throw new RequestValidationException("depreciationLifetimeMonths", "Thời gian khấu hao phải từ 1 đến 120 tháng.");
+
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy phân khu #{zoneId}");
 
@@ -389,34 +400,13 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             throw new UnauthorizedAccessException("Bạn không có quyền tạo hồ sơ khấu hao cho phân khu thuộc Tenant khác.");
         }
 
-        var device = await db.Devices.FirstOrDefaultAsync(d => d.Id == command.DeviceId, ct)
-                  ?? await db.Devices.FirstOrDefaultAsync(d => d.ZoneId == zoneId, ct);
+        var device = await db.Devices.FirstOrDefaultAsync(d =>
+                d.Id == command.DeviceId && d.ZoneId == zoneId &&
+                d.FarmId == zone.Field.FarmId && d.DecommissionedAtUtc == null, ct)
+            ?? throw new ResourceNotFoundException("Thiết bị không tồn tại trong khu vực này.");
 
-        if (device == null)
-        {
-            var gw = await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == zone.Field.FarmId, ct)
-                  ?? await db.Gateways.FirstOrDefaultAsync(ct);
-            var depReq = await db.DeploymentRequests.FirstOrDefaultAsync(r => r.ZoneId == zoneId, ct)
-                      ?? await db.DeploymentRequests.FirstOrDefaultAsync(ct);
-
-            device = new Device
-            {
-                FarmId = zone.Field.FarmId,
-                ZoneId = zoneId,
-                GatewayId = gw?.Id ?? Guid.Empty,
-                DeploymentRequestId = depReq?.Id ?? Guid.Empty,
-                DeviceType = DeviceType.SensorNode,
-                HardwareAddress = $"NODE-INSTALL-{Random.Shared.Next(100000, 999999)}",
-                Status = DeviceStatus.Online,
-                InstallationNotes = "Thiết bị trạm vi khí hậu phân khu tự động khởi tạo cho hồ sơ khấu hao"
-            };
-            db.Devices.Add(device);
-            await db.SaveChangesAsync(ct);
-        }
-        else if (device.ZoneId == null || device.ZoneId == Guid.Empty)
-        {
-            device.ZoneId = zoneId;
-        }
+        if (await db.DeviceDepreciations.AnyAsync(d => d.DeviceId == device.Id, ct))
+            throw new ResourceConflictException("Thiết bị này đã có hồ sơ khấu hao.");
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var lifetime = Math.Max(1, command.DepreciationLifetimeMonths);

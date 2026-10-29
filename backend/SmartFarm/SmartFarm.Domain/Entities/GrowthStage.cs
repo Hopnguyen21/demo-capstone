@@ -9,5 +9,8 @@ public sealed class GrowthStage : AuditableEntity
     public string Name { get; set; } = string.Empty;
     public int StageOrder { get; set; }
     public int DurationDays { get; set; }
+    public string? Description { get; set; }
+    public string? FertilizerAction { get; set; }
+    public string? IpmAction { get; set; }
     public ICollection<EnvironmentalRequirement> Requirements { get; } = new List<EnvironmentalRequirement>();
 }

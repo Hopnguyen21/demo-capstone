@@ -2,18 +2,71 @@ using SmartFarm.Domain.Enums;
 
 namespace SmartFarm.Application.Features.CropGrowth;
 
-public sealed record CreateCropCommand(string Name, string? ScientificName, string? Description);
-public sealed record UpdateCropCommand(string Name, string? ScientificName, string? Description);
-public sealed record CropView(Guid CropId, string Name, string ScientificName, string? Description, bool IsSystemDefined, Guid? TenantId);
+public sealed record CreateCropCommand(
+    string Name, 
+    string? ScientificName, 
+    string? Description,
+    string? Category = null,
+    int? GrowthCycleDays = null,
+    decimal? OptimalTemperatureMin = null,
+    decimal? OptimalTemperatureMax = null,
+    decimal? OptimalSoilMoistureMin = null,
+    decimal? OptimalSoilMoistureMax = null,
+    decimal? OptimalPhMin = null,
+    decimal? OptimalPhMax = null,
+    decimal? OptimalEcMin = null,
+    decimal? OptimalEcMax = null,
+    decimal? OptimalLux = null,
+    string? CalendarIrrigationPlan = null);
+
+public sealed record UpdateCropCommand(
+    string Name, 
+    string? ScientificName, 
+    string? Description,
+    string? Category = null,
+    int? GrowthCycleDays = null,
+    decimal? OptimalTemperatureMin = null,
+    decimal? OptimalTemperatureMax = null,
+    decimal? OptimalSoilMoistureMin = null,
+    decimal? OptimalSoilMoistureMax = null,
+    decimal? OptimalPhMin = null,
+    decimal? OptimalPhMax = null,
+    decimal? OptimalEcMin = null,
+    decimal? OptimalEcMax = null,
+    decimal? OptimalLux = null,
+    string? CalendarIrrigationPlan = null);
+
+public sealed record CropView(
+    Guid CropId, 
+    string Name, 
+    string ScientificName, 
+    string? Description, 
+    bool IsSystemDefined, 
+    Guid? TenantId,
+    string? Category = null,
+    int? GrowthCycleDays = null,
+    decimal? OptimalTemperatureMin = null,
+    decimal? OptimalTemperatureMax = null,
+    decimal? OptimalSoilMoistureMin = null,
+    decimal? OptimalSoilMoistureMax = null,
+    decimal? OptimalPhMin = null,
+    decimal? OptimalPhMax = null,
+    decimal? OptimalEcMin = null,
+    decimal? OptimalEcMax = null,
+    decimal? OptimalLux = null,
+    string? CalendarIrrigationPlan = null);
+
 public sealed record CreateVarietyCommand(string Name, string? Description);
 public sealed record VarietyView(Guid VarietyId, Guid CropId, string Name, string? Description, bool IsSystemDefined, Guid? TenantId);
 
 public sealed record RequirementInput(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
-public sealed record StageInput(string Name, int StageOrder, int DurationDays, IReadOnlyList<RequirementInput> Requirements);
+public sealed record StageInput(string Name, int StageOrder, int DurationDays, IReadOnlyList<RequirementInput> Requirements, string? Description = null, string? FertilizerAction = null, string? IpmAction = null);
 public sealed record CreateGrowthProfileCommand(Guid CropId, Guid? VarietyId, string Name, string? Description, bool IsDefault, Guid? SourceProfileId, IReadOnlyList<StageInput>? Stages);
+/// <summary>Sửa thông tin chung của profile; giai đoạn và ngưỡng sửa riêng (requirements).</summary>
+public sealed record UpdateGrowthProfileCommand(string Name, string? Description, bool IsDefault);
 public sealed record RequirementView(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
-public sealed record GrowthStageView(Guid StageId, string Name, int StageOrder, int DurationDays, IReadOnlyList<RequirementView> Requirements);
-public sealed record GrowthProfileView(Guid ProfileId, Guid CropId, Guid? VarietyId, string Name, string? Description, bool IsDefault, bool IsSystemDefined, Guid? TenantId, Guid? SourceProfileId, IReadOnlyList<GrowthStageView> Stages);
+public sealed record GrowthStageView(Guid StageId, string Name, int StageOrder, int DurationDays, IReadOnlyList<RequirementView> Requirements, string? Description = null, string? FertilizerAction = null, string? IpmAction = null);
+public sealed record GrowthProfileView(Guid ProfileId, Guid CropId, string CropName, Guid? VarietyId, string? VarietyName, string Name, string? Description, bool IsDefault, bool IsSystemDefined, Guid? TenantId, Guid? SourceProfileId, IReadOnlyList<GrowthStageView> Stages);
 public sealed record RequirementUpdateView(Guid EffectiveProfileId, Guid EffectiveStageId, bool ClonedFromSystem, IReadOnlyList<RequirementView> Requirements);
 
 public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, Guid? FarmingSeasonId = null);

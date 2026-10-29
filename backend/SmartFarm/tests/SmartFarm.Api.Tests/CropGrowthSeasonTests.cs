@@ -39,16 +39,26 @@ public sealed class CropGrowthSeasonTests
     }
 
     [Fact]
-    public async Task Updating_system_stage_clones_profile_instead_of_mutating_system_default()
+    public async Task Owner_cannot_update_stage_requirements_or_clone_system_profile()
     {
         using var factory = new TestApplicationFactory(); await factory.SeedAsync();
         using var client = factory.CreateClient(); await AuthenticateAsync(client, "owner-a@example.com");
         var response = await client.PutAsJsonAsync($"/api/v1/growth-stages/{VegetativeStage}/requirements", new { requirements = new[] { Requirement("Temperature", 22m, 31m, 26m, "C") } });
-        response.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.True(json.RootElement.GetProperty("clonedFromSystem").GetBoolean());
-        Assert.NotEqual(SystemProfile, json.RootElement.GetProperty("effectiveProfileId").GetGuid());
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
         Assert.Equal(21m, (await db.EnvironmentalRequirements.SingleAsync(x => x.GrowthStageId == VegetativeStage && x.ParameterCode == EnvironmentalParameterCode.Temperature)).MinValue);
+        Assert.False(await db.GrowthProfiles.AnyAsync(x => x.SourceProfileId == SystemProfile));
+    }
+
+    [Fact]
+    public async Task Admin_updates_system_stage_requirements_in_place()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var client = factory.CreateClient(); await AuthenticateAsync(client, "admin@example.com");
+        var response = await client.PutAsJsonAsync($"/api/v1/growth-stages/{VegetativeStage}/requirements", new { requirements = new[] { Requirement("Temperature", 22m, 31m, 26m, "C") } });
+        response.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.False(json.RootElement.GetProperty("clonedFromSystem").GetBoolean());
+        Assert.Equal(SystemProfile, json.RootElement.GetProperty("effectiveProfileId").GetGuid());
     }
 
     [Fact]
@@ -87,9 +97,65 @@ public sealed class CropGrowthSeasonTests
     public async Task Profile_validation_rejects_missing_core_requirement_and_non_contiguous_stage_order()
     {
         using var factory = new TestApplicationFactory(); await factory.SeedAsync();
-        using var client = factory.CreateClient(); await AuthenticateAsync(client, "owner-a@example.com");
+        using var client = factory.CreateClient(); await AuthenticateAsync(client, "admin@example.com");
         var response = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Invalid", stages = new[] { new { name = "Bad", stageOrder = 2, durationDays = 10, requirements = new[] { Requirement("Temperature", 1m, 2m, 1.5m, "C") } } } });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Owner_cannot_create_growth_profile()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var client = factory.CreateClient(); await AuthenticateAsync(client, "owner-a@example.com");
+        var stage = new { name = "Seedling", stageOrder = 1, durationDays = 15, requirements = new[] { Requirement("Temperature", 20m, 26m, 23m, "C"), Requirement("SoilMoisture", 60m, 80m, 70m, "%"), Requirement("AirHumidity", 60m, 80m, 70m, "%"), Requirement("Ph", 6.0m, 6.5m, 6.2m, "pH") } };
+        var response = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Owner Profile", stages = new[] { stage } });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.False(await db.GrowthProfiles.AnyAsync(x => x.Name == "Owner Profile"));
+    }
+
+    [Fact]
+    public async Task Admin_can_update_profile_name_description_and_default()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var client = factory.CreateClient(); await AuthenticateAsync(client, "admin@example.com");
+        var stage = new { name = "Seedling", stageOrder = 1, durationDays = 20, requirements = new[] { Requirement("Temperature", 18m, 26m, 22m, "C"), Requirement("SoilMoisture", 60m, 80m, 70m, "%"), Requirement("AirHumidity", 60m, 80m, 70m, "%"), Requirement("Ph", 6m, 7m, 6.5m, "pH") } };
+        var created = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Second Profile", stages = new[] { stage } });
+        created.EnsureSuccessStatusCode();
+        using var createdJson = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var secondId = createdJson.RootElement.GetProperty("profileId").GetGuid();
+
+        var response = await client.PutAsJsonAsync($"/api/v1/growth-profiles/{secondId}", new { name = "Renamed Profile", description = "Updated description", isDefault = true });
+
+        response.EnsureSuccessStatusCode();
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Renamed Profile", json.RootElement.GetProperty("name").GetString());
+        Assert.Equal("Updated description", json.RootElement.GetProperty("description").GetString());
+        Assert.True(json.RootElement.GetProperty("isDefault").GetBoolean());
+        // Chỉ một hồ sơ mặc định cho mỗi cây/giống: hồ sơ hệ thống cũ không còn mặc định.
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.False((await db.GrowthProfiles.SingleAsync(x => x.Id == SystemProfile)).IsDefault);
+    }
+
+    [Fact]
+    public async Task Profile_rename_rejects_a_duplicate_name_and_non_admins()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var client = factory.CreateClient(); await AuthenticateAsync(client, "admin@example.com");
+        var stage = new { name = "Seedling", stageOrder = 1, durationDays = 20, requirements = new[] { Requirement("Temperature", 18m, 26m, 22m, "C"), Requirement("SoilMoisture", 60m, 80m, 70m, "%"), Requirement("AirHumidity", 60m, 80m, 70m, "%"), Requirement("Ph", 6m, 7m, 6.5m, "pH") } };
+        var created = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Second Profile", stages = new[] { stage } });
+        using var createdJson = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var secondId = createdJson.RootElement.GetProperty("profileId").GetGuid();
+        using var systemJson = JsonDocument.Parse(await (await client.GetAsync($"/api/v1/crops/{SystemCrop}/growth-profiles")).Content.ReadAsStringAsync());
+        var systemName = systemJson.RootElement.EnumerateArray().Single(p => p.GetProperty("profileId").GetGuid() == SystemProfile).GetProperty("name").GetString();
+
+        var duplicate = await client.PutAsJsonAsync($"/api/v1/growth-profiles/{secondId}", new { name = systemName, isDefault = false });
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+
+        using var ownerClient = factory.CreateClient(); await AuthenticateAsync(ownerClient, "owner-a@example.com");
+        var forbidden = await ownerClient.PutAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}", new { name = "Owner rename", isDefault = false });
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
     }
 
     private static object Requirement(string code, decimal min, decimal max, decimal target, string unit) => new { parameterCode = code, minValue = min, maxValue = max, targetValue = target, unit };

@@ -352,7 +352,7 @@ ON CONFLICT ("Id") DO UPDATE SET
 -- ── 14. PLATFORM SETTINGS ──────────────────────────────────────────────────────
 INSERT INTO "PlatformSettings" ("Key", "Value", "Group", "DataType", "Description", "IsSecret", "UpdatedByUserId", "UpdatedAtUtc")
 VALUES
-('Gemini:ApiKey', 'AIzaSyDemoSmartFarmKeySecret12345', 'AI', 'String', 'API Key kết nối Google Gemini AI cho tính năng tư vấn nông nghiệp.', TRUE, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
+('Gemini:ApiKey', 'REDACTED_SECRET', 'AI', 'String', 'API Key kết nối Google Gemini AI cho tính năng tư vấn nông nghiệp.', TRUE, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
 ('Gemini:Model', 'gemini-2.5-flash', 'AI', 'String', 'Mô hình AI Gemini phục vụ phân tích khuyến nghị mùa vụ.', FALSE, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
 ('Gemini:TimeoutSeconds', '30', 'AI', 'Integer', 'Thời gian chờ tối đa khi gửi yêu cầu AI (giây).', FALSE, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
 ('Weather:ApiKey', 'mock-openmeteo-weather-key-999', 'Weather', 'String', 'Khóa xác thực dịch vụ dự báo thời tiết OpenMeteo.', FALSE, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),

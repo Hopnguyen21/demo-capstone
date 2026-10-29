@@ -740,6 +740,13 @@ export interface AgricultureDocumentSummary {
   tenantId?: string;
   chunkCount: number;
   createdAtUtc: string;
+  reviewStatus: 'PendingReview' | 'Approved' | 'NeedsCorrection' | 'Superseded' | string;
+  topics?: string;
+  detectedTopics?: string;
+  reviewNotes?: string;
+  reviewedAtUtc?: string;
+  hasOriginalFile: boolean;
+  documentType: 'OfficialStandard' | 'TechnicalGuide' | 'Thematic' | string;
 }
 
 export interface AgricultureChunk {
@@ -751,9 +758,46 @@ export interface AgricultureChunk {
   hasEmbedding: boolean;
 }
 
+/** Trường VietGAP do AI trích; value chỉ có khi evidence là câu trích nguyên văn có trong toàn văn. */
+export interface VietGapExtractedField {
+  key: string;
+  label: string;
+  value: string | null;
+  evidence: string | null;
+  page: number | null;
+}
+
+export interface VietGapExtractedStage {
+  stageOrder: number;
+  name: string;
+  durationDays: number | null;
+  temperatureRange: string | null;
+  moistureRange: string | null;
+  ph: string | null;
+  ec: string | null;
+  fertilizerAction: string | null;
+  ipmAction: string | null;
+  evidence: string;
+  page: number | null;
+}
+
+export interface VietGapStructuredExtraction {
+  fields: VietGapExtractedField[];
+  stages: VietGapExtractedStage[];
+  extractedBy: string;
+  extractedAtUtc: string;
+  /** Phiên bản quy tắc kiểm chứng; thấp hơn EXTRACTION_RULES_VERSION là kết quả cũ. */
+  rulesVersion?: number;
+  /** Trường AI đề xuất nhưng bị loại vì không khớp nguyên văn tài liệu. */
+  rejectedFields?: string[];
+  proposedCount?: number;
+}
+
 export interface AgricultureDocumentDetail extends AgricultureDocumentSummary {
   contentText: string;
   chunks: AgricultureChunk[];
+  /** null = chưa trích hoặc toàn văn đã sửa sau lần trích gần nhất. */
+  extraction?: VietGapStructuredExtraction | null;
 }
 
 export interface KnowledgePassage {
@@ -774,6 +818,8 @@ export interface AiSource {
   category: string;
   similarity?: number;
   similarityScore?: number;
+  pageNumber?: number;
+  sectionTitle?: string;
   contentSnippet?: string;
   content?: string;
 }

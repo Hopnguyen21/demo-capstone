@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Bot, 
@@ -25,10 +25,11 @@ import {
   Database,
   ExternalLink,
   FileText,
-  Layers
+  Layers,
+  Radio
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
-import { aiService, controlService, knowledgeService } from '../../services';
+import { aiService, controlService, knowledgeService, zoneService } from '../../services';
 import { useAuth } from '../../app/providers/AuthContext';
 
 const COMMAND_LABEL: Record<string, string> = {
@@ -329,105 +330,79 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
   const similarity = typeof source === 'object' && source.similarity != null ? Math.round(source.similarity * 100) : undefined;
   const docId = typeof source === 'object' ? (source.documentId || source.DocumentId) : undefined;
   const snippet = typeof source === 'object' ? (source.contentSnippet || source.content) : undefined;
+  // Trang và mục của đoạn được trích (SRS 3.4: trích nguồn tới mục liên quan).
+  const location = typeof source === 'object'
+    ? [source.pageNumber ? `Trang ${source.pageNumber}` : null, source.sectionTitle ? `Mục: ${source.sectionTitle}` : null].filter(Boolean).join(' · ')
+    : '';
 
-  const handleToggle = async () => {
-    const nextState = !isExpanded;
-    setIsExpanded(nextState);
-
-    if (nextState && !detailContent && !snippet && docId) {
-      try {
-        setIsLoadingContent(true);
-        const doc = await knowledgeService.getDocument(docId);
-        if (doc) {
-          setDetailContent(doc.contentText || null);
-          setChunks(doc.chunks || []);
-        }
-      } catch (err) {
-        console.warn('Lỗi tải chi tiết nguồn RAG:', err);
-      } finally {
-        setIsLoadingContent(false);
-      }
-    }
-  };
+  // Chỉ hiển thị đoạn trích server gửi kèm câu trả lời: FarmOwner/Farmer không có quyền xem toàn văn tài liệu.
+  const handleToggle = () => setIsExpanded(!isExpanded);
 
   return (
-    <div className="bg-white/95 rounded-lg border border-emerald-200/90 shadow-2xs overflow-hidden transition-all">
+    <div className="bg-white/95 rounded-xl border border-emerald-200 shadow-xs overflow-hidden transition-all">
       <div 
         onClick={handleToggle}
-        className="p-2.5 cursor-pointer hover:bg-emerald-50/50 flex flex-col gap-1.5"
+        className="p-3 cursor-pointer hover:bg-emerald-50/60 flex flex-col gap-2 transition-colors"
       >
-        <div className="flex items-start justify-between gap-2 text-[11px]">
-          <span className="font-bold text-slate-800 flex items-center gap-1.5 leading-snug">
-            <span className="text-emerald-700 font-mono">#{index + 1}</span>
-            <span>{title}</span>
+        <div className="flex items-start justify-between gap-3 text-xs md:text-sm">
+          <span className="font-bold text-slate-800 flex items-center gap-2 leading-snug">
+            <span className="text-emerald-700 font-mono font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">#{index + 1}</span>
+            <span className="text-slate-900">{title}</span>
           </span>
           {similarity != null && (
-            <span className="text-emerald-700 font-mono font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0 text-[10px]">
+            <span className="text-emerald-800 font-mono font-bold bg-emerald-100/80 px-2.5 py-1 rounded-full border border-emerald-300 shrink-0 text-xs shadow-2xs">
               {similarity}% khớp
             </span>
           )}
         </div>
 
-        <div className="flex items-center justify-between text-[10px] text-slate-500 flex-wrap gap-1">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2 pt-0.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {location && <span className="font-semibold text-sky-700">{location}</span>}
             {org ? (
               <span className="font-medium text-slate-700">
-                Tác giả / Nguồn: <strong className="text-slate-800">{org}</strong>
+                Tác giả / Nguồn: <strong className="text-slate-900">{org}</strong>
               </span>
             ) : (
               <span className="font-medium text-slate-500 italic">
-                Nguồn: Cơ sở tri thức nội bộ SmartFarm
+                Nguồn: Cơ sở tri thức VietGAP SmartFarm
               </span>
             )}
             {category && (
-              <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-mono">
+              <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-mono text-[11px] border border-slate-200 font-semibold">
                 DM: {category}
               </span>
             )}
           </div>
           <button 
             type="button" 
-            className="text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1 text-[10px]"
+            className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1.5 text-xs py-0.5 px-1.5 rounded hover:bg-emerald-100/50 transition-colors"
           >
             {isExpanded ? (
-              <>Thu gọn <ChevronUp size={12} /></>
+              <>Thu gọn <ChevronUp size={14} /></>
             ) : (
-              <>Xem nội dung & vị trí lưu trữ <ChevronDown size={12} /></>
+              <>Xem trích đoạn tri thức <ChevronDown size={14} /></>
             )}
           </button>
         </div>
       </div>
 
       {isExpanded && (
-        <div className="p-3 bg-slate-900 text-slate-200 border-t border-emerald-200/60 text-xs space-y-2.5">
-          {/* Vị trí lưu trữ thực tế trong hệ thống */}
-          <div className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 space-y-1.5 text-[11px]">
-            <div className="text-cyan-400 font-bold flex items-center gap-1.5">
-              <Database size={13} className="text-cyan-400" />
-              <span>Vị Trí Lưu Trữ Dữ Liệu Trong Hệ Thống:</span>
-            </div>
-            <div className="text-slate-300 font-mono text-[10px] space-y-1 pl-1">
-              <div>• Hệ quản trị CSDL: <strong className="text-white">PostgreSQL</strong> (Database: <span className="text-amber-300">SmartFarmDB01</span>)</div>
-              <div>• Bảng tài liệu quy chuẩn: <code className="text-emerald-300">agriculture_documents</code> {docId ? `(ID: ${docId})` : ''}</div>
-              <div>• Bảng vector chunks RAG: <code className="text-purple-300">agriculture_knowledge_chunks</code> (Đã nhúng 768 chiều pgvector)</div>
-              <div>• Nguồn gốc tài liệu: <span className="text-slate-300">Cơ sở dữ liệu tri thức canh tác SmartFarm</span></div>
-            </div>
-          </div>
-
+        <div className="p-2.5 bg-slate-900 text-slate-200 border-t border-emerald-200/60 text-xs space-y-2">
           {/* Nội dung trích xuất từ tài liệu */}
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="text-emerald-400 font-bold text-[11px] flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <BookOpen size={13} className="text-emerald-400" />
-                <span>Nội Dung Tri Thức RAG Được Cung Cấp Cho AI:</span>
+                <span>Trích đoạn tri thức VietGAP:</span>
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">Trích đoạn thực tế</span>
+              <span className="text-[10px] text-slate-400 font-mono">pgvector Cosine</span>
             </div>
 
             {isLoadingContent ? (
               <div className="p-3 rounded-lg bg-slate-950/60 flex items-center gap-2 text-slate-400 text-[11px]">
                 <RefreshCw size={12} className="animate-spin text-emerald-400" />
-                Đang truy vấn nội dung từ PostgreSQL...
+                Đang nạp trích đoạn tiêu chuẩn từ Database...
               </div>
             ) : (snippet || detailContent || chunks.length > 0) ? (
               <div className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 text-[11px] text-slate-200 leading-relaxed max-h-56 overflow-y-auto whitespace-pre-line font-sans">
@@ -454,21 +429,52 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
             )}
           </div>
 
-          <div className="pt-1.5 flex items-center justify-between border-t border-slate-800">
-            <span className="text-[10px] text-slate-400">
-              Trạng thái: <strong className="text-emerald-400">Đã kiểm định & Nhúng RAG</strong>
+          <div className="pt-1.5 flex items-center justify-between border-t border-slate-800 text-[10px] text-slate-400">
+            <span>
+              Trạng thái tài liệu: <strong className="text-emerald-400">Đã kiểm định & Áp dụng RAG</strong>
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate('/admin/vietgap-standards');
-              }}
-              className="px-2.5 py-1 rounded bg-emerald-950 hover:bg-emerald-800 text-emerald-300 font-semibold text-[10px] inline-flex items-center gap-1 border border-emerald-800 transition-colors"
-            >
-              Mở Thư viện Quy chuẩn VietGAP <ExternalLink size={10} />
-            </button>
+            {org && <span className="font-medium text-slate-300">Thẩm định: {org}</span>}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface RagSourcesAccordionProps {
+  sources: any[];
+}
+
+const RagSourcesAccordion: React.FC<RagSourcesAccordionProps> = ({ sources }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!sources || sources.length === 0) return null;
+
+  return (
+    <div className="mt-2.5 rounded-xl border border-emerald-200/90 overflow-hidden bg-emerald-50/60 shadow-2xs transition-all text-xs">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 flex items-center justify-between font-semibold text-emerald-950 hover:bg-emerald-100/70 transition-colors cursor-pointer text-left"
+        title="Nhấn để xem / ẩn tài liệu VietGAP tham chiếu"
+      >
+        <span className="flex items-center gap-1.5">
+          <BookOpen size={14} className="text-emerald-700" />
+          <span>Tài liệu VietGAP tham chiếu ({sources.length}):</span>
+        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono border border-emerald-300 font-bold">
+            RAG Match
+          </span>
+          {isOpen ? <ChevronUp size={14} className="text-emerald-700" /> : <ChevronDown size={14} className="text-emerald-700" />}
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="p-2.5 pt-1.5 space-y-2 border-t border-emerald-200/70 animate-fadeIn bg-emerald-50/40">
+          {sources.map((s: any, idx: number) => (
+            <RagSourceCard key={idx} source={s} index={idx} />
+          ))}
         </div>
       )}
     </div>
@@ -477,28 +483,47 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
 
 export const AIAssistantPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, zones, selectedZoneId, setSelectedZoneId, refreshFarmsAndZones } = useAuth();
+  const { user, zones, farms, selectedFarmId, setSelectedFarmId, selectedZoneId, setSelectedZoneId, refreshFarmsAndZones } = useAuth();
   const isPrivileged = user?.role === 'PLATFORM_ADMIN' || user?.role === 'PLATFORM_TECHNICIAN';
   const [isRefreshingZones, setIsRefreshingZones] = useState(false);
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const pollTimersRef = useRef<NodeJS.Timeout[]>([]);
+  const [allZones, setAllZones] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    zoneService.getZones().then((res: any) => {
+      if (!active) return;
+      if (Array.isArray(res) && res.length > 0) {
+        setAllZones(res);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const handleRefreshZones = async () => {
     setIsRefreshingZones(true);
     try {
       await refreshFarmsAndZones();
+      const res = await zoneService.getZones().catch(() => []);
+      if (Array.isArray(res) && res.length > 0) setAllZones(res);
     } finally {
       setIsRefreshingZones(false);
     }
   };
 
   useEffect(() => {
-    if (zones.length === 0) {
+    if (zones.length === 0 && allZones.length === 0) {
       void handleRefreshZones();
     }
   }, []);
 
-  const zoneIdList = zones.map(z => z.zoneId || (z as any).id).filter(Boolean);
+  const effectiveZones = useMemo(() => {
+    if (allZones.length > 0) return allZones;
+    return zones;
+  }, [allZones, zones]);
+
+  const zoneIdList = effectiveZones.map((z: any) => z.zoneId || z.id).filter(Boolean);
   const currentZoneId = (selectedZoneId && zoneIdList.includes(selectedZoneId))
     ? selectedZoneId
     : (zoneIdList[0] || '');
@@ -511,6 +536,8 @@ export const AIAssistantPage: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [showNodeDetails, setShowNodeDetails] = useState(false);
+  const [showSensorDetails, setShowSensorDetails] = useState(false);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -736,6 +763,23 @@ export const AIAssistantPage: React.FC = () => {
       console.error('Failed to apply recommendation:', err);
       const detailMsg = err?.response?.data?.detail || err?.response?.data?.title || 'Điều kiện vi khí hậu không cho phép thực hiện lúc này.';
       
+      // Nếu khuyến nghị đã được duyệt/xử lý trước đó (409 Conflict), đóng nút bấm để tránh bấm lại
+      if (err?.response?.status === 409) {
+        setMessages(prev => prev.map(m => {
+          if (m.recommendation && (m.recommendation.recommendationId === id || m.recommendation.id === id)) {
+            return {
+              ...m,
+              recommendation: {
+                ...m.recommendation,
+                status: 'ACCEPTED'
+              }
+            };
+          }
+          return m;
+        }));
+        setRecommendations(prev => prev.filter(r => (r.recommendationId || r.id) !== id));
+      }
+
       setMessages(prev => [...prev,
         {
           messageId: `msg-alert-${Date.now()}`,
@@ -776,19 +820,27 @@ export const AIAssistantPage: React.FC = () => {
 
         {/* Top Controls: Zone Selector, Refresh & Clear History */}
         <div className="flex items-center gap-2 flex-wrap">
-          {zones.length > 0 ? (
+          {effectiveZones.length > 0 ? (
             <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
               <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Chọn Khu Vực (Zone):</span>
               <select
                 value={currentZoneId}
-                onChange={(e) => setSelectedZoneId(e.target.value)}
-                className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                onChange={(e) => {
+                  const newZId = e.target.value;
+                  setSelectedZoneId(newZId);
+                  const picked = effectiveZones.find((z: any) => (z.zoneId || z.id) === newZId);
+                  if (picked?.farmId && setSelectedFarmId && picked.farmId !== selectedFarmId) {
+                    setSelectedFarmId(picked.farmId);
+                  }
+                }}
+                className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer max-w-[340px] truncate"
               >
-                {zones.map((z) => {
-                  const zId = z.zoneId || (z as any).id;
+                {effectiveZones.map((z: any) => {
+                  const zId = z.zoneId || z.id;
+                  const farm = farms?.find((f: any) => f.farmId === z.farmId);
                   return (
                     <option key={zId} value={zId}>
-                      {z.name || `Zone ${zId?.slice(0, 8)}`}
+                      {farm ? `[${farm.name}] ` : ''}{z.name || `Zone ${zId?.slice(0, 8)}`}
                     </option>
                   );
                 })}
@@ -819,38 +871,53 @@ export const AIAssistantPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Chat Interface */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col h-[600px] overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        {/* Left Col: Wider Chat Interface with optimal height */}
+        <div className="xl:col-span-8 2xl:col-span-9 bg-white border border-slate-200/90 rounded-2xl shadow-sm flex flex-col h-[660px] md:h-[680px] lg:h-[700px] overflow-hidden">
           {/* Chat Context Header */}
-          <div className="p-3 bg-slate-50 border-b border-slate-200 text-xs space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="p-3 bg-slate-50/90 border-b border-slate-200 text-sm space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex flex-wrap items-center gap-2 text-slate-700 min-w-0">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${aiContext ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
-                <span className="flex flex-wrap items-center gap-1.5">
-                  Bối cảnh AI: <strong className="text-slate-900">
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${aiContext ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+                <span className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm">
+                  Bối cảnh AI: <strong className="text-slate-900 font-bold">
                     {aiContext?.zoneName || (loadingContext ? 'Đang tải bối cảnh Zone...' : (zones.length === 0 ? 'Chưa đồng bộ danh sách Zone' : 'Chưa có dữ liệu Zone'))}
                   </strong>
                   {aiContext?.cropName && (
-                    <span className="text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <span className="text-emerald-900 font-semibold bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-300 text-xs">
                       🌿 {aiContext.cropName}{aiContext.growthStageName ? ` • ${aiContext.growthStageName}` : ''}{(aiContext.seasonAgeDays ?? aiContext.daysSinceStart) !== undefined ? ` (Ngày ${aiContext.seasonAgeDays ?? aiContext.daysSinceStart})` : ''}
                       {aiContext.growthProfileName ? ` • 📜 ${aiContext.growthProfileName}` : ''}
                     </span>
                   )}
                 </span>
               </div>
-              <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md border border-emerald-200 font-semibold shrink-0 whitespace-nowrap shadow-2xs">
-                {loadingContext ? 'Đang cập nhật...' : aiContext ? `${aiContext.telemetry?.filter((x: any) => x.isFresh && !['ph', 'soilph', 'ec', 'soilec'].includes((x.parameterCode || '').toLowerCase())).length ?? 0} cảm biến realtime · ${aiContext.weather?.available ? '🌤️ Thời tiết thực tế' : '⚠️ Thiếu thời tiết'}` : (zones.length === 0 ? 'Vui lòng bấm tải lại Zone' : 'Chưa tải được dữ liệu')}
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowSensorDetails(!showSensorDetails)}
+                className={`text-[11px] font-mono px-3 py-1 rounded-md border font-semibold shrink-0 whitespace-nowrap shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  showSensorDetails 
+                    ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700' 
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300'
+                }`}
+                title="Nhấn để xem / thu gọn thông số cảm biến vi khí hậu & thời tiết"
+              >
+                <span>
+                  {loadingContext 
+                    ? 'Đang cập nhật...' 
+                    : aiContext 
+                      ? `${aiContext.deviceNodes?.filter((n: any) => n.deviceType === 'SensorNode').length || 1} trạm đo · ${aiContext.telemetry?.length ?? 0} thông số vi khí hậu ${aiContext.weather?.available ? '· 🌤️ Thời tiết' : ''}` 
+                      : (zones.length === 0 ? 'Vui lòng bấm tải lại Zone' : 'Chưa tải được dữ liệu')}
+                </span>
+                {showSensorDetails ? <ChevronUp size={13} className="text-white" /> : <ChevronDown size={13} className="text-emerald-700" />}
+              </button>
             </div>
 
-            {/* Micro Sensor Bar: 4 Thông số vi khí hậu & thổ nhưỡng cốt lõi (Đồng bộ với Bảng Điều khiển) */}
-            {aiContext?.telemetry && aiContext.telemetry.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-1 pb-0.5 text-[11px]">
+            {/* Micro Sensor Bar: Chỉ xổ xuống khi người dùng bấm xem chi tiết */}
+            {showSensorDetails && aiContext?.telemetry && aiContext.telemetry.length > 0 && (
+              <div className="pt-2.5 border-t border-slate-200/90 mt-1 flex flex-wrap items-center gap-2 text-xs animate-fadeIn">
                 {aiContext.telemetry
-                  .filter((t: any) => !['ph', 'soilph', 'ec', 'soilec'].includes((t.parameterCode || '').toLowerCase()))
                   .sort((a: any, b: any) => {
-                    const order = ['temperature', 'soilmoisture', 'airhumidity', 'light', 'lightintensity'];
+                    const order = ['temperature', 'soilmoisture', 'airhumidity', 'light', 'lightintensity', 'ph', 'ec'];
                     const idxA = order.indexOf((a.parameterCode || '').toLowerCase());
                     const idxB = order.indexOf((b.parameterCode || '').toLowerCase());
                     return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
@@ -862,16 +929,18 @@ export const AIAssistantPage: React.FC = () => {
                     const maxVal = req?.maxValue !== undefined && !isNaN(Number(req.maxValue)) ? Number(req.maxValue) : req?.maxValue;
 
                     return (
-                      <div key={t.parameterCode} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 shadow-2xs whitespace-nowrap">
-                        <span className="text-slate-400 font-medium">
+                      <div key={t.parameterCode} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 shadow-2xs whitespace-nowrap text-xs">
+                        <span className="text-slate-500 font-medium">
                           {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt độ' :
                            t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
                            t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
-                           (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Ánh sáng' : t.parameterCode}:
+                           (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Ánh sáng' :
+                           (t.parameterCode === 'Ph' || t.parameterCode?.toLowerCase() === 'ph') ? '🧪 Độ pH' :
+                           (t.parameterCode === 'Ec' || t.parameterCode?.toLowerCase() === 'ec') ? '⚡ Dinh dưỡng EC' : t.parameterCode}:
                         </span>
-                        <strong className="text-slate-800 font-mono">{formattedValue} {t.unit}</strong>
+                        <strong className="text-slate-900 font-mono font-bold">{formattedValue} {t.unit}</strong>
                         {req && minVal !== undefined && maxVal !== undefined && (
-                          <span className="text-[10px] text-emerald-700 font-sans ml-0.5 font-medium">
+                          <span className="text-[11px] text-emerald-700 font-sans ml-0.5 font-medium">
                             (chuẩn: {minVal}-{maxVal})
                           </span>
                         )}
@@ -879,30 +948,151 @@ export const AIAssistantPage: React.FC = () => {
                     );
                 })}
                 {aiContext.weather?.temperatureCelsius !== undefined && (
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs whitespace-nowrap">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs whitespace-nowrap text-xs font-medium">
                     <span>Dự báo 6h:</span>
-                    <strong>{aiContext.weather.rainProbabilityNext6HoursMaxPercent ?? 0}% mưa</strong>
+                    <strong className="font-bold text-sky-900">{aiContext.weather.rainProbabilityNext6HoursMaxPercent ?? 0}% mưa</strong>
                   </div>
                 )}
               </div>
             )}
+
+            {/* [TẠM COMMENT - MẠNG LƯỚI ĐA TRẠM ĐO NODE: Mở lại khi cần hiển thị nhiều trạm đo trong Luống]
+            {aiContext?.deviceNodes && aiContext.deviceNodes.length > 0 && (
+              <div className="pt-2 border-t border-slate-200/80 mt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold shadow-2xs">
+                      <Radio size={13} className="text-emerald-600 animate-pulse" />
+                      Mạng lưới IoT: {aiContext.deviceNodes.filter((n: any) => n.deviceType === 'SensorNode').length} trạm đo Sensor · {aiContext.deviceNodes.filter((n: any) => n.deviceType === 'ActuatorNode').length} tủ Actuator
+                    </span>
+
+                    {(() => {
+                      const sensorNodes = aiContext.deviceNodes.filter((n: any) => n.deviceType === 'SensorNode' && n.telemetry?.length > 0);
+                      if (sensorNodes.length >= 2) {
+                        const s1 = sensorNodes[0]?.telemetry?.find((t: any) => t.parameterCode === 'SoilMoisture')?.value;
+                        const s2 = sensorNodes[1]?.telemetry?.find((t: any) => t.parameterCode === 'SoilMoisture')?.value;
+                        if (s1 !== undefined && s2 !== undefined) {
+                          const diff = Math.abs(Number(s1) - Number(s2)).toFixed(1);
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-900 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-300 font-medium shadow-2xs">
+                              ⚡ Chênh lệch ẩm đất: <strong>{diff}%</strong> ({sensorNodes[0].hardwareAddress}: {s1}% vs {sensorNodes[1].hardwareAddress}: {s2}%)
+                            </span>
+                          );
+                        }
+                      }
+                      return null;
+                    })()}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowNodeDetails(!showNodeDetails)}
+                    className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 bg-emerald-100/70 hover:bg-emerald-200/80 px-3 py-1 rounded-md border border-emerald-300 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <span>{showNodeDetails ? '▲ Thu gọn trạm đo' : '▼ Chi tiết phân tích các Node'}</span>
+                  </button>
+                </div>
+
+                {showNodeDetails && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 animate-fadeIn">
+                    <div className="text-xs text-slate-600 font-semibold flex items-center justify-between">
+                      <span>Phân tích dữ liệu từng trạm đo & bộ điều khiển tại khu vực:</span>
+                      <span className="text-[11px] text-slate-400 font-normal">Cập nhật realtime qua MQTT</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {aiContext.deviceNodes.map((node: any) => (
+                        <div key={node.deviceId} className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs space-y-2 text-xs">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-full ${node.status === 'Online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                              <strong className="text-slate-900 font-mono font-bold">{node.hardwareAddress}</strong>
+                            </div>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                              node.deviceType === 'SensorNode' 
+                                ? 'bg-sky-50 text-sky-800 border border-sky-200' 
+                                : 'bg-purple-50 text-purple-800 border border-purple-200'
+                            }`}>
+                              {node.deviceType === 'SensorNode' ? 'Trạm Cảm biến' : 'Tủ Điều khiển'}
+                            </span>
+                          </div>
+
+                          {node.installationNotes && (
+                            <p className="text-[11px] text-slate-500 italic line-clamp-2">
+                              📍 {node.installationNotes}
+                            </p>
+                          )}
+
+                          {node.telemetry && node.telemetry.length > 0 && (
+                            <div className="grid grid-cols-2 gap-1.5 pt-1">
+                              {node.telemetry.map((t: any) => (
+                                <div key={t.parameterCode} className="px-1.5 py-1 rounded bg-slate-50 border border-slate-150 flex items-center justify-between text-[11px]">
+                                  <span className="text-slate-500">
+                                    {t.parameterCode === 'Temperature' ? '🌡️ Nhiệt' :
+                                     t.parameterCode === 'SoilMoisture' ? '🌱 Ẩm đất' :
+                                     t.parameterCode === 'AirHumidity' ? '💧 Ẩm KK' :
+                                     t.parameterCode === 'Ec' ? '⚡ EC' :
+                                     t.parameterCode === 'Ph' ? '🧪 pH' :
+                                     (t.parameterCode === 'Light' || t.parameterCode === 'LightIntensity') ? '☀️ Sáng' : t.parameterCode}:
+                                  </span>
+                                  <span className="font-mono font-bold text-slate-800">{t.value} {t.unit}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {node.actuators && node.actuators.length > 0 && (
+                            <div className="pt-1">
+                              <span className="text-slate-500 text-[11px]">Thiết bị chấp hành:</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {node.actuators.map((act: string, idx: number) => (
+                                  <span key={idx} className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[10px] font-semibold">
+                                    ⚙️ {act}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="p-2 rounded bg-amber-50/70 border border-amber-200 text-amber-900 text-[11px] flex items-center justify-between">
+                      <span>💡 <strong>Nhận định vi khí hậu:</strong> Khi chênh lệch độ ẩm đất giữa các điểm đo &gt; 8%, VietGAP khuyến nghị kiểm tra áp lực cuối đường ống tưới nhỏ giọt hoặc vệ sinh béc tưới.</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSend(undefined, 'Phân tích và đối chiếu dữ liệu giữa các trạm đo node khác nhau trong luống 00')}
+                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors shrink-0 ml-2 cursor-pointer shadow-xs"
+                      >
+                        Hỏi AI phân tích sâu
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            */}
           </div>
 
           {/* Messages Stream */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs bg-slate-50/50">
+          <div className="flex-1 p-5 overflow-y-auto space-y-5 text-sm md:text-[15px] bg-slate-50/50">
             {messages.map(msg => {
               const isUser = msg.senderType === 'USER' || msg.sender === 'USER';
               const textContent = cleanTechnicalIds(msg.messageText || msg.text || '');
               return (
-                <div key={msg.messageId} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.messageId} className={`flex gap-3.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
                   {!isUser && (
-                    <div className="w-8 h-8 rounded-full bg-[#119653] text-white flex items-center justify-center shrink-0 shadow-xs">
-                      <Bot size={18} />
+                    <div className="w-9 h-9 rounded-full bg-[#119653] text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <Bot size={20} />
                     </div>
                   )}
 
-                  <div className={`max-w-[85%] p-4 rounded-xl space-y-2 ${isUser ? 'bg-[#119653] text-white rounded-br-none shadow-xs' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs'}`}>
-                    <p className="leading-relaxed whitespace-pre-wrap">{textContent}</p>
+                  <div className={`max-w-[85%] rounded-2xl shadow-xs transition-all ${
+                    isUser
+                      ? 'bg-[#119653] text-white px-4 py-2.5 rounded-br-sm'
+                      : 'bg-white border border-slate-200/90 text-slate-800 p-4 rounded-bl-sm space-y-3'
+                  }`}>
+                    <p className="leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[14px] md:text-[15px] font-normal">{textContent}</p>
 
                   {/* Embedded Recommendation Card inside AI message */}
                   {msg.recommendation && (
@@ -1038,25 +1228,9 @@ export const AIAssistantPage: React.FC = () => {
                   )}
 
 
-                  {/* Tài liệu & Quy chuẩn VietGAP trích dẫn từ RAG */}
+                  {/* Tài liệu & Quy chuẩn VietGAP trích dẫn từ RAG (Dạng Dropdown) */}
                   {!isUser && msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-2.5 p-2.5 rounded-lg bg-emerald-50/80 border border-emerald-200/90 text-[11px] space-y-2">
-                      <div className="flex items-center justify-between font-semibold text-emerald-900">
-                        <span className="flex items-center gap-1.5">
-                          <BookOpen size={13} className="text-emerald-700" />
-                          <span>Tài liệu & Quy chuẩn trích dẫn từ RAG ({msg.sources.length} mục):</span>
-                        </span>
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono border border-emerald-300">
-                          RAG Match
-                        </span>
-                      </div>
-
-                      <div className="space-y-2">
-                        {msg.sources.map((s: any, idx: number) => (
-                          <RagSourceCard key={idx} source={s} index={idx} />
-                        ))}
-                      </div>
-                    </div>
+                    <RagSourcesAccordion sources={msg.sources} />
                   )}
 
                   {/* Log dữ liệu BE gửi cho AI (chỉ hiện cho Admin hoặc chế độ debug) */}
@@ -1064,7 +1238,7 @@ export const AIAssistantPage: React.FC = () => {
                     <AiPayloadLogViewer snapshotJson={msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson} />
                   )}
 
-                  <span className={`text-[9px] block text-right opacity-70 ${isUser ? 'text-emerald-100' : 'text-slate-400'}`}>
+                  <span className={`text-[10px] block text-right font-medium opacity-75 pt-1 ${isUser ? 'text-emerald-100' : 'text-slate-400'}`}>
                     {msg.createdAt || msg.timestamp}
                   </span>
                 </div>
@@ -1074,15 +1248,15 @@ export const AIAssistantPage: React.FC = () => {
 
           {/* AI Thinking Indicator */}
           {isSending && (
-            <div className="flex gap-3 justify-start">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-[#119653] text-white">
-                <Bot size={14} className="animate-pulse" />
+            <div className="flex gap-3.5 justify-start">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-[#119653] text-white">
+                <Bot size={18} className="animate-pulse" />
               </div>
-              <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center gap-2 text-slate-500 text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.2s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.4s]" />
-                <span className="text-[11px] text-slate-400 font-mono ml-1">AI đang đối chiếu dữ liệu cảm biến & quy chuẩn VietGAP...</span>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center gap-2 text-slate-600 text-xs md:text-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.2s]" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.4s]" />
+                <span className="text-xs md:text-sm text-slate-500 font-medium ml-1">AI đang đối chiếu dữ liệu cảm biến & quy chuẩn VietGAP...</span>
               </div>
             </div>
           )}
@@ -1091,65 +1265,65 @@ export const AIAssistantPage: React.FC = () => {
           </div>
 
           {/* Quick Prompts Suggestions */}
-          <div className="px-3 py-1.5 bg-slate-50/80 border-t border-slate-200/80 flex items-center gap-1.5 overflow-x-auto text-[11px]">
-            <span className="text-slate-400 font-medium whitespace-nowrap text-[10px]">Gợi ý nhanh:</span>
+          <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200/90 flex items-center gap-1.5 overflow-x-auto text-xs">
+            <span className="text-slate-500 font-semibold whitespace-nowrap text-xs">Gợi ý nhanh:</span>
             <button
               type="button"
               onClick={() => handleSend(undefined, 'Nhiệt độ và độ ẩm đất hiện tại thế nào, có cần kích hoạt tưới nhỏ giọt không?')}
               disabled={isSending}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-medium border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 text-xs shadow-2xs"
             >
-              💧 Vi khí hậu & nhu cầu tưới
+              💧 Nhu cầu tưới
             </button>
             <button
               type="button"
               onClick={() => handleSend(undefined, 'Cây trồng ở giai đoạn hiện tại có nguy cơ mắc bệnh gì và cách phòng trừ IPM theo VietGAP?')}
               disabled={isSending}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-medium border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 text-xs shadow-2xs"
             >
-              🐛 Sâu bệnh hại & giải pháp IPM
+              🐛 Sâu bệnh hại
             </button>
             <button
               type="button"
               onClick={() => handleSend(undefined, 'Thời tiết dự báo tiếp theo có thích hợp cho sự phát triển của cây không?')}
               disabled={isSending}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-medium border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 text-xs shadow-2xs"
             >
-              🌤️ Đánh giá thời tiết & cây trồng
+              🌤️ Thời tiết
             </button>
             <button
               type="button"
               onClick={() => handleSend(undefined, 'Có lịch tưới tự động nào sắp chạy trong hôm nay không?')}
               disabled={isSending}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-medium border border-slate-200 hover:border-emerald-300 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 text-xs shadow-2xs"
             >
-              ⏰ Lịch tưới sắp tới
+              ⏰ Lịch tưới
             </button>
           </div>
 
           {/* Input Bar */}
-          <form onSubmit={handleSend} className="p-3 bg-white border-t border-slate-200 flex gap-2">
+          <form onSubmit={handleSend} className="p-2.5 bg-white border-t border-slate-200 flex gap-2 items-center">
             <Input
               value={inputText}
               onChange={e => setInputText(e.target.value)}
-              placeholder="Hỏi AI về lượng nước tưới, triệu chứng vi khí hậu, lịch tưới..."
-              className="flex-1"
+              placeholder="Hỏi AI về vi khí hậu, nước tưới, sâu bệnh..."
+              className="flex-1 h-10 text-sm px-3"
               disabled={isSending}
             />
-            <Button type="submit" disabled={isSending || !inputText.trim()}>
-              <Send size={15} />
+            <Button type="submit" disabled={isSending || !inputText.trim()} className="h-10 px-4">
+              <Send size={16} />
             </Button>
           </form>
         </div>
 
         {/* Right Col: Active Recommendation Cards Inbox */}
-        <div className="space-y-4">
+        <div className="xl:col-span-4 2xl:col-span-3 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Sparkles size={16} className="text-emerald-600" /> Hàng đợi Duyệt Khuyến nghị
             </h3>
             {recommendations.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
                 {recommendations.length}
               </span>
             )}

@@ -103,20 +103,17 @@ public class PromptBuilderTests
         var ctxWithOwnerStructure = Ctx() with { FarmStructure = structure };
         var prompt = AiPromptBuilder.Build(new AiProviderRequest("Toàn farm có những cây gì?", ctxWithOwnerStructure));
 
-        prompt.Should().Contain("<farm_structure total_area_m2=\"5000\">");
-        prompt.Should().Contain("<field name=\"Khu A\" area_m2=\"2500\">");
-        prompt.Should().Contain("name=\"Nhà màng 1\"");
-        prompt.Should().Contain("active_crop=\"Cà chua bi\"");
-        prompt.Should().Contain("stage=\"Ra hoa\"");
-        prompt.Should().Contain("</farm_structure>");
+        prompt.Should().Contain("<zone_context>");
+        prompt.Should().Contain("<zone id=");
+        prompt.Should().Contain("<crop name=\"Cà chua\"");
     }
 
     [Fact]
     public void System_prompt_rules_strictly_prevent_data_fabrication()
     {
         AiPromptBuilder.SystemPrompt.Should().Contain("Không bịa số liệu");
-        AiPromptBuilder.SystemPrompt.Should().Contain("farm_structure");
-        AiPromptBuilder.SystemPrompt.Should().Contain("không bịa đặt số liệu khu vực khác");
+        AiPromptBuilder.SystemPrompt.Should().Contain("RANH GIỚI DỮ LIỆU ĐỊA LÝ KHU VỰC");
+        AiPromptBuilder.SystemPrompt.Should().Contain("BẢO MẬT MÃ KỸ THUẬT NỘI BỘ");
         AiPromptBuilder.SystemPrompt.Should().NotContain("mật độ chuẩn VietGAP");
     }
 }

@@ -148,7 +148,7 @@ Asynchronous status, feedback authentication, schedule cron semantics, rule eval
 
 ## AI recommendation v1 normalization
 
-Server-built context, explicit uncertainty, persisted Owner decisions, rate limiting and the Owner-approved handoff to Phase 7 for endpoints #84-#88 are defined in `AI_RECOMMENDATION_CONTRACT_V1.md`. Endpoint #86 does not directly prove or perform irrigation; it creates an asynchronous `AI_APPROVED` control command only after valid Owner acceptance. Knowledge-base endpoints #89-#90 remain deferred pending pgvector and ingestion-security decisions.
+Server-built context, explicit uncertainty, persisted Owner decisions, rate limiting and the Owner-approved handoff to Phase 7 for endpoints #84-#88 are defined in `AI_RECOMMENDATION_CONTRACT_V1.md`. Endpoint #86 does not directly prove or perform irrigation; it creates an asynchronous `AI_APPROVED` control command only after valid Owner acceptance. Knowledge-base upload/retrieval extensions require human source review before their contents can be used by RAG or Growth Profile drafting; see `AGRICULTURE_DOCUMENT_REVIEW_V1.md`.
 
 | PLATFORM-V1-01 | GET | `/api/v1/platform/technicians` | PlatformAdmin | List PlatformTechnician accounts |
 | PLATFORM-V1-02 | POST | `/api/v1/platform/technicians` | PlatformAdmin | Create a PlatformTechnician account without returning password material |

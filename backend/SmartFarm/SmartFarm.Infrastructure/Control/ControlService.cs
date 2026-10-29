@@ -257,17 +257,10 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
         if (device.Status is DeviceStatus.Offline or DeviceStatus.MaintenanceRequired or DeviceStatus.Decommissioned) 
             throw new ResourceConflictException("Thiết bị hiện không sẵn sàng để nhận lệnh điều khiển.");
 
-        var connection = await db.DeviceConnectionTests.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.Succeeded && x.ObservedAtUtc >= now - ConnectivityWindow, ct); 
-        var telemetry = await db.TelemetryReadings.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.ReceivedAtUtc >= now - ConnectivityWindow && x.CapturedAtUtc >= now - ConnectivityWindow, ct); 
-
-        // Nếu trong môi trường demo/dev không có telemetry/connection trong 5 phút vừa qua, kiểm tra xem thiết bị đã từng test thành công và có dữ liệu hợp lệ chưa
+        var connection = await db.DeviceConnectionTests.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.Succeeded && x.ObservedAtUtc >= now - ConnectivityWindow, ct);
+        var telemetry = await db.TelemetryReadings.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.ReceivedAtUtc >= now - ConnectivityWindow && x.CapturedAtUtc >= now - ConnectivityWindow, ct);
         if (!connection || !telemetry)
-        {
-            var hasAnySuccess = await db.DeviceConnectionTests.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.Succeeded, ct);
-            var hasAnyTelemetry = await db.TelemetryReadings.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId, ct);
-            if (!hasAnySuccess || !hasAnyTelemetry)
-                throw new ResourceConflictException("Device connectivity or telemetry is stale; control is refused.");
-        }
+            throw new ResourceConflictException("Kết nối hoặc dữ liệu telemetry của chính thiết bị đã quá hạn; hệ thống từ chối điều khiển.");
     }
 
     private async Task EnsureRainAsync(DeviceActuator actuator, bool enabled, decimal threshold, ActuatorCommandAction action, CancellationToken ct)

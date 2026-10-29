@@ -46,8 +46,8 @@ public static class TextChunker
 
             if (end >= text.Length) break;
 
-            // Lùi lại overlap để chunk tiếp theo có ngữ cảnh
-            start = Math.Max(start + 1, end - overlap);
+            // Tiến tới chunk tiếp theo kèm overlap an toàn
+            start = (end - start > overlap) ? (end - overlap) : end;
         }
 
         return result;
@@ -55,21 +55,25 @@ public static class TextChunker
 
     private static int FindBestBreak(string text, int start, int end)
     {
-        // Tìm đoạn văn mới (2 newlines)
-        int pos = text.LastIndexOf("\n\n", end, end - start, StringComparison.Ordinal);
-        if (pos > start + 100) return pos + 2;
+        int searchEnd = Math.Min(end - 1, text.Length - 1);
+        int count = searchEnd - start + 1;
+        if (count <= 0) return end;
 
-        // Tìm xuống dòng đơn
-        pos = text.LastIndexOf('\n', end, end - start);
-        if (pos > start + 100) return pos + 1;
+        // Tìm đoạn văn mới (2 newlines) nếu đã gom được ít nhất 350 ký tự
+        int pos = text.LastIndexOf("\n\n", searchEnd, count, StringComparison.Ordinal);
+        if (pos > start + 350) return pos + 2;
 
-        // Tìm dấu chấm câu (., !, ?)
+        // Tìm xuống dòng đơn nếu đã gom được ít nhất 400 ký tự
+        pos = text.LastIndexOf('\n', searchEnd, count);
+        if (pos > start + 400) return pos + 1;
+
+        // Tìm dấu chấm câu (., !, ?) nếu đã gom được ít nhất 400 ký tự
         pos = FindLastOf(text, ['.', '!', '?'], start, end);
-        if (pos > start + 50 && pos + 1 < text.Length) return pos + 1;
+        if (pos > start + 400 && pos + 1 < text.Length) return pos + 1;
 
-        // Tìm khoảng trắng
-        pos = text.LastIndexOf(' ', end, Math.Min(end - start, 200));
-        if (pos > start) return pos + 1;
+        // Tìm khoảng trắng gần nhất
+        pos = text.LastIndexOf(' ', searchEnd, Math.Min(count, 200));
+        if (pos > start + 300) return pos + 1;
 
         return end;
     }

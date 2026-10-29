@@ -118,13 +118,12 @@ public sealed class SimulatedIotTelemetryWorker(
             var farm = zone.Field?.Farm;
             if (farm == null) continue;
 
-            // Tìm hoặc gán gateway hợp lệ cho Farm
-            var gateway = await db.Gateways
-                .FirstOrDefaultAsync(g => g.FarmId == farm.Id, ct);
-
             // Tìm thiết bị hợp lệ trong Zone
             var device = await db.Devices
-                .FirstOrDefaultAsync(d => d.ZoneId == zone.Id && d.Status != DeviceStatus.Decommissioned, ct);
+                .FirstOrDefaultAsync(d => d.ZoneId == zone.Id && d.FarmId == farm.Id && d.Status != DeviceStatus.Decommissioned, ct);
+
+            // Chỉ dùng gateway của đúng farm; không gán chéo thiết bị giữa các farm/tenant.
+            var gateway = await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == farm.Id, ct);
 
             // Nếu Zone chưa có device, kiểm tra xem farm có device sensor nào sẵn có để gán vào zone hoặc tạo mới
             if (device == null && gateway != null)
@@ -301,97 +300,86 @@ public sealed class SimulatedIotTelemetryWorker(
                 ec = Math.Round((decimal)(1.8 + Rnd.NextDouble() * 0.4), 2);              // 1.8 - 2.2 mS/cm
             }
 
-            var messageId = $"sim-{now.Ticks}-{Rnd.Next(1000, 9999)}";
+            var sensorDevices = await db.Devices
+                .Include(d => d.Sensors)
+                .Where(d => d.ZoneId == zone.Id && d.DeviceType == DeviceType.SensorNode && d.Status != DeviceStatus.Decommissioned)
+                .OrderBy(d => d.HardwareAddress)
+                .ToListAsync(ct);
 
-            readingsToAdd.Add(new TelemetryReading
+            if (sensorDevices.Count == 0 && device != null)
             {
-                TenantId = farm.TenantId,
-                FarmId = farm.Id,
-                ZoneId = zone.Id,
-                DeviceId = deviceId,
-                GatewayId = gatewayId,
-                MessageId = $"{messageId}-temp",
-                ParameterCode = EnvironmentalParameterCode.Temperature,
-                Value = temp,
-                Unit = "°C",
-                CapturedAtUtc = now,
-                ReceivedAtUtc = now
-            });
+                sensorDevices.Add(device);
+            }
 
-            readingsToAdd.Add(new TelemetryReading
+            // Đồng bộ cấu hình cảm biến thực tế trong DB cho từng trạm đo (DeviceSensor)
+            foreach (var devItem in sensorDevices)
             {
-                TenantId = farm.TenantId,
-                FarmId = farm.Id,
-                ZoneId = zone.Id,
-                DeviceId = deviceId,
-                GatewayId = gatewayId,
-                MessageId = $"{messageId}-soil",
-                ParameterCode = EnvironmentalParameterCode.SoilMoisture,
-                Value = soilMoisture,
-                Unit = "%",
-                CapturedAtUtc = now,
-                ReceivedAtUtc = now
-            });
+                await EnsureDeviceSensorsAsync(db, devItem, zone, now, ct);
+            }
 
-            readingsToAdd.Add(new TelemetryReading
+            for (var devIdx = 0; devIdx < sensorDevices.Count; devIdx++)
             {
-                TenantId = farm.TenantId,
-                FarmId = farm.Id,
-                ZoneId = zone.Id,
-                DeviceId = deviceId,
-                GatewayId = gatewayId,
-                MessageId = $"{messageId}-hum",
-                ParameterCode = EnvironmentalParameterCode.AirHumidity,
-                Value = airHumidity,
-                Unit = "%",
-                CapturedAtUtc = now,
-                ReceivedAtUtc = now
-            });
+                var curDev = sensorDevices[devIdx];
+                var curDevId = curDev.Id;
+                var curTemp = temp;
+                var curSoil = soilMoisture;
+                var curHum = airHumidity;
+                var curLight = light;
+                var curPh = ph;
+                var curEc = ec;
 
-            readingsToAdd.Add(new TelemetryReading
-            {
-                TenantId = farm.TenantId,
-                FarmId = farm.Id,
-                ZoneId = zone.Id,
-                DeviceId = deviceId,
-                GatewayId = gatewayId,
-                MessageId = $"{messageId}-light",
-                ParameterCode = EnvironmentalParameterCode.LightIntensity,
-                Value = light,
-                Unit = "Lux",
-                CapturedAtUtc = now,
-                ReceivedAtUtc = now
-            });
+                // Nếu là node thứ 2 trở lên trong cùng luống, mô phỏng chênh lệch vi khí hậu thực tế giữa đầu luống & cuối luống
+                if (devIdx > 0)
+                {
+                    curTemp = Math.Round(temp + 0.8m, 1);
+                    curSoil = Math.Round(Math.Max(35m, soilMoisture - 8.2m), 1); // Cuối luống khô hơn do áp lực nước tưới nhỏ giọt giảm
+                    curHum = Math.Round(Math.Max(40m, airHumidity - 3.2m), 1);
+                    curLight = Math.Round(light + 1150m, 0);
+                    curEc = Math.Round(ec + 0.12m, 2);
+                }
 
-            readingsToAdd.Add(new TelemetryReading
-            {
-                TenantId = farm.TenantId,
-                FarmId = farm.Id,
-                ZoneId = zone.Id,
-                DeviceId = deviceId,
-                GatewayId = gatewayId,
-                MessageId = $"{messageId}-ph",
-                ParameterCode = EnvironmentalParameterCode.Ph,
-                Value = ph,
-                Unit = "pH",
-                CapturedAtUtc = now,
-                ReceivedAtUtc = now
-            });
+                var messageId = $"sim-{now.Ticks}-{Rnd.Next(1000, 9999)}-n{devIdx}";
+                var configuredParams = GetConfiguredParametersForDevice(curDev, zone);
 
-            readingsToAdd.Add(new TelemetryReading
-            {
-                TenantId = farm.TenantId,
-                FarmId = farm.Id,
-                ZoneId = zone.Id,
-                DeviceId = deviceId,
-                GatewayId = gatewayId,
-                MessageId = $"{messageId}-ec",
-                ParameterCode = EnvironmentalParameterCode.Ec,
-                Value = ec,
-                Unit = "mS/cm",
-                CapturedAtUtc = now,
-                ReceivedAtUtc = now
-            });
+                foreach (var param in configuredParams)
+                {
+                    decimal val;
+                    string unit;
+                    string codeKey;
+                    switch (param)
+                    {
+                        case EnvironmentalParameterCode.Temperature:
+                            val = curTemp; unit = "°C"; codeKey = "temp"; break;
+                        case EnvironmentalParameterCode.SoilMoisture:
+                            val = curSoil; unit = "%"; codeKey = "soil"; break;
+                        case EnvironmentalParameterCode.AirHumidity:
+                            val = curHum; unit = "%"; codeKey = "hum"; break;
+                        case EnvironmentalParameterCode.LightIntensity:
+                            val = curLight; unit = "Lux"; codeKey = "light"; break;
+                        case EnvironmentalParameterCode.Ph:
+                            val = curPh; unit = "pH"; codeKey = "ph"; break;
+                        case EnvironmentalParameterCode.Ec:
+                            val = curEc; unit = "mS/cm"; codeKey = "ec"; break;
+                        default:
+                            continue;
+                    }
+
+                    readingsToAdd.Add(new TelemetryReading
+                    {
+                        TenantId = farm.TenantId,
+                        FarmId = farm.Id,
+                        ZoneId = zone.Id,
+                        DeviceId = curDevId,
+                        GatewayId = gatewayId,
+                        MessageId = $"{messageId}-{codeKey}",
+                        ParameterCode = param,
+                        Value = val,
+                        Unit = unit,
+                        CapturedAtUtc = now,
+                        ReceivedAtUtc = now
+                    });
+                }
+            }
         }
 
         if (readingsToAdd.Count > 0)
@@ -636,6 +624,152 @@ public sealed class SimulatedIotTelemetryWorker(
         {
             logger.LogError(ex, "Failed to evaluate environmental alert rules or dispatch notifications.");
         }
+        }
+    }
+
+    private static List<EnvironmentalParameterCode> GetConfiguredParametersForDevice(Device dev, Zone zone)
+    {
+        // 1. Nếu thiết bị đã có cấu hình trong DB (dev.Sensors), dùng trực tiếp
+        if (dev.Sensors != null && dev.Sensors.Count > 0)
+        {
+            var result = new List<EnvironmentalParameterCode>();
+            foreach (var s in dev.Sensors)
+            {
+                if (Enum.TryParse<EnvironmentalParameterCode>(s.SensorType, true, out var p))
+                    result.Add(p);
+            }
+            if (result.Count > 0) return result;
+        }
+
+        // 2. Dựa theo tên Zone hoặc HardwareAddress để phân bổ thực tế khác nhau:
+        var zoneName = (zone.Name ?? string.Empty).ToLowerInvariant();
+        var devName = (dev.HardwareAddress ?? string.Empty).ToLowerInvariant();
+
+        // Zone Xà lách cuộn (Luong 01): 3 cảm biến cơ bản ngoài đồng đất (Nhiệt độ, Ẩm không khí, Ẩm đất)
+        if (zoneName.Contains("xa lach") || zoneName.Contains("xà lách"))
+        {
+            return new List<EnvironmentalParameterCode>
+            {
+                EnvironmentalParameterCode.Temperature,
+                EnvironmentalParameterCode.AirHumidity,
+                EnvironmentalParameterCode.SoilMoisture
+            };
+        }
+
+        // Zone Dâu tây (Luong 02): 4 cảm biến (Nhiệt độ, Ẩm không khí, Ẩm đất, Ánh sáng)
+        if (zoneName.Contains("dau tay") || zoneName.Contains("dâu tây") || devName.Contains("strawberry"))
+        {
+            return new List<EnvironmentalParameterCode>
+            {
+                EnvironmentalParameterCode.Temperature,
+                EnvironmentalParameterCode.AirHumidity,
+                EnvironmentalParameterCode.SoilMoisture,
+                EnvironmentalParameterCode.LightIntensity
+            };
+        }
+
+        // Zone Cà chua chuông (Luong 03): 5 cảm biến (+ Dinh dưỡng EC)
+        if (zoneName.Contains("ca chua chuong") || zoneName.Contains("cà chua chuông") || devName.Contains("bellpepper"))
+        {
+            return new List<EnvironmentalParameterCode>
+            {
+                EnvironmentalParameterCode.Temperature,
+                EnvironmentalParameterCode.AirHumidity,
+                EnvironmentalParameterCode.SoilMoisture,
+                EnvironmentalParameterCode.LightIntensity,
+                EnvironmentalParameterCode.Ec
+            };
+        }
+
+        // Node 2 cuối luống của Líp 00 (Dưa leo màu): trạm đo chuyên sâu độ ẩm và dinh dưỡng đất (3 cảm biến)
+        if (devName.Contains("demo-002"))
+        {
+            return new List<EnvironmentalParameterCode>
+            {
+                EnvironmentalParameterCode.Temperature,
+                EnvironmentalParameterCode.SoilMoisture,
+                EnvironmentalParameterCode.Ec
+            };
+        }
+
+        // Mặc định hoặc Zone Nhà màng Z01 / Dưa leo trạm chính: đầy đủ 6 thông số
+        return new List<EnvironmentalParameterCode>
+        {
+            EnvironmentalParameterCode.Temperature,
+            EnvironmentalParameterCode.SoilMoisture,
+            EnvironmentalParameterCode.AirHumidity,
+            EnvironmentalParameterCode.LightIntensity,
+            EnvironmentalParameterCode.Ph,
+            EnvironmentalParameterCode.Ec
+        };
+    }
+
+    private static async Task EnsureDeviceSensorsAsync(SmartFarmDbContext db, Device dev, Zone zone, DateTime now, CancellationToken ct)
+    {
+        var configuredParams = GetConfiguredParametersForDevice(dev, zone);
+        var existingSensors = await db.DeviceSensors.Where(s => s.DeviceId == dev.Id).ToListAsync(ct);
+        var existingTypes = existingSensors.Select(s => s.SensorType).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Xóa những cảm biến cũ không thuộc cấu hình thực tế của Zone
+        var invalidSensors = existingSensors.Where(s => !configuredParams.Any(p => string.Equals(p.ToString(), s.SensorType, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (invalidSensors.Count > 0)
+        {
+            db.DeviceSensors.RemoveRange(invalidSensors);
+            await db.SaveChangesAsync(ct);
+        }
+
+        bool hasNew = false;
+        foreach (var param in configuredParams)
+        {
+            if (existingTypes.Contains(param.ToString())) continue;
+
+            string unit;
+            decimal minVal;
+            decimal maxVal;
+            switch (param)
+            {
+                case EnvironmentalParameterCode.Temperature:
+                    unit = "°C"; minVal = 10m; maxVal = 50m; break;
+                case EnvironmentalParameterCode.SoilMoisture:
+                    unit = "%"; minVal = 0m; maxVal = 100m; break;
+                case EnvironmentalParameterCode.AirHumidity:
+                    unit = "%"; minVal = 0m; maxVal = 100m; break;
+                case EnvironmentalParameterCode.LightIntensity:
+                    unit = "Lux"; minVal = 0m; maxVal = 100000m; break;
+                case EnvironmentalParameterCode.Ph:
+                    unit = "pH"; minVal = 0m; maxVal = 14m; break;
+                case EnvironmentalParameterCode.Ec:
+                    unit = "mS/cm"; minVal = 0m; maxVal = 10m; break;
+                default:
+                    unit = ""; minVal = 0m; maxVal = 100m; break;
+            }
+
+            var sensorEntity = new DeviceSensor
+            {
+                Id = Guid.NewGuid(),
+                DeviceId = dev.Id,
+                SensorType = param.ToString(),
+                Unit = unit,
+                MinValue = minVal,
+                MaxValue = maxVal,
+                SamplingIntervalSec = 60,
+                CreatedAtUtc = now
+            };
+            db.DeviceSensors.Add(sensorEntity);
+            dev.Sensors?.Add(sensorEntity);
+            hasNew = true;
+        }
+
+        if (hasNew)
+        {
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Bỏ qua nếu đã được seed đồng thời
+            }
         }
     }
 }

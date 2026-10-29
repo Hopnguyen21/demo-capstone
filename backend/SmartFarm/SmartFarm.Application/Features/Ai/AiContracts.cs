@@ -22,6 +22,15 @@ public sealed record AiFarmStructureContext(
     Guid FarmId, string FarmName, decimal TotalAreaM2,
     IReadOnlyList<AiFieldStructureItem> Fields);
 
+public sealed record AiDeviceNodeItem(
+    Guid DeviceId,
+    string HardwareAddress,
+    string DeviceType,
+    string Status,
+    string? InstallationNotes,
+    IReadOnlyList<AiTelemetryContextItem> Telemetry,
+    IReadOnlyList<string> Actuators);
+
 public sealed record AiZoneContext(
     Guid FarmId, string FarmName, string FarmTimeZone, Guid FieldId, string FieldName, Guid ZoneId, string ZoneName, decimal ZoneAreaM2,
     Guid? PlantingSeasonId, string? CropName, string? VarietyName, Guid? GrowthProfileId, string? GrowthProfileName, int? SeasonAgeDays,
@@ -34,11 +43,12 @@ public sealed record AiZoneContext(
     IReadOnlyList<string> MissingData,
     bool IsSufficientForAdvice,
     AiFarmStructureContext? FarmStructure = null,
-    IReadOnlyList<AiTelemetryHistoryItem>? TelemetryHistory = null);
+    IReadOnlyList<AiTelemetryHistoryItem>? TelemetryHistory = null,
+    IReadOnlyList<AiDeviceNodeItem>? DeviceNodes = null);
 
 
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);
-public sealed record AiSourceView(Guid DocumentId, string Title, string? Organization, string Category, float Similarity, string? ContentSnippet = null);
+public sealed record AiSourceView(Guid DocumentId, string Title, string? Organization, string Category, float Similarity, string? ContentSnippet = null, int? PageNumber = null, string? SectionTitle = null);
 public sealed record AiProviderRequest(
     string Question,
     AiZoneContext Context,

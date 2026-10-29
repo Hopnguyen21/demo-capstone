@@ -474,12 +474,8 @@ export const cropService = {
 
   /** PUT /api/v1/crops/{cropId} */
   updateCrop: async (cropId: string, data: any) => {
-    try {
-      const res = await apiClient.put(`/api/v1/crops/${cropId}`, data);
-      return res.data;
-    } catch {
-      return { cropId, ...data };
-    }
+    const res = await apiClient.put(`/api/v1/crops/${cropId}`, data);
+    return res.data;
   },
 
   /** DELETE /api/v1/crops/{cropId} */
@@ -534,14 +530,18 @@ export const cropService = {
       payload.stages = data.stages.map((s: any, idx: number) => {
         const rawReqs = s.requirements || [];
         const normalizedReqs = rawReqs.map((r: any) => {
-          let code = r.parameterCode || r.parameterName || 'Temperature';
+          let code = r.parameterCode || r.parameterName;
+          if (!code) throw new Error(`Missing parameter code in stage ${s.name || idx + 1}`);
           if (code === 'AirTemperature') code = 'Temperature';
           else if (code === 'SoilPH') code = 'Ph';
           else if (code === 'SoilEC') code = 'Ec';
           else if (code === 'Light') code = 'LightIntensity';
-          const min = Number(r.minValue) || 0;
-          const max = Number(r.maxValue) || 100;
-          const target = Number(r.targetValue ?? r.optimalValue) || Math.round((min + max) / 2);
+          const min = Number(r.minValue);
+          const max = Number(r.maxValue);
+          const target = Number(r.targetValue ?? r.optimalValue);
+          if (![min, max, target].every(Number.isFinite) || min > target || target > max) {
+            throw new Error(`Invalid min/target/max range for ${code} in stage ${s.name || idx + 1}`);
+          }
           return {
             parameterCode: code,
             minValue: min,
@@ -554,10 +554,10 @@ export const cropService = {
           name: s.name || s.stageName || `Giai đoạn ${idx + 1}`,
           stageOrder: s.stageOrder ?? (idx + 1),
           durationDays: Math.max(1, Number(s.durationDays ?? s.days) || 15),
-          requirements: normalizedReqs.length > 0 ? normalizedReqs : [
-            { parameterCode: 'Temperature', minValue: 20, maxValue: 30, targetValue: 25, unit: '°C' },
-            { parameterCode: 'SoilMoisture', minValue: 60, maxValue: 80, targetValue: 70, unit: '%' }
-          ]
+          description: s.description || undefined,
+          fertilizerAction: s.fertilizerAction || s.fertilizer || undefined,
+          ipmAction: s.ipmAction || s.ipm || undefined,
+          requirements: normalizedReqs
         };
       });
     }
@@ -571,6 +571,24 @@ export const cropService = {
     return res.data?.value ?? res.data ?? [];
   },
 
+  /** PUT /api/v1/growth-profiles/{profileId} — sửa tên, mô tả, hồ sơ mặc định (PlatformAdmin) */
+  updateGrowthProfile: async (profileId: string, data: { name: string; description?: string; isDefault: boolean }) => {
+    const res = await apiClient.put(`/api/v1/growth-profiles/${profileId}`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/growth-stages/{stageId}/requirements — sửa dải ngưỡng vi khí hậu của giai đoạn */
+  updateStageRequirements: async (stageId: string, requirements: Array<{
+    parameterCode: string;
+    minValue: number;
+    maxValue: number;
+    targetValue: number;
+    unit: string;
+  }>) => {
+    const res = await apiClient.put(`/api/v1/growth-stages/${stageId}/requirements`, { requirements });
+    return res.data;
+  },
+
   /** Returns all growth profiles across all crops (for admin pages) */
   getAllGrowthProfiles: async (params?: { isSystemDefined?: boolean; search?: string }) => {
     const res = await apiClient.get('/api/v1/growth-profiles', { params });
@@ -579,34 +597,29 @@ export const cropService = {
 
   /** Synchronizes recommended irrigation schedule from crop to zone actuator */
   syncCropScheduleToZone: async (cropId: string, zoneId: string, actuatorId?: string) => {
-    // Standardize GUIDs if mock string IDs are passed
-    const cropGuidMap: Record<string, string> = {
-      'crop-tomato': '10000000-0000-0000-0000-000000000001',
-      'crop-lettuce': '40000000-0000-0000-0000-000000000002',
-      'crop-strawberry': '40000000-0000-0000-0000-000000000003',
-      'crop-cucumber': '10000000-0000-0000-0000-000000000002',
-    };
-    const validCropId = cropGuidMap[cropId] || (cropId.includes('-') && cropId.length === 36 ? cropId : '10000000-0000-0000-0000-000000000001');
-    const validZoneId = (zoneId && zoneId.includes('-') && zoneId.length === 36) ? zoneId : '32000000-0000-0000-0000-000000000001';
-    const validActuatorId = actuatorId || '53000000-0000-0000-0000-000000000001';
+    const isGuid = (id?: string) => Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
 
-    try {
-      const res = await apiClient.post(`/api/v1/zones/${validZoneId}/schedules/sync-from-crop`, {
-        cropId: validCropId,
-        actuatorId: validActuatorId
-      });
-      const schedules = Array.isArray(res.data) ? res.data : (res.data?.schedules || []);
-      return {
-        success: true,
-        createdSchedulesCount: schedules.length || 3,
-        zoneName: res.data?.zoneName || 'Zone canh tác',
-        schedules: schedules
-      };
-    } catch (err: any) {
-      // If server returns error, rethrow or return informative fallback
-      console.warn('API syncCropScheduleToZone fallback:', err?.response?.status || err.message);
-      throw err;
+    if (!isGuid(cropId)) {
+      throw new Error('ID cây trồng không hợp lệ hoặc chưa được lưu trên hệ thống.');
     }
+    if (!isGuid(zoneId)) {
+      throw new Error('Vui lòng chọn một Khu vực (Zone) hợp lệ từ danh sách.');
+    }
+
+    const payload: { cropId: string; actuatorId?: string } = { cropId };
+    if (isGuid(actuatorId)) {
+      payload.actuatorId = actuatorId;
+    }
+
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/schedules/sync-from-crop`, payload);
+    const rawData = res.data?.value ?? res.data ?? [];
+    const schedules = Array.isArray(rawData) ? rawData : (rawData?.schedules || []);
+    return {
+      success: true,
+      createdSchedulesCount: schedules.length,
+      zoneName: res.data?.zoneName || 'Zone canh tác',
+      schedules: schedules
+    };
   },
 };
 
@@ -1263,6 +1276,24 @@ export const knowledgeService = {
     return res.data as AgricultureDocumentDetail;
   },
 
+  /** POST /api/v1/ai/knowledge/documents/{documentId}/review */
+  reviewDocument: async (documentId: string, data: { contentText: string; approve: boolean; reviewNotes?: string }) => {
+    const res = await apiClient.post(`/api/v1/ai/knowledge/documents/${documentId}/review`, data, { timeout: 180_000 });
+    return res.data as { reviewStatus: string; message: string };
+  },
+
+  /** POST /api/v1/ai/knowledge/documents/{documentId}/extract — chạy lại AI trích trường VietGAP kèm trích dẫn */
+  reextractDocument: async (documentId: string) => {
+    const res = await apiClient.post(`/api/v1/ai/knowledge/documents/${documentId}/extract`, null, { timeout: 180_000 });
+    return res.data;
+  },
+
+  /** GET /api/v1/ai/knowledge/documents/{documentId}/file */
+  downloadOriginalFile: async (documentId: string) => {
+    const res = await apiClient.get(`/api/v1/ai/knowledge/documents/${documentId}/file`, { responseType: 'blob', timeout: 180_000 });
+    return res.data as Blob;
+  },
+
   /** GET /api/v1/ai/knowledge/search */
   search: async (query: string, cropName?: string, topK: number = 5) => {
     const res = await apiClient.get('/api/v1/ai/knowledge/search', {
@@ -1280,6 +1311,15 @@ export const knowledgeService = {
   uploadDocument: async (formData: FormData) => {
     const res = await apiClient.post('/api/v1/ai/knowledge/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 180_000,
+    });
+    return res.data;
+  },
+
+  /** PUT /api/v1/ai/knowledge/documents/{documentId} */
+  updateDocument: async (documentId: string, formData: FormData) => {
+    const res = await apiClient.put(`/api/v1/ai/knowledge/documents/${documentId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data;
   },
@@ -1290,10 +1330,86 @@ export const knowledgeService = {
     return res.data;
   },
 
+
   /** POST /api/v1/ai/knowledge/backfill-embeddings */
   backfillEmbeddings: async () => {
     const res = await apiClient.post('/api/v1/ai/knowledge/backfill-embeddings');
     return res.data;
+  },
+
+  /** POST /api/v1/ai/knowledge/draft - Soạn thảo văn bản quy chuẩn VietGAP bằng AI */
+  generateDraft: async (data: {
+    cropName: string;
+    standardCode?: string;
+    category?: string;
+    cultivationModel?: string;
+    additionalRequirements?: string;
+  }) => {
+    const res = await apiClient.post('/api/v1/ai/knowledge/draft', data);
+    return res.data as {
+      title: string;
+      standardCode: string;
+      authorOrganization: string;
+      category: string;
+      cropScope: string;
+      version: string;
+      content: string;
+      isFallback?: boolean;
+      source?: string;
+    };
+  },
+
+  /** POST /api/v1/ai/knowledge/documents/text - Lưu trực tiếp tài liệu dạng text vào CSDL */
+  saveTextDocument: async (data: {
+    title: string;
+    content: string;
+    authorOrganization?: string;
+    category?: string;
+    cropScope?: string;
+    version?: string;
+    isPublic?: boolean;
+  }) => {
+    const res = await apiClient.post('/api/v1/ai/knowledge/documents/text', data, { timeout: 180_000 });
+    return res.data as { id: string; title: string; message: string };
+  },
+
+  /** POST /api/v1/ai/knowledge/draft-growth-profile - Soạn thảo Hồ Sơ Sinh Trưởng theo template SmartFarm bằng AI */
+  generateGrowthProfileDraft: async (data: {
+    cropName: string;
+    /** Bỏ trống: gom mọi tài liệu đã duyệt của cây trồng */
+    documentId?: string;
+    cultivationModel?: string;
+    stageCount?: number;
+  }) => {
+    const res = await apiClient.post('/api/v1/ai/knowledge/draft-growth-profile', data, { timeout: 180_000 });
+    return res.data as {
+      profileName: string;
+      description: string;
+      totalCycleDays: number;
+      isFallback?: boolean;
+      source?: string;
+      sourceDocuments?: string[];
+      stages: Array<{
+        stageOrder: number;
+        name: string;
+        durationDays: number;
+        durationEvidence: string;
+        description: string;
+        descriptionEvidence: string;
+        fertilizerAction: string;
+        fertilizerEvidence: string;
+        ipmAction: string;
+        ipmEvidence: string;
+        requirements: Array<{
+          parameterCode: string;
+          minValue: number;
+          maxValue: number;
+          targetValue: number;
+          unit: string;
+          sourceEvidence: string;
+        }>;
+      }>;
+    };
   },
 };
 

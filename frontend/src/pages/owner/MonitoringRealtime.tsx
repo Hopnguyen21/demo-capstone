@@ -97,7 +97,9 @@ export const MonitoringRealtime: React.FC = () => {
   const soilMoistureVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'SoilMoisture' || m.parameterCode === 1)?.value ?? 68.4;
   const tempVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'Temperature' || m.parameterCode === 0)?.value ?? 24.8;
   const humidityVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'AirHumidity' || m.parameterCode === 2)?.value ?? 71.5;
-  const luxVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'LightIntensity' || m.parameterCode === 3)?.value ?? 740;
+  const luxVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'LightIntensity' || m.parameterCode === 3 || m.parameterCode === 4)?.value ?? 740;
+  const phVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'Ph' || m.parameterCode === 3 || m.parameterCode?.toString().toLowerCase() === 'ph')?.value ?? 6.43;
+  const ecVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'Ec' || m.parameterCode === 5 || m.parameterCode?.toString().toLowerCase() === 'ec')?.value ?? 2.05;
 
   return (
     <div className="space-y-6 pb-12">
@@ -247,7 +249,7 @@ export const MonitoringRealtime: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
           <CropRangeBand
             label="Độ ẩm đất (Soil Moisture)"
             min={60}
@@ -279,6 +281,22 @@ export const MonitoringRealtime: React.FC = () => {
             target={750}
             current={luxVal}
             unit="lux"
+          />
+          <CropRangeBand
+            label="Độ chua/kiềm Đất (pH)"
+            min={5.5}
+            max={7.5}
+            target={6.5}
+            current={phVal}
+            unit="pH"
+          />
+          <CropRangeBand
+            label="Độ dẫn điện EC (Dinh dưỡng)"
+            min={1.2}
+            max={2.5}
+            target={1.8}
+            current={ecVal}
+            unit="mS/cm"
           />
         </div>
       </div>

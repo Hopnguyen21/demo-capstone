@@ -96,7 +96,7 @@ public sealed class PlatformFeaturesController(
     }
 
     // ─── 5. Global Growth Profiles ────────────────────────────────────────────
-    [HttpGet("api/v1/growth-profiles")]
+    [HttpGet("api/v1/platform/growth-profiles")]
     [Authorize(Roles = "PlatformAdmin,FarmOwner")]
     public async Task<ActionResult<IReadOnlyList<AllGrowthProfileView>>> GetAllGrowthProfiles(
         [FromQuery] bool? isSystemDefined = null,

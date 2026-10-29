@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Zone, Field, Farm, ZoneContract } from '../../types';
-import { zoneService, fieldService, farmService, zoneContractService, extractApiError } from '../../services';
+import { Zone, Field, Farm, ZoneContract, Crop } from '../../types';
+import { zoneService, fieldService, farmService, zoneContractService, cropService, extractApiError } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import { Sprout, Plus, ArrowUpRight, Gauge, Building2, MapPin, Layers, Wrench, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,7 @@ export const ZonesPage: React.FC = () => {
   const [fields, setFields] = useState<Field[]>([]);
   const [farms, setFarms] = useState<Farm[]>([]);
   const [contracts, setContracts] = useState<ZoneContract[]>([]);
+  const [cropCatalog, setCropCatalog] = useState<Crop[]>([]);
   const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
   const [showRenewModal, setShowRenewModal] = useState<boolean>(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -31,7 +32,8 @@ export const ZonesPage: React.FC = () => {
   } | null>(null);
   const [zoneName, setZoneName] = useState('');
   const [description, setDescription] = useState('');
-  const [crop, setCrop] = useState('Cà chua (Tomato)');
+  const [cropSelection, setCropSelection] = useState('');
+  const [customCrop, setCustomCrop] = useState('');
   const [center, setCenter] = useState<[number, number]>([11.9408, 108.4582]);
   const [polygon, setPolygon] = useState<[number, number][]>([
     [11.9412, 108.4572],
@@ -43,11 +45,12 @@ export const ZonesPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [zData, fdData, fData, contractsData] = await Promise.all([
+      const [zData, fdData, fData, contractsData, cropData] = await Promise.all([
         zoneService.getZones().catch(() => []),
         fieldService.getFields().catch(() => []),
         farmService.getFarms().catch(() => []),
         zoneContractService.getAllContracts().catch(() => []),
+        cropService.getCrops().catch(() => []),
       ]);
       if (Array.isArray(zData)) {
         setZones(zData);
@@ -59,6 +62,7 @@ export const ZonesPage: React.FC = () => {
       }
       if (Array.isArray(fData)) setFarms(fData);
       if (Array.isArray(contractsData)) setContracts(contractsData);
+      if (Array.isArray(cropData)) setCropCatalog(cropData);
     } catch (err) {
       console.error('Failed to load zones data:', err);
     }
@@ -77,6 +81,22 @@ export const ZonesPage: React.FC = () => {
     }
     if (zoneName.trim().length < 2) {
       alert('Tên Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      return;
+    }
+    const chosenCrop = cropSelection === 'OTHER'
+      ? customCrop.trim().replace(/\s+/g, ' ')
+      : cropCatalog.find(item => item.cropId === cropSelection)?.name || '';
+    if (cropSelection !== 'OTHER' && !chosenCrop) {
+      alert('Vui lòng chọn cây trồng trong danh sách hoặc chọn “Khác”.');
+      return;
+    }
+    if (chosenCrop.length < 2 || chosenCrop.length > 150 || /[\u0000-\u001F]/.test(chosenCrop)) {
+      alert('Tên cây trồng phải từ 2 đến 150 ký tự và không chứa ký tự điều khiển.');
+      return;
+    }
+    const normalizeCropName = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (cropSelection === 'OTHER' && cropCatalog.some(item => normalizeCropName(item.name) === normalizeCropName(chosenCrop))) {
+      alert('Cây trồng này đã có trong danh sách. Hãy chọn cây đó thay vì nhập lại ở mục “Khác”.');
       return;
     }
     const fieldId = selectedFieldId || (fields.length > 0 ? fields[0].fieldId : '');
@@ -104,7 +124,7 @@ export const ZonesPage: React.FC = () => {
         name: zoneName.trim(),
         areaM2: computedArea,
         zoneType: 'Greenhouse',
-        notes: `${crop || 'Rau màu'}${description ? ` - ${description}` : ''}`,
+        notes: `${chosenCrop}${description ? ` - ${description}` : ''}`,
         polygonGeoJson: geoJson,
       });
       await loadData();
@@ -112,7 +132,7 @@ export const ZonesPage: React.FC = () => {
       setCreatedZoneSuccessData({
         zoneName: zoneName.trim(),
         areaM2: computedArea,
-        crop: crop || 'Rau màu VietGAP',
+        crop: chosenCrop,
         fieldName: targetField?.name || 'Phân khu Lô đất',
         farmName: farms.find(f => f.farmId === targetField?.farmId)?.name || 'Trang trại',
         pointCount: polygon.length,
@@ -120,6 +140,8 @@ export const ZonesPage: React.FC = () => {
       });
       setZoneName('');
       setDescription('');
+      setCropSelection('');
+      setCustomCrop('');
     } catch (err: any) {
       console.error('Lỗi tạo Zone:', err);
       const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
@@ -304,8 +326,30 @@ export const ZonesPage: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 font-bold mb-1">Loại Cây trồng</label>
-              <Input value={crop} onChange={e => setCrop(e.target.value)} placeholder="Cà chua, Ớt ngọt, Dưa leo..." />
+              <label className="block text-slate-700 font-bold mb-1">Loài cây trồng *</label>
+              <select
+                value={cropSelection}
+                onChange={e => { setCropSelection(e.target.value); setCustomCrop(''); }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                required
+              >
+                <option value="">Chọn cây trồng từ danh sách</option>
+                {cropCatalog.map(item => <option key={item.cropId} value={item.cropId}>{item.name}{item.category ? ` (${item.category})` : ''}</option>)}
+                <option value="OTHER">Khác — nhập tên cây trồng</option>
+              </select>
+              {cropSelection === 'OTHER' && (
+                <div className="mt-2">
+                  <Input
+                    value={customCrop}
+                    onChange={e => setCustomCrop(e.target.value)}
+                    placeholder="Nhập tên cây trồng (2–150 ký tự)"
+                    minLength={2}
+                    maxLength={150}
+                    required
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Tên nhập tay sẽ được lưu cho Zone; không tự ghép với cây hoặc Growth Profile khác.</p>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-slate-700 font-bold mb-1">Mô tả Zone</label>

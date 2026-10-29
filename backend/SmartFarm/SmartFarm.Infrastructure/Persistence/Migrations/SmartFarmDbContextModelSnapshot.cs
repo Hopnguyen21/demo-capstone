@@ -280,6 +280,15 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("file_name");
 
+                    b.Property<byte[]>("OriginalFileBytes")
+                        .HasColumnType("bytea")
+                        .HasColumnName("original_file_bytes");
+
+                    b.Property<string>("OriginalFileContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("original_file_content_type");
+
                     b.Property<string>("FileType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -293,6 +302,68 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(true)
                         .HasColumnName("is_public");
+
+                    b.Property<string>("ReviewStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("Approved")
+                        .HasColumnName("review_status");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("OfficialStandard")
+                        .HasColumnName("document_type");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("review_notes");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at_utc");
+
+                    b.Property<string>("StructuredExtractionJson")
+                        .HasColumnType("text")
+                        .HasColumnName("structured_extraction");
+
+                    b.Property<DateTime?>("ExtractionAttemptedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("extraction_attempted_at_utc");
+
+                    b.Property<int>("ExtractionRulesVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("extraction_rules_version");
+
+                    b.Property<int>("ChunkerVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("chunker_version");
+
+                    b.Property<string>("ContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<string>("Topics")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasDefaultValue("")
+                        .HasColumnName("topics");
+
+                    b.Property<Guid?>("SupersededByDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("superseded_by_document_id");
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("uuid")
@@ -317,6 +388,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Category");
 
+                    b.HasIndex("ContentHash");
+
                     b.HasIndex("TenantId", "IsPublic");
 
                     b.ToTable("agriculture_documents", (string)null);
@@ -337,6 +410,23 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("content");
+
+                    b.Property<int?>("PageNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("page_number");
+
+                    b.Property<string>("SectionTitle")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("section_title");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("general")
+                        .HasColumnName("topic");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -1278,10 +1368,68 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_user_id");
 
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("CalendarIrrigationPlan")
+                        .HasColumnType("text")
+                        .HasColumnName("calendar_irrigation_plan");
+
                     b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
                         .HasColumnName("description");
+
+                    b.Property<int?>("GrowthCycleDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("growth_cycle_days");
+
+                    b.Property<decimal?>("OptimalEcMax")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_ec_max");
+
+                    b.Property<decimal?>("OptimalEcMin")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_ec_min");
+
+                    b.Property<decimal?>("OptimalLux")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("optimal_lux");
+
+                    b.Property<decimal?>("OptimalPhMax")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_ph_max");
+
+                    b.Property<decimal?>("OptimalPhMin")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_ph_min");
+
+                    b.Property<decimal?>("OptimalSoilMoistureMax")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_soil_moisture_max");
+
+                    b.Property<decimal?>("OptimalSoilMoistureMin")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_soil_moisture_min");
+
+                    b.Property<decimal?>("OptimalTemperatureMax")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_temperature_max");
+
+                    b.Property<decimal?>("OptimalTemperatureMin")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("optimal_temperature_min");
 
                     b.Property<bool>("IsSystemDefined")
                         .HasColumnType("boolean")
@@ -1363,8 +1511,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnName("crop_id");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsSystemDefined")
@@ -2999,8 +3147,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnName("crop_id");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
                         .HasColumnName("description");
 
                     b.Property<bool>("IsDefault")
@@ -3083,13 +3231,28 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("description");
+
                     b.Property<int>("DurationDays")
                         .HasColumnType("integer")
                         .HasColumnName("duration_days");
 
+                    b.Property<string>("FertilizerAction")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("fertilizer_action");
+
                     b.Property<Guid>("GrowthProfileId")
                         .HasColumnType("uuid")
                         .HasColumnName("growth_profile_id");
+
+                    b.Property<string>("IpmAction")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("ipm_action");
 
                     b.Property<string>("Name")
                         .IsRequired()
