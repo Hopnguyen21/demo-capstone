@@ -3,7 +3,7 @@ import { controlService, deviceService } from '../../services';
 import { ControlSchedule, AutomationRule, Actuator } from '../../types';
 import { Calendar, Sliders, Plus, Clock, Cpu, CheckCircle2, Trash2, Power, AlertCircle } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 
 export const SchedulesAutomationPage: React.FC = () => {
   const { zones } = useAuth();

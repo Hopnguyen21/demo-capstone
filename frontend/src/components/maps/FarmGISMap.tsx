@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { deviceService } from '../../services';
 import { SensorNode, Gateway } from '../../types';
 import { Radio, Cpu, Battery, Wifi, Maximize2, Move } from 'lucide-react';

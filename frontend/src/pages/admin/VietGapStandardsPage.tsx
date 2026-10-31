@@ -12,6 +12,7 @@ import { cropService, knowledgeService } from '../../services';
 import { Crop, VietGapStructuredExtraction } from '../../types';
 import { checkVietGapCompleteness, MIN_NOTES_FOR_INCOMPLETE_APPROVAL, DOCUMENT_TYPE_INFO, AgricultureDocumentType } from './vietGapCompleteness';
 import { canonicalCrop } from './cropNames';
+import { foldVietnamese } from './vietGapCompleteness';
 
 export interface VietGapRegulationDetail {
   id: string;
@@ -114,6 +115,9 @@ export interface VietGapRegulationDetail {
   topics: string; // Các mảng tài liệu bao quát, phân tách bằng dấu phẩy
   detectedTopics: string; // Mảng hệ thống nhận diện từ nội dung các đoạn
   cropScope: string; // Phạm vi cây trồng gốc (có thể nhiều cây, phân tách bằng dấu phẩy)
+  metadataDetection?: any; // Kết quả hệ thống nhận diện từ nội dung: giá trị, trạng thái, bằng chứng
+  verification?: any; // Kết quả AI rà soát đối chiếu nguồn quy chuẩn đã xác minh
+  verificationStatus?: string;
 }
 
 // Lỗi tải tài liệu: 503 = chưa xác minh được; 422 được giữ để hiển thị lỗi từ backend cũ.
@@ -128,6 +132,102 @@ const describeIngestError = (err: any, fallback: string): string => {
   }
   if (err?.response?.status === 503) return data?.detail || 'Chưa xác minh được tài liệu bằng AI; tài liệu chưa được lưu. Vui lòng thử lại sau.';
   return data?.detail || data?.message || err?.message || fallback;
+};
+
+const VERIFICATION_STATUS: Record<string, { label: string; cls: string }> = {
+  Pending: { label: 'AI đang kiểm tra', cls: 'bg-sky-50 border-sky-300 text-sky-800' },
+  Agricultural: { label: 'AI: thuộc lĩnh vực nông nghiệp', cls: 'bg-emerald-50 border-emerald-300 text-emerald-800' },
+  NotAgricultural: { label: 'AI: có thể KHÔNG phải tài liệu nông nghiệp', cls: 'bg-rose-50 border-rose-300 text-rose-800' },
+  Uncertain: { label: 'AI chưa đủ căn cứ để kết luận', cls: 'bg-amber-50 border-amber-300 text-amber-800' },
+  VerificationError: { label: 'AI gặp lỗi — chưa kiểm tra được', cls: 'bg-slate-100 border-slate-300 text-slate-700' },
+};
+
+// Kết quả AI kiểm tra tài liệu có thuộc lĩnh vực nông nghiệp. Chỉ xác nhận chủ đề, không đánh giá đúng/sai kỹ thuật,
+// không chứng nhận VietGAP và không quyết định việc duyệt.
+const VerificationCard: React.FC<{ verification: any; status?: string; busy: boolean; onRerun: () => void }> = ({ verification, status, busy, onRerun }) => {
+  const effective = verification?.status ?? status;
+  const st = effective ? (VERIFICATION_STATUS[effective] ?? VERIFICATION_STATUS.Uncertain) : null;
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3" aria-label="AI kiểm tra chủ đề nông nghiệp">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="font-extrabold text-slate-900 text-sm">AI kiểm tra tài liệu có thuộc lĩnh vực nông nghiệp</h4>
+        {st && <span className={`px-2 py-0.5 rounded-full border text-[11px] font-bold ${st.cls}`}>{st.label}</span>}
+        <button type="button" onClick={onRerun} disabled={busy} className="ml-auto px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold disabled:opacity-50">
+          {busy ? 'Đang yêu cầu…' : 'Kiểm tra lại'}
+        </button>
+      </div>
+      <p className="text-[11px] text-slate-500">
+        Chỉ xác nhận tài liệu nói về nông nghiệp; không đánh giá kỹ thuật đúng hay sai và không phải chứng nhận VietGAP. Tài liệu chỉ vào RAG sau khi quản trị viên duyệt.
+      </p>
+      {!effective && <p className="text-xs text-slate-600">Tài liệu này chưa có kết quả kiểm tra (nạp trước khi có tính năng).</p>}
+      {effective === 'Pending' && <p className="text-xs text-sky-800">AI đang kiểm tra. Kết quả sẽ hiện sau ít phút.</p>}
+      {verification?.message && <p className="text-xs text-slate-800">{verification.message}</p>}
+      {verification?.documentKind && <p className="text-xs text-slate-700"><b>AI nhận định đây là:</b> {verification.documentKind}</p>}
+      {verification?.reason && <p className="text-xs text-slate-600">Lý do: {verification.reason}</p>}
+      {Array.isArray(verification?.evidence) && verification.evidence.map((q: any, i: number) => (
+        <p key={i} className="text-xs italic text-slate-700">“{q.quote}”{q.page ? ` · trang ${q.page}` : ''}</p>
+      ))}
+      {verification?.checkedAtUtc && (
+        <p className="text-[10px] text-slate-400">
+          Kiểm tra lúc {new Date(verification.checkedAtUtc).toLocaleString('vi-VN')}{verification.model ? ` · ${verification.model}` : ''} · prompt {verification.promptVersion}
+          {typeof verification.confidence === 'number' ? ` · tin cậy ${Math.round(verification.confidence * 100)}%` : ''}
+        </p>
+      )}
+    </section>
+  );
+};
+
+const DETECTION_STATUS: Record<string, { label: string; cls: string }> = {
+  detected: { label: 'Đã nhận diện', cls: 'bg-emerald-50 border-emerald-300 text-emerald-800' },
+  uncertain: { label: 'Chưa chắc chắn', cls: 'bg-amber-50 border-amber-300 text-amber-800' },
+  not_found: { label: 'Không thấy trong file', cls: 'bg-slate-50 border-slate-300 text-slate-600' },
+};
+
+// Kết quả hệ thống tự nhận diện từ nội dung file, kèm câu trích để đối chiếu với file gốc.
+const DetectionCard: React.FC<{ detection: any }> = ({ detection }) => {
+  const rows: { key: string; label: string; field: any }[] = [
+    { key: 'title', label: 'Tiêu đề', field: detection.title },
+    { key: 'crops', label: 'Cây áp dụng', field: detection.crops },
+    { key: 'generalScope', label: 'Áp dụng chung', field: detection.generalScope },
+    { key: 'publisher', label: 'Đơn vị ban hành', field: detection.publisher },
+    { key: 'standardCode', label: 'Mã tiêu chuẩn', field: detection.standardCode },
+    { key: 'version', label: 'Phiên bản', field: detection.version },
+    { key: 'effectiveDate', label: 'Hiệu lực / năm', field: detection.effectiveDate },
+    { key: 'documentType', label: 'Loại tài liệu', field: detection.documentType },
+  ];
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2" aria-label="Thông tin hệ thống tự nhận diện">
+      <h4 className="font-extrabold text-slate-900 text-sm">Thông tin hệ thống tự nhận diện từ file</h4>
+      <p className="text-[11px] text-slate-500">Chỉ ghi giá trị khi file có bằng chứng; chưa thấy thì để trống, không đoán. Hãy đối chiếu với file gốc khi duyệt.</p>
+      <div className="grid gap-2">
+        {rows.map(({ key, label, field }) => {
+          if (!field) return null;
+          const st = DETECTION_STATUS[field.status] ?? DETECTION_STATUS.not_found;
+          return (
+            <div key={key} className="text-xs border border-slate-100 rounded-lg p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-slate-800">{label}:</span>
+                <span className="text-slate-900">{field.value ?? '—'}</span>
+                <span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-bold ${st.cls}`}>{st.label}</span>
+              </div>
+              {field.evidence && (
+                <p className="mt-1 text-[11px] text-slate-500 italic">“{field.evidence.quote}”{field.evidence.page ? ` · trang ${field.evidence.page}` : ''}</p>
+              )}
+              {Array.isArray(field.candidates) && field.candidates.length > 0 && (
+                <p className="mt-1 text-[11px] text-slate-500">Được nhắc trong file: {field.candidates.join(', ')} (chưa đủ để kết luận phạm vi áp dụng)</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {Array.isArray(detection.topics) && detection.topics.length > 0 && (
+        <div className="text-xs">
+          <span className="font-semibold text-slate-800">Chủ đề nhận diện từ nội dung (gợi ý):</span>{' '}
+          {detection.topics.map((t: any) => `${t.topic} (${t.chunkCount} đoạn)`).join(', ')}
+        </div>
+      )}
+    </section>
+  );
 };
 
 // Nguồn của một trường: số trang, kèm câu trích khi giá trị là số liệu rút ra từ câu đó (giá trị chữ đã chính là câu trích).
@@ -156,42 +256,63 @@ const TOPIC_OPTIONS = [
 // Phiên bản quy tắc kiểm chứng hiện hành (VietGapStructuredExtractor.RulesVersion ở backend).
 const EXTRACTION_RULES_VERSION = 2;
 
-const NOT_EXTRACTED_TEXT = '[Chưa trích xuất — bấm "Trích xuất bằng AI"]';
+const NOT_EXTRACTED_TEXT = '[Không có dữ liệu]';
 const MISSING_IN_SOURCE_TEXT = '[Không có trong tài liệu]';
 
 // Số ngày không có trong tài liệu nguồn phải hiển thị là thiếu, không phải "0 ngày".
 const formatDays = (days: number | null | undefined): string =>
   days == null ? '[chưa có trong tài liệu]' : `${days} ngày`;
 
-export interface EditableGrowthStage {
-  stageOrder: number;
-  name: string;
-  durationDays: number;
-  tempMin: number;
-  tempMax: number;
-  tempOptimal: number;
-  moistMin: number;
-  moistMax: number;
-  moistOptimal: number;
-  phMin: number;
-  phMax: number;
-  phOptimal?: number;
-  ecMin: number;
-  ecMax: number;
-  ecOptimal?: number;
-  airHumidityMin?: number;
-  airHumidityMax?: number;
-  airHumidityOptimal?: number;
-  lightMin?: number;
-  lightMax?: number;
-  lightOptimal?: number;
-  description: string;
-  fertilizerAction: string;
-  ipmAction: string;
-}
+// Nhận diện tên cây trồng từ tên file hoặc văn bản gợi ý
+const detectCropFromFileName = (fileName: string, catalogCrops: string[]): string => {
+  if (!fileName) return '';
+  const normalizedFileName = foldVietnamese(fileName.replace(/[_\-.]/g, ' '));
+
+  // 1. So khớp với danh mục cây trồng hiện có trong CSDL (ưu tiên tên dài trước)
+  const sortedCatalog = [...catalogCrops].sort((a, b) => b.length - a.length);
+  for (const crop of sortedCatalog) {
+    if (crop && normalizedFileName.includes(foldVietnamese(crop))) {
+      return crop;
+    }
+  }
+
+  // 2. Mẫu nhận diện các cây trồng nông nghiệp thông dụng
+  const commonPatterns: { regex: RegExp; name: string }[] = [
+    { regex: /dua\s*leo\s*mau/i, name: 'Dưa leo màu' },
+    { regex: /dua\s*leo\s*baby/i, name: 'Dưa leo baby' },
+    { regex: /dua\s*leo|cucumber/i, name: 'Dưa leo' },
+    { regex: /dua\s*luoi|cantaloupe|melon/i, name: 'Dưa lưới' },
+    { regex: /dau\s*tay|strawberry/i, name: 'Dâu tây' },
+    { regex: /ca\s*chua\s*beefsteak/i, name: 'Cà chua beefsteak' },
+    { regex: /ca\s*chua\s*bi/i, name: 'Cà chua bi' },
+    { regex: /ca\s*chua|tomato/i, name: 'Cà chua' },
+    { regex: /ot\s*chuong|bell\s*pepper|capsicum/i, name: 'Ớt chuông' },
+    { regex: /xa\s*lach|lettuce/i, name: 'Xà lách' },
+    { regex: /cai\s*be\s*xanh/i, name: 'Cải bẹ xanh' },
+    { regex: /cai\s*ngot/i, name: 'Cải ngọt' },
+    { regex: /cai\s*thao/i, name: 'Cải thảo' },
+    { regex: /rau\s*muong/i, name: 'Rau muống' },
+    { regex: /nam\s*rom/i, name: 'Nấm rơm' },
+    { regex: /thanh\s*long/i, name: 'Thanh long' },
+    { regex: /xoai/i, name: 'Xoài' },
+    { regex: /buoi/i, name: 'Bưởi' },
+    { regex: /cam/i, name: 'Cam' },
+    { regex: /sau\s*rieng/i, name: 'Sầu riêng' },
+  ];
+
+  for (const item of commonPatterns) {
+    if (item.regex.test(normalizedFileName)) {
+      const foundInCat = catalogCrops.find(c => foldVietnamese(c) === foldVietnamese(item.name));
+      return foundInCat || item.name;
+    }
+  }
+
+  return '';
+};
 
 export const VietGapStandardsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'DOCUMENTS' | 'CRITERIA_MATRIX' | 'IPM_PEST' | 'SOIL_WATER' | 'HARVEST_TRACE'>('DOCUMENTS');
+  const [activeTab, setActiveTab] = useState<'DOCUMENTS'>('DOCUMENTS');
+  const [isVerifyingDoc, setIsVerifyingDoc] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDoc, setSelectedDoc] = useState<VietGapRegulationDetail | null>(null);
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -199,10 +320,6 @@ export const VietGapStandardsPage: React.FC = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
-  const [selectedCropForConvert, setSelectedCropForConvert] = useState<string>('');
-  const [convertingDoc, setConvertingDoc] = useState<VietGapRegulationDetail | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
   const [expandedSection, setExpandedSection] = useState<'ALL' | 'IPM' | 'SOIL' | 'HARVEST'>('ALL');
   const [matrixFilter, setMatrixFilter] = useState<'CROPS_ONLY' | 'ALL'>('CROPS_ONLY');
@@ -210,16 +327,16 @@ export const VietGapStandardsPage: React.FC = () => {
   const [expandedCrop, setExpandedCrop] = useState<string | null>(null);
 
   // Quản lý giai đoạn sinh trưởng tùy biến & Kiểm duyệt cuối
-  const [editableStages, setEditableStages] = useState<EditableGrowthStage[]>([]);
-  const [convertStep, setConvertStep] = useState<'BUILDER' | 'REVIEW'>('BUILDER');
-  const [activeStagePreset, setActiveStagePreset] = useState<number>(4);
   const [reviewerName, setReviewerName] = useState('Quản trị viên Kỹ thuật Nông nghiệp (Platform Admin)');
-  const [reviewerNotes, setReviewerNotes] = useState('');
-  const [aiSourceEvidence, setAiSourceEvidence] = useState<string[]>([]);
-  const [reviewerConfirmed, setReviewerConfirmed] = useState(false);
-  const [isAiDraftingProfile, setIsAiDraftingProfile] = useState(false);
-  const [isFallbackProfile, setIsFallbackProfile] = useState(false);
-  const [customProfileName, setCustomProfileName] = useState('');
+  const [isDetectingFile, setIsDetectingFile] = useState(false);
+  const [fileTextUnavailable, setFileTextUnavailable] = useState(false);
+  const [fileDetectionResult, setFileDetectionResult] = useState<{
+    cropScope: string;
+    cropsStatus?: string;
+    cropsEvidence?: string;
+    cropsPage?: number;
+    title?: string;
+  } | null>(null);
 
   // Quản lý Cập nhật & Nâng cấp phiên bản tài liệu (V1 -> V2)
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -260,21 +377,12 @@ export const VietGapStandardsPage: React.FC = () => {
 
   // Kho dữ liệu VietGAP nạp trực tiếp từ backend RAG
   const [documents, setDocuments] = useState<VietGapRegulationDetail[]>([]);
-  const [profileThresholds, setProfileThresholds] = useState({
-    tempMin: 20,
-    tempMax: 28,
-    moistMin: 65,
-    moistMax: 75,
-    phMin: 6.0,
-    phMax: 6.8,
-    ecMin: 1.8,
-    ecMax: 2.5
-  });
-
-  
   const initialUploadFormData = {
     title: '',
     cropName: '',
+    // Cây chọn từ danh mục (GET /api/v1/crops) + cây nhập tay qua "Khác"; để trống = tài liệu áp dụng chung.
+    selectedCrops: [] as string[],
+    otherCrops: '',
     cropGroup: 'Rau ăn quả',
     category: 'general',
     documentType: 'OfficialStandard' as AgricultureDocumentType,
@@ -317,6 +425,10 @@ export const VietGapStandardsPage: React.FC = () => {
   const [isReviewPanelOpen, setIsReviewPanelOpen] = useState(false);
   const [reviewText, setReviewText] = useState('');
   const [reviewNotes, setReviewNotes] = useState('');
+  // Metadata người duyệt có thể chỉnh sau khi đối chiếu file gốc (khởi tạo từ giá trị hệ thống đã nhận diện).
+  const [reviewMeta, setReviewMeta] = useState({
+    title: '', cropScope: '', author: '', version: '', documentType: 'Unspecified' as AgricultureDocumentType, confirmGeneral: false,
+  });
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [isSavingReview, setIsSavingReview] = useState(false);
   const reviewChecks = useMemo(
@@ -326,8 +438,6 @@ export const VietGapStandardsPage: React.FC = () => {
   const missingCriticalChecks = reviewChecks.filter(c => c.isCritical && !c.found);
   const [isDownloadingOriginal, setIsDownloadingOriginal] = useState(false);
   const [isReextracting, setIsReextracting] = useState(false);
-  // Growth Profile mặc định gom mọi tài liệu đã duyệt của cây; mỗi tài liệu chỉ cần bổ sung một mảng (thu hoạch, sâu bệnh...).
-  const [profileSourceScope, setProfileSourceScope] = useState<'crop' | 'document'>('crop');
 
   // Trích xuất động thông số VietGAP từ nội dung PDF và cơ sở dữ liệu
   const deriveVietGapDetails = (d: any, detail?: any, currentCrops?: any[], currentProfiles?: any[]): VietGapRegulationDetail => {
@@ -437,7 +547,8 @@ export const VietGapStandardsPage: React.FC = () => {
     const pHOptimal = textField('phOptimal');
     const ecOptimal = textField('ecOptimal');
     const luxOptimal = textField('luxOptimal');
-    const growthDays: number | null = daysField('growthCycleDays') ?? (matchedCrop?.growthCycleDays || null);
+    // Chu kỳ chỉ lấy từ tài liệu: giá trị của bản ghi Crop trong CSDL không phải thông tin tài liệu nêu, nên không hiển thị ở đây.
+    const growthDays: number | null = daysField('growthCycleDays');
 
     // 6. Thu hoạch, sơ chế & truy xuất
     const harvestToolsStandard = textField('harvestToolsStandard');
@@ -449,10 +560,11 @@ export const VietGapStandardsPage: React.FC = () => {
     const stagesOverview = (extraction?.stages ?? []).map(s => ({
       name: s.name,
       days: s.durationDays ?? 0,
-      temp: s.temperatureRange ?? tempOptimal,
-      moisture: s.moistureRange ?? moistureOptimal,
-      ph: s.ph ?? pHOptimal,
-      ec: s.ec ?? ecOptimal,
+      // Chỉ hiển thị số liệu mà chính câu trích của giai đoạn nêu; không lấy giá trị chung của tài liệu gán cho giai đoạn.
+      temp: s.temperatureRange ?? MISSING_IN_SOURCE_TEXT,
+      moisture: s.moistureRange ?? MISSING_IN_SOURCE_TEXT,
+      ph: s.ph ?? MISSING_IN_SOURCE_TEXT,
+      ec: s.ec ?? MISSING_IN_SOURCE_TEXT,
       fertilizerAction: s.fertilizerAction ?? MISSING_IN_SOURCE_TEXT,
       ipmAction: s.ipmAction ?? MISSING_IN_SOURCE_TEXT,
       evidence: s.evidence,
@@ -462,7 +574,7 @@ export const VietGapStandardsPage: React.FC = () => {
     return {
       id: d.id,
       code: d.standardCode || fullText.match(/TCVN\s*\d+[-–]\d+:\d{4}/i)?.[0] || 'Chưa xác định',
-      version: d.version || 'V2.0',
+      version: d.version || undefined, // không điền phiên bản mặc định khi file không ghi
       title: d.title,
       fileName: d.fileName || undefined,
       cropName,
@@ -473,10 +585,13 @@ export const VietGapStandardsPage: React.FC = () => {
       uploadDate: d.createdAtUtc ? new Date(d.createdAtUtc).toLocaleDateString('vi-VN') : 'Mặc định',
       author: d.authorOrganization || 'Chưa xác định nguồn ban hành',
       issuingAuthority: d.authorOrganization || 'Chưa xác định nguồn ban hành',
-      validityPeriod: d.validityPeriod || 'Theo niên vụ canh tác',
+      validityPeriod: d.validityPeriod || 'Chưa xác định',
       status: (d.status === 'VALIDATED' ? 'VALIDATED' : 'DRAFT') as 'VALIDATED' | 'DRAFT',
       reviewStatus: d.reviewStatus || 'PendingReview',
-      documentType: (d.documentType || 'OfficialStandard') as AgricultureDocumentType,
+      documentType: (d.documentType || 'Unspecified') as AgricultureDocumentType,
+      metadataDetection: detail?.metadataDetection || d.metadataDetection || undefined,
+      verification: detail?.verification || d.verification || undefined,
+      verificationStatus: detail?.verificationStatus || d.verificationStatus || undefined,
       rawCategory: d.category || 'general',
       topics: d.topics || '',
       detectedTopics: d.detectedTopics || '',
@@ -607,7 +722,6 @@ export const VietGapStandardsPage: React.FC = () => {
   };
 
   const cropDocsCount = documents.filter(d => !d.isThematicStandard).length;
-  const generatedProfileCount = documents.filter(d => !d.isThematicStandard && d.profileGenerated).length;
 
   // Một cây trồng có thể có nhiều tài liệu VietGAP, mỗi tài liệu bổ sung một mảng (đất, sâu bệnh, thu hoạch...).
   // Số tài liệu phải là số thật: tên cây được chuẩn hóa (Lettuce/Batavia/Xa lach → Xà lách), tài liệu dùng chung cho
@@ -660,17 +774,6 @@ export const VietGapStandardsPage: React.FC = () => {
 
     return { groups, sharedDocs, untagged };
   }, [documents, crops]);
-
-  const openCropProfile = (group: { name: string; docs: VietGapRegulationDetail[]; sharedDocs: VietGapRegulationDetail[] }) => {
-    const representative = [...group.docs, ...group.sharedDocs].find(d => d.reviewStatus === 'Approved');
-    if (!representative) {
-      setNotification({ type: 'error', message: `Cây "${group.name}" chưa có tài liệu nào được duyệt. Hãy duyệt tài liệu trước khi tạo Growth Profile.` });
-      return;
-    }
-    // Gom mọi tài liệu đã duyệt của cây làm nguồn (server lọc theo tên cây và các tên gọi khác), không chỉ tài liệu đại diện.
-    setProfileSourceScope('crop');
-    void triggerConvertModal({ ...representative, cropName: group.name });
-  };
 
   // Kiểm soát tài liệu: thông tin quản lý còn thiếu khiến tài liệu không được đếm/khớp đúng (độ phủ, cây trồng, nguồn).
   const controlIssues = (doc: VietGapRegulationDetail): string[] => {
@@ -763,13 +866,6 @@ export const VietGapStandardsPage: React.FC = () => {
                   {group.sharedDocs.length > 0 && (
                     <p className="text-[11px] text-slate-500">+ {group.sharedDocs.length} tài liệu dùng chung (xem mục "Tài liệu dùng chung" bên dưới).</p>
                   )}
-                  <button type="button" onClick={() => openCropProfile(group)} disabled={group.approvedCount + group.sharedApprovedCount === 0}
-                    className="w-full mt-1 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-40 cursor-pointer">
-                    Tạo Growth Profile cho {group.name} ({group.approvedCount} riêng + {group.sharedApprovedCount} dùng chung đã duyệt)
-                  </button>
-                  <p className="text-[10px] text-slate-500">
-                    Profile chỉ được tạo khi các tài liệu đã duyệt cùng cung cấp đủ giai đoạn và ngưỡng có trích dẫn; thiếu thì hệ thống báo, không điền số mẫu.
-                  </p>
                 </div>
               )}
             </div>
@@ -817,7 +913,7 @@ export const VietGapStandardsPage: React.FC = () => {
     return true;
   });
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -841,15 +937,77 @@ export const VietGapStandardsPage: React.FC = () => {
     }
 
     setSelectedUploadFile(file);
+    setFileTextUnavailable(false);
     const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
     setUploadFormData(prev => ({
       ...prev,
       fileName: file.name,
       fileType: isPDF ? 'PDF' : isDOCX ? 'DOCX' : 'TXT',
       fileSize: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
-      title: prev.title || cleanName,
-      cropName: prev.cropName || (/cà\s*chua/i.test(cleanName) ? 'cà chua' : '')
+      title: prev.title || cleanName
     }));
+
+    // Tự động đọc và trích xuất loại cây trồng trực tiếp từ nội dung tệp
+    setIsDetectingFile(true);
+    setFileDetectionResult(null);
+
+    try {
+      const detected = await knowledgeService.detectMetadata(file);
+      const cropFound = detected.cropScope || '';
+      const titleFound = detected.title || cleanName;
+
+      setFileDetectionResult({
+        cropScope: cropFound,
+        cropsStatus: detected.cropsStatus,
+        cropsEvidence: detected.cropsEvidence,
+        cropsPage: detected.cropsPage,
+        title: titleFound
+      });
+
+      setUploadFormData(prev => ({
+        ...prev,
+        cropName: cropFound,
+        title: titleFound
+      }));
+    } catch (err) {
+      if (isPDF && (err as any)?.response?.status === 400) {
+        setFileTextUnavailable(true);
+        setFileDetectionResult(null);
+        setNotification({
+          type: 'error',
+          message: 'Không đọc được lớp văn bản trong PDF. Nếu đây là PDF scan, hãy OCR bên ngoài SmartFarm rồi lưu thành PDF có thể tìm kiếm hoặc DOCX/TXT trước khi tải lên.'
+        });
+        return;
+      }
+      console.warn('Không nhận diện được metadata từ nội dung, sẽ dùng thông tin nhập tay hoặc tên file:', err);
+      if (isTXT) {
+        try {
+          const txt = await file.text();
+          const match = txt.match(/^\s*[-•*]?\s*(?:cây trồng áp dụng|cây trồng|đối tượng cây trồng|đối tượng áp dụng|áp dụng cho cây|áp dụng cho)\s*[:：]\s*(.+)$/im);
+          const cropFromTxt = match ? match[1].trim() : detectCropFromFileName(file.name, crops.map(c => c.name));
+          setFileDetectionResult({
+            cropScope: cropFromTxt,
+            cropsStatus: cropFromTxt ? 'detected' : 'not_found',
+            cropsEvidence: match ? match[0] : undefined
+          });
+          setUploadFormData(prev => ({ ...prev, cropName: cropFromTxt }));
+        } catch {
+          // ignore
+        }
+      } else {
+        const fallbackCrop = detectCropFromFileName(file.name, crops.map(c => c.name));
+        if (fallbackCrop) {
+          setFileDetectionResult({
+            cropScope: fallbackCrop,
+            cropsStatus: 'uncertain',
+            cropsEvidence: `Nhận diện từ tên file: ${file.name}`
+          });
+          setUploadFormData(prev => ({ ...prev, cropName: fallbackCrop }));
+        }
+      }
+    } finally {
+      setIsDetectingFile(false);
+    }
   };
 
   const handleSaveDocument = async (e: React.FormEvent) => {
@@ -860,6 +1018,8 @@ export const VietGapStandardsPage: React.FC = () => {
     let savedTitle = '';
     let requiresManualReview = true;
     let nearDuplicateNote = '';
+    let needsDecision: string[] = [];
+    let uploadMessage = '';
     try {
       const fileToSend = selectedUploadFile;
       if (!fileToSend) {
@@ -870,23 +1030,31 @@ export const VietGapStandardsPage: React.FC = () => {
         setIsUploading(false);
         return;
       }
+      if (fileTextUnavailable) {
+        setNotification({
+          type: 'error',
+          message: 'PDF chưa có lớp văn bản để hệ thống đọc. Hãy OCR bên ngoài SmartFarm và chọn lại PDF có thể tìm kiếm hoặc DOCX/TXT.'
+        });
+        setIsUploading(false);
+        return;
+      }
       const fd = new FormData();
       fd.append('file', fileToSend);
-      // Cho phép admin sửa metadata khi OCR/nhận diện từ tài liệu không chính xác.
-      if (uploadFormData.title.trim()) fd.append('title', uploadFormData.title.trim());
-      if (uploadFormData.cropName.trim()) fd.append('cropScope', uploadFormData.cropName.trim());
-      if (uploadFormData.author.trim()) fd.append('authorOrganization', uploadFormData.author.trim());
-      if (uploadFormData.version.trim()) fd.append('version', uploadFormData.version.trim());
-      fd.append('category', uploadFormData.category || 'general');
-      fd.append('documentType', uploadFormData.documentType);
-      uploadFormData.topics.forEach(t => fd.append('topics', t));
+      if (uploadFormData.title?.trim()) {
+        fd.append('title', uploadFormData.title.trim());
+      }
+      if (uploadFormData.cropName?.trim()) {
+        fd.append('cropScope', uploadFormData.cropName.trim());
+      }
       fd.append('isPublic', 'true');
 
       const uploadRes = await knowledgeService.uploadDocument(fd);
       if (uploadRes?.id || uploadRes?.documentId) {
         backendDocId = uploadRes.id || uploadRes.documentId;
         savedTitle = uploadRes.title || selectedUploadFile?.name || '';
-        requiresManualReview = String(uploadRes.reviewNotes || '').includes('[Chờ người duyệt]');
+        needsDecision = Array.isArray(uploadRes.needsDecision) ? uploadRes.needsDecision : [];
+        uploadMessage = String(uploadRes.message || '');
+        requiresManualReview = true;
         nearDuplicateNote = String(uploadRes.reviewNotes || '').match(/\[Có thể trùng với tài liệu đã có\][^.]*\./)?.[0] || '';
       }
     } catch (err: any) {
@@ -923,7 +1091,7 @@ export const VietGapStandardsPage: React.FC = () => {
     try {
       const detail = await knowledgeService.getDocument(backendDocId);
       const newDoc = deriveVietGapDetails(detail, detail);
-      requiresManualReview = String(detail.reviewNotes || '').startsWith('[Chờ người duyệt]');
+      requiresManualReview = detail.reviewStatus !== 'Approved';
       wasOcrProcessed = newDoc.contentText?.startsWith('[OCR bằng AI từ PDF scan') === true;
       setDocuments(prev => [newDoc, ...prev]);
       setSelectedDoc(newDoc);
@@ -933,13 +1101,14 @@ export const VietGapStandardsPage: React.FC = () => {
     } catch {
       await loadBackendDocuments();
     }
+    const decisionNote = needsDecision.length > 0 ? ` Chưa xác định được: ${needsDecision.join(', ')} — hãy chọn khi duyệt.` : '';
     setIsUploadModalOpen(false);
     setSelectedUploadFile(null);
     setUploadFormData(initialUploadFormData);
     setNotification({
       type: requiresManualReview ? 'warning' : 'success',
       message: requiresManualReview
-        ? `Đã lưu "${savedTitle}" độc lập với Growth Profile ở trạng thái chờ người duyệt. Kiểm tra nguồn và gắn đúng cây trồng; tài liệu chưa được dùng trong RAG cho đến khi duyệt.`
+        ? `Đã lưu "${savedTitle}". ${uploadMessage || 'Tài liệu chờ duyệt, chưa dùng trong RAG.'}${decisionNote}`
         : wasOcrProcessed
           ? `AI đã xác nhận "${savedTitle}" đủ thông tin; đã OCR và lưu ở trạng thái chờ đối chiếu. Hãy so từng trang với PDF gốc rồi duyệt — tài liệu chỉ vào RAG sau khi được duyệt.`
           : `AI đã xác nhận "${savedTitle}" đủ thông tin; đã lưu ở trạng thái chờ đối chiếu. Hãy rà soát và duyệt — tài liệu chỉ vào RAG sau khi được duyệt.`
@@ -1010,7 +1179,7 @@ export const VietGapStandardsPage: React.FC = () => {
 
       setNotification({
         type: 'success',
-        message: `Đã cập nhật tài liệu lên phiên bản ${updateFormData.version}. Tài liệu trở về trạng thái chờ đối chiếu; sẽ chỉ vào RAG và sinh profile sau khi được duyệt.`
+        message: `Đã cập nhật tài liệu lên phiên bản ${updateFormData.version}. Tài liệu trở về trạng thái chờ đối chiếu; chỉ được đưa vào RAG sau khi được duyệt.`
       });
       setIsReviewPanelOpen(false);
       setIsUpdateModalOpen(false);
@@ -1095,641 +1264,18 @@ export const VietGapStandardsPage: React.FC = () => {
     setNotification({ type: 'success', message: `Đã xuất và tải về thành công hồ sơ quy chuẩn: ${a.download}` });
   };
 
-  // Helper chuẩn hóa số và lọc lỗi dấu phẩy thập phân tiếng Việt (vd: 6,0 -> 6.0)
-  const parseCleanNumber = (val: any, fallback: number): number => {
-    if (val === null || val === undefined) return fallback;
-    if (typeof val === 'number') return isNaN(val) ? fallback : val;
-    const cleaned = String(val).trim().replace(',', '.').replace(/[^0-9.]/g, '');
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? fallback : parsed;
-  };
-
-  // Helper bảo đảm giá trị pH luôn nằm trong thang chuẩn 0 - 14 (khắc phục lỗi 60 -> 6.0)
-  const sanitizePh = (v: any, fallback = 6.0): number => {
-    const num = parseCleanNumber(v, fallback);
-    if (num > 14) {
-      const fixed = Math.round((num / 10) * 10) / 10;
-      return fixed > 14 ? fallback : fixed;
-    }
-    return Math.round(num * 10) / 10;
-  };
-
-  // Helper sinh các giai đoạn chuẩn hóa theo bộ mẫu (Presets)
-  // Helper sinh các giai đoạn chuẩn hóa thích ứng động từ CSDL (không dùng mock data)
-  const buildDefaultStages = (targetDoc: any, count: number, th: any): EditableGrowthStage[] => {
-    const cropName = targetDoc?.cropName || targetDoc?.title || 'Cây trồng';
-    const tMin = th.tempMin || 20;
-    const tMax = th.tempMax || 28;
-    const mMin = th.moistMin || 65;
-    const mMax = th.moistMax || 75;
-    const pMin = sanitizePh(th.phMin, 6.0);
-    const pMax = sanitizePh(th.phMax, 6.8);
-    const eMin = th.ecMin || 1.8;
-    const eMax = th.ecMax || 2.5;
-
-    // Nếu tài liệu hiện tại có stagesOverview từ CSDL và trùng số lượng giai đoạn yêu cầu
-    if (targetDoc?.stagesOverview && targetDoc.stagesOverview.length === count) {
-      return targetDoc.stagesOverview.map((st: any, idx: number) => ({
-        stageOrder: idx + 1,
-        name: st.name,
-        durationDays: Math.max(1, Number(st.days) || 15),
-        tempMin: parseCleanNumber(st.temp?.replace('°C', '').split(/[-–]/)[0], tMin),
-        tempMax: parseCleanNumber(st.temp?.replace('°C', '').split(/[-–]/)[1], tMax),
-        tempOptimal: Math.round(((tMin + tMax) / 2) * 10) / 10,
-        airHumidityMin: 65,
-        airHumidityMax: 85,
-        airHumidityOptimal: 75,
-        moistMin: parseCleanNumber(st.moisture?.replace('%', '').split(/[-–]/)[0], mMin),
-        moistMax: parseCleanNumber(st.moisture?.replace('%', '').split(/[-–]/)[1], mMax),
-        moistOptimal: Math.round(((mMin + mMax) / 2) * 10) / 10,
-        phMin: pMin,
-        phMax: pMax,
-        phOptimal: Math.round(((pMin + pMax) / 2) * 10) / 10,
-        ecMin: eMin,
-        ecMax: eMax,
-        ecOptimal: Math.round(((eMin + eMax) / 2) * 10) / 10,
-        description: `Giai đoạn ${st.name} theo Quy chuẩn VietGAP ${targetDoc.code}`,
-        fertilizerAction: st.fertilizerAction || targetDoc.fertilizerRules?.organicRequirements || 'Châm phân theo quy chuẩn VietGAP',
-        ipmAction: st.ipmAction || targetDoc.pestManagementIPM?.ipmPrinciples || 'Áp dụng biện pháp sinh học IPM'
-      }));
-    }
-
-    // Phân kỳ động theo chu kỳ sinh trưởng thực tế trong CSDL
-    const totalDays = targetDoc?.climateRequirements?.growthDays || 90;
-    const baseDays = Math.floor(totalDays / count);
-    const stageLabels = count === 3 
-      ? ['Cây con & Bén rễ', 'Sinh trưởng sinh dưỡng', 'Ra hoa & Thu hoạch']
-      : count === 5
-      ? ['Cây con bén rễ', 'Phát triển thân cành lá', 'Phân hóa mầm hoa', 'Đậu trái & Nuôi quả', 'Chín & Thu hoạch']
-      : ['Cây con & Bén rễ', 'Phát triển thân lá', 'Ra hoa & Đậu quả', 'Nuôi quả & Thu hoạch'];
-
-    return stageLabels.slice(0, count).map((label, idx) => {
-      const isFirst = idx === 0;
-      const isLast = idx === count - 1;
-      const stageDays = isLast ? (totalDays - baseDays * (count - 1)) : baseDays;
-      return {
-        stageOrder: idx + 1,
-        name: `${label} (${cropName})`,
-        durationDays: Math.max(1, stageDays),
-        tempMin: tMin,
-        tempMax: tMax,
-        tempOptimal: Math.round(((tMin + tMax) / 2) * 10) / 10,
-        airHumidityMin: 65,
-        airHumidityMax: 85,
-        airHumidityOptimal: 75,
-        moistMin: isFirst ? mMin + 5 : mMin,
-        moistMax: isFirst ? mMax + 5 : mMax,
-        moistOptimal: Math.round(((mMin + mMax) / 2) * 10) / 10,
-        phMin: pMin,
-        phMax: pMax,
-        phOptimal: Math.round(((pMin + pMax) / 2) * 10) / 10,
-        ecMin: isFirst ? Math.max(1.0, eMin - 0.4) : eMin,
-        ecMax: isFirst ? Math.max(1.4, eMax - 0.4) : eMax,
-        ecOptimal: Math.round((((isFirst ? Math.max(1.0, eMin - 0.4) : eMin) + (isFirst ? Math.max(1.4, eMax - 0.4) : eMax)) / 2) * 10) / 10,
-        description: `Giai đoạn ${label} canh tác ${cropName} theo quy chuẩn VietGAP`,
-        fertilizerAction: targetDoc?.fertilizerRules?.organicRequirements || 'Tưới dinh dưỡng NPK cân đối theo quy chuẩn VietGAP',
-        ipmAction: targetDoc?.pestManagementIPM?.ipmPrinciples || 'Kiểm soát sinh học và bẫy dính IPM'
-      };
+  useEffect(() => {
+    if (!selectedDoc) return;
+    setReviewMeta({
+      title: selectedDoc.title || '',
+      cropScope: selectedDoc.cropScope || '',
+      author: selectedDoc.author && !selectedDoc.author.includes('Chưa xác định') ? selectedDoc.author : '',
+      version: selectedDoc.version || '',
+      documentType: selectedDoc.documentType,
+      confirmGeneral: Boolean(selectedDoc.metadataDetection?.generalScopeConfirmed),
     });
-  };
-
-  // Tính toán chuỗi thời gian liên tục 100% không chồng chéo (Zero-Overlap Timeline)
-  const calculateTimeline = (stages: EditableGrowthStage[]) => {
-    let currentStart = 1;
-    return stages.map((st) => {
-      const duration = Math.max(1, Number(st.durationDays) || 1);
-      const start = currentStart;
-      const end = currentStart + duration - 1;
-      currentStart = end + 1;
-      return {
-        ...st,
-        startDay: start,
-        endDay: end,
-        durationDays: duration
-      };
-    });
-  };
-
-  const handleApplyPreset = (count: number) => {
-    setActiveStagePreset(count);
-    const generated = buildDefaultStages(convertingDoc, count, profileThresholds);
-    setEditableStages(generated);
-  };
-
-  const handleAddStage = () => {
-    setEditableStages(prev => {
-      const nextOrder = prev.length + 1;
-      const newStage: EditableGrowthStage = {
-        stageOrder: nextOrder,
-        name: `Giai đoạn ${nextOrder}: Tăng trưởng bổ sung`,
-        durationDays: 15,
-        tempMin: profileThresholds.tempMin,
-        tempMax: profileThresholds.tempMax,
-        tempOptimal: Math.round(((profileThresholds.tempMin + profileThresholds.tempMax) / 2) * 10) / 10,
-        airHumidityMin: 65,
-        airHumidityMax: 85,
-        airHumidityOptimal: 75,
-        moistMin: profileThresholds.moistMin,
-        moistMax: profileThresholds.moistMax,
-        moistOptimal: Math.round(((profileThresholds.moistMin + profileThresholds.moistMax) / 2) * 10) / 10,
-        phMin: profileThresholds.phMin,
-        phMax: profileThresholds.phMax,
-        phOptimal: Math.round(((profileThresholds.phMin + profileThresholds.phMax) / 2) * 10) / 10,
-        ecMin: profileThresholds.ecMin,
-        ecMax: profileThresholds.ecMax,
-        ecOptimal: Math.round(((profileThresholds.ecMin + profileThresholds.ecMax) / 2) * 10) / 10,
-        description: `Giai đoạn sinh trưởng bổ sung cho cây ${convertingDoc?.cropName || ''}`,
-        fertilizerAction: convertingDoc?.fertilizerRules?.organicRequirements || 'Bổ sung dinh dưỡng NPK định kỳ.',
-        ipmAction: convertingDoc?.pestManagementIPM?.ipmPrinciples || 'Kiểm tra sâu hại và mật độ dịch hại.'
-      };
-      return [...prev, newStage];
-    });
-  };
-
-  const handleRemoveStage = (index: number) => {
-    if (editableStages.length <= 1) {
-      setNotification({ type: 'error', message: 'Hồ sơ sinh trưởng phải có ít nhất 1 giai đoạn!' });
-      return;
-    }
-    setEditableStages(prev => {
-      const updated = prev.filter((_, i) => i !== index);
-      return updated.map((st, i) => ({ ...st, stageOrder: i + 1 }));
-    });
-  };
-
-  const handleUpdateStage = (index: number, field: keyof EditableGrowthStage, value: any) => {
-    setEditableStages(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  };
-
-  const validateStagesBeforeReview = (): boolean => {
-    if (editableStages.length === 0) {
-      setNotification({ type: 'error', message: 'Hồ sơ sinh trưởng phải có ít nhất 1 giai đoạn!' });
-      return false;
-    }
-    for (let i = 0; i < editableStages.length; i++) {
-      const s = editableStages[i];
-      if (!s.name || !s.name.trim()) {
-        setNotification({ type: 'error', message: `Giai đoạn thứ ${i + 1} chưa có tên. Vui lòng nhập tên giai đoạn!` });
-        return false;
-      }
-      if (!s.durationDays || Number(s.durationDays) <= 0) {
-        setNotification({ type: 'error', message: `Giai đoạn "${s.name}" phải có số ngày kéo dài hợp lệ (>= 1 ngày)!` });
-        return false;
-      }
-    }
-    const names = editableStages.map(s => s.name.trim().toLowerCase());
-    const uniqueNames = new Set(names);
-    if (uniqueNames.size !== names.length) {
-      setNotification({ type: 'error', message: 'Tên các giai đoạn không được trùng lặp nhau. Vui lòng đặt tên phân biệt!' });
-      return false;
-    }
-    return true;
-  };
-
-  // Kích hoạt Modal chuyển đổi từ VietGAP sang Crop Growth Profile
-  const triggerConvertModal = async (doc: VietGapRegulationDetail) => {
-    let activeDoc = { ...doc };
-    setAiSourceEvidence([]);
-
-    // Tự động tải nạp toàn văn 100% nội dung tệp văn bản từ CSDL nếu chưa có
-    if (doc.id && doc.id.includes('-') && (!doc.contentText || doc.contentText.length < 50)) {
-      try {
-        const detail = await knowledgeService.getDocument(doc.id);
-        if (detail && (detail.contentText || detail.chunks)) {
-          activeDoc = deriveVietGapDetails(doc, detail);
-        }
-      } catch (err) {
-        console.warn('Could not fetch full document text for modal:', err);
-      }
-    }
-
-    setConvertingDoc(activeDoc);
-    setCustomProfileName(`Hồ sơ Sinh trưởng VietGAP - ${activeDoc.cropName}`);
-    const matched = crops.find(c => 
-      c.name.trim().toLowerCase() === activeDoc.cropName.trim().toLowerCase() ||
-      c.name.toLowerCase().includes(activeDoc.cropName.toLowerCase()) ||
-      activeDoc.cropName.toLowerCase().includes(c.name.toLowerCase())
-    );
-    // Nếu chưa có cây trồng này trong thư viện, mặc định chọn rỗng để kích hoạt tạo Cây trồng mới
-    setSelectedCropForConvert(matched ? matched.cropId : '');
-
-    const rawTMin = activeDoc.climateRequirements?.tempOptimal?.split(/[-–—]/)[0];
-    const rawTMax = activeDoc.climateRequirements?.tempOptimal?.split(/[-–—]/)[1];
-    const tMin = matched?.optimalTemperatureMin ?? parseCleanNumber(rawTMin, 20);
-    const tMax = matched?.optimalTemperatureMax ?? parseCleanNumber(rawTMax, 28);
-
-    const rawMMin = activeDoc.climateRequirements?.moistureOptimal?.split(/[-–—]/)[0];
-    const rawMMax = activeDoc.climateRequirements?.moistureOptimal?.split(/[-–—]/)[1];
-    const mMin = matched?.optimalSoilMoistureMin ?? parseCleanNumber(rawMMin, 65);
-    const mMax = matched?.optimalSoilMoistureMax ?? parseCleanNumber(rawMMax, 75);
-
-    const rawPMin = activeDoc.climateRequirements?.pHOptimal?.split(/[-–—]/)[0];
-    const rawPMax = activeDoc.climateRequirements?.pHOptimal?.split(/[-–—]/)[1];
-    const pMin = matched?.optimalpHMin ? sanitizePh(matched.optimalpHMin, 6.0) : sanitizePh(rawPMin, 6.0);
-    const pMax = matched?.optimalpHMax ? sanitizePh(matched.optimalpHMax, 6.8) : sanitizePh(rawPMax, 6.8);
-
-    const rawEMin = activeDoc.climateRequirements?.ecOptimal?.split(/[-–—]/)[0];
-    const rawEMax = activeDoc.climateRequirements?.ecOptimal?.split(/[-–—]/)[1];
-    const eMin = matched?.optimalECMin ?? parseCleanNumber(rawEMin, 1.8);
-    const eMax = matched?.optimalECMax ?? parseCleanNumber(rawEMax, 2.5);
-
-    const baseTh = {
-      tempMin: tMin,
-      tempMax: tMax,
-      moistMin: mMin,
-      moistMax: mMax,
-      phMin: pMin,
-      phMax: pMax,
-      ecMin: eMin,
-      ecMax: eMax
-    };
-
-    setProfileThresholds(baseTh);
-
-    if (activeDoc.stagesOverview && activeDoc.stagesOverview.length >= 2) {
-      const parsedStages: EditableGrowthStage[] = activeDoc.stagesOverview.map((st, idx) => {
-        let cleanName = (st.name || `Giai đoạn ${idx + 1}`).trim();
-        cleanName = cleanName.replace(/^(?:Giai đoạn|Thời kỳ|Bước)\s*[0-9IVX]*\s*[:\.\-–]\s*/i, '').trim();
-        if (!cleanName) cleanName = `Giai đoạn ${idx + 1}`;
-        
-        // Trích xuất khoảng nhiệt độ riêng của từng giai đoạn (vd "20-25°C" -> 20, 25)
-        const stTempParts = st.temp ? st.temp.replace('°C', '').split(/[-–]/) : [];
-        const sTMin = stTempParts.length >= 2 ? parseCleanNumber(stTempParts[0], tMin) : tMin;
-        const sTMax = stTempParts.length >= 2 ? parseCleanNumber(stTempParts[1], tMax) : tMax;
-
-        // Trích xuất khoảng độ ẩm riêng (vd "60-70%" -> 60, 70)
-        const stMoistParts = st.moisture ? st.moisture.replace('%', '').split(/[-–]/) : [];
-        const sMMin = stMoistParts.length >= 2 ? parseCleanNumber(stMoistParts[0], mMin) : mMin;
-        const sMMax = stMoistParts.length >= 2 ? parseCleanNumber(stMoistParts[1], mMax) : mMax;
-
-        // Trích xuất pH riêng
-        const stPhParts = st.ph ? st.ph.split(/[-–]/) : [];
-        const sPMin = stPhParts.length >= 2 ? sanitizePh(stPhParts[0], pMin) : pMin;
-        const sPMax = stPhParts.length >= 2 ? sanitizePh(stPhParts[1], pMax) : pMax;
-
-        // Trích xuất EC riêng
-        const stEcParts = st.ec ? st.ec.replace('dS/m', '').split(/[-–]/) : [];
-        const sEMin = stEcParts.length >= 2 ? parseCleanNumber(stEcParts[0], eMin) : eMin;
-        const sEMax = stEcParts.length >= 2 ? parseCleanNumber(stEcParts[1], eMax) : eMax;
-
-        return {
-          stageOrder: idx + 1,
-          name: cleanName,
-          durationDays: Math.max(1, Number(st.days) || 10),
-          tempMin: sTMin,
-          tempMax: sTMax,
-          tempOptimal: Math.round(((sTMin + sTMax) / 2) * 10) / 10,
-          moistMin: sMMin,
-          moistMax: sMMax,
-          moistOptimal: Math.round(((sMMin + sMMax) / 2) * 10) / 10,
-          phMin: sPMin,
-          phMax: sPMax,
-          phOptimal: Math.round(((sPMin + sPMax) / 2) * 10) / 10,
-          ecMin: sEMin,
-          ecMax: sEMax,
-          ecOptimal: Math.round(((sEMin + sEMax) / 2) * 10) / 10,
-          airHumidityMin: 65,
-          airHumidityMax: 85,
-          airHumidityOptimal: 75,
-          description: `Giai đoạn sinh trưởng chuẩn hóa theo Quy chuẩn VietGAP ${activeDoc.code}`,
-          fertilizerAction: st.fertilizerAction || 'Bón phân theo quy trình kỹ thuật VietGAP',
-          ipmAction: st.ipmAction || 'Phòng trừ dịch hại IPM an toàn'
-        };
-      });
-      setEditableStages(parsedStages);
-      setActiveStagePreset(parsedStages.length);
-    } else {
-      const default4 = buildDefaultStages(activeDoc, 4, baseTh);
-      setEditableStages(default4);
-      setActiveStagePreset(4);
-    }
-
-    setConvertStep('BUILDER');
-    setReviewerConfirmed(false);
-    setIsGenerateModalOpen(true);
-    return activeDoc;
-  };
-
-  // Chuyển đổi và tạo GrowthProfile (Sau khi người kiểm duyệt cuối phê duyệt)
-  const handleExecuteConvertToProfile = async () => {
-    if (!convertingDoc) return;
-    if (!reviewerConfirmed) {
-      setNotification({ type: 'error', message: 'Vui lòng xác nhận đánh dấu kiểm duyệt trước khi ban hành hồ sơ sinh trưởng!' });
-      return;
-    }
-
-    const invalidStage = editableStages.find(s =>
-      !Number.isFinite(Number(s.tempMin)) || !Number.isFinite(Number(s.tempMax)) || Number(s.tempMin) > Number(s.tempMax) ||
-      !Number.isFinite(Number(s.tempOptimal)) || Number(s.tempOptimal) < Number(s.tempMin) || Number(s.tempOptimal) > Number(s.tempMax) ||
-      !Number.isFinite(Number(s.moistMin)) || !Number.isFinite(Number(s.moistMax)) || Number(s.moistMin) > Number(s.moistMax) ||
-      !Number.isFinite(Number(s.moistOptimal)) || Number(s.moistOptimal) < Number(s.moistMin) || Number(s.moistOptimal) > Number(s.moistMax) ||
-      !Number.isFinite(Number(s.phMin)) || !Number.isFinite(Number(s.phMax)) || Number(s.phMin) > Number(s.phMax) ||
-      !Number.isFinite(Number(s.phOptimal)) || Number(s.phOptimal) < Number(s.phMin) || Number(s.phOptimal) > Number(s.phMax) ||
-      !Number.isFinite(Number(s.ecMin)) || !Number.isFinite(Number(s.ecMax)) || Number(s.ecMin) > Number(s.ecMax) ||
-      !Number.isFinite(Number(s.ecOptimal)) || Number(s.ecOptimal) < Number(s.ecMin) || Number(s.ecOptimal) > Number(s.ecMax) ||
-      !Number.isInteger(Number(s.durationDays)) || Number(s.durationDays) <= 0 ||
-      (s.airHumidityMin != null || s.airHumidityMax != null || s.airHumidityOptimal != null) &&
-        (s.airHumidityMin == null || s.airHumidityMax == null || s.airHumidityOptimal == null || !Number.isFinite(Number(s.airHumidityMin)) || !Number.isFinite(Number(s.airHumidityMax)) ||
-          !Number.isFinite(Number(s.airHumidityOptimal)) || Number(s.airHumidityMin) > Number(s.airHumidityMax) || Number(s.airHumidityOptimal) < Number(s.airHumidityMin) || Number(s.airHumidityOptimal) > Number(s.airHumidityMax)) ||
-      (s.lightMin != null || s.lightMax != null || s.lightOptimal != null) &&
-        (s.lightMin == null || s.lightMax == null || s.lightOptimal == null || !Number.isFinite(Number(s.lightMin)) || !Number.isFinite(Number(s.lightMax)) ||
-          !Number.isFinite(Number(s.lightOptimal)) || Number(s.lightMin) > Number(s.lightMax) || Number(s.lightOptimal) < Number(s.lightMin) || Number(s.lightOptimal) > Number(s.lightMax))
-    );
-    if (invalidStage) {
-      setNotification({ type: 'error', message: `Giai đoạn "${invalidStage.name}" có chỉ tiêu thiếu hoặc sai khoảng Min/Max. Hãy kiểm tra các thông số trước khi lưu.` });
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      let targetCropId = selectedCropForConvert;
-
-      if (!targetCropId) {
-        // Kiểm tra xem cây trồng đã tồn tại trong thư viện chưa để tránh xung đột 409
-        const existingCrop = crops.find(c => c.name.trim().toLowerCase() === convertingDoc.cropName.trim().toLowerCase());
-        if (existingCrop) {
-          targetCropId = existingCrop.cropId;
-        } else {
-          try {
-            const totalDays = editableStages.reduce((sum, s) => sum + (Math.max(1, Number(s.durationDays) || 1)), 0);
-            const newCrop = await cropService.createCrop({
-              name: convertingDoc.cropName,
-              scientificName: `${convertingDoc.cropName} L.`,
-              category: convertingDoc.category,
-              growthCycleDays: totalDays,
-              description: `Giống cây chuẩn hóa từ Quy chuẩn VietGAP ${convertingDoc.code} (${convertingDoc.title})`,
-              optimalTemperatureMin: Math.min(...editableStages.map(s => s.tempMin)),
-              optimalTemperatureMax: Math.max(...editableStages.map(s => s.tempMax)),
-              optimalSoilMoistureMin: Math.min(...editableStages.map(s => s.moistMin)),
-              optimalSoilMoistureMax: Math.max(...editableStages.map(s => s.moistMax)),
-              optimalpHMin: Math.min(...editableStages.map(s => s.phMin)),
-              optimalpHMax: Math.max(...editableStages.map(s => s.phMax)),
-              optimalECMin: Math.min(...editableStages.map(s => s.ecMin)),
-              optimalECMax: Math.max(...editableStages.map(s => s.ecMax)),
-              optimalLux: editableStages.find(s => s.lightOptimal != null)?.lightOptimal,
-              isSystemDefined: true
-            });
-            targetCropId = newCrop.cropId;
-            await loadCrops();
-          } catch (cropErr: any) {
-            // Nếu cây trồng đã được tạo ở tiến trình khác, tải lại và liên kết
-            const freshCrops = await cropService.getCrops();
-            const matchedFresh = (freshCrops as any[]).find((c: any) => c.name?.trim().toLowerCase() === convertingDoc.cropName.trim().toLowerCase());
-            if (matchedFresh) {
-              targetCropId = matchedFresh.cropId;
-              setCrops(freshCrops);
-            } else {
-              throw cropErr;
-            }
-          }
-        }
-      }
-
-      const timelineStages = calculateTimeline(editableStages);
-      const totalCycleDays = timelineStages.reduce((sum, s) => sum + s.durationDays, 0);
-
-      // Kiểm tra tên các giai đoạn không được để trống và không được trùng lặp
-      const stageNames = timelineStages.map(s => (s.name || '').trim());
-      for (let i = 0; i < stageNames.length; i++) {
-        if (!stageNames[i]) {
-          setNotification({ type: 'error', message: `Giai đoạn thứ ${i + 1} chưa có tên. Vui lòng nhập tên giai đoạn!` });
-          setIsProcessing(false);
-          return;
-        }
-      }
-      const uniqueNames = new Set(stageNames.map(n => n.toLowerCase()));
-      if (uniqueNames.size !== stageNames.length) {
-        setNotification({
-          type: 'error',
-          message: 'Tên các giai đoạn sinh trưởng không được trùng lặp nhau. Vui lòng đặt tên phân biệt cho từng giai đoạn!'
-        });
-        setIsProcessing(false);
-        return;
-      }
-
-      const profilePayload = {
-        cropId: targetCropId,
-        name: customProfileName.trim() || `Hồ sơ Sinh trưởng VietGAP - ${convertingDoc.cropName}`,
-        description: `[sourceDocument:${convertingDoc.id}] Kịch bản sinh trưởng tham chiếu tài liệu ${convertingDoc.code || 'VietGAP'}; người rà soát: ${reviewerName}; ghi chú: ${reviewerNotes || 'Chưa có ghi chú'}.`,
-        isDefault: true,
-        stages: timelineStages.map((stg) => {
-          // Phòng thủ chặt chẽ: Đảo ngược nếu min > max và kẹp chặt target trong khoảng [min, max]
-          const rawTMin = Number(stg.tempMin);
-          const rawTMax = Number(stg.tempMax);
-          const tMin = Math.min(rawTMin, rawTMax);
-          const tMax = Math.max(rawTMin, rawTMax);
-          const tOpt = Number(stg.tempOptimal);
-
-          const rawMMin = Number(stg.moistMin);
-          const rawMMax = Number(stg.moistMax);
-          const mMin = Math.min(rawMMin, rawMMax);
-          const mMax = Math.max(rawMMin, rawMMax);
-          const mOpt = Number(stg.moistOptimal);
-
-          const rawPMin = Number(stg.phMin);
-          const rawPMax = Number(stg.phMax);
-          const pMin = Math.min(rawPMin, rawPMax);
-          const pMax = Math.max(rawPMin, rawPMax);
-          const pOpt = Number(stg.phOptimal);
-
-          const rawEMin = Number(stg.ecMin);
-          const rawEMax = Number(stg.ecMax);
-          const eMin = Math.min(rawEMin, rawEMax);
-          const eMax = Math.max(rawEMin, rawEMax);
-          const eOpt = Number(stg.ecOptimal);
-
-          return {
-            stageName: stg.name.trim(),
-            stageOrder: stg.stageOrder,
-            durationDays: Number(stg.durationDays),
-            description: `Giai đoạn ${stg.name} (Ngày ${stg.startDay} - ${stg.endDay}) - VietGAP: Nhiệt độ ${tMin}-${tMax}°C, Ẩm đất ${mMin}-${mMax}%, pH ${pMin}-${pMax}, EC ${eMin}-${eMax}. Phân bón: ${stg.fertilizerAction}. IPM: ${stg.ipmAction}`,
-            requirements: [
-              { parameterName: 'Temperature', minValue: tMin, maxValue: tMax, optimalValue: tOpt, unit: '°C' },
-              { parameterName: 'SoilMoisture', minValue: mMin, maxValue: mMax, optimalValue: mOpt, unit: '%' },
-              ...(stg.airHumidityMin != null && stg.airHumidityMax != null
-                ? [{ parameterName: 'AirHumidity', minValue: stg.airHumidityMin, maxValue: stg.airHumidityMax, optimalValue: Number(stg.airHumidityOptimal), unit: '%' }]
-                : []),
-              { parameterName: 'Ph', minValue: pMin, maxValue: pMax, optimalValue: pOpt, unit: 'pH' },
-              { parameterName: 'Ec', minValue: eMin, maxValue: eMax, optimalValue: eOpt, unit: 'mS/cm' },
-              ...(stg.lightMin != null && stg.lightMax != null
-                ? [{ parameterName: 'LightIntensity', minValue: stg.lightMin, maxValue: stg.lightMax, optimalValue: Number(stg.lightOptimal), unit: 'lux' }]
-                : [])
-            ]
-          };
-        })
-      };
-
-      const createdProfile = await cropService.createGrowthProfile(profilePayload);
-      const savedProfileId = createdProfile?.profileId || createdProfile?.id;
-      if (!savedProfileId) throw new Error('API đã nhận yêu cầu nhưng không trả về ID profile đã lưu.');
-      try {
-        const refreshedProfiles = await cropService.getAllGrowthProfiles();
-        setGrowthProfiles(refreshedProfiles || []);
-      } catch (refreshError) {
-        console.warn('Growth Profile đã lưu nhưng không thể làm mới danh sách profile:', refreshError);
-        setGrowthProfiles(prev => [...prev.filter((p: any) => (p.profileId || p.id) !== savedProfileId), createdProfile]);
-      }
-
-      setDocuments(prev => prev.map(d => d.id === convertingDoc.id ? { 
-        ...d, 
-        profileGenerated: true, 
-        profileId: savedProfileId,
-        profileName: profilePayload.name
-      } : d));
-
-      setNotification({
-        type: 'success',
-        message: `Đã tạo Growth Profile gồm ${timelineStages.length} giai đoạn (${totalCycleDays} ngày) cho cây ${convertingDoc.cropName}. Trạng thái VietGAP cần được xác minh riêng.`
-      });
-      setIsGenerateModalOpen(false);
-    } catch (err: any) {
-      console.error('Failed to create growth profile:', err);
-      let msg = err?.response?.data?.detail || err?.response?.data?.title || err?.message || 'Lỗi khi tạo hồ sơ sinh trưởng';
-      if (err?.response?.status === 409 || msg.toLowerCase().includes('already exists')) {
-        msg = `Tên hồ sơ "${customProfileName.trim() || convertingDoc.cropName}" đã tồn tại trong CSDL. Vui lòng đổi tên hồ sơ ở Bước 2 để tránh xung đột!`;
-      }
-      setNotification({
-        type: 'error',
-        message: `Tạo Hồ sơ Sinh trưởng thất bại: ${msg}`
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // AI Soạn Thảo Hồ Sơ Sinh Trưởng theo Template Chuẩn SmartFarm
-  const handleAiDraftGrowthProfile = async (
-    sourceDocument: VietGapRegulationDetail | null = convertingDoc,
-    requestedStageCount = activeStagePreset || 4
-  ) => {
-    if (!sourceDocument) return;
-    // Chỉ dùng một tài liệu thì tài liệu đó phải được duyệt; gom theo cây trồng thì server tự chỉ lấy tài liệu đã duyệt.
-    if (profileSourceScope === 'document' && sourceDocument.reviewStatus !== 'Approved') {
-      setNotification({ type: 'error', message: 'Tài liệu chưa được đối chiếu và duyệt. Hãy rà soát toàn văn với file gốc trước khi sinh profile.' });
-      return;
-    }
-    setIsAiDraftingProfile(true);
-    setAiSourceEvidence([]);
-    try {
-      setNotification({
-        type: 'success',
-        message: `Đang gửi toàn văn tài liệu VietGAP (${sourceDocument.code}) cho AI tạo bản nháp theo template Crop Profile...`
-      });
-
-      let currentDoc = sourceDocument;
-      if (sourceDocument.id && (!sourceDocument.contentText || sourceDocument.contentText.length < 50)) {
-        try {
-          const detail = await knowledgeService.getDocument(sourceDocument.id);
-          if (detail && detail.contentText) {
-            currentDoc = { ...sourceDocument, contentText: detail.contentText };
-            setConvertingDoc(currentDoc);
-          }
-        } catch (e) {
-          console.warn('Could not fetch full document text:', e);
-        }
-      }
-
-      const res = await knowledgeService.generateGrowthProfileDraft({
-        cropName: currentDoc.cropName,
-        // Bỏ documentId: server gom mọi tài liệu đã duyệt của cây (thu hoạch, sâu bệnh, tưới... từ nhiều file).
-        documentId: profileSourceScope === 'document' ? currentDoc.id : undefined,
-        cultivationModel: 'Chưa xác định',
-        stageCount: requestedStageCount
-      });
-
-      if (res.isFallback || res.source === 'fallback' || !Array.isArray(res.stages) || res.stages.length < 2) {
-        setIsFallbackProfile(true);
-        setEditableStages([]);
-        setActiveStagePreset(0);
-        setAiSourceEvidence([]);
-        setNotification({
-          type: 'error',
-          message: res.description || 'Tài liệu chưa có đủ số liệu được trích dẫn để tạo profile. Không nạp ngưỡng mẫu; hãy bổ sung nguồn hoặc nhập số liệu đã xác minh.'
-        });
-        return;
-      }
-
-      const mappedStages: EditableGrowthStage[] = res.stages.map((stg, idx) => {
-        const getReq = (code: string) => stg.requirements.find(r => r.parameterCode.toLowerCase() === code.toLowerCase());
-        const tReq = getReq('Temperature');
-        const mReq = getReq('SoilMoisture');
-        const pReq = getReq('Ph');
-        const eReq = getReq('Ec');
-        if (!tReq || !mReq || !pReq || !eReq) {
-          throw new Error(`AI trả thiếu chỉ tiêu bắt buộc ở giai đoạn ${idx + 1}. Hãy thử lại hoặc đối chiếu thủ công.`);
-        }
-        const values = [tReq.minValue, tReq.maxValue, tReq.targetValue, mReq.minValue, mReq.maxValue, mReq.targetValue,
-          pReq.minValue, pReq.maxValue, pReq.targetValue, eReq.minValue, eReq.maxValue, eReq.targetValue];
-        if (values.some(v => !Number.isFinite(v)) || tReq.minValue > tReq.maxValue || tReq.targetValue < tReq.minValue || tReq.targetValue > tReq.maxValue ||
-          mReq.minValue > mReq.maxValue || mReq.targetValue < mReq.minValue || mReq.targetValue > mReq.maxValue ||
-          pReq.minValue > pReq.maxValue || pReq.targetValue < pReq.minValue || pReq.targetValue > pReq.maxValue ||
-          eReq.minValue > eReq.maxValue || eReq.targetValue < eReq.minValue || eReq.targetValue > eReq.maxValue ||
-          !Number.isInteger(stg.durationDays) || stg.durationDays < 1) {
-          throw new Error(`AI trả số liệu không hợp lệ ở giai đoạn ${idx + 1}. Profile chưa được nạp.`);
-        }
-        const hReq = getReq('AirHumidity');
-        const lReq = getReq('LightIntensity');
-        return {
-          stageOrder: stg.stageOrder,
-          name: stg.name,
-          durationDays: stg.durationDays,
-          tempMin: tReq.minValue,
-          tempMax: tReq.maxValue,
-          tempOptimal: tReq.targetValue,
-          moistMin: mReq.minValue,
-          moistMax: mReq.maxValue,
-          moistOptimal: mReq.targetValue,
-          phMin: pReq.minValue,
-          phMax: pReq.maxValue,
-          phOptimal: pReq.targetValue,
-          ecMin: eReq.minValue,
-          ecMax: eReq.maxValue,
-          ecOptimal: eReq.targetValue,
-          airHumidityMin: hReq?.minValue,
-          airHumidityMax: hReq?.maxValue,
-          airHumidityOptimal: hReq?.targetValue,
-          lightMin: lReq?.minValue,
-          lightMax: lReq?.maxValue,
-          lightOptimal: lReq?.targetValue,
-          description: stg.description,
-          fertilizerAction: stg.fertilizerAction,
-          ipmAction: stg.ipmAction
-        };
-      });
-
-      setEditableStages(mappedStages);
-      setActiveStagePreset(mappedStages.length);
-      setAiSourceEvidence(res.stages.flatMap((stage, stageIndex) => [
-        'Giai đoạn ' + (stageIndex + 1) + ' · thời lượng ' + stage.durationDays + ' ngày: ' + stage.durationEvidence,
-        ...(stage.descriptionEvidence ? ['Giai đoạn ' + (stageIndex + 1) + ' · mô tả: ' + stage.descriptionEvidence] : []),
-        ...(stage.fertilizerEvidence ? ['Giai đoạn ' + (stageIndex + 1) + ' · phân bón: ' + stage.fertilizerEvidence] : []),
-        ...(stage.ipmEvidence ? ['Giai đoạn ' + (stageIndex + 1) + ' · IPM: ' + stage.ipmEvidence] : []),
-        ...stage.requirements.map(req => 'Giai đoạn ' + (stageIndex + 1) + ' · ' + req.parameterCode + ': ' + req.sourceEvidence)
-      ]));
-      if (res.profileName) setCustomProfileName(res.profileName);
-      setReviewerNotes(`[AI trích xuất]: ${res.description}`);
-      setIsFallbackProfile(false);
-      setNotification({
-        type: 'success',
-        message: `AI đã tách ${mappedStages.length} giai đoạn. Mỗi ngưỡng có trích dẫn nguồn để đối chiếu trước khi lưu.`
-          + (res.sourceDocuments?.length ? ` Nguồn: ${res.sourceDocuments.join('; ')}.` : '')
-      });
-    } catch (err: any) {
-      console.error('Error generating AI profile draft:', err);
-      const msg = err?.response?.data?.message || err?.message || 'Không thể soạn thảo bằng AI';
-      setNotification({
-        type: 'error',
-        message: `Lỗi soạn thảo bằng AI: ${msg}`
-      });
-    } finally {
-      setIsAiDraftingProfile(false);
-    }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc?.id]);
 
   const handleReviewDocument = async (approve: boolean) => {
     if (!selectedDoc) return;
@@ -1745,12 +1291,29 @@ export const VietGapStandardsPage: React.FC = () => {
       setNotification({ type: 'error', message: `Tài liệu chưa thấy: ${missingCriticalChecks.map(c => c.label).join(', ')}. Bổ sung nội dung hoặc ghi chú lý do duyệt (tối thiểu ${MIN_NOTES_FOR_INCOMPLETE_APPROVAL} ký tự).` });
       return;
     }
+    if (approve && reviewMeta.documentType === 'Unspecified') {
+      setNotification({ type: 'error', message: 'Chưa xác định loại tài liệu: hãy chọn loại (tiêu chuẩn, hướng dẫn kỹ thuật hoặc chuyên đề) trước khi duyệt.' });
+      return;
+    }
+    const det = selectedDoc.metadataDetection;
+    if (approve && det && !reviewMeta.cropScope.trim() && !reviewMeta.confirmGeneral && det.generalScope?.status !== 'detected') {
+      setNotification({ type: 'error', message: 'Chưa xác định cây áp dụng: hãy nhập cây, hoặc xác nhận tài liệu áp dụng chung sau khi đối chiếu file gốc.' });
+      return;
+    }
     setIsSavingReview(true);
     try {
+      const authorBefore = selectedDoc.author && !selectedDoc.author.includes('Chưa xác định') ? selectedDoc.author : '';
       await knowledgeService.reviewDocument(selectedDoc.id, {
         contentText: reviewText,
         approve,
-        reviewNotes: reviewNotes.trim() || undefined
+        reviewNotes: reviewNotes.trim() || undefined,
+        // Chỉ gửi trường người duyệt đã sửa; trường không đổi giữ giá trị hệ thống nhận diện.
+        title: reviewMeta.title.trim() !== selectedDoc.title ? reviewMeta.title.trim() : undefined,
+        cropScope: reviewMeta.cropScope.trim() !== (selectedDoc.cropScope || '') ? reviewMeta.cropScope.trim() : undefined,
+        authorOrganization: reviewMeta.author.trim() !== authorBefore ? reviewMeta.author.trim() : undefined,
+        version: reviewMeta.version.trim() !== (selectedDoc.version || '') ? reviewMeta.version.trim() : undefined,
+        documentType: reviewMeta.documentType !== selectedDoc.documentType ? reviewMeta.documentType : undefined,
+        confirmGeneralScope: reviewMeta.confirmGeneral || undefined,
       });
       const detail = await knowledgeService.getDocument(selectedDoc.id);
       const refreshed = deriveVietGapDetails(detail, detail, crops, growthProfiles);
@@ -1761,8 +1324,8 @@ export const VietGapStandardsPage: React.FC = () => {
       setNotification({
         type: 'success',
         message: approve
-          ? 'Đã duyệt tài liệu. Nội dung đã đối chiếu được lưu; có thể dùng tạo profile và RAG.'
-          : 'Đã lưu kết quả rà soát. Tài liệu được đánh dấu cần chỉnh sửa và chưa thể dùng tạo profile.'
+          ? 'Đã duyệt tài liệu. Nội dung đã đối chiếu được dùng làm nguồn tri thức cho AI (RAG).'
+          : 'Đã lưu kết quả rà soát. Tài liệu được đánh dấu cần chỉnh sửa và chưa dùng cho AI.'
       });
     } catch (err: any) {
       const validationErrors = err?.response?.data?.errors
@@ -1774,22 +1337,28 @@ export const VietGapStandardsPage: React.FC = () => {
     }
   };
 
-  const handleReextractDocument = async () => {
+  const refreshSelectedDocument = async (id: string) => {
+    const detail = await knowledgeService.getDocument(id);
+    const refreshed = deriveVietGapDetails(detail, detail, crops, growthProfiles);
+    setDocuments(prev => prev.map(doc => doc.id === refreshed.id ? refreshed : doc));
+    setSelectedDoc(refreshed);
+  };
+
+  // Yêu cầu AI kiểm tra lại chủ đề nông nghiệp. Không đổi trạng thái duyệt.
+  const handleVerifyDocument = async () => {
     if (!selectedDoc) return;
-    setIsReextracting(true);
+    setIsVerifyingDoc(true);
     try {
-      await knowledgeService.reextractDocument(selectedDoc.id);
-      const detail = await knowledgeService.getDocument(selectedDoc.id);
-      const refreshed = deriveVietGapDetails(detail, detail, crops, growthProfiles);
-      setDocuments(prev => prev.map(doc => doc.id === refreshed.id ? refreshed : doc));
-      setSelectedDoc(refreshed);
-      setNotification({ type: 'success', message: 'Đã trích xuất lại. Chỉ những giá trị có câu trích nguyên văn trong tài liệu được giữ lại.' });
+      await knowledgeService.verifyDocument(selectedDoc.id);
+      await refreshSelectedDocument(selectedDoc.id);
+      setNotification({ type: 'success', message: 'Đã yêu cầu AI kiểm tra lại. Kết quả sẽ hiện sau ít phút; tài liệu vẫn chờ người duyệt.' });
     } catch (err: any) {
-      setNotification({ type: 'error', message: describeIngestError(err, 'Trích xuất thất bại.') });
+      setNotification({ type: 'error', message: describeIngestError(err, 'Không yêu cầu được rà soát.') });
     } finally {
-      setIsReextracting(false);
+      setIsVerifyingDoc(false);
     }
   };
+
 
   const handleDownloadOriginalFile = async () => {
     if (!selectedDoc) return;
@@ -1946,7 +1515,6 @@ export const VietGapStandardsPage: React.FC = () => {
             <strong className="text-slate-900"> Quản lý dịch hại tổng hợp (IPM) & Thời gian cách ly PHI</strong>, 
             <strong className="text-slate-900"> Phân bón an toàn</strong> và 
             <strong className="text-slate-900"> Thu hoạch truy xuất nguồn gốc</strong>. 
-            Đồng thời chuyển đổi chính xác thành <strong className="text-emerald-700">Hồ Sơ Sinh Trưởng (Growth Profile)</strong> tự động vận hành trong hệ thống SmartFarm.
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -1988,46 +1556,6 @@ export const VietGapStandardsPage: React.FC = () => {
           >
             <FileText className="w-4 h-4 text-emerald-600" /> Hồ Sơ Tài Liệu ({documents.length})
           </button>
-          <button
-            onClick={() => setActiveTab('CRITERIA_MATRIX')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'CRITERIA_MATRIX' 
-                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/80' 
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <Layers className="w-4 h-4 text-teal-600" /> Ma Trận Đối Chiếu
-          </button>
-          <button
-            onClick={() => setActiveTab('IPM_PEST')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'IPM_PEST' 
-                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/80' 
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4 text-amber-600" /> IPM & Cách Ly (PHI)
-          </button>
-          <button
-            onClick={() => setActiveTab('SOIL_WATER')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'SOIL_WATER' 
-                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/80' 
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <Droplets className="w-4 h-4 text-cyan-600" /> Đất & Nguồn Nước Tưới
-          </button>
-          <button
-            onClick={() => setActiveTab('HARVEST_TRACE')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'HARVEST_TRACE' 
-                ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/80' 
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <FileCheck2 className="w-4 h-4 text-purple-600" /> Thu Hoạch & Mã QR
-          </button>
         </div>
 
         <div className="relative w-full sm:w-80">
@@ -2047,13 +1575,6 @@ export const VietGapStandardsPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Cột Trái: Danh Sách Tài Liệu (5 phần) */}
           <div className="lg:col-span-5 space-y-3.5">
-            {/* Bộ lọc đồng bộ với Hồ sơ sinh trưởng (Growth Profiles) */}
-            <div className="flex flex-wrap items-center gap-2 text-xs" aria-label="Tổng hợp trạng thái profile theo tài liệu">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-semibold text-emerald-800">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Đã sinh profile: {generatedProfileCount}
-              </span>
-              <span className="text-[11px] text-slate-500">Không tính tài liệu chuyên đề</span>
-            </div>
             <div className="flex items-center justify-between p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs shadow-xs mb-3">
               <button
                 type="button"
@@ -2080,19 +1601,6 @@ export const VietGapStandardsPage: React.FC = () => {
               >
                 <BookOpen className="w-3.5 h-3.5 text-slate-500" />
                 <span>Tất cả gồm chuyên đề ({documents.length})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDocFilter('BY_CROP')}
-                className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
-                  docFilter === 'BY_CROP'
-                    ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/60'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="Nhóm tài liệu theo cây trồng: mỗi cây có thể có nhiều tài liệu VietGAP bổ sung từng mảng"
-              >
-                <Layers className="w-3.5 h-3.5 text-sky-600" />
-                <span>Theo cây trồng ({cropGroups.groups.length})</span>
               </button>
             </div>
 
@@ -2148,7 +1656,7 @@ export const VietGapStandardsPage: React.FC = () => {
                           title={doc.profileName ? `Đã liên kết hồ sơ: ${doc.profileName}` : 'Đã có Hồ sơ Sinh trưởng'}
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                          <span className="truncate max-w-[190px]">Đã sinh: {doc.profileName || 'Profile'}</span>
+                          <span className="truncate max-w-[190px]">Growth Profile liên kết: {doc.profileName || 'Profile'}</span>
                         </span>
                       ) : doc.isThematicStandard ? (
                         <span 
@@ -2231,7 +1739,7 @@ export const VietGapStandardsPage: React.FC = () => {
                   <div className={`mt-3 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${selectedDoc.reviewStatus === 'Approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : selectedDoc.reviewStatus === 'NeedsCorrection' ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
                     <div className="flex items-center gap-2 font-semibold">
                       {selectedDoc.reviewStatus === 'Approved' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                      {selectedDoc.reviewStatus === 'Approved' ? 'Đã đối chiếu với tài liệu gốc' : selectedDoc.reviewStatus === 'Superseded' ? 'Đã có phiên bản mới được duyệt thay thế · không còn dùng cho RAG' : selectedDoc.reviewStatus === 'NeedsCorrection' ? 'Cần chỉnh sửa · bị loại khỏi RAG và sinh profile' : 'Chờ đối chiếu · chưa được dùng cho RAG/profile'}
+                      {selectedDoc.reviewStatus === 'Approved' ? 'Đã đối chiếu với tài liệu gốc' : selectedDoc.reviewStatus === 'Superseded' ? 'Đã có phiên bản mới được duyệt thay thế · không còn dùng cho RAG' : selectedDoc.reviewStatus === 'NeedsCorrection' ? 'Cần chỉnh sửa · bị loại khỏi RAG' : 'Chờ đối chiếu · chưa được dùng cho RAG'}
                     </div>
                     <button
                       type="button"
@@ -2253,7 +1761,7 @@ export const VietGapStandardsPage: React.FC = () => {
                     <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2 text-emerald-800 min-w-0">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                        <span className="truncate">Hồ sơ sinh trưởng đã liên kết: <strong className="font-semibold text-emerald-950">{selectedDoc.profileName}</strong></span>
+                        <span className="truncate">Growth Profile đã liên kết: <strong className="font-semibold text-emerald-950">{selectedDoc.profileName}</strong></span>
                       </div>
                       <Link 
                         to="/admin/growth-profiles" 
@@ -2271,11 +1779,39 @@ export const VietGapStandardsPage: React.FC = () => {
                   )}
                 </div>
 
+                {selectedDoc.metadataDetection && <DetectionCard detection={selectedDoc.metadataDetection} />}
+
                 {isReviewPanelOpen && (
                   <section className="rounded-2xl border-2 border-amber-300 bg-amber-50/60 p-4 space-y-3" aria-label="Đối chiếu tài liệu đã trích xuất">
                     <div>
                       <h4 className="font-extrabold text-amber-950 text-sm">Rà soát độ đầy đủ và đối chiếu nguồn</h4>
                       <p className="text-xs text-amber-900 mt-1">Các kiểm tra dưới đây chỉ giúp phát hiện phần cần xem lại; không chứng minh nội dung đúng. {selectedDoc.hasOriginalFile ? 'Tải file gốc đã lưu, đối chiếu và sửa nội dung trích xuất trước khi duyệt.' : 'Bản ghi này không có file gốc lưu trong DB; hãy đối chiếu với nguồn đáng tin cậy bên ngoài hoặc tải lại file gốc trước khi duyệt.'}</p>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2 text-xs bg-white/70 border border-amber-200 rounded-xl p-3" aria-label="Chỉnh thông tin tài liệu">
+                      <label className="font-semibold text-slate-700 sm:col-span-2">Tiêu đề
+                        <input value={reviewMeta.title} onChange={e => setReviewMeta(m => ({ ...m, title: e.target.value }))} maxLength={300} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      </label>
+                      <label className="font-semibold text-slate-700">Cây áp dụng (phân tách bằng dấu phẩy)
+                        <input value={reviewMeta.cropScope} onChange={e => setReviewMeta(m => ({ ...m, cropScope: e.target.value, confirmGeneral: e.target.value.trim() ? false : m.confirmGeneral }))} list="review-crop-options" maxLength={500} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" placeholder="Để trống nếu tài liệu áp dụng chung" />
+                        <datalist id="review-crop-options">{crops.map((c: any) => <option key={c.cropId || c.id || c.name} value={c.name} />)}</datalist>
+                      </label>
+                      <label className="font-semibold text-slate-700">Loại tài liệu
+                        <select value={reviewMeta.documentType} onChange={e => setReviewMeta(m => ({ ...m, documentType: e.target.value as AgricultureDocumentType }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal">
+                          {(Object.keys(DOCUMENT_TYPE_INFO) as AgricultureDocumentType[]).map(t => <option key={t} value={t}>{DOCUMENT_TYPE_INFO[t].label}</option>)}
+                        </select>
+                      </label>
+                      <label className="font-semibold text-slate-700">Đơn vị ban hành
+                        <input value={reviewMeta.author} onChange={e => setReviewMeta(m => ({ ...m, author: e.target.value }))} maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      </label>
+                      <label className="font-semibold text-slate-700">Phiên bản / hiệu lực
+                        <input value={reviewMeta.version} onChange={e => setReviewMeta(m => ({ ...m, version: e.target.value }))} maxLength={50} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      </label>
+                      {!reviewMeta.cropScope.trim() && (
+                        <label className="flex items-start gap-2 sm:col-span-2 text-slate-800">
+                          <input type="checkbox" checked={reviewMeta.confirmGeneral} onChange={e => setReviewMeta(m => ({ ...m, confirmGeneral: e.target.checked }))} className="mt-0.5" />
+                          Xác nhận tài liệu áp dụng chung cho mọi cây (sau khi đối chiếu file gốc)
+                        </label>
+                      )}
                     </div>
                     <div className="grid sm:grid-cols-2 gap-2 text-xs">
                       {[
@@ -2325,163 +1861,12 @@ export const VietGapStandardsPage: React.FC = () => {
                   </section>
                 )}
 
-                {/* Trạng thái trích xuất có trích dẫn: mọi trường bên dưới đến từ đây */}
-                {(() => {
-                  const ex = selectedDoc.extraction;
-                  // Kết quả tạo theo quy tắc kiểm chứng cũ: worker nền đang/ sẽ trích xuất lại, không coi là dữ liệu đúng hiện hành.
-                  const isStale = Boolean(ex) && (ex!.rulesVersion ?? 0) < EXTRACTION_RULES_VERSION;
-                  const kept = ex ? ex.fields.filter(f => f.value).length : 0;
-                  const tone = !ex || isStale ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-sky-50 border-sky-200 text-sky-900';
-                  return (
-                <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${tone}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    {!ex
-                      ? <>Tài liệu chưa được trích xuất (vừa tải lên, toàn văn vừa sửa, hoặc lần trước AI không phản hồi). Hệ thống tự trích xuất nền; có thể bấm để chạy ngay.</>
-                      : isStale
-                        ? <><strong>Kết quả cũ</strong> theo quy tắc kiểm chứng trước đây — có thể thiếu hoặc sai số ngày. Hệ thống đang tự trích xuất lại; bấm "Trích xuất lại" để chạy ngay.</>
-                        : <>Các trường dưới đây do {ex.extractedBy || 'AI'} trích, <strong>mỗi giá trị đều có câu trích nguyên văn trong tài liệu</strong>; trường không có trích dẫn được ghi là "Không có trong tài liệu".</>}
-                  </span>
-                  <button type="button" onClick={handleReextractDocument} disabled={isReextracting}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 font-bold text-slate-800 disabled:opacity-50">
-                    {isReextracting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                    {isReextracting ? 'Đang trích xuất… (có thể mất 1–2 phút)' : selectedDoc.extractionStatus === 'extracted' ? 'Trích xuất lại' : 'Trích xuất bằng AI'}
-                  </button>
-                  </div>
-                  {ex && (
-                    <div className="text-[11px] opacity-90 flex flex-wrap gap-x-3">
-                      <span>Lúc: {new Date(ex.extractedAtUtc).toLocaleString('vi-VN')}</span>
-                      <span>Quy tắc kiểm chứng: v{ex.rulesVersion ?? 0}{isStale ? ` (hiện hành v${EXTRACTION_RULES_VERSION})` : ''}</span>
-                      <span>Giữ lại {kept}/{ex.fields.length} trường · {ex.stages.length} giai đoạn</span>
-                      {(ex.proposedCount ?? 0) > 0 && <span>AI đề xuất {ex.proposedCount} trường</span>}
-                    </div>
-                  )}
-                  {ex && (ex.rejectedFields?.length ?? 0) > 0 && (
-                    <div className="text-[11px] text-rose-800">
-                      Bị loại vì câu trích không có trong tài liệu hoặc số liệu không khớp: {ex.rejectedFields!.join(', ')}.
-                    </div>
-                  )}
-                </div>
-                  );
-                })()}
-
-                {/* 1. Đất, Giá thể & Nguồn nước */}
-                <div className="space-y-3">
-                  <h4 className="text-xs uppercase font-extrabold tracking-wider text-emerald-800 flex items-center gap-2">
-                    <Microscope className="w-4 h-4 text-emerald-600" /> 1. Kiểm Soát Đất, Giá Thể & Nguồn Nước
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-slate-500 font-semibold mb-1">Loại đất & Giá thể:</div>
-                      <div className="text-slate-800 leading-relaxed font-medium">{selectedDoc.soilManagement.soilType}</div>
-                      <SourceTag doc={selectedDoc} field="soilType" />
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-slate-500 font-semibold mb-1">Giới hạn Kim loại nặng:</div>
-                      <div className="text-amber-800 font-mono font-medium leading-relaxed">{selectedDoc.soilManagement.heavyMetalLimits}</div>
-                      <SourceTag doc={selectedDoc} field="heavyMetalLimits" />
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-slate-500 font-semibold mb-1">Tiêu chuẩn Nước & Vi sinh:</div>
-                      <div className="text-cyan-800 font-medium leading-relaxed">{selectedDoc.waterManagement.waterSourceStandard} • {selectedDoc.waterManagement.eColiLimit}</div>
-                      <SourceTag doc={selectedDoc} field="waterSourceStandard" />
-                      <SourceTag doc={selectedDoc} field="eColiLimit" />
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-slate-500 font-semibold mb-1">Khoảng cách cách ly ô nhiễm:</div>
-                      <div className="text-slate-800 leading-relaxed font-medium">{selectedDoc.soilManagement.isolationDistance}</div>
-                      <SourceTag doc={selectedDoc} field="isolationDistance" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Quy định Phân bón & Phòng trừ dịch hại IPM */}
-                <div className="space-y-3">
-                  <h4 className="text-xs uppercase font-extrabold tracking-wider text-amber-800 flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-amber-600" /> 2. Phân Bón, Thuốc BVTV (IPM) & Thời Gian Cách Ly (PHI)
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-slate-500 font-semibold mb-1">Quy định Phân bón hữu cơ:</div>
-                      <div className="text-slate-800 leading-relaxed font-medium">{selectedDoc.fertilizerRules.organicRequirements}</div>
-                      <SourceTag doc={selectedDoc} field="organicRequirements" />
-                      <div className="mt-1 text-[11px] text-amber-700 font-bold">Cách ly trước thu hoạch: {formatDays(selectedDoc.fertilizerRules.preHarvestIntervalDays)}</div>
-                      <SourceTag doc={selectedDoc} field="fertilizerPreHarvestDays" />
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-slate-500 font-semibold mb-1">Kiểm soát sâu bệnh IPM:</div>
-                      <div className="text-slate-800 leading-relaxed font-medium">{selectedDoc.pestManagementIPM.ipmPrinciples}</div>
-                      <SourceTag doc={selectedDoc} field="ipmPrinciples" />
-                      <div className="mt-1 text-[11px] text-emerald-700 font-bold">Thuốc sinh học: {selectedDoc.pestManagementIPM.permittedBioPesticides}</div>
-                      <SourceTag doc={selectedDoc} field="permittedBioPesticides" />
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-800">
-                    <strong>Hóa chất cấm tuyệt đối:</strong> {selectedDoc.pestManagementIPM.prohibitedChemicals}
-                    <SourceTag doc={selectedDoc} field="prohibitedChemicals" />
-                  </div>
-                </div>
-
-                {/* 3. Vi khí hậu & Các giai đoạn sinh trưởng */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs uppercase font-extrabold tracking-wider text-sky-800 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-sky-600" /> 3. Các Giai Đoạn Vận Hành Vi Khí Hậu ({selectedDoc.stagesOverview.length} Giai đoạn)
-                    </h4>
-                    <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-bold">
-                      Chu kỳ: {formatDays(selectedDoc.climateRequirements.growthDays)}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {selectedDoc.stagesOverview.length === 0 && (
-                      <p className="text-xs text-slate-500 italic">Tài liệu không mô tả rõ các giai đoạn sinh trưởng (hoặc chưa trích xuất); hệ thống không tự suy ra giai đoạn.</p>
-                    )}
-                    {selectedDoc.stagesOverview.map((stg, i) => (
-                      <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="font-bold text-slate-900">{i + 1}. {stg.name}</span>
-                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono text-[11px] border border-emerald-200 font-bold">
-                            {stg.days ? `${stg.days} ngày` : '[không nêu số ngày]'}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 mb-1.5">
-                          <div>Nhiệt độ: <strong className="text-emerald-700">{stg.temp}</strong></div>
-                          <div>Độ ẩm: <strong className="text-cyan-700">{stg.moisture}</strong></div>
-                        </div>
-                        <div className="text-[11px] text-slate-700">
-                          <span className="text-slate-500 font-medium">Tưới & Bón:</span> {stg.fertilizerAction}
-                        </div>
-                        <div className="text-[11px] text-slate-700 mt-0.5">
-                          <span className="text-slate-500 font-medium">IPM / Bảo vệ:</span> {stg.ipmAction}
-                        </div>
-                        {stg.evidence && (
-                          <div className="mt-1 text-[10px] text-slate-500 italic">
-                            Nguồn{stg.page ? `: trang ${stg.page}` : ''} · “{stg.evidence.length > 160 ? stg.evidence.slice(0, 160) + '…' : stg.evidence}”
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 4. Thu hoạch & Bao gói an toàn */}
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
-                  <div className="font-bold text-slate-800 flex items-center gap-2">
-                    <FileCheck2 className="w-4 h-4 text-emerald-600" /> Vệ Sinh Thu Hoạch & Truy Xuất Nguồn Gốc (QR Code):
-                  </div>
-                  {([
-                    ['harvestToolsStandard', 'Thu hoạch', selectedDoc.harvestSafety.harvestToolsStandard],
-                    ['waterWashingStandard', 'Sơ chế', selectedDoc.harvestSafety.waterWashingStandard],
-                    ['packagingMaterial', 'Bao bì', selectedDoc.harvestSafety.packagingMaterial],
-                    ['traceabilityQr', 'Truy xuất', selectedDoc.harvestSafety.traceabilityQr]
-                  ] as const).map(([field, label, value]) => (
-                    <div key={field} className="text-slate-600 leading-relaxed text-[11px]">
-                      <span className="text-slate-500 font-medium">{label}:</span> {value}
-                      <SourceTag doc={selectedDoc} field={field} />
-                    </div>
-                  ))}
-                </div>
+                <VerificationCard
+                  verification={selectedDoc.verification}
+                  status={selectedDoc.verificationStatus}
+                  busy={isVerifyingDoc}
+                  onRerun={handleVerifyDocument}
+                />
 
                 {/* 5. Nội dung & Đoạn Trích Xuất RAG Thực Tế Từ Tệp Gốc (PDF / DB Chunks) */}
                 <div className="space-y-3">
@@ -2564,391 +1949,6 @@ export const VietGapStandardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* VIEW 2: Ma Trận Đầy Đủ Tất Cả Tiêu Chuẩn VietGAP */}
-      {activeTab === 'CRITERIA_MATRIX' && (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-          <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
-            <div>
-              <h3 className="font-bold text-slate-900 text-base">Ma Trận Đối Chiếu Tiêu Chuẩn VietGAP Toàn Diện (TCVN 11892-1:2026)</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Tổng hợp toàn bộ chỉ tiêu Đất, Nước, Phân bón, IPM và Ngưỡng thu hoạch cho từng giống cây</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-slate-100 p-1 rounded-xl border border-slate-200 flex items-center text-xs">
-                <button
-                  onClick={() => setMatrixFilter('CROPS_ONLY')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                    matrixFilter === 'CROPS_ONLY' 
-                      ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/60 font-bold' 
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {documents.filter(doc => doc.isCropStandard).length} Giống Cây Trồng
-                </button>
-                <button
-                  onClick={() => setMatrixFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                    matrixFilter === 'ALL' 
-                      ? 'bg-white text-emerald-800 shadow-xs border border-slate-200/60 font-bold' 
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Tất Cả Hồ Sơ ({documents.length})
-                </button>
-              </div>
-              <button
-                onClick={() => setIsUploadModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-[#119653] hover:bg-emerald-600 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Thêm Quy Chuẩn Cây Mới
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-200">
-                <tr>
-                  <th className="py-3.5 px-4">Tên Cây / Mã TCVN</th>
-                  <th className="py-3.5 px-4">Đất & Kim Loại Nặng</th>
-                  <th className="py-3.5 px-4">Nước Tưới & Vi Sinh</th>
-                  <th className="py-3.5 px-4">Phân Bón & Cách Ly</th>
-                  <th className="py-3.5 px-4">Nguyên Tắc IPM</th>
-                  <th className="py-3.5 px-4">Vi Khí Hậu (T° / Ẩm / pH / EC)</th>
-                  <th className="py-3.5 px-4 text-right">Chuyển Đổi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {documents
-                  .filter(doc => matrixFilter === 'ALL' ? true : doc.isCropStandard)
-                  .map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      <div>{doc.cropName}</div>
-                      <div className="text-[11px] font-mono text-emerald-700 font-semibold">{doc.code}</div>
-                      <div className="text-[10px] text-slate-500">{doc.category}</div>
-                      {(doc.isThematicStandard || doc.profileGenerated) && (
-                        <div className={`mt-1 inline-flex items-center gap-1 text-[10px] font-semibold ${doc.isThematicStandard ? 'text-blue-700' : 'text-emerald-700'}`}>
-                          {doc.isThematicStandard ? <BookOpen className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-                          {doc.isThematicStandard
-                            ? 'Không áp dụng profile (chuyên đề)'
-                            : `Đã sinh profile: ${doc.profileName || 'Đã liên kết'}`}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <div className="text-slate-800 font-medium">{doc.soilManagement.soilType}</div>
-                      <div className="text-amber-800 font-mono text-[11px] mt-0.5 font-semibold">{doc.soilManagement.heavyMetalLimits}</div>
-                    </td>
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <div className="text-cyan-800 font-medium">{doc.waterManagement.waterSourceStandard}</div>
-                      <div className="text-slate-500 text-[11px] mt-0.5">{doc.waterManagement.eColiLimit}</div>
-                    </td>
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <div className="text-slate-800">{doc.fertilizerRules.organicRequirements}</div>
-                      <div className="text-emerald-700 font-bold text-[11px] mt-0.5">Cách ly PHI: {formatDays(doc.fertilizerRules.preHarvestIntervalDays)}</div>
-                    </td>
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <div className="text-slate-800">{doc.pestManagementIPM.ipmPrinciples}</div>
-                      <div className="text-rose-700 font-semibold text-[11px] mt-0.5">Cấm: {doc.pestManagementIPM.prohibitedChemicals}</div>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-[11px]">
-                      <div>T: <span className="text-emerald-700 font-bold">{doc.climateRequirements.tempOptimal}</span></div>
-                      <div>Ẩm: <span className="text-cyan-700 font-bold">{doc.climateRequirements.moistureOptimal}</span></div>
-                      <div>pH/EC: <span className="text-amber-800 font-bold">{doc.climateRequirements.pHOptimal} | {doc.climateRequirements.ecOptimal}</span></div>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {doc.isThematicStandard ? (
-                        <span className="text-[11px] text-blue-700 font-semibold px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 inline-block">
-                          Chuyên đề chung
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 3: Quản Lý IPM & Thời Gian Cách Ly (PHI) */}
-      {activeTab === 'IPM_PEST' && (
-        <div className="space-y-6">
-          <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-6 shadow-xs">
-            <h3 className="font-bold text-amber-900 text-lg flex items-center gap-2 mb-2">
-              <ShieldAlert className="w-5 h-5 text-amber-600" /> Quản Lý Dịch Hại Tổng Hợp (IPM) & Thời Gian Cách Ly (PHI) Theo VietGAP
-            </h3>
-            <p className="text-slate-700 text-xs leading-relaxed max-w-3xl">
-              VietGAP yêu cầu kiểm soát dịch hại ưu tiên bằng biện pháp sinh học, cơ học và thiên địch. 
-              Mọi loại thuốc BVTV được phép sử dụng phải tuân thủ nghiêm ngặt <strong>Thời gian cách ly (Pre-Harvest Interval - PHI)</strong> 
-              để đảm bảo không còn dư lượng thuốc BVTV vượt ngưỡng an toàn thực phẩm.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {documents.filter(doc => doc.isCropStandard).map((doc) => (
-              <div key={doc.id} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs hover:shadow-md transition-all">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-base">{doc.cropName}</h4>
-                    <span className="text-xs text-emerald-700 font-mono font-semibold">{doc.code}</span>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                    PHI: {formatDays(doc.pestManagementIPM.isolationQuarantineDays)}
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  <div>
-                    <span className="text-slate-500 font-semibold block">Biện pháp IPM:</span>
-                    <span className="text-slate-800 font-medium">{doc.pestManagementIPM.ipmPrinciples}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block">Chế phẩm sinh học cho phép:</span>
-                    <span className="text-emerald-700 font-medium">{doc.pestManagementIPM.permittedBioPesticides}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 font-semibold block">Hoạt chất cấm tuyệt đối:</span>
-                    <span className="text-rose-700 font-medium">{doc.pestManagementIPM.prohibitedChemicals}</span>
-                  </div>
-                </div>
-
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 4: Quản Lý Đất, Giá Thể & Nguồn Nước Tưới (QCVN 03-MT & QCVN 08-MT) */}
-      {activeTab === 'SOIL_WATER' && (
-        <div className="space-y-6">
-          <div className="bg-cyan-50/70 border border-cyan-200 rounded-2xl p-6 shadow-xs">
-            <h3 className="font-bold text-cyan-900 text-lg flex items-center gap-2 mb-2">
-              <Droplets className="w-5 h-5 text-cyan-600" /> Quản Lý Đất, Giá Thể & Nguồn Nước Tưới (QCVN 03-MT & QCVN 08-MT)
-            </h3>
-            <p className="text-slate-700 text-xs leading-relaxed max-w-3xl">
-              Các chỉ tiêu đất, nước và tần suất kiểm nghiệm phải được xác định từ tiêu chuẩn hiện hành, quy chuẩn môi trường áp dụng và hồ sơ đánh giá nguy cơ của cơ sở. Bảng dưới đây không tự đặt ngưỡng thay thế cho nguồn chính thức.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-xs">
-                <span className="text-[11px] font-bold text-amber-800 flex items-center gap-1.5">
-                  <Microscope className="w-3.5 h-3.5 text-amber-600" /> Đất và giá thể
-                </span>
-                <p className="text-[11px] text-slate-600">Đối chiếu quy chuẩn hiện hành, loại đất/giá thể, phương pháp thử và kết quả phân tích tại cơ sở.</p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-xs">
-                <span className="text-[11px] font-bold text-cyan-800 flex items-center gap-1.5">
-                  <Droplets className="w-3.5 h-3.5 text-cyan-600" /> Nguồn nước tưới
-                </span>
-                <p className="text-[11px] text-slate-600">Xác định chỉ tiêu, giới hạn và phương pháp thử theo nguồn nước cùng quy định áp dụng.</p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-xs">
-                <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Vành Đai Cách Ly Nguồn Ô Nhiễm
-                </span>
-                <p className="text-[11px] text-slate-600">Khoảng cách và biện pháp cách ly xác định theo đánh giá nguy cơ tại địa điểm sản xuất và yêu cầu áp dụng.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {documents.filter(doc => doc.isCropStandard).map((doc) => (
-              <div key={doc.id} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 hover:border-slate-300 transition-all shadow-xs">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                      {doc.cropName}
-                      <span className="text-xs text-emerald-700 font-mono font-normal">({doc.code})</span>
-                    </h4>
-                    <span className="text-[11px] text-slate-500">{doc.category} • {doc.issuingAuthority}</span>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-cyan-50 text-cyan-800 border border-cyan-200">
-                    pH Nước: {doc.waterManagement.phWaterRange}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  {/* Cột Đất & Giá Thể */}
-                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                    <span className="font-bold text-amber-800 flex items-center gap-1.5 pb-1 border-b border-slate-200">
-                      <Sprout className="w-3.5 h-3.5 text-amber-600" /> Đất & Giá Thể Trồng
-                    </span>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Loại đất phù hợp:</span>
-                      <span className="text-slate-800 font-medium">{doc.soilManagement.soilType}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Giới hạn kim loại nặng:</span>
-                      <span className="text-amber-800 font-mono text-[11px] font-semibold">{doc.soilManagement.heavyMetalLimits}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Khoảng cách cách ly ô nhiễm:</span>
-                      <span className="text-slate-700">{doc.soilManagement.isolationDistance}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Kỹ thuật xử lý đất/giá thể:</span>
-                      <span className="text-slate-700 italic">{doc.soilManagement.soilPreparation}</span>
-                    </div>
-                  </div>
-
-                  {/* Cột Nước Tưới & Dinh Dưỡng */}
-                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                    <span className="font-bold text-cyan-800 flex items-center gap-1.5 pb-1 border-b border-slate-200">
-                      <Droplets className="w-3.5 h-3.5 text-cyan-600" /> Nước Tưới & Dinh Dưỡng
-                    </span>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Quy chuẩn nguồn nước:</span>
-                      <span className="text-cyan-900 font-medium">{doc.waterManagement.waterSourceStandard}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Giới hạn vi sinh vật:</span>
-                      <span className="text-slate-700">{doc.waterManagement.eColiLimit}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Dải pH nước khuyến nghị:</span>
-                      <span className="text-emerald-700 font-mono font-bold">{doc.waterManagement.phWaterRange}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Phương pháp tưới tiêu:</span>
-                      <span className="text-slate-700">{doc.waterManagement.irrigationMethod}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    onClick={() => {
-                      setSelectedDoc(doc);
-                      setIsFullTextModalOpen(true);
-                    }}
-                    className="flex-1 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                  >
-                    <BookOpen className="w-3.5 h-3.5 text-cyan-600" /> Xem Văn Bản Gốc
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 5: Vệ Sinh Thu Hoạch, Đóng Gói An Toàn & Tem Truy Xuất Nguồn Gốc (GS1 / QR Code) */}
-      {activeTab === 'HARVEST_TRACE' && (
-        <div className="space-y-6">
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-6 shadow-xs">
-            <h3 className="font-bold text-emerald-900 text-lg flex items-center gap-2 mb-2">
-              <PackageCheck className="w-5 h-5 text-emerald-600" /> Vệ Sinh Thu Hoạch, Đóng Gói An Toàn & Tem Truy Xuất Nguồn Gốc (GS1 / QR Code)
-            </h3>
-            <p className="text-slate-700 text-xs leading-relaxed max-w-3xl">
-              VietGAP bắt buộc kiểm soát chặt chẽ vệ sinh dụng cụ thu hái, nguồn nước rửa sơ chế và vật liệu đóng gói an toàn thực phẩm.
-              Toàn bộ sản phẩm trước khi xuất bán phải được dán tem định danh QR Code chuẩn GS1, kết nối trực tiếp với 
-              <strong> Nhật Ký Canh Tác Điện Tử SmartFarm</strong> để người tiêu dùng tra cứu nguồn gốc, ngày thu hái và xác nhận thời gian cách ly PHI.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-xs">
-                <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Dụng Cụ Khử Trùng & Nước Rửa Đạt Chuẩn
-                </span>
-                <p className="text-[11px] text-slate-600">Dụng cụ chứa đựng khử trùng bằng cồn 70° hoặc Cloramin B; nước rửa sơ chế đạt chuẩn nước ăn uống QCVN 01-1:2018/BYT.</p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-xs">
-                <span className="text-[11px] font-bold text-teal-800 flex items-center gap-1.5">
-                  <PackageCheck className="w-3.5 h-3.5 text-teal-600" /> Bao Bì & Bảo Quản Sau Thu Hoạch
-                </span>
-                <p className="text-[11px] text-slate-600">Bao bì nhựa PE nguyên sinh đạt chuẩn ATTP, dán tem nhãn thành phẩm, bảo quản kho mát kiểm soát nhiệt độ.</p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1 shadow-xs">
-                <span className="text-[11px] font-bold text-cyan-800 flex items-center gap-1.5">
-                  <QrCode className="w-3.5 h-3.5 text-cyan-600" /> Tem Điện Tử QR Code Chuẩn GS1
-                </span>
-                <p className="text-[11px] text-slate-600">Định danh mã lô điện tử kết nối IoT cảm biến, chứng thực 100% hoàn thành thời gian cách ly PHI trước khi tiêu thụ.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {documents.filter(doc => doc.isCropStandard).map((doc) => (
-              <div key={doc.id} className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 hover:border-slate-300 transition-all shadow-xs">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                      {doc.cropName}
-                      <span className="text-xs text-emerald-700 font-mono font-normal">({doc.code})</span>
-                    </h4>
-                    <span className="text-[11px] text-slate-500">{doc.category} • Thời gian sinh trưởng: {formatDays(doc.climateRequirements.growthDays)}</span>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Đạt Chuẩn VietGAP
-                  </span>
-                </div>
-
-                {/* Khối Mô Phỏng Nhãn Tem Truy Xuất Nguồn Gốc QR GS1 */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-dashed border-emerald-300 flex items-center justify-between gap-4">
-                  <div className="space-y-1 text-xs">
-                    <span className="text-[10px] font-mono text-emerald-800 uppercase tracking-wider block font-bold">
-                      MÃ LÔ VIETGAP GS1 ĐIỆN TỬ:
-                    </span>
-                    <div className="font-mono font-bold text-slate-900 text-sm">
-                      LOT-2026-{doc.code.replace(/\s+/g, '')}-{(doc.id.replace(/\D/g, '') || '01').slice(0, 4)}
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      Chứng chỉ: <strong className="text-slate-800">{doc.code}</strong> • Cách ly PHI: <strong className="text-emerald-700 font-bold">{formatDays(doc.pestManagementIPM.isolationQuarantineDays)} (Đã Hoàn Thành)</strong>
-                    </p>
-                  </div>
-                  <div className="p-2.5 bg-white rounded-lg flex flex-col items-center justify-center shrink-0 shadow-xs border border-slate-200">
-                    <QrCode className="w-10 h-10 text-slate-900" />
-                    <span className="text-[8px] font-mono font-bold text-slate-800 mt-0.5">SMARTFARM</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  {/* Khâu Vệ Sinh Thu Hoạch */}
-                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                    <span className="font-bold text-teal-800 flex items-center gap-1.5 pb-1 border-b border-slate-200">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" /> Vệ Sinh Dụng Cụ & Nước Sơ Chế
-                    </span>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Dụng cụ chứa đựng:</span>
-                      <span className="text-slate-800 font-medium">{doc.harvestSafety.harvestToolsStandard}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Nước rửa sơ chế:</span>
-                      <span className="text-cyan-800 font-medium">{doc.harvestSafety.waterWashingStandard}</span>
-                    </div>
-                  </div>
-
-                  {/* Khâu Đóng Gói & Tem QR */}
-                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                    <span className="font-bold text-emerald-800 flex items-center gap-1.5 pb-1 border-b border-slate-200">
-                      <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Bao Bì & Mã QR Truy Xuất
-                    </span>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Bao bì đóng gói:</span>
-                      <span className="text-slate-800 font-medium">{doc.harvestSafety.packagingMaterial}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Cơ chế nhật ký & mã QR:</span>
-                      <span className="text-emerald-700 font-medium">{doc.harvestSafety.traceabilityQr}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Modal Upload Tệp VietGAP */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
@@ -2991,114 +1991,79 @@ export const VietGapStandardsPage: React.FC = () => {
                     {uploadFormData.fileName ? uploadFormData.fileName : 'Nhấn để chọn tệp tài liệu (.PDF, .DOCX, .TXT)'}
                   </span>
                   <span className="text-xs text-slate-500 mt-1">
-                    {uploadFormData.fileSize !== '0 MB' ? `Dung lượng: ${uploadFormData.fileSize}` : 'Tải file để lưu thành nguồn tri thức độc lập và chờ người duyệt (tối đa 15MB)'}
+                    {uploadFormData.fileSize !== '0 MB' ? `Dung lượng: ${uploadFormData.fileSize}` : 'Hệ thống tự đọc nội dung và nhận diện thông tin, tài liệu chờ người duyệt (tối đa 15MB)'}
                   </span>
                 </label>
               </div>
 
-              <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-900 text-xs leading-relaxed">
-                Tài liệu được lưu như một nguồn tri thức độc lập, không cần điền đủ trường Growth Profile. Kiểm tra <b>tên tài liệu, cây trồng, nguồn ban hành và phiên bản</b>; tài liệu chỉ được truy xuất trong RAG sau khi người duyệt xác nhận.
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tên tài liệu</label>
-                  <input
-                    type="text"
-                    value={uploadFormData.title}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, title: e.target.value })}
-                    placeholder="Quy trình kỹ thuật sản xuất cà chua an toàn"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 text-xs"
-                  />
+              {/* Tự động lấy tên loại cây trồng từ file */}
+              {isDetectingFile ? (
+                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-center gap-2.5 text-emerald-800 text-xs font-semibold py-6">
+                  <RefreshCw className="w-5 h-5 animate-spin text-emerald-600" />
+                  <span>Đang tự động đọc nội dung file để trích xuất loại cây trồng và bằng chứng...</span>
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Cây trồng áp dụng</label>
-                  <input
-                    type="text"
-                    value={uploadFormData.cropName}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, cropName: e.target.value })}
-                    placeholder="cà chua"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 text-xs"
-                  />
+              ) : fileTextUnavailable ? (
+                <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 text-rose-900 text-xs leading-relaxed">
+                  PDF này chưa có lớp văn bản mà SmartFarm đọc được. OCR file bên ngoài hệ thống rồi chọn lại bản PDF có thể tìm kiếm, hoặc tải DOCX/TXT.
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Cơ quan / đơn vị ban hành</label>
-                  <input
-                    type="text"
-                    value={uploadFormData.author}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, author: e.target.value })}
-                    placeholder="Để trống nếu tài liệu không ghi rõ"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Năm / phiên bản</label>
-                  <input
-                    type="text"
-                    value={uploadFormData.version}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, version: e.target.value })}
-                    placeholder="Ví dụ: 2024 hoặc V1.0"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Loại tài liệu</label>
-                  <select
-                    value={uploadFormData.documentType}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, documentType: e.target.value as AgricultureDocumentType })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 text-xs font-medium"
-                  >
-                    {(Object.keys(DOCUMENT_TYPE_INFO) as AgricultureDocumentType[]).map(t => (
-                      <option key={t} value={t}>{DOCUMENT_TYPE_INFO[t].label}</option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-[11px] text-slate-500">{DOCUMENT_TYPE_INFO[uploadFormData.documentType].requirement}</p>
-                </div>
-              <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    {uploadFormData.documentType === 'Thematic' ? 'Chuyên đề (bắt buộc)' : 'Danh mục kỹ thuật (RAG)'}
-                  </label>
-                  <select
-                    value={uploadFormData.category}
-                    onChange={(e) => setUploadFormData({ ...uploadFormData, category: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500 text-xs font-medium"
-                  >
-                    <option value="general">Quy chuẩn chung (general)</option>
-                    <option value="irrigation">Nước & Tưới tiêu (irrigation)</option>
-                    <option value="pest">Sâu bệnh & IPM (pest)</option>
-                    <option value="nutrition">Dinh dưỡng & Phân bón (nutrition)</option>
-                    <option value="climate">Vi khí hậu & Môi trường (climate)</option>
-                    <option value="harvest">Thu hoạch & Bảo quản (harvest)</option>
-                    <option value="record">Nhật ký & Truy xuất (record)</option>
-                  </select>
-                </div>
-              </div>
-
-              <fieldset className="text-xs">
-                <legend className="font-semibold text-slate-700 mb-1">Tài liệu bao quát những mảng nào? (chọn nhiều)</legend>
-                <div className="flex flex-wrap gap-2">
-                  {TOPIC_OPTIONS.map(t => (
-                    <label key={t.value} className={`px-2.5 py-1 rounded-full border cursor-pointer ${uploadFormData.topics.includes(t.value) ? 'bg-emerald-50 border-emerald-400 text-emerald-800 font-semibold' : 'bg-white border-slate-300 text-slate-700'}`}>
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={uploadFormData.topics.includes(t.value)}
-                        onChange={e => setUploadFormData({
-                          ...uploadFormData,
-                          topics: e.target.checked ? [...uploadFormData.topics, t.value] : uploadFormData.topics.filter(x => x !== t.value)
-                        })}
-                      />
-                      {t.label}
+              ) : (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <Sprout className="w-4 h-4 text-emerald-600" />
+                      <span>Tên loại cây tự động lấy từ file (Cây áp dụng):</span>
                     </label>
-                  ))}
+                    {uploadFormData.cropName ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                        {uploadFormData.cropName}
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                        Chưa tìm thấy trong file (Áp dụng chung)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      value={uploadFormData.cropName}
+                      onChange={(e) => setUploadFormData(prev => ({ ...prev, cropName: e.target.value }))}
+                      placeholder="Hệ thống tự động trích xuất trực tiếp từ nội dung file..."
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-none focus:border-emerald-500 font-bold text-xs shadow-xs"
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Tên loại cây được trích xuất tự động từ văn bản trong file. Bạn có thể chỉnh sửa lại nếu cần.
+                    </p>
+                  </div>
+
+                  {fileDetectionResult?.cropsEvidence && (
+                    <div className="p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed">
+                      <span className="font-bold">Trích đoạn làm bằng chứng từ file:</span> “{fileDetectionResult.cropsEvidence}”
+                      {fileDetectionResult.cropsPage ? <span className="text-emerald-700 font-semibold"> (Trang {fileDetectionResult.cropsPage})</span> : null}
+                    </div>
+                  )}
                 </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Mỗi tài liệu là một nguồn RAG riêng, không cần đủ mọi mục. Khi duyệt, hệ thống chỉ kiểm tra nguồn ban hành và nội dung của các mảng đã chọn.
-                </p>
-              </fieldset>
+              )}
+
+              {/* Tiêu đề quy chuẩn */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-700 text-xs">
+                  Tiêu đề tài liệu quy chuẩn:
+                </label>
+                <input
+                  type="text"
+                  value={uploadFormData.title}
+                  onChange={(e) => setUploadFormData(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Ví dụ: Quy trình kỹ thuật VietGAP canh tác..."
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 focus:outline-none focus:border-emerald-500 text-xs font-medium shadow-xs"
+                />
+              </div>
+
+              <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-900 text-xs leading-relaxed">
+                Chỉ cần chọn file. Hệ thống đọc văn bản có sẵn và nhận diện theo quy tắc <b>tiêu đề, cây áp dụng, đơn vị ban hành, mã tiêu chuẩn, phiên bản, loại tài liệu và chủ đề</b>, kèm câu trích làm bằng chứng; không dùng AI để trích xuất các trường này. Thông tin nào file không ghi sẽ hiện là <b>chưa xác định</b> (không đoán). PDF scan không có lớp chữ cần được OCR bên ngoài SmartFarm trước khi tải lên. Tài liệu ở trạng thái chờ duyệt và chỉ vào RAG sau khi bạn đối chiếu file gốc và duyệt.
+              </div>
 
               <div className="pt-3 flex justify-end gap-3 border-t border-slate-200">
                 <button
@@ -3114,7 +2079,7 @@ export const VietGapStandardsPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading || !selectedUploadFile}
+                  disabled={isUploading || !selectedUploadFile || fileTextUnavailable}
                   className="px-5 py-2 rounded-xl bg-[#119653] hover:bg-emerald-600 text-white font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 >
                   {isUploading ? (
@@ -3122,7 +2087,7 @@ export const VietGapStandardsPage: React.FC = () => {
                       <RefreshCw className="w-4 h-4 animate-spin" /> Đang tải file, trích xuất và lưu tài liệu...
                     </>
                   ) : (
-                    'Lưu & Thẩm Định Toàn Diện VietGAP'
+                    'Tải lên & tự nhận diện thông tin'
                   )}
                 </button>
               </div>
@@ -3131,963 +2096,6 @@ export const VietGapStandardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Chuyển Đổi Sang Growth Profile với Tùy Biến Giai Đoạn & Người Kiểm Duyệt Cuối */}
-      {isGenerateModalOpen && convertingDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-6xl w-full p-5 sm:p-7 shadow-2xl relative max-h-[92vh] flex flex-col text-slate-800">
-            
-            {/* Modal Header & Navigation Stepper */}
-            <div className="border-b border-slate-200 pb-4 mb-4 flex-shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-lg sm:text-xl">Thiết Lập & Kiểm Duyệt Hồ Sơ Sinh Trưởng (Growth Profile)</h3>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                      Chuẩn hóa phân kỳ sinh trưởng từ Quy chuẩn VietGAP: <span className="text-emerald-700 font-bold">{convertingDoc.code}</span> ({convertingDoc.cropName})
-                    </p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setIsGenerateModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors text-base"
-                  title="Đóng cửa sổ"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* 2-Step Progress Indicator */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConvertStep('BUILDER')}
-                  className={`py-2.5 px-4 rounded-xl border text-left transition-all flex items-center justify-between ${
-                    convertStep === 'BUILDER'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold shadow-xs ring-1 ring-emerald-500/30'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
-                      convertStep === 'BUILDER' ? 'bg-[#119653] text-white font-extrabold shadow-xs' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      1
-                    </span>
-                    <span className="text-xs sm:text-sm font-semibold">Cấu Trúc & Tinh Chỉnh Giai Đoạn</span>
-                  </div>
-                  <span className="text-xs font-mono bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
-                    {editableStages.length} giai đoạn
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (validateStagesBeforeReview()) {
-                      setConvertStep('REVIEW');
-                    }
-                  }}
-                  className={`py-2.5 px-4 rounded-xl border text-left transition-all flex items-center justify-between ${
-                    convertStep === 'REVIEW'
-                      ? 'bg-cyan-50 border-cyan-500 text-cyan-900 font-bold shadow-xs ring-1 ring-cyan-500/30'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
-                      convertStep === 'REVIEW' ? 'bg-cyan-600 text-white font-extrabold shadow-xs' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      2
-                    </span>
-                    <span className="text-xs sm:text-sm font-semibold">Thẩm Định & Người Kiểm Duyệt Cuối</span>
-                  </div>
-                  <ShieldCheck className="w-4 h-4 opacity-75" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body with Scrolling */}
-            <div className="overflow-y-auto flex-1 pr-1.5 space-y-4 text-xs sm:text-sm">
-              
-              {/* STEP 1: CẤU TRÚC VÀ TINH CHỈNH GIAI ĐOẠN */}
-              {convertStep === 'BUILDER' && (
-                <div className="space-y-4">
-                  {/* Cây trồng và thông tin nguồn */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                      <div className="text-xs text-slate-500 mb-1">Tài liệu tham chiếu VietGAP:</div>
-                      <div className="font-bold text-slate-900 text-sm line-clamp-1">{convertingDoc.title}</div>
-                      <div className="text-emerald-700 font-mono text-xs mt-1">
-                        Mã: {convertingDoc.code} • Cây trồng: <strong className="text-slate-900">{convertingDoc.cropName}</strong>
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-center">
-                      <label className="block font-semibold text-slate-700 mb-1 text-xs">
-                        Liên kết Thư viện Cây trồng trong hệ thống:
-                      </label>
-                      <select
-                        value={selectedCropForConvert}
-                        onChange={(e) => setSelectedCropForConvert(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900 focus:outline-none focus:border-emerald-500 text-xs font-medium cursor-pointer"
-                      >
-                        <option value="">-- Tự động tạo Cây Trồng Mới: "{convertingDoc.cropName}" --</option>
-                        {crops.map((c) => (
-                          <option key={c.cropId} value={c.cropId}>
-                            {c.name} ({c.category || 'Mặc định'}) - Chu kỳ {c.growthCycleDays || 90} ngày
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Thanh Tiến Trình Chu Kỳ Sinh Trưởng (Visual Zero-Overlap Timeline Bar) */}
-                  {(() => {
-                    const timeline = calculateTimeline(editableStages);
-                    const totalDays = timeline.reduce((acc, s) => acc + s.durationDays, 0);
-                    const colors = [
-                      'from-emerald-600 to-teal-600',
-                      'from-teal-600 to-cyan-600',
-                      'from-cyan-600 to-blue-600',
-                      'from-indigo-600 to-purple-600',
-                      'from-amber-600 to-orange-600'
-                    ];
-
-                    return (
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-emerald-600" />
-                            <span className="font-bold text-slate-900 text-xs sm:text-sm">Tiến Trình Chu Kỳ Sinh Trưởng (Timeline Phân Kỳ):</span>
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-mono border border-emerald-300">
-                              ✓ 100% Không chồng chéo ngày
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-slate-500 text-xs">Tổng chu kỳ: </span>
-                            <span className="font-bold text-emerald-700 text-base font-mono">{totalDays} Ngày</span>
-                          </div>
-                        </div>
-
-                        {/* Visual Progress Bar */}
-                        <div className="w-full h-8 bg-slate-200 rounded-xl p-1 flex gap-1 border border-slate-300 overflow-hidden">
-                          {timeline.map((st, i) => {
-                            const pct = Math.max(8, (st.durationDays / totalDays) * 100);
-                            return (
-                              <div
-                                key={i}
-                                style={{ width: `${pct}%` }}
-                                className={`h-full bg-gradient-to-r ${colors[i % colors.length]} rounded-lg flex items-center justify-center text-xs font-bold text-white shadow-xs px-1 truncate transition-all`}
-                                title={`Giai đoạn ${st.stageOrder}: ${st.name} (Ngày ${st.startDay} - ${st.endDay}: ${st.durationDays} ngày)`}
-                              >
-                                GĐ {st.stageOrder}: {st.durationDays}d
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Compact Stage Timeline Ribbon */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {timeline.map((st, i) => (
-                            <div key={i} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs shadow-2xs">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                              <span className="font-semibold text-slate-800">GĐ {st.stageOrder}: {st.name}</span>
-                              <span className="text-emerald-800 font-mono font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[11px]">
-                                Ngày {st.startDay} - {st.endDay} ({st.durationDays}d)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* AI Profile Drafting Banner & Trigger */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-200 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-2xl bg-emerald-100 text-emerald-700 border border-emerald-300">
-                        <Sparkles className="w-5 h-5 animate-pulse" />
-                      </div>
-                      <div>
-                        <div className="text-slate-900 font-bold text-xs sm:text-sm flex items-center gap-2">
-                          <span>AI hỗ trợ trích xuất dữ liệu từ tài liệu</span>
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-mono border border-emerald-300">
-                            Không Cần Nhập Thêm Câu Hỏi
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-600 mt-1">
-                          AI chỉ dùng thông tin tìm thấy trong tài liệu. Chỉ tiêu không có nguồn sẽ không được xem là đã xác minh (<strong className="text-emerald-700">{convertingDoc.code}</strong>).
-                        </div>
-                      </div>
-                    </div>
-                    <label className="flex flex-col text-[11px] text-slate-600 shrink-0">
-                      Nguồn dữ liệu
-                      <select
-                        value={profileSourceScope}
-                        onChange={e => setProfileSourceScope(e.target.value as 'crop' | 'document')}
-                        className="mt-0.5 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800"
-                      >
-                        <option value="crop">Mọi tài liệu đã duyệt của cây {convertingDoc.cropName}</option>
-                        <option value="document">Chỉ tài liệu này</option>
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => handleAiDraftGrowthProfile()}
-                      disabled={isAiDraftingProfile}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 shrink-0 cursor-pointer"
-                    >
-                      {isAiDraftingProfile ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin text-white" />
-                          <span>Đang Đọc File & Trích Xuất...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4 text-white" />
-                          <span>✨ Trích xuất từ tài liệu</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Bộ Chọn Số Lượng Giai Đoạn & Thêm Mới */}
-                  <div className="flex flex-wrap items-center justify-between gap-2.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-700 font-semibold text-xs sm:text-sm">Mẫu cấu trúc số giai đoạn:</span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleApplyPreset(3)}
-                          className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                            activeStagePreset === 3
-                              ? 'bg-[#119653] text-white shadow-xs'
-                              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
-                          }`}
-                        >
-                          3 Giai đoạn (Cơ bản)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyPreset(4)}
-                          className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                            activeStagePreset === 4
-                              ? 'bg-[#119653] text-white shadow-xs'
-                              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
-                          }`}
-                        >
-                          4 Giai đoạn (Chuẩn VietGAP)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyPreset(5)}
-                          className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                            activeStagePreset === 5
-                              ? 'bg-[#119653] text-white shadow-xs'
-                              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
-                          }`}
-                        >
-                          5 Giai đoạn (Chuyên sâu)
-                        </button>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleAddStage}
-                      className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 text-slate-700 font-semibold transition-all flex items-center gap-1.5 text-xs shadow-2xs cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Thêm Giai Đoạn Mới
-                    </button>
-                  </div>
-
-                  {/* Danh sách các thẻ Giai Đoạn có thể chỉnh sửa chi tiết */}
-                  <div className="space-y-4">
-                    {calculateTimeline(editableStages).map((stg, index) => (
-                      <div 
-                        key={index} 
-                        className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 hover:border-slate-300 transition-all space-y-4 shadow-sm"
-                      >
-                        {/* Header của thẻ giai đoạn */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                          <div className="flex items-center gap-2.5 flex-1 min-w-[260px]">
-                            <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 font-bold font-mono text-xs border border-emerald-300 flex items-center justify-center shrink-0">
-                              GĐ {stg.stageOrder}
-                            </span>
-                            <input
-                              type="text"
-                              value={stg.name}
-                              onChange={(e) => handleUpdateStage(index, 'name', e.target.value)}
-                              placeholder={`Tên giai đoạn ${stg.stageOrder}`}
-                              className="font-bold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-1.5 text-xs sm:text-sm flex-1 focus:bg-white focus:outline-none focus:border-emerald-500"
-                            />
-                            <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-emerald-800 font-mono text-xs border border-slate-200 font-semibold shrink-0">
-                              Ngày {stg.startDay} ➔ {stg.endDay}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2.5">
-                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1">
-                              <span className="text-slate-500 text-xs font-medium">Thời lượng:</span>
-                              <input
-                                type="number"
-                                min="1"
-                                max="180"
-                                value={stg.durationDays}
-                                onChange={(e) => handleUpdateStage(index, 'durationDays', Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                className="w-14 bg-white border border-slate-300 rounded-lg text-emerald-700 font-bold font-mono text-center text-xs py-1 focus:outline-none focus:border-emerald-500"
-                              />
-                              <span className="text-slate-600 text-xs font-medium">ngày</span>
-                            </div>
-
-                            {editableStages.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveStage(index)}
-                                className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Xóa giai đoạn này"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 4 Khối thông số vi khí hậu được phối màu trực quan */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {/* Nhiệt độ */}
-                          <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
-                            <div className="flex items-center gap-1.5 text-amber-900 font-semibold text-xs mb-2">
-                              <Thermometer className="w-3.5 h-3.5 text-amber-600" />
-                              <span>Nhiệt độ (°C)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                <span className="text-[10px] text-amber-800 block mb-0.5 font-medium">Min</span>
-                                <input
-                                  type="number"
-                                  step="0.5"
-                                  value={stg.tempMin}
-                                  onChange={(e) => handleUpdateStage(index, 'tempMin', Number(e.target.value))}
-                                  className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-amber-500 focus:outline-none"
-                                />
-                              </div>
-                              <span className="text-amber-500 font-bold text-sm mt-3">-</span>
-                              <div className="flex-1">
-                                <span className="text-[10px] text-amber-800 block mb-0.5 font-medium">Max</span>
-                                <input
-                                  type="number"
-                                  step="0.5"
-                                  value={stg.tempMax}
-                                  onChange={(e) => handleUpdateStage(index, 'tempMax', Number(e.target.value))}
-                                  className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-amber-500 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Độ ẩm đất */}
-                          <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-200">
-                            <div className="flex items-center gap-1.5 text-sky-900 font-semibold text-xs mb-2">
-                              <Droplets className="w-3.5 h-3.5 text-sky-600" />
-                              <span>Độ ẩm đất (%)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                <span className="text-[10px] text-sky-800 block mb-0.5 font-medium">Min</span>
-                                <input
-                                  type="number"
-                                  step="1"
-                                  value={stg.moistMin}
-                                  onChange={(e) => handleUpdateStage(index, 'moistMin', Number(e.target.value))}
-                                  className="w-full bg-white border border-sky-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-sky-500 focus:outline-none"
-                                />
-                              </div>
-                              <span className="text-sky-500 font-bold text-sm mt-3">-</span>
-                              <div className="flex-1">
-                                <span className="text-[10px] text-sky-800 block mb-0.5 font-medium">Max</span>
-                                <input
-                                  type="number"
-                                  step="1"
-                                  value={stg.moistMax}
-                                  onChange={(e) => handleUpdateStage(index, 'moistMax', Number(e.target.value))}
-                                  className="w-full bg-white border border-sky-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-sky-500 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Độ ẩm không khí */}
-                          <div className="p-3 rounded-xl bg-cyan-50/70 border border-cyan-200">
-                            <div className="flex items-center gap-1.5 text-cyan-900 font-semibold text-xs mb-2">
-                              <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                              <span>Độ ẩm không khí (%)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                <span className="text-[10px] text-cyan-800 block mb-0.5 font-medium">Min</span>
-                                <input type="number" min="0" max="100" value={stg.airHumidityMin ?? ''} onChange={(e) => handleUpdateStage(index, 'airHumidityMin', e.target.value === '' ? undefined : Number(e.target.value))} className="w-full bg-white border border-cyan-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-cyan-500 focus:outline-none" />
-                              </div>
-                              <span className="text-cyan-500 font-bold text-sm mt-3">-</span>
-                              <div className="flex-1">
-                                <span className="text-[10px] text-cyan-800 block mb-0.5 font-medium">Max</span>
-                                <input type="number" min="0" max="100" value={stg.airHumidityMax ?? ''} onChange={(e) => handleUpdateStage(index, 'airHumidityMax', e.target.value === '' ? undefined : Number(e.target.value))} className="w-full bg-white border border-cyan-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-cyan-500 focus:outline-none" />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Độ pH */}
-                          <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200">
-                            <div className="flex items-center gap-1.5 text-purple-900 font-semibold text-xs mb-2">
-                              <Beaker className="w-3.5 h-3.5 text-purple-600" />
-                              <span>Độ pH đất / giá thể</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                <span className="text-[10px] text-purple-800 block mb-0.5 font-medium">Min</span>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={sanitizePh(stg.phMin, 6.0)}
-                                  onChange={(e) => handleUpdateStage(index, 'phMin', sanitizePh(e.target.value, 6.0))}
-                                  className="w-full bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-purple-500 focus:outline-none"
-                                />
-                              </div>
-                              <span className="text-purple-500 font-bold text-sm mt-3">-</span>
-                              <div className="flex-1">
-                                <span className="text-[10px] text-purple-800 block mb-0.5 font-medium">Max</span>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={sanitizePh(stg.phMax, 6.8)}
-                                  onChange={(e) => handleUpdateStage(index, 'phMax', sanitizePh(e.target.value, 6.8))}
-                                  className="w-full bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-purple-500 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* EC Dinh dưỡng */}
-                          <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                            <div className="flex items-center gap-1.5 text-emerald-900 font-semibold text-xs mb-2">
-                              <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>EC Dinh dưỡng (mS/cm)</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                <span className="text-[10px] text-emerald-800 block mb-0.5 font-medium">Min</span>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={stg.ecMin}
-                                  onChange={(e) => handleUpdateStage(index, 'ecMin', Number(e.target.value))}
-                                  className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-emerald-500 focus:outline-none"
-                                />
-                              </div>
-                              <span className="text-emerald-500 font-bold text-sm mt-3">-</span>
-                              <div className="flex-1">
-                                <span className="text-[10px] text-emerald-800 block mb-0.5 font-medium">Max</span>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={stg.ecMax}
-                                  onChange={(e) => handleUpdateStage(index, 'ecMax', Number(e.target.value))}
-                                  className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-slate-900 font-mono text-xs text-center focus:border-emerald-500 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Chỉ dẫn kỹ thuật Bón phân và IPM */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                            <label className="flex items-center gap-1.5 font-semibold text-emerald-800 text-xs mb-1.5">
-                              <Sprout className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Quy trình Tưới tiêu & Bón phân VietGAP:</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={stg.fertilizerAction}
-                              onChange={(e) => handleUpdateStage(index, 'fertilizerAction', e.target.value)}
-                              className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-xs focus:outline-none focus:border-emerald-500"
-                              placeholder="Nhập hướng dẫn phân bón..."
-                            />
-                          </div>
-                          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                            <label className="flex items-center gap-1.5 font-semibold text-teal-800 text-xs mb-1.5">
-                              <ShieldAlert className="w-3.5 h-3.5 text-teal-600" />
-                              <span>Biện pháp Kiểm soát Dịch hại IPM & PHI:</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={stg.ipmAction}
-                              onChange={(e) => handleUpdateStage(index, 'ipmAction', e.target.value)}
-                              className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-xs focus:outline-none focus:border-teal-500"
-                              placeholder="Nhập hướng dẫn IPM & cách ly..."
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 2: THẨM ĐỊNH & NGƯỜI KIỂM DUYỆT CUỐI */}
-              {convertStep === 'REVIEW' && (
-                <div className="space-y-4">
-                  {isFallbackProfile && (
-                    <div className="p-4 rounded-2xl border border-amber-300 bg-amber-50 text-amber-950 text-sm">
-                      <strong>Chưa có profile trích xuất:</strong> AI không tìm thấy đủ số liệu có căn cứ. Không tạo ngưỡng mẫu; hãy bổ sung số liệu đã xác minh trước khi lưu.
-                    </div>
-                  )}
-                  {/* Thẻ Tổng Hợp Thẩm Định */}
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-200 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        RÀ SOÁT GROWTH PROFILE TRƯỚC KHI LƯU
-                      </span>
-                      <h4 className="text-base sm:text-lg font-bold text-slate-900 mt-1">
-                        Hồ sơ Sinh trưởng: {convertingDoc.cropName} (Theo quy chuẩn {convertingDoc.code})
-                      </h4>
-                      <p className="text-xs text-slate-600 mt-0.5">
-                        Tài liệu nguồn: {convertingDoc.title}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs text-slate-500 block">Tổng số ngày chu kỳ</span>
-                      <span className="text-2xl font-bold text-emerald-700 font-mono">
-                        {editableStages.reduce((sum, s) => sum + (Math.max(1, Number(s.durationDays) || 1)), 0)} Ngày
-                      </span>
-                      <span className="text-xs text-slate-500 block">({editableStages.length} giai đoạn liên tục)</span>
-                    </div>
-                  </div>
-
-                  {aiSourceEvidence.length > 0 && (
-                    <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50 text-slate-800">
-                      <strong className="text-sm text-sky-950">Trích dẫn nguyên văn dùng để đối chiếu:</strong>
-                      <ul className="mt-2 space-y-1 text-xs">
-                        {aiSourceEvidence.map((evidence, index) => <li key={index}>• {evidence}</li>)}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Bảng Đối Soát Chi Tiết Các Giai Đoạn (Audit Table) */}
-                  <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                    <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-900 text-xs sm:text-sm flex items-center justify-between">
-                      <span>Bảng Đối Soát Chuỗi Thời Gian & Ngưỡng Vi Khí Hậu</span>
-                      <span className="text-emerald-700 font-mono text-xs font-bold">✓ Đã chuẩn hóa không chồng chéo</span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 font-semibold">
-                          <tr>
-                            <th className="py-2.5 px-3">Giai đoạn</th>
-                            <th className="py-2.5 px-3">Khung thời gian</th>
-                            <th className="py-2.5 px-3">Thời lượng</th>
-                            <th className="py-2.5 px-3">Nhiệt độ</th>
-                            <th className="py-2.5 px-3">Ẩm đất</th>
-                            <th className="py-2.5 px-3">pH / EC</th>
-                            <th className="py-2.5 px-3">Hành động trọng tâm</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 text-slate-800">
-                          {calculateTimeline(editableStages).map((stg, i) => (
-                            <tr key={i} className="hover:bg-slate-50 transition-colors">
-                              <td className="py-3 px-3 font-semibold text-slate-900">
-                                {stg.stageOrder}. {stg.name}
-                              </td>
-                              <td className="py-3 px-3 text-emerald-700 font-mono font-bold">
-                                Ngày {stg.startDay} - {stg.endDay}
-                              </td>
-                              <td className="py-3 px-3 font-mono font-bold text-slate-700">{stg.durationDays} ngày</td>
-                              <td className="py-3 px-3 font-mono text-amber-700 font-semibold">{stg.tempMin} - {stg.tempMax}°C</td>
-                              <td className="py-3 px-3 font-mono text-sky-700 font-semibold">{stg.moistMin} - {stg.moistMax}%</td>
-                              <td className="py-3 px-3 font-mono text-purple-700 font-semibold whitespace-nowrap">
-                                pH {sanitizePh(stg.phMin, 6.0)} - {sanitizePh(stg.phMax, 6.8)}
-                                <span className="text-slate-400 mx-1.5">|</span>
-                                <span className="text-emerald-700 font-bold">EC {stg.ecMin} - {stg.ecMax}</span>
-                              </td>
-                              <td className="py-3 px-3 text-slate-600 max-w-sm truncate" title={stg.fertilizerAction}>
-                                {stg.fertilizerAction}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Hộp Kiểm Soát Toàn Vẹn Tự Động (Automated Integrity Checks) */}
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                    <span className="font-bold text-slate-900 text-xs sm:text-sm block">Kết quả Kiểm Soát Tính Toàn Vẹn Hệ Thống (Automated Audit):</span>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-2.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                        <span><strong>Không chồng chéo:</strong> Chuỗi timeline liên tục, 0 ngày giao thoa hay đứt gãy.</span>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-2.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                        <span><strong>Ngưỡng vi khí hậu:</strong> Min &lt; Max đạt chuẩn an toàn VietGAP.</span>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-2.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                        <span><strong>Cây trồng mục tiêu:</strong> Đã định danh và chuẩn bị liên kết IoT Zone.</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tùy Biến Tên Hồ Sơ Trước Khi Ban Hành */}
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                    <label className="block text-slate-800 font-bold text-xs sm:text-sm">
-                      Tên Hồ Sơ Sinh Trưởng Ban Hành Vào CSDL:
-                    </label>
-                    <input
-                      type="text"
-                      value={customProfileName}
-                      onChange={(e) => setCustomProfileName(e.target.value)}
-                      placeholder={`VD: Hồ sơ Sinh trưởng VietGAP - ${convertingDoc.cropName}`}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-emerald-700 text-xs sm:text-sm font-bold focus:outline-none focus:border-emerald-500"
-                    />
-                    <span className="text-xs text-slate-500 block">
-                      Bạn có thể chỉnh sửa tên hồ sơ để phân biệt theo mùa vụ, năm hoặc biến thể canh tác cụ thể.
-                    </span>
-                  </div>
-
-                  {/* Khu Vực Ký Duyệt Của Người Kiểm Duyệt Cuối (Sign-Off & Approval) */}
-                  <div className="p-4 sm:p-5 bg-cyan-50/50 border border-cyan-200 rounded-2xl space-y-3.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-5 h-5 text-cyan-600" />
-                        <span className="font-bold text-cyan-950 text-xs sm:text-sm">Xác Thực Của Người Kiểm Duyệt Cuối (Human Sign-Off):</span>
-                      </div>
-                      <span className="text-xs text-cyan-800 font-mono bg-cyan-100 px-2.5 py-1 rounded border border-cyan-300 font-semibold">
-                        BƯỚC PHÊ DUYỆT BẮT BUỘC
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                      <div>
-                        <label className="block text-slate-700 text-xs mb-1 font-semibold">Cán bộ / Người kiểm duyệt chịu trách nhiệm:</label>
-                        <input
-                          type="text"
-                          value={reviewerName}
-                          onChange={(e) => setReviewerName(e.target.value)}
-                          className="w-full bg-white border border-cyan-300 rounded-xl px-3.5 py-2 text-slate-900 text-xs sm:text-sm font-semibold focus:outline-none focus:border-cyan-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-slate-700 text-xs mb-1 font-semibold">Ghi chú thẩm định & Căn cứ kỹ thuật:</label>
-                        <input
-                          type="text"
-                          value={reviewerNotes}
-                          onChange={(e) => setReviewerNotes(e.target.value)}
-                          className="w-full bg-white border border-cyan-300 rounded-xl px-3.5 py-2 text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-cyan-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Checkbox Cam Kết */}
-                    <label className="flex items-start gap-3 p-3.5 rounded-xl bg-white border border-cyan-200 cursor-pointer hover:bg-cyan-50/70 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={reviewerConfirmed}
-                        onChange={(e) => setReviewerConfirmed(e.target.checked)}
-                        className="mt-1 rounded border-cyan-500 text-cyan-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                      />
-                      <span className="text-xs text-slate-700 leading-relaxed font-medium">
-                        Tôi xác nhận đã rà soát các giá trị và căn cứ nguồn của Growth Profile này. Việc lưu profile không phải chứng nhận hoặc xác nhận tuân thủ VietGAP; các giá trị chưa có nguồn xác minh sẽ không được xem là yêu cầu tiêu chuẩn.
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer Controls */}
-            <div className="pt-4 mt-3 border-t border-slate-200 flex items-center justify-between flex-shrink-0">
-              {convertStep === 'BUILDER' ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setIsGenerateModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 font-semibold text-xs sm:text-sm transition-colors cursor-pointer"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (validateStagesBeforeReview()) {
-                        setConvertStep('REVIEW');
-                      }
-                    }}
-                    className="px-6 py-2.5 rounded-xl bg-[#119653] hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-700/20 flex items-center gap-2 transition-all cursor-pointer"
-                  >
-                    Tiếp Tục: Thẩm Định & Kiểm Duyệt Cuối <ArrowRight className="w-4 h-4" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setConvertStep('BUILDER')}
-                    className="px-4 py-2.5 rounded-xl text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 font-semibold text-xs sm:text-sm transition-colors flex items-center gap-2 border border-slate-300 cursor-pointer"
-                  >
-                    ⬅ Quay Lại Tinh Chỉnh Giai Đoạn
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isProcessing || !reviewerConfirmed}
-                    onClick={handleExecuteConvertToProfile}
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-800/30 flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-white" /> Đang Ban Hành Hồ Sơ...
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4 text-white" /> Phê Duyệt & Ban Hành Hồ Sơ Sinh Trưởng
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CẬP NHẬT TÀI LIỆU / NÂNG CẤP PHIÊN BẢN (V1 -> V2) */}
-      {isUpdateModalOpen && updatingDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-200">
-                  <Edit3 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base">Cập Nhật & Nâng Cấp Phiên Bản Tài Liệu</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Đang cập nhật tài liệu: <strong className="text-slate-800">{updatingDoc.title}</strong>
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsUpdateModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer text-base"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateDocumentSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
-              {/* Alert giải thích cơ chế giải quyết xung đột RAG */}
-              <div className="p-3.5 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-900 space-y-1">
-                <div className="font-bold flex items-center gap-2 text-xs text-cyan-800">
-                  <ShieldCheck className="w-4 h-4 text-cyan-600" /> Cơ chế làm sạch Vector & Giải quyết xung đột số liệu:
-                </div>
-                <p className="text-[11px] leading-relaxed opacity-90 text-slate-700">
-                  Khi bạn tải lên file mới hoặc sửa nội dung, phiên bản này trở về trạng thái <strong>chờ đối chiếu</strong>. Các chunks/vector cũ bị thay thế; chỉ sau khi duyệt, hệ thống mới tạo embeddings để RAG và sinh profile sử dụng.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Tiêu đề tài liệu <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={updateFormData.title}
-                    onChange={e => setUpdateFormData(p => ({ ...p, title: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:bg-white focus:border-cyan-500 focus:outline-none font-medium"
-                    placeholder="VD: Quy trình kỹ thuật VietGAP dâu tây nhà màng"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Số hiệu phiên bản mới <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={updateFormData.version}
-                    onChange={e => setUpdateFormData(p => ({ ...p, version: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-cyan-500 text-cyan-800 font-bold font-mono text-xs focus:bg-white focus:border-cyan-600 focus:outline-none"
-                    placeholder="VD: V2.0, 2024, Ban hành lần 2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Cơ quan / Tác giả ban hành</label>
-                  <input
-                    type="text"
-                    value={updateFormData.author}
-                    onChange={e => setUpdateFormData(p => ({ ...p, author: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:bg-white focus:border-cyan-500 focus:outline-none font-medium"
-                    placeholder="VD: Chi cục Trồng trọt & BVTV Lâm Đồng"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Cây trồng áp dụng</label>
-                  <input
-                    type="text"
-                    value={updateFormData.cropScope}
-                    onChange={e => setUpdateFormData(p => ({ ...p, cropScope: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:bg-white focus:border-cyan-500 focus:outline-none font-medium"
-                    placeholder="VD: Dâu tây, Cà chua (để trống nếu áp dụng chung)"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Danh mục kỹ thuật</label>
-                <select
-                  value={updateFormData.category}
-                  onChange={e => setUpdateFormData(p => ({ ...p, category: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:bg-white focus:border-cyan-500 focus:outline-none font-medium"
-                >
-                  <option value="general">Quy chuẩn chung (Toàn diện)</option>
-                  <option value="irrigation">Quản lý nước tưới & Dinh dưỡng</option>
-                  <option value="pest">Quản lý dịch hại (IPM & Thuốc BVTV)</option>
-                  <option value="nutrition">Quy trình Phân bón</option>
-                  <option value="climate">Vi khí hậu & Kỹ thuật canh tác</option>
-                  <option value="harvest">Thu hoạch & Truy xuất nguồn gốc</option>
-                  <option value="record">Hồ sơ nhật ký canh tác</option>
-                </select>
-              </div>
-
-              {/* Tùy chọn 1: Tải tệp mới thay thế (PDF/DOCX/TXT) */}
-              <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-2">
-                <div className="font-semibold text-slate-800 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <UploadCloud className="w-4 h-4 text-cyan-600" /> Tải lên tệp tài liệu mới (V2) thay thế:
-                  </span>
-                  {selectedUpdateFile && (
-                    <span className="text-[11px] text-emerald-700 font-bold">
-                      Đã chọn: {selectedUpdateFile.name} ({(selectedUpdateFile.size / 1024).toFixed(0)} KB)
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Chọn tệp PDF, Word (.docx) hoặc Text (.txt) phiên bản V2 mới để trích xuất nội dung tự động.
-                </p>
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.txt"
-                  onChange={e => {
-                    if (e.target.files && e.target.files[0]) {
-                      setSelectedUpdateFile(e.target.files[0]);
-                    }
-                  }}
-                  className="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer"
-                />
-              </div>
-
-              {/* Tùy chọn 2: Hoặc chỉnh sửa trực tiếp nội dung văn bản */}
-              <div className="space-y-1">
-                <label className="block text-slate-700 font-semibold">
-                  Hoặc chỉnh sửa trực tiếp nội dung văn bản quy chuẩn (để trống nếu đã chọn file ở trên):
-                </label>
-                <textarea
-                  rows={6}
-                  value={updateFormData.contentText}
-                  onChange={e => setUpdateFormData(p => ({ ...p, contentText: e.target.value }))}
-                  placeholder="Dán hoặc chỉnh sửa các điều khoản số liệu kỹ thuật mới (Độ ẩm, nhiệt độ, pH, EC, quy trình tưới, IPM...)..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-800 font-mono text-[11px] leading-relaxed focus:bg-white focus:border-cyan-500 focus:outline-none font-medium"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsUpdateModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:text-slate-900 text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUpdating}
-                  className="px-5 py-2.5 rounded-xl bg-[#119653] hover:bg-emerald-600 text-white text-xs font-bold shadow-md flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
-                >
-                  {isUpdating ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Đang cập nhật & Sinh lại Vector...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" /> Xác Nhận Lưu & Nâng Cấp Phiên Bản
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL XEM TOÀN BỘ VĂN BẢN TRÍCH XUẤT TỪ PDF / DB */}
-      {isFullTextModalOpen && selectedDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-              <div>
-                <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 mr-2">
-                  {selectedDoc.code}
-                </span>
-                <h3 className="font-bold text-slate-900 text-base inline">{selectedDoc.title}</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Định dạng: <strong className="text-slate-800">{selectedDoc.fileType}</strong> • 
-                  Cơ quan: <strong className="text-slate-800">{selectedDoc.issuingAuthority}</strong> • 
-                  Số đoạn RAG: <strong className="text-emerald-700">{selectedDoc.chunks?.length || 0} đoạn</strong>
-                </p>
-              </div>
-              <button
-                onClick={() => setIsFullTextModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-base cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4 flex-1 text-xs text-slate-700 leading-relaxed font-sans whitespace-pre-line bg-slate-50/50">
-              {selectedDoc.contentText || selectedDoc.chunks?.map(c => c.content).join('\n\n---\n\n') || (
-                <div className="text-center text-slate-400 py-10">Không có văn bản trích xuất trực tiếp.</div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-white">
-              <span className="text-xs text-slate-500">
-                Độ dài văn bản: {selectedDoc.contentText?.length || 0} ký tự
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsFullTextModalOpen(false)}
-                  className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL SOẠN THẢO QUY CHUẨN VIETGAP BẰNG AI & KIỂM TRA PHÊ DUYỆT */}
       {isAiDraftModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-4xl w-full my-auto flex flex-col shadow-2xl max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">

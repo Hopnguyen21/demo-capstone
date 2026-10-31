@@ -52,6 +52,82 @@ public sealed class TelemetryAlertTests
     }
 
     [Fact]
+    public async Task Receiving_telemetry_marks_the_sending_gateway_online_and_records_when_it_was_last_seen()
+    {
+        using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var gateway = await db.Gateways.SingleAsync(g => g.Id == fixture.GatewayId);
+            gateway.Status = GatewayStatus.Offline;
+            gateway.LastSeenAtUtc = DateTime.UtcNow.AddDays(-9);
+            await db.SaveChangesAsync();
+        }
+        var before = DateTime.UtcNow;
+
+        await SendAsync(factory, fixture, fixture.Fingerprint, 55, "%", "seen-1", DateTime.UtcNow.AddMinutes(-1));
+
+        using var check = factory.Services.CreateScope();
+        var stored = await check.ServiceProvider.GetRequiredService<SmartFarmDbContext>().Gateways.AsNoTracking().SingleAsync(g => g.Id == fixture.GatewayId);
+        Assert.Equal(GatewayStatus.Online, stored.Status);
+        Assert.True(stored.LastSeenAtUtc >= before.AddSeconds(-1), $"LastSeenAtUtc was {stored.LastSeenAtUtc}");
+    }
+
+    [Fact]
+    public async Task An_old_replayed_reading_records_contact_but_does_not_mark_the_gateway_online()
+    {
+        using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory);
+        var before = DateTime.UtcNow;
+
+        await SendAsync(factory, fixture, fixture.Fingerprint, 55, "%", "replay-1", DateTime.UtcNow.AddDays(-2));
+
+        using var check = factory.Services.CreateScope();
+        var stored = await check.ServiceProvider.GetRequiredService<SmartFarmDbContext>().Gateways.AsNoTracking().SingleAsync(g => g.Id == fixture.GatewayId);
+        Assert.NotEqual(GatewayStatus.Online, stored.Status);
+        Assert.True(stored.LastSeenAtUtc >= before.AddSeconds(-1));
+    }
+
+    [Fact]
+    public async Task Latest_telemetry_is_readable_for_a_zone_without_an_in_progress_season()
+    {
+        using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory);
+        await SendAsync(factory, fixture, fixture.Fingerprint, 55, "%", "no-season-1", DateTime.UtcNow.AddMinutes(-1));
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            (await db.PlantingSeasons.SingleAsync(x => x.Id == fixture.SeasonId)).Status = PlantingSeasonStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient(); await Login(client, "owner-a@example.com");
+
+        var latest = await client.GetFromJsonAsync<LatestTelemetryView>($"/api/v1/zones/{fixture.ZoneId}/telemetry/latest", ApiJson);
+        var byDevice = await client.GetFromJsonAsync<ZoneDeviceTelemetryView>($"/api/v1/zones/{fixture.ZoneId}/telemetry/latest-by-device", ApiJson);
+
+        var metric = Assert.Single(latest!.Metrics);
+        Assert.Equal(55m, metric.Value);
+        Assert.Equal("Unknown", metric.ThresholdStatus);
+        var device = Assert.Single(byDevice!.Devices);
+        Assert.Equal(55m, Assert.Single(device.Metrics).Value);
+    }
+
+    [Fact]
+    public async Task Latest_by_device_returns_each_nodes_own_readings_and_respects_tenant_isolation()
+    {
+        using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory);
+        await SendAsync(factory, fixture, fixture.Fingerprint, 55, "%", "by-device-1", DateTime.UtcNow.AddMinutes(-1));
+        using var client = factory.CreateClient(); await Login(client, "owner-a@example.com");
+
+        var result = await client.GetFromJsonAsync<ZoneDeviceTelemetryView>($"/api/v1/zones/{fixture.ZoneId}/telemetry/latest-by-device", ApiJson);
+
+        var device = Assert.Single(result!.Devices);
+        Assert.Equal(fixture.DeviceId, device.DeviceId);
+        Assert.True(Assert.Single(device.Metrics).IsFresh);
+
+        await Login(client, "owner-b@example.com");
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/zones/{fixture.ZoneId}/telemetry/latest-by-device")).StatusCode);
+    }
+
+    [Fact]
     public async Task Duplicate_message_is_idempotent_and_does_not_advance_anti_flap()
     {
         using var factory = new TestApplicationFactory(); var fixture = await PrepareAsync(factory); var captured = DateTime.UtcNow.AddMinutes(-1);

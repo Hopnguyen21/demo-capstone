@@ -41,9 +41,10 @@ public sealed class AgricultureDocument : AuditableEntity
     /// <summary>true = tài liệu cấp nền tảng dùng chung. false = chỉ tenant cụ thể.</summary>
     public bool IsPublic { get; set; } = true;
 
-    public AgricultureDocumentType DocumentType { get; set; } = AgricultureDocumentType.OfficialStandard;
+    // Không mặc định OfficialStandard: loại chưa phân biệt được từ nội dung thì để người duyệt quyết định.
+    public AgricultureDocumentType DocumentType { get; set; } = AgricultureDocumentType.Unspecified;
 
-    /// <summary>Chỉ tài liệu đã được người dùng rà soát mới được dùng trong RAG và sinh profile.</summary>
+    /// <summary>Chỉ tài liệu đã được người dùng rà soát mới được dùng làm nguồn cho RAG.</summary>
     public AgricultureDocumentReviewStatus ReviewStatus { get; set; } = AgricultureDocumentReviewStatus.PendingReview;
 
     /// <summary>Ghi chú của người rà soát, nếu có.</summary>
@@ -56,6 +57,24 @@ public sealed class AgricultureDocument : AuditableEntity
     /// sau lần trích gần nhất, cần chạy lại.
     /// </summary>
     public string? StructuredExtractionJson { get; set; }
+
+    /// <summary>
+    /// Kết quả nhận diện metadata từ nội dung (JSON: giá trị, trạng thái detected/uncertain/not_found, bằng chứng, độ tin cậy).
+    /// Null với tài liệu nạp trước khi có tính năng này.
+    /// </summary>
+    public string? MetadataDetectionJson { get; set; }
+
+    /// <summary>
+    /// Trạng thái AI kiểm tra tài liệu có thuộc lĩnh vực nông nghiệp hay không: Pending, Agricultural, NotAgricultural, Uncertain,
+    /// VerificationError. Null với tài liệu nạp trước khi có tính năng. Chỉ xác nhận chủ đề, không phải chứng nhận VietGAP và
+    /// không quyết định việc duyệt: chỉ người quản trị duyệt.
+    /// </summary>
+    public string? VerificationStatus { get; set; }
+
+    /// <summary>Kết quả kiểm tra chủ đề (JSON): nhận định, độ tin cậy, lý do, câu trích nguyên văn từ file, model, thời điểm.</summary>
+    public string? VerificationJson { get; set; }
+
+    public DateTime? VerificationAttemptedAtUtc { get; set; }
 
     /// <summary>Thời điểm worker nền đã thử trích xuất (thành công hoặc lỗi). Null = chưa thử; worker sẽ xử lý.</summary>
     public DateTime? ExtractionAttemptedAtUtc { get; set; }
@@ -96,7 +115,9 @@ public enum AgricultureDocumentType
     /// <summary>Hướng dẫn/quy trình kỹ thuật canh tác (khuyến nông, sở nông nghiệp): cần nguồn và nội dung canh tác.</summary>
     TechnicalGuide = 2,
     /// <summary>Tài liệu chuyên đề (tưới, IPM, dinh dưỡng...): chỉ cần nguồn và mục của đúng chuyên đề (theo Category).</summary>
-    Thematic = 3
+    Thematic = 3,
+    /// <summary>Chưa phân biệt được từ nội dung; người duyệt phải chọn loại trước khi duyệt.</summary>
+    Unspecified = 4
 }
 
 public enum AgricultureDocumentReviewStatus

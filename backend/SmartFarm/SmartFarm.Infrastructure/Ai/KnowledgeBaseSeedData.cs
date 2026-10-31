@@ -618,6 +618,15 @@ public static class KnowledgeBaseSeedData
             results.Add((doc, chunks));
         }
 
+        // Nội dung thật của tài liệu seed nằm ở các chunk; ContentText phải là bản đầy đủ đó, không phải một dòng tiêu đề.
+        // Nếu không, mọi lần chia lại đoạn từ ContentText sẽ thay nội dung seed bằng chính tiêu đề.
+        foreach (var (document, chunks) in results)
+        {
+            document.ContentText = string.Join("\n\n", chunks.Select(c => c.Content.Trim()));
+            document.DocumentType = AgricultureDocumentType.OfficialStandard; // Bộ seed là quy chuẩn đã biên soạn sẵn.
+            document.ChunkerVersion = SmartFarm.Infrastructure.Ai.Knowledge.StructuredChunker.Version;
+        }
+
         return results;
     }
 }

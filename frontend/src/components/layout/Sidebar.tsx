@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import {
   LayoutDashboard, Building2, Users, Sprout, Cpu, Radio, Activity,
   ShieldAlert, Settings, Wrench, Package, CpuIcon, MapPin, Gauge,
@@ -62,7 +62,8 @@ export const Sidebar: React.FC = () => {
     { title: 'Khu vực được Phân công', path: '/farmer/zones', icon: <Sprout size={18} /> },
     { title: 'Theo dõi Vi khí hậu', path: '/farmer/monitoring', icon: <Gauge size={18} /> },
     { title: 'Cảnh báo Nông nghiệp', path: '/farmer/alerts', icon: <ShieldAlert size={18} /> },
-    { title: 'Danh sách Tác vụ', path: '/farmer/tasks', icon: <ClipboardList size={18} /> },
+    { title: 'Công việc của tôi', path: '/farmer/tasks', icon: <ClipboardList size={18} /> },
+    { title: 'Lời mời tham gia Farm', path: '/farmer/invitations', icon: <Users size={18} /> },
     { title: 'Tưới thủ công', path: '/farmer/irrigation', icon: <Sliders size={18} /> },
   ];
 

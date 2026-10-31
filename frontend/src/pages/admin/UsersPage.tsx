@@ -7,8 +7,6 @@ import { Users, Plus, Search, ShieldCheck, Mail, Phone } from 'lucide-react';
 export const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({ fullName: '', email: '', username: '', role: 'FARM_OWNER' as UserRole });
 
   const loadUsers = async () => {
     try {
@@ -32,23 +30,6 @@ export const UsersPage: React.FC = () => {
     return name.includes(query) || email.includes(query);
   });
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await userService.createUser({
-        fullName: newUser.fullName,
-        email: newUser.email,
-        role: newUser.role,
-        password: 'Password@123',
-      });
-      await loadUsers();
-      setIsModalOpen(false);
-      setNewUser({ fullName: '', email: '', username: '', role: 'FARM_OWNER' as UserRole });
-    } catch (err) {
-      console.error('Failed to create user:', err);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -58,9 +39,6 @@ export const UsersPage: React.FC = () => {
           </h1>
           <p className="text-xs text-slate-600 mt-1">Danh sách người dùng trên toàn hệ thống bao gồm Admin, Kỹ thuật viên, Farm Owner và Công nhân.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus size={16} className="mr-1.5" /> Tạo Tài khoản Mới
-        </Button>
       </div>
 
       <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs flex items-center justify-between">
@@ -108,39 +86,6 @@ export const UsersPage: React.FC = () => {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Tạo Tài khoản Mới">
-        <form onSubmit={handleAdd} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Họ và tên</label>
-            <Input required value={newUser.fullName} onChange={e => setNewUser({ ...newUser, fullName: e.target.value })} placeholder="Nguyễn Văn A" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Email</label>
-            <Input type="email" required value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} placeholder="user@smartfarm.vn" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Username</label>
-            <Input required value={newUser.username} onChange={e => setNewUser({ ...newUser, username: e.target.value })} placeholder="user123" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Vai trò hệ thống</label>
-            <select
-              value={newUser.role}
-              onChange={e => setNewUser({ ...newUser, role: e.target.value as UserRole })}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-[#119653] focus:ring-1 focus:ring-[#119653] shadow-xs"
-            >
-              <option value="PLATFORM_ADMIN">Platform Admin</option>
-              <option value="PLATFORM_TECHNICIAN">Platform Technician</option>
-              <option value="FARM_OWNER">Farm Owner</option>
-              <option value="FARMER">Farmer / Farm Worker</option>
-            </select>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Hủy</Button>
-            <Button type="submit">Xác nhận tạo</Button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 };

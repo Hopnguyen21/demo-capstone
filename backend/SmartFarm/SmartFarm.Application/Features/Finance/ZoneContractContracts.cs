@@ -30,7 +30,16 @@ public sealed record ZoneContractView(
     string? Notes,
     DateTime? SignedAtUtc,
     IReadOnlyList<ZoneContractRenewalView> Renewals,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    decimal SubtotalVnd = 0,
+    decimal DiscountPercent = 0,
+    decimal DiscountVnd = 0,
+    decimal VatPercent = 0,
+    decimal VatAmountVnd = 0,
+    IReadOnlyList<ZoneContractEquipmentView>? Equipment = null);
+
+/// <summary>Một dòng thiết bị trong hợp đồng.</summary>
+public sealed record ZoneContractEquipmentView(string Code, string Name, string Category, string Unit, int Quantity, decimal UnitPrice);
 
 public sealed record ZoneContractRenewalView(
     Guid Id,

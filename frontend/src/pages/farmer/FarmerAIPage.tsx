@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bot, Send, Loader2, Trash2, CheckCircle2, Clock, Sparkles, BookOpen, Database, ChevronDown, ChevronUp, RefreshCw, ExternalLink } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { aiService, knowledgeService, farmerService } from '../../services';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 
 const cleanTechnicalIds = (text?: string): string => {
   if (!text) return '';

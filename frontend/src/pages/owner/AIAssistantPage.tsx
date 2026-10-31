@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { aiService, controlService, knowledgeService, zoneService } from '../../services';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 
 const COMMAND_LABEL: Record<string, string> = {
   Pending: 'Lệnh đang chờ gửi',

@@ -15,7 +15,7 @@ The code audit and status of every numbered endpoint is maintained in [`ENDPOINT
 | 7 | GET | `/api/v1/users/{userId}` | User | FarmOwner |
 | 8 | PUT | `/api/v1/users/{userId}` | User | FarmOwner |
 | 9 | DELETE | `/api/v1/users/{userId}` | User | FarmOwner |
-| 10 | POST | `/api/v1/users/invite` | User | FarmOwner |
+| 10 | POST | `/api/v1/users/invite` | User | FarmOwner (creates a pending Farm invitation; does not attach the Farmer) |
 | 11 | GET | `/api/v1/users/me` | User | All roles |
 | 12 | PUT | `/api/v1/users/me/password` | User | All roles |
 | 13 | POST | `/api/v1/tenants/register` | Tenant | FarmOwner without Tenant |
@@ -116,6 +116,12 @@ The code audit and status of every numbered endpoint is maintained in [`ENDPOINT
 | --- | --- | --- | --- | --- |
 | AUTH-V1-01 | POST | `/api/v1/auth/register` | Anonymous | Self-register an unassigned FarmOwner or Farmer account |
 | USER-V1-01 | PUT | `/api/v1/users/{userId}/zone-access` | FarmOwner | Replace a Farmer's Zone access inside their assigned Farm |
+| INVITE-V1-01 | GET/POST | `/api/v1/farms/{farmId}/invitations` | FarmOwner | List / create a Farm workforce invitation by email |
+| INVITE-V1-02 | POST | `/api/v1/farm-invitations/{id}/resend` , `/cancel` | FarmOwner | Resend (new notification, new expiry) or cancel a pending invitation |
+| INVITE-V1-03 | GET | `/api/v1/farm-invitations/mine` | Farmer | Pending invitations addressed to the signed-in Farmer's email |
+| INVITE-V1-04 | POST | `/api/v1/farm-invitations/{id}/accept` , `/decline` | Farmer | Respond to an invitation; accepting attaches the Farmer to the Farm and grants no Zone access |
+| TASK-V1-01 | POST | `/api/v1/farms/{farmId}/tasks/{taskId}/assignees` | FarmOwner | Add or re-assign Farmers to an existing task (new deadline required when it is overdue) |
+| TASK-V1-02 | DELETE | `/api/v1/farms/{farmId}/tasks/{taskId}/assignees/{farmerId}` | FarmOwner | Remove a Farmer from a task (not after their result is approved) |
 | INVENTORY-V1-01 | POST | `/api/v1/farms/{farmId}/inventory/{itemId}/receipts` | FarmOwner | Receive stock with an audited movement |
 | INVENTORY-V1-02 | PUT | `/api/v1/farms/{farmId}/inventory/{itemId}/requirements` | FarmOwner | Link material need to Crop, Variety, or Growth Stage |
 | INVENTORY-V1-03 | GET | `/api/v1/farms/{farmId}/inventory/low-stock-alerts` | FarmOwner | List low-stock alert lifecycle |
@@ -148,7 +154,7 @@ Asynchronous status, feedback authentication, schedule cron semantics, rule eval
 
 ## AI recommendation v1 normalization
 
-Server-built context, explicit uncertainty, persisted Owner decisions, rate limiting and the Owner-approved handoff to Phase 7 for endpoints #84-#88 are defined in `AI_RECOMMENDATION_CONTRACT_V1.md`. Endpoint #86 does not directly prove or perform irrigation; it creates an asynchronous `AI_APPROVED` control command only after valid Owner acceptance. Knowledge-base upload/retrieval extensions require human source review before their contents can be used by RAG or Growth Profile drafting; see `AGRICULTURE_DOCUMENT_REVIEW_V1.md`.
+Server-built context, explicit uncertainty, persisted Owner decisions, rate limiting and the Owner-approved handoff to Phase 7 for endpoints #84-#88 are defined in `AI_RECOMMENDATION_CONTRACT_V1.md`. Endpoint #86 does not directly prove or perform irrigation; it creates an asynchronous `AI_APPROVED` control command only after valid Owner acceptance. Knowledge-base upload/retrieval extensions require human source review before their contents can be used by RAG; see `AGRICULTURE_DOCUMENT_REVIEW_V1.md`.
 
 | PLATFORM-V1-01 | GET | `/api/v1/platform/technicians` | PlatformAdmin | List PlatformTechnician accounts |
 | PLATFORM-V1-02 | POST | `/api/v1/platform/technicians` | PlatformAdmin | Create a PlatformTechnician account without returning password material |

@@ -132,13 +132,34 @@ INSERT INTO low_stock_alerts ("Id", tenant_id, farm_id, inventory_item_id, statu
 VALUES ('72000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', 'Open', 35, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days')
 ON CONFLICT ("Id") DO UPDATE SET status = 'Open', quantity_at_open = 35, resolved_at_utc = NULL;
 
-INSERT INTO farm_tasks ("Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, assigned_farmer_id, created_by_owner_id, status, result, accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, assignment_version, created_at_utc)
-VALUES ('73000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000001', 'Inspect demo irrigation line', 'Check emitters and record result.', 'Confirm no leaks.', CURRENT_TIMESTAMP + INTERVAL '2 days', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Approved', 'No leaks found.', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', 1, CURRENT_TIMESTAMP - INTERVAL '3 days')
-ON CONFLICT ("Id") DO UPDATE SET status = 'Approved', result = EXCLUDED.result, assigned_farmer_id = EXCLUDED.assigned_farmer_id;
+-- Mô hình công việc: một công việc có nhiều phân công (farm_task_assignments). Dữ liệu mẫu khai báo "một Farmer/việc" qua bảng tạm rồi tách thành công việc + phân công.
+DROP TABLE IF EXISTS seed_farm_tasks_legacy;
+CREATE TEMP TABLE seed_farm_tasks_legacy (
+  "Id" uuid, tenant_id uuid, farm_id uuid, zone_id uuid, title text, description text, requirements text, due_at_utc timestamptz,
+  assigned_farmer_id uuid, created_by_owner_id uuid, status text, result text, accepted_at_utc timestamptz, started_at_utc timestamptz,
+  submitted_at_utc timestamptz, approved_at_utc timestamptz, assignment_version int, created_at_utc timestamptz);
+
+INSERT INTO seed_farm_tasks_legacy ("Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, assigned_farmer_id, created_by_owner_id, status, result, accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, assignment_version, created_at_utc)
+VALUES ('73000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000001', 'Inspect demo irrigation line', 'Check emitters and record result.', 'Confirm no leaks.', CURRENT_TIMESTAMP + INTERVAL '2 days', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Approved', 'No leaks found.', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', 1, CURRENT_TIMESTAMP - INTERVAL '3 days');
+
+INSERT INTO farm_tasks ("Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, created_by_owner_id, status, created_at_utc)
+SELECT "Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, created_by_owner_id, status, created_at_utc FROM seed_farm_tasks_legacy
+ON CONFLICT ("Id") DO UPDATE SET title = EXCLUDED.title, status = EXCLUDED.status;
+
+INSERT INTO farm_task_assignments ("Id", farm_task_id, farmer_id, assigned_by_owner_id, assigned_at_utc, status, progress_percent, result,
+  accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, assignment_version, created_at_utc)
+SELECT md5("Id"::text || assigned_farmer_id::text)::uuid, "Id", assigned_farmer_id, created_by_owner_id, created_at_utc, status,
+  CASE WHEN status IN ('CompletedPendingReview', 'Approved') THEN 100 ELSE 0 END, result,
+  accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, GREATEST(assignment_version, 1), created_at_utc
+FROM seed_farm_tasks_legacy
+ON CONFLICT (farm_task_id, farmer_id) DO UPDATE SET status = EXCLUDED.status, result = EXCLUDED.result;
 
 INSERT INTO farm_task_history ("Id", farm_task_id, actor_user_id, event_type, from_status, to_status, previous_assignee_id, new_assignee_id, notes, created_at_utc)
 VALUES ('73100000-0000-0000-0000-000000000001', '73000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Approved', 'CompletedPendingReview', 'Approved', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'Demo task approved.', CURRENT_TIMESTAMP - INTERVAL '1 day')
 ON CONFLICT ("Id") DO NOTHING;
+
+UPDATE farm_task_history SET subject_farmer_id = COALESCE(new_assignee_id, previous_assignee_id)
+WHERE subject_farmer_id IS NULL AND (new_assignee_id IS NOT NULL OR previous_assignee_id IS NOT NULL);
 
 INSERT INTO finance_transactions (id, tenant_id, farm_id, transaction_type, expense_category, amount, occurred_at_utc, description, reference, created_by_owner_id, created_at_utc)
 VALUES
@@ -164,3 +185,10 @@ COMMIT;
 -- Gateway:  51000000-0000-0000-0000-000000000001
 -- Sensor:   52000000-0000-0000-0000-000000000001
 -- Actuator: 53000000-0000-0000-0000-000000000001
+
+-- Cây hiện tại của Zone: chỉ lấy từ Zone có đúng một vụ InProgress (cùng quy tắc với migration AddZoneCurrentCrop).
+UPDATE zones z SET crop_id = s.crop_id, crop_variety_id = s.variety_id
+FROM planting_seasons s
+WHERE s.zone_id = z.id AND s.status = 'InProgress'
+  AND (SELECT COUNT(*) FROM planting_seasons x WHERE x.zone_id = z.id AND x.status = 'InProgress') = 1
+  AND z.crop_id IS NULL;

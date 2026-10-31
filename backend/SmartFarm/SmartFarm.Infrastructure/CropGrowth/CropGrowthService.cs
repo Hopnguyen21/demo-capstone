@@ -173,6 +173,9 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
             throw new ResourceConflictException("A Growth Profile with this name already exists.");
         GrowthProfile profile;
         var isSystemDefined = user.Role == UserRole.PlatformAdmin || tenantId == null;
+        // Owner không tự dựng profile từ đầu: chỉ sao chép profile hệ thống rồi chỉnh bản sao của trang trại mình.
+        if (!isSystemDefined && !command.SourceProfileId.HasValue)
+            throw new RequestValidationException("sourceProfileId", "Chủ trang trại chỉ có thể sao chép một profile hệ thống để chỉnh sửa.");
         if (command.SourceProfileId.HasValue)
         {
             var source = await ProfileQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.SourceProfileId && x.TenantId == null, ct)
@@ -226,6 +229,19 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
         return profile.ToView();
     }
 
+    public async Task<StageDurationView> UpdateStageDurationAsync(Guid userId, Guid? tenantId, Guid stageId, int durationDays, CancellationToken ct)
+    {
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
+        if (durationDays is < 1 or > 365) throw new RequestValidationException(nameof(durationDays), "Số ngày của giai đoạn phải từ 1 đến 365.");
+        var stage = await dbContext.GrowthStages.Include(x => x.GrowthProfile).SingleOrDefaultAsync(x => x.Id == stageId
+                && (x.GrowthProfile.TenantId == tenantId || (x.GrowthProfile.TenantId == null && user.Role == UserRole.PlatformAdmin)), ct)
+            ?? throw new ResourceNotFoundException("Growth Stage was not found.");
+        // Chỉ đổi kế hoạch của profile; vụ đang chạy giữ nguyên các giai đoạn của nó.
+        stage.DurationDays = durationDays; stage.UpdatedAtUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(ct);
+        return new(stage.GrowthProfileId, stage.Id, stage.DurationDays);
+    }
+
     public async Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken ct)
     {
         var user = await EnsureUserAsync(userId, tenantId, true, ct); ValidateRequirements(requirements, false);
@@ -268,15 +284,98 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
         await EnsureUserAsync(userId, tenantId, true, ct); await EnsureZoneOwnerAsync(tenantId, zoneId, ct);
         var name = Required(command.Name, nameof(command.Name), 200);
         if (command.ExpectedEndDate < command.StartDate.AddDays(20)) throw new RequestValidationException(nameof(command.ExpectedEndDate), "Expected end date must be at least 20 days after start date.");
+        // Vụ tạo ra là InProgress ngay nên ngày bắt đầu không được ở tương lai (cho lệch múi giờ tối đa 1 ngày so với UTC).
+        if (command.StartDate > DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)) throw new RequestValidationException(nameof(command.StartDate), "Start date cannot be in the future.");
         await VisibleCropAsync(command.CropId, tenantId, ct); if (command.VarietyId.HasValue) await VisibleVarietyAsync(command.VarietyId.Value, command.CropId, tenantId, ct);
         var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.Id == command.GrowthProfileId && (x.TenantId == null || x.TenantId == tenantId), ct) ?? throw new ResourceNotFoundException("Growth Profile was not found.");
         if (profile.CropId != command.CropId || profile.VarietyId != command.VarietyId) throw new RequestValidationException(nameof(command.GrowthProfileId), "Growth Profile does not match Crop and Variety.");
         var first = profile.Stages.OrderBy(x => x.StageOrder).FirstOrDefault() ?? throw new ResourceConflictException("Growth Profile has no stages.");
         await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         if (await dbContext.PlantingSeasons.AnyAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct)) throw new ResourceConflictException("Zone already has an InProgress Planting Season.");
+        // Cây của Zone là thuộc tính riêng: vụ InProgress phải cùng cây với Zone. Đổi (hoặc gán) cây Zone chỉ khi Owner xác nhận rõ ràng (SetZoneCrop), trong cùng giao dịch.
+        // Mỗi Zone chỉ có một vụ trong một mùa vụ.
+        if (command.FarmingSeasonId.HasValue && await dbContext.PlantingSeasons.AnyAsync(x => x.ZoneId == zoneId && x.FarmingSeasonId == command.FarmingSeasonId && x.Status != PlantingSeasonStatus.Cancelled, ct))
+            throw new ResourceConflictException("Zone đã thuộc mùa vụ này.");
+        var zone = await dbContext.Zones.SingleAsync(x => x.Id == zoneId, ct);
+        // Chỉ coi là khác cây khi khác loài cây, hoặc cả hai cùng nêu giống mà giống khác nhau. Vụ dùng hồ sơ chung của cây (không nêu giống) không mâu thuẫn với giống của Zone.
+        var conflicts = zone.CropId != command.CropId || (zone.CropVarietyId.HasValue && command.VarietyId.HasValue && zone.CropVarietyId != command.VarietyId);
+        var fillsVariety = zone.CropId == command.CropId && !zone.CropVarietyId.HasValue && command.VarietyId.HasValue;
+        if (zone.CropId.HasValue && conflicts && !command.SetZoneCrop)
+            throw new ResourceConflictException("Cây/giống của vụ khác cây/giống hiện tại của Zone. Hãy xác nhận đổi cây của Zone (setZoneCrop) hoặc chọn đúng cây của Zone.");
+        if (!zone.CropId.HasValue || fillsVariety || (conflicts && command.SetZoneCrop)) { zone.CropId = command.CropId; zone.CropVarietyId = command.VarietyId; }
         var season = new PlantingSeason { ZoneId = zoneId, CropId = command.CropId, VarietyId = command.VarietyId, GrowthProfileId = profile.Id, CurrentGrowthStageId = first.Id, Name = name, StartDate = command.StartDate, ExpectedEndDate = command.ExpectedEndDate, FarmingSeasonId = command.FarmingSeasonId };
         ApplyRequirements(season, first); dbContext.PlantingSeasons.Add(season); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         return (await SeasonQuery().AsNoTracking().SingleAsync(x => x.Id == season.Id, ct)).ToView();
+    }
+
+    public async Task<BulkCreateSeasonsResult> BulkCreateSeasonsAsync(Guid userId, Guid tenantId, BulkCreateSeasonsCommand command, CancellationToken ct)
+    {
+        await EnsureUserAsync(userId, tenantId, true, ct);
+        if (command.Zones.Count is 0 or > 50) throw new RequestValidationException(nameof(command.Zones), "Chọn từ 1 đến 50 Zone.");
+        var zoneIds = command.Zones.Select(x => x.ZoneId).Distinct().ToList();
+        if (zoneIds.Count != command.Zones.Count) throw new RequestValidationException(nameof(command.Zones), "Một Zone chỉ được chọn một lần.");
+        var prefix = Required(command.NamePrefix, nameof(command.NamePrefix), 150);
+        _ = await dbContext.FarmingSeasons.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.FarmingSeasonId && (x.TenantId == null || x.TenantId == tenantId), ct)
+            ?? throw new ResourceNotFoundException("Mùa vụ không tồn tại.");
+        await VisibleCropAsync(command.CropId, tenantId, ct); if (command.VarietyId.HasValue) await VisibleVarietyAsync(command.VarietyId.Value, command.CropId, tenantId, ct);
+        var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.Id == command.GrowthProfileId && (x.TenantId == null || x.TenantId == tenantId), ct) ?? throw new ResourceNotFoundException("Growth Profile was not found.");
+        if (profile.CropId != command.CropId || profile.VarietyId != command.VarietyId) throw new RequestValidationException(nameof(command.GrowthProfileId), "Growth Profile does not match Crop and Variety.");
+        var first = profile.Stages.OrderBy(x => x.StageOrder).FirstOrDefault() ?? throw new ResourceConflictException("Growth Profile has no stages.");
+
+        // Kiểm tra và tạo trong cùng một giao dịch để hai Owner không tạo trùng cùng lúc cho một Zone.
+        await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var zones = await dbContext.Zones.Include(x => x.Field).ThenInclude(x => x.Farm)
+            .Where(x => zoneIds.Contains(x.Id) && x.Field.Farm.TenantId == tenantId).ToDictionaryAsync(x => x.Id, ct);
+        var existing = (await dbContext.PlantingSeasons.AsNoTracking()
+            .Where(x => zoneIds.Contains(x.ZoneId) && x.Status != PlantingSeasonStatus.Cancelled)
+            .Select(x => new { x.ZoneId, x.Status, x.Name, x.FarmingSeasonId }).ToListAsync(ct)).ToLookup(x => x.ZoneId);
+        var latestStart = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1);
+
+        var plan = new List<(BulkSeasonZoneItem Item, Zone? Zone, List<string> Problems, DateOnly Start, DateOnly End)>();
+        foreach (var item in command.Zones)
+        {
+            var problems = new List<string>();
+            var start = item.StartDate ?? command.StartDate; var end = item.ExpectedEndDate ?? command.ExpectedEndDate;
+            // Zone ngoài tenant và Zone không tồn tại cùng một thông báo để không lộ dữ liệu.
+            if (!zones.TryGetValue(item.ZoneId, out var zone)) problems.Add("Zone không tồn tại trong trang trại của bạn.");
+            else
+            {
+                if (zone.Status == ZoneStatus.Archived || zone.ArchivedAtUtc.HasValue) problems.Add("Zone đã lưu trữ.");
+                foreach (var s in existing[zone.Id])
+                {
+                    // Mỗi Zone chỉ có một vụ trong một mùa vụ, và không có vụ đang canh tác hay vụ dự kiến của mùa vụ khác.
+                    if (s.Status == PlantingSeasonStatus.InProgress) problems.Add($"Zone đang có vụ “{s.Name}” đang canh tác.");
+                    else if (s.FarmingSeasonId == command.FarmingSeasonId) problems.Add("Zone đã thuộc mùa vụ này.");
+                    else if (s.Status == PlantingSeasonStatus.Planned) problems.Add($"Zone đã có vụ dự kiến “{s.Name}” thuộc mùa vụ khác.");
+                }
+                var differs = zone.CropId != command.CropId || (zone.CropVarietyId.HasValue && command.VarietyId.HasValue && zone.CropVarietyId != command.VarietyId);
+                // Zone chưa có cây thì vụ mới gán cây; Zone đang có cây khác thì Owner phải xác nhận đổi.
+                if (differs && zone.CropId.HasValue && !item.SetZoneCrop) problems.Add("Zone đang gán cây khác; cần xác nhận đổi cây của Zone.");
+            }
+            if (start > latestStart) problems.Add("Ngày bắt đầu không được ở tương lai.");
+            if (end < start.AddDays(20)) problems.Add("Ngày kết thúc dự kiến phải sau ngày bắt đầu ít nhất 20 ngày.");
+            plan.Add((item, zone, problems.Distinct().ToList(), start, end));
+        }
+
+        var validCount = plan.Count(x => x.Problems.Count == 0);
+        var results = plan.Select(x => new BulkSeasonZoneResult(x.Item.ZoneId, x.Zone?.Name, x.Problems.Count == 0, x.Problems, null)).ToList();
+        var invalidCount = plan.Count - validCount;
+        if (command.DryRun || validCount == 0 || (invalidCount > 0 && !command.SkipInvalid))
+            return new(false, command.DryRun, validCount, invalidCount, results);
+
+        var createdIds = new Dictionary<Guid, Guid>();
+        foreach (var x in plan.Where(p => p.Problems.Count == 0))
+        {
+            var zone = x.Zone!;
+            if (!zone.CropId.HasValue || (zone.CropId == command.CropId && !zone.CropVarietyId.HasValue && command.VarietyId.HasValue) || (x.Item.SetZoneCrop && (zone.CropId != command.CropId || (zone.CropVarietyId.HasValue && command.VarietyId.HasValue && zone.CropVarietyId != command.VarietyId)))) { zone.CropId = command.CropId; zone.CropVarietyId = command.VarietyId; }
+            var name = $"{prefix} - {zone.Name}"; if (name.Length > 200) name = name[..200];
+            var season = new PlantingSeason { ZoneId = zone.Id, CropId = command.CropId, VarietyId = command.VarietyId, GrowthProfileId = profile.Id, CurrentGrowthStageId = first.Id, Name = name, StartDate = x.Start, ExpectedEndDate = x.End, FarmingSeasonId = command.FarmingSeasonId };
+            ApplyRequirements(season, first); dbContext.PlantingSeasons.Add(season);
+            createdIds[zone.Id] = season.Id;
+        }
+        await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        results = results.Select(r => createdIds.TryGetValue(r.ZoneId, out var id) ? r with { PlantingSeasonId = id } : r).ToList();
+        return new(true, false, validCount, invalidCount, results);
     }
 
     public async Task<PlantingSeasonView> GetSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CancellationToken ct)

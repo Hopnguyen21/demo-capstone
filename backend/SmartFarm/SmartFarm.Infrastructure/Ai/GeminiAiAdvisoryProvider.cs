@@ -63,9 +63,9 @@ public sealed partial class GeminiAiAdvisoryProvider(
         var promptText = AiPromptBuilder.Build(request);
 
         logger.LogInformation(
-            "[Gemini] Sending request. Model={Model} PromptLength={PromptLength} Farm={Farm} Zone={Zone} Crop={Crop} Stage={Stage} Telemetry={Telemetry} Actuators={Actuators}",
+            "[Gemini] Sending request. Model={Model} PromptLength={PromptLength} Zone={Zone} Crop={Crop} Stage={Stage} Telemetry={Telemetry} Actuators={Actuators}",
             settings.Model, promptText.Length,
-            request.Context.FarmName, request.Context.ZoneName, request.Context.CropName, request.Context.GrowthStageName,
+            request.Context.ZoneName, request.Context.CropName, request.Context.GrowthStageName,
             request.Context.Telemetry.Count, request.Context.Actuators.Count);
         logger.LogDebug("[Gemini] Question: {Question}", request.Question);
 

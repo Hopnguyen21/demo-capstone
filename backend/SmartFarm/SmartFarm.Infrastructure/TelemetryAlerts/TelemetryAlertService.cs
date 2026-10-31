@@ -81,6 +81,15 @@ public sealed class TelemetryAlertService(
                 CapturedAtUtc = envelope.CapturedAtUtc, ReceivedAtUtc = now
             });
 
+        // Gateway vừa gửi số đo thì đang hoạt động: ghi nhận lần thấy gần nhất (trước đây không bao giờ được cập nhật).
+        var sendingGateway = await db.Gateways.SingleOrDefaultAsync(x => x.Id == authenticatedGatewayId, ct);
+        if (sendingGateway is not null)
+        {
+            sendingGateway.LastSeenAtUtc = now;
+            // Số đo cũ (gửi bù/phát lại) chỉ chứng tỏ gateway có liên lạc, không chứng tỏ nó đang hoạt động.
+            if (envelope.CapturedAtUtc >= now - FreshnessWindow) sendingGateway.Status = GatewayStatus.Online;
+        }
+
         var alertsCreated = 0;
         foreach (var input in envelope.Readings)
         {
@@ -211,16 +220,49 @@ public sealed class TelemetryAlertService(
                 .ToListAsync(ct);
         }
 
-        var requirements = await CurrentRequirementsAsync(zoneId, ct);
-        var metrics = rows.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x =>
-        {
-            requirements.TryGetValue(x.ParameterCode, out var requirement);
-            var status = requirement is null ? "Unknown" : x.Value < requirement.MinValue ? "Below" : x.Value > requirement.MaxValue ? "Above" : "Normal";
-            var fresh = x.CapturedAtUtc >= now - FreshnessWindow;
-            return new LatestMetricView(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc, x.ReceivedAtUtc, fresh, status);
-        }).OrderBy(x => x.ParameterCode).ToList();
+        var requirements = await OptionalRequirementsAsync(zoneId, ct);
+        var metrics = rows.GroupBy(x => x.ParameterCode).Select(x => x.First()).Select(x => ToMetricView(x, requirements, now))
+            .OrderBy(x => x.ParameterCode).ToList();
         return new(zoneId, rows.FirstOrDefault()?.ReceivedAtUtc, metrics.Any(x => x.IsFresh), metrics);
     }
+
+    public async Task<ZoneDeviceTelemetryView> LatestByDeviceAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
+    {
+        await EnsureZoneAccessAsync(userId, tenantId, zoneId, ct);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var devices = await db.Devices.AsNoTracking().Include(d => d.Sensors).Include(d => d.Actuators)
+            .Where(d => d.ZoneId == zoneId && d.DecommissionedAtUtc == null)
+            .OrderBy(d => d.DeviceType).ThenBy(d => d.CreatedAtUtc).ToListAsync(ct);
+        var deviceIds = devices.Select(d => d.Id).ToList();
+        var latest = deviceIds.Count == 0
+            ? []
+            : await db.TelemetryReadings.AsNoTracking()
+                .Where(x => deviceIds.Contains(x.DeviceId) && x.CapturedAtUtc <= now)
+                .GroupBy(x => new { x.DeviceId, x.ParameterCode })
+                .Select(g => g.OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).First())
+                .ToListAsync(ct);
+        var requirements = await OptionalRequirementsAsync(zoneId, ct);
+        var views = devices.Select(d => new DeviceLatestTelemetryView(
+            d.Id, d.HardwareAddress, d.DeviceType, d.Status, d.BatteryLevel, d.Rssi,
+            d.Sensors.OrderBy(s => s.SensorType).Select(s => s.SensorType).ToList(),
+            d.Actuators.Select(a => a.ActuatorType).ToList(),
+            latest.Where(r => r.DeviceId == d.Id).Select(r => ToMetricView(r, requirements, now)).OrderBy(m => m.ParameterCode).ToList())).ToList();
+        return new(zoneId, views);
+    }
+
+    private static LatestMetricView ToMetricView(TelemetryReading x, Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement> requirements, DateTime now)
+    {
+        requirements.TryGetValue(x.ParameterCode, out var requirement);
+        var status = requirement is null ? "Unknown" : x.Value < requirement.MinValue ? "Below" : x.Value > requirement.MaxValue ? "Above" : "Normal";
+        var fresh = x.CapturedAtUtc >= now - FreshnessWindow;
+        return new LatestMetricView(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc, x.ReceivedAtUtc, fresh, status);
+    }
+
+    /// <summary>Ngưỡng của vụ mùa đang chạy; Zone chưa có vụ mùa thì không có ngưỡng (ThresholdStatus = Unknown) chứ không phải lỗi.</summary>
+    private async Task<Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>> OptionalRequirementsAsync(Guid zoneId, CancellationToken ct) =>
+        (await db.PlantingSeasons.AsNoTracking().Include(x => x.AppliedRequirements)
+            .SingleOrDefaultAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct))
+            ?.AppliedRequirements.ToDictionary(x => x.ParameterCode) ?? [];
 
     public async Task<TelemetryHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, EnvironmentalParameterCode parameterCode, DateTime fromUtc, DateTime toUtc, string interval, CancellationToken ct)
     {

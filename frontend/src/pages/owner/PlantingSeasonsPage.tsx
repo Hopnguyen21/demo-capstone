@@ -5,7 +5,9 @@ import {
   DollarSign, AlertTriangle, Check, Layers, History, Filter, ArrowRight,
   Edit2, Trash2, Sprout, Tag, ChevronRight, BarChart3, Info
 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
+import { BulkSeasonModal, SeasonZonesModal } from '../../components/seasons/SeasonZonesModals';
 import {
   controlService, farmService, fieldService, seasonService,
   zoneService, farmingSeasonService, cropService
@@ -17,12 +19,19 @@ import {
 
 export const PlantingSeasonsPage: React.FC = () => {
   // Navigation tabs: Item 8 (Seasons) & Item 9 (Planting Batches)
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [zonesOfSeason, setZonesOfSeason] = useState<FarmingSeason | null>(null);
+  const [bulkSeason, setBulkSeason] = useState<FarmingSeason | null>(null);
   const [activeTab, setActiveTab] = useState<'PLANTING_CROPS' | 'SEASONS'>('PLANTING_CROPS');
 
   // Master Data
   const [farms, setFarms] = useState<Farm[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
+  // Hồ sơ sinh trưởng theo cây: vụ mùa cần hồ sơ (giai đoạn, ngưỡng) nên chỉ cây đã có hồ sơ mới được chọn.
+  const [cropProfiles, setCropProfiles] = useState<Record<string, any[]>>({});
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [varieties, setVarieties] = useState<CropVariety[]>([]);
   const [farmingSeasons, setFarmingSeasons] = useState<FarmingSeason[]>([]);
   const [plantingBatches, setPlantingBatches] = useState<PlantingSeason[]>([]);
@@ -39,9 +48,7 @@ export const PlantingSeasonsPage: React.FC = () => {
   const [editingMasterSeason, setEditingMasterSeason] = useState<FarmingSeason | null>(null);
   const [isZoneHistoryModalOpen, setIsZoneHistoryModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [isHarvestModalOpen, setIsHarvestModalOpen] = useState(false);
   const [isVietgapLogModalOpen, setIsVietgapLogModalOpen] = useState(false);
-  const [harvestSaved, setHarvestSaved] = useState(false);
 
   // Notifications
   const [successToast, setSuccessToast] = useState<string | null>(null);
@@ -74,22 +81,12 @@ export const PlantingSeasonsPage: React.FC = () => {
     zoneId: '',
     farmingSeasonId: '',
     cropId: '',
+    growthProfileId: '',
     varietyId: '',
     name: '',
     startDate: new Date().toISOString().slice(0, 10),
     expectedEndDate: '2027-01-20',
     notes: 'Quy trình tưới nhỏ giọt định lượng, giá thể xơ dừa xử lý sạch mầm bệnh VietGAP.',
-  });
-
-  // Harvest Form State
-  const [harvestForm, setHarvestForm] = useState({
-    harvestDate: new Date().toISOString().slice(0, 10),
-    totalYieldKg: 850,
-    gradeAKg: 720,
-    gradeBKg: 100,
-    scrapKg: 30,
-    unitPrice: 45000,
-    notes: 'Thu hoạch lứa 1 đạt chuẩn xuất khẩu VietGAP, độ ngọt Brix 9.2%',
   });
 
   // Schedule Form State
@@ -115,6 +112,19 @@ export const PlantingSeasonsPage: React.FC = () => {
 
       setFarms(fetchedFarms);
       setCrops(fetchedCrops);
+      // Không có hồ sơ (hoặc không tải được) thì cây đó không được chọn: không dùng hồ sơ mặc định thay thế.
+      const profileEntries = await Promise.all(
+        (fetchedCrops as Crop[]).map(async c => {
+          try {
+            const profiles = await cropService.getGrowthProfiles(c.cropId);
+            return [c.cropId, Array.isArray(profiles) ? profiles : []] as const;
+          } catch {
+            return [c.cropId, []] as const;
+          }
+        })
+      );
+      setCropProfiles(Object.fromEntries(profileEntries));
+      setProfilesLoaded(true);
       setVarieties(fetchedVarieties);
       setFarmingSeasons(fetchedSeasons);
 
@@ -199,6 +209,19 @@ export const PlantingSeasonsPage: React.FC = () => {
     loadData();
   }, []);
 
+  // Đến từ nút “Tạo vụ mùa” của Zone: mở sẵn form với Zone đó và cây của Zone (nếu có).
+  useEffect(() => {
+    const zid = searchParams.get('zoneId');
+    if (!zid || zones.length === 0) return;
+    const z = zones.find(x => x.zoneId === zid);
+    if (!z) return;
+    setActiveTab('PLANTING_CROPS');
+    setNewBatchForm(prev => ({ ...prev, zoneId: z.zoneId, farmId: z.farmId }));
+    if (z.cropId) handleCropChange(z.cropId);
+    setIsNewBatchModalOpen(true);
+    setSearchParams({}, { replace: true });
+  }, [zones, searchParams]);
+
   // Cascade dropdown: Available zones based on selected farm in form
   const availableZonesForForm = useMemo(() => {
     if (!newBatchForm.farmId) return zones;
@@ -221,6 +244,15 @@ export const PlantingSeasonsPage: React.FC = () => {
     }));
   };
 
+  const profileIdOf = (p: any): string => p?.growthProfileId || p?.profileId || p?.id || '';
+  // Hồ sơ gắn riêng cho một giống chỉ dùng với giống đó; hồ sơ chung (không có giống) dùng khi không chọn giống. Backend đòi khớp đúng.
+  const pickProfile = (cropId: string, varietyId?: string) => {
+    const profiles = cropProfiles[cropId] ?? [];
+    return profiles.find(p => p.varietyId && p.varietyId === varietyId) ?? profiles.find(p => !p.varietyId) ?? profiles[0];
+  };
+  const selectableCrops = crops.filter(c => (cropProfiles[c.cropId]?.length ?? 0) > 0);
+  const cropsWithoutProfile = profilesLoaded ? crops.filter(c => (cropProfiles[c.cropId]?.length ?? 0) === 0) : [];
+
   // Handler: When user selects a crop in new batch modal -> CASCADE to varieties
   const handleCropChange = (newCropId: string) => {
     const matchingVars = varieties.filter(v => v.cropId === newCropId);
@@ -231,7 +263,8 @@ export const PlantingSeasonsPage: React.FC = () => {
     setNewBatchForm(prev => ({
       ...prev,
       cropId: newCropId,
-      varietyId: matchingVars[0]?.varietyId || '',
+      growthProfileId: profileIdOf(pickProfile(newCropId, matchingVars[0]?.varietyId)),
+      varietyId: pickProfile(newCropId, matchingVars[0]?.varietyId)?.varietyId || '',
       name: `[${varName}] Đợt 1 - ${chosenSeason?.name || 'Vụ 2026'}`,
       // auto adjust expected end date based on crop growth cycle
       expectedEndDate: new Date(Date.now() + (chosenCrop?.growthCycleDays || 90) * 86400000).toISOString().slice(0, 10),
@@ -242,9 +275,11 @@ export const PlantingSeasonsPage: React.FC = () => {
   const handleVarietyChange = (newVarietyId: string) => {
     const chosenVar = varieties.find(v => v.varietyId === newVarietyId);
     const chosenSeason = farmingSeasons.find(s => s.id === newBatchForm.farmingSeasonId);
+    const matchedProfile = pickProfile(newBatchForm.cropId, newVarietyId);
     setNewBatchForm(prev => ({
       ...prev,
-      varietyId: newVarietyId,
+      varietyId: matchedProfile?.varietyId || '',
+      growthProfileId: profileIdOf(matchedProfile) || prev.growthProfileId,
       name: chosenVar ? `[${chosenVar.name}] Đợt 1 - ${chosenSeason?.name || 'Vụ 2026'}` : prev.name,
     }));
   };
@@ -341,28 +376,41 @@ export const PlantingSeasonsPage: React.FC = () => {
 
     try {
       const chosenCrop = crops.find(c => c.cropId === newBatchForm.cropId);
-      const chosenVar = varieties.find(v => v.varietyId === newBatchForm.varietyId);
       const chosenZone = zones.find(z => z.zoneId === newBatchForm.zoneId);
       const chosenSeason = farmingSeasons.find(s => s.id === newBatchForm.farmingSeasonId);
 
-      // Find or assign standard profile
-      let targetProfileId = '20000000-0000-0000-0000-000000000001';
-      try {
-        const profiles = await cropService.getGrowthProfiles(newBatchForm.cropId);
-        if (profiles.length > 0) targetProfileId = profiles[0].growthProfileId || profiles[0].profileId || targetProfileId;
-      } catch {
-        // fallback
+      // Vụ mùa bắt buộc dựa trên hồ sơ sinh trưởng của đúng cây đã chọn; không có thì không tạo.
+      const selectedProfile = (cropProfiles[newBatchForm.cropId] ?? []).find(p => profileIdOf(p) === newBatchForm.growthProfileId) ?? pickProfile(newBatchForm.cropId, newBatchForm.varietyId);
+      const targetProfileId = profileIdOf(selectedProfile);
+      // Giống gửi lên theo đúng hồ sơ đã chọn (hồ sơ chung thì không có giống), để backend xác nhận khớp.
+      const seasonVarietyId: string | undefined = selectedProfile?.varietyId || undefined;
+      if (!targetProfileId) {
+        setErrorMessage(`Loại cây "${chosenCrop?.name || ''}" chưa có hồ sơ sinh trưởng nên chưa thể lập đợt trồng. Hãy tạo hồ sơ sinh trưởng cho cây này trước.`);
+        return;
+      }
+
+      // Cây của Zone là thuộc tính riêng; chỉ gán/đổi khi Owner xác nhận rõ ràng.
+      let setZoneCrop = false;
+      if (chosenZone?.cropId !== newBatchForm.cropId || (chosenZone?.varietyId && seasonVarietyId && chosenZone.varietyId !== seasonVarietyId)) {
+        const message = chosenZone?.currentCrop
+          ? `Zone đang gán cây "${chosenZone.currentCrop}". Bắt đầu vụ cây "${chosenCrop?.name}" sẽ đổi cây của Zone sang cây này. Xác nhận?`
+          : `Zone chưa được gán cây. Gán cây "${chosenCrop?.name}" cho Zone khi bắt đầu vụ này?`;
+        if (!window.confirm(message)) return;
+        setZoneCrop = true;
       }
 
       await seasonService.createSeason(newBatchForm.zoneId, {
         name: newBatchForm.name.trim(),
+        setZoneCrop,
         cropId: newBatchForm.cropId,
-        varietyId: newBatchForm.varietyId || undefined,
+        varietyId: seasonVarietyId,
         growthProfileId: targetProfileId,
         farmingSeasonId: newBatchForm.farmingSeasonId || undefined,
         startDate: newBatchForm.startDate,
         expectedEndDate: newBatchForm.expectedEndDate,
       });
+
+      const chosenVar = varieties.find(v => v.varietyId === seasonVarietyId);
 
       // Construct view item
       const newBatch: PlantingSeason = {
@@ -373,8 +421,8 @@ export const PlantingSeasonsPage: React.FC = () => {
         farmName: chosenZone?.farmName || '',
         cropId: newBatchForm.cropId,
         cropName: chosenCrop?.name || 'Cây trồng',
-        varietyId: newBatchForm.varietyId,
-        varietyName: chosenVar?.name || 'Giống cao sản F1',
+        varietyId: seasonVarietyId || '',
+        varietyName: chosenVar?.name || 'Theo hồ sơ chung của cây',
         farmingSeasonId: newBatchForm.farmingSeasonId,
         farmingSeasonName: chosenSeason?.name || 'Vụ Đông Xuân 2026',
         growthProfileId: targetProfileId,
@@ -473,43 +521,6 @@ export const PlantingSeasonsPage: React.FC = () => {
     setSuccessToast(`Đã cấu hình Lịch tưới Mùa vụ mới cho [${selectedSeason.name}]!`);
     loadData();
     setTimeout(() => setSuccessToast(null), 3500);
-  };
-
-  // Open Harvest Modal
-  const handleOpenHarvest = (season: PlantingSeason) => {
-    setSelectedSeason(season);
-    setHarvestSaved(false);
-    setHarvestForm({
-      harvestDate: new Date().toISOString().slice(0, 10),
-      totalYieldKg: 850,
-      gradeAKg: 720,
-      gradeBKg: 100,
-      scrapKg: 30,
-      unitPrice: 45000,
-      notes: `Thu hoạch ${season.name} đạt chuẩn xuất khẩu VietGAP, độ ngọt Brix 9.2%`,
-    });
-    setIsHarvestModalOpen(true);
-  };
-
-  // Save Harvest
-  const handleSaveHarvest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSeason) return;
-    try {
-      if (selectedSeason.zoneId && selectedSeason.plantingSeasonId) {
-        await seasonService.recordYield(selectedSeason.zoneId, selectedSeason.plantingSeasonId, {
-          actualYieldKg: harvestForm.totalYieldKg,
-          actualEndDate: harvestForm.harvestDate,
-          notes: harvestForm.notes,
-          markCompleted: true,
-        }).catch(() => null);
-      }
-      setHarvestSaved(true);
-      setSuccessToast(`Đã ghi nhận sản lượng thu hoạch ${harvestForm.totalYieldKg}kg cho [${selectedSeason.name}]!`);
-      setTimeout(() => setSuccessToast(null), 3500);
-    } catch {
-      setHarvestSaved(true);
-    }
   };
 
   // Open VietGAP Log Modal
@@ -797,9 +808,6 @@ export const PlantingSeasonsPage: React.FC = () => {
                           <Button size="sm" variant="outline" onClick={() => handleOpenVietgapLog(b)} className="text-xs">
                             <FileText size={13} className="mr-1.5 text-emerald-700" /> Nhật Ký VietGAP &amp; Vật Tư
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleOpenHarvest(b)} className="text-xs border-amber-300 text-amber-800 hover:bg-amber-50">
-                            <QrCode size={13} className="mr-1.5 text-amber-600" /> Thu Hoạch &amp; Mã QR
-                          </Button>
                           <Button size="sm" variant="primary" onClick={() => handleOpenSetupSchedule(b)}>
                             <Clock size={13} className="mr-1.5" /> Setup Lịch tưới
                           </Button>
@@ -948,6 +956,22 @@ export const PlantingSeasonsPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
+                        onClick={() => setZonesOfSeason(s)}
+                        className="p-1.5 text-sky-700 hover:bg-sky-50 rounded-lg font-semibold flex items-center gap-1 cursor-pointer"
+                        title="Xem các Zone đang áp dụng mùa vụ này"
+                      >
+                        <Layers size={13} /> Các Zone
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBulkSeason(s)}
+                        className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg font-semibold flex items-center gap-1 cursor-pointer"
+                        title="Áp dụng mùa vụ này cho nhiều Zone"
+                      >
+                        <Plus size={13} /> Áp dụng nhiều Zone
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleOpenEditMasterSeason(s)}
                         className="p-1.5 text-purple-700 hover:bg-purple-50 rounded-lg font-semibold flex items-center gap-1 cursor-pointer"
                         title="Chỉnh sửa thông tin vụ mùa"
@@ -974,6 +998,16 @@ export const PlantingSeasonsPage: React.FC = () => {
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL 1: LẬP ĐỢT TRỒNG MỚI (ITEM 9 & 10 CASCADE DROPDOWN) */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <SeasonZonesModal season={zonesOfSeason} onClose={() => setZonesOfSeason(null)} onOpenZone={() => navigate('/owner/farms')} />
+      <BulkSeasonModal
+        season={bulkSeason}
+        zones={zones}
+        crops={crops}
+        cropProfiles={cropProfiles}
+        onClose={() => setBulkSeason(null)}
+        onCreated={() => { loadData(); }}
+      />
+
       <Modal
         isOpen={isNewBatchModalOpen}
         onClose={() => setIsNewBatchModalOpen(false)}
@@ -1017,7 +1051,13 @@ export const PlantingSeasonsPage: React.FC = () => {
               <select
                 required
                 value={newBatchForm.zoneId}
-                onChange={e => setNewBatchForm({ ...newBatchForm, zoneId: e.target.value })}
+                onChange={e => {
+                  const zid = e.target.value;
+                  setNewBatchForm(prev => ({ ...prev, zoneId: zid }));
+                  // Cây của vụ mặc định là cây đã gán cho Zone (Owner vẫn đổi được và sẽ được hỏi xác nhận).
+                  const zoneCropId = zones.find(z => z.zoneId === zid)?.cropId;
+                  if (zoneCropId) handleCropChange(zoneCropId);
+                }}
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-emerald-500"
               >
                 <option value="">-- Chọn Phân khu canh tác --</option>
@@ -1064,10 +1104,32 @@ export const PlantingSeasonsPage: React.FC = () => {
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-emerald-500"
               >
                 <option value="">-- Chọn Loài cây --</option>
-                {crops.map(c => (
+                {selectableCrops.map(c => (
                   <option key={c.cropId} value={c.cropId}>{c.name} ({c.category || 'Rau ăn quả'})</option>
                 ))}
               </select>
+              {profilesLoaded && cropsWithoutProfile.length > 0 && (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  Chỉ hiện loại cây đã có hồ sơ sinh trưởng. Chưa có hồ sơ: {cropsWithoutProfile.map(c => c.name).join(', ')}.
+                </p>
+              )}
+              {newBatchForm.cropId && (cropProfiles[newBatchForm.cropId]?.length ?? 0) > 1 && (
+                <div className="mt-2">
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Hồ sơ sinh trưởng áp dụng</label>
+                  <select
+                    value={newBatchForm.growthProfileId}
+                    onChange={e => {
+                      const chosen = (cropProfiles[newBatchForm.cropId] ?? []).find(p => profileIdOf(p) === e.target.value);
+                      setNewBatchForm(prev => ({ ...prev, growthProfileId: e.target.value, varietyId: chosen?.varietyId || '' }));
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900"
+                  >
+                    {cropProfiles[newBatchForm.cropId].map(p => (
+                      <option key={profileIdOf(p)} value={profileIdOf(p)}>{(p.name || profileIdOf(p)) + (p.isSystemDefined ? ' — hệ thống' : ' — của trang trại')}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1402,157 +1464,6 @@ export const PlantingSeasonsPage: React.FC = () => {
         )}
       </Modal>
 
-      {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {/* MODAL 5: GHI NHẬN THU HOẠCH & MÃ QR */}
-      {/* ══════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={isHarvestModalOpen}
-        onClose={() => setIsHarvestModalOpen(false)}
-        title={`Ghi Nhận Thu Hoạch & Mã QR Truy Xuất: "${selectedSeason?.name || ''}"`}
-      >
-        <div className="space-y-4 text-xs">
-          {!harvestSaved ? (
-            <form onSubmit={handleSaveHarvest} className="space-y-3.5">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-slate-500 block text-[10px]">Cây trồng &amp; Vụ mùa:</span>
-                <strong className="text-slate-900 text-sm">{selectedSeason?.cropName} ({selectedSeason?.varietyName})</strong>
-                <p className="text-[11px] text-slate-500 mt-0.5">Khu vực: {selectedSeason?.zoneName} • Tiêu chuẩn VietGAP TCVN 11892-1:2017</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Ngày Thu Hoạch *</label>
-                  <Input
-                    type="date"
-                    required
-                    value={harvestForm.harvestDate}
-                    onChange={e => setHarvestForm({ ...harvestForm, harvestDate: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Tổng Sản Lượng (kg) *</label>
-                  <Input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.1"
-                    value={harvestForm.totalYieldKg}
-                    onChange={e => setHarvestForm({ ...harvestForm, totalYieldKg: Number(e.target.value) })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl">
-                <div>
-                  <label className="block text-emerald-900 font-bold text-[11px] mb-1">Loại 1 (VIP - kg)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={harvestForm.gradeAKg}
-                    onChange={e => setHarvestForm({ ...harvestForm, gradeAKg: Number(e.target.value) })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-emerald-900 font-bold text-[11px] mb-1">Loại 2 (Thường - kg)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={harvestForm.gradeBKg}
-                    onChange={e => setHarvestForm({ ...harvestForm, gradeBKg: Number(e.target.value) })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-rose-900 font-bold text-[11px] mb-1">Hao hụt/Loại (kg)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={harvestForm.scrapKg}
-                    onChange={e => setHarvestForm({ ...harvestForm, scrapKg: Number(e.target.value) })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">Giá Bán Dự Kiến (VNĐ/kg)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={harvestForm.unitPrice}
-                    onChange={e => setHarvestForm({ ...harvestForm, unitPrice: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-center">
-                  <span className="text-[10px] text-slate-500 font-semibold uppercase">Doanh Thu Dự Kiến:</span>
-                  <span className="text-base font-black text-emerald-700">
-                    {((harvestForm.gradeAKg + harvestForm.gradeBKg) * harvestForm.unitPrice).toLocaleString('vi-VN')} VNĐ
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">Ghi Chú Nghiệm Thu / Độ Ngọt Brix</label>
-                <Input
-                  value={harvestForm.notes}
-                  onChange={e => setHarvestForm({ ...harvestForm, notes: e.target.value })}
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <Button variant="ghost" type="button" onClick={() => setIsHarvestModalOpen(false)}>Hủy</Button>
-                <Button variant="primary" type="submit" className="bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5">
-                  <QrCode size={15} /> Lưu &amp; Sinh Tem QR Truy Xuất
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <div className="p-5 bg-white border-2 border-dashed border-emerald-500 rounded-2xl shadow-sm text-center space-y-3">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-900 rounded-full font-bold text-xs uppercase tracking-wide">
-                  <Check size={14} /> Tem Truy Xuất Nguồn Gốc VietGAP
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-lg font-black text-slate-900">{selectedSeason?.cropName}</h3>
-                  <p className="text-xs text-slate-600 font-medium">Giống: {selectedSeason?.varietyName || 'Cao Sản F1'} • {selectedSeason?.zoneName}</p>
-                </div>
-
-                <div className="flex justify-center py-2">
-                  <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs inline-block">
-                    <div className="w-32 h-32 bg-slate-900 p-2 rounded-lg flex flex-col justify-between items-center text-white">
-                      <div className="flex justify-between w-full">
-                        <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center"><div className="w-3 h-3 bg-white" /></div>
-                        <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center"><div className="w-3 h-3 bg-white" /></div>
-                      </div>
-                      <div className="text-[9px] font-mono font-bold tracking-widest text-emerald-400">SMARTFARM</div>
-                      <div className="flex justify-between w-full">
-                        <div className="w-6 h-6 border-2 border-white rounded flex items-center justify-center"><div className="w-3 h-3 bg-white" /></div>
-                        <div className="w-3 h-3 bg-white" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-left bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-[11px]">
-                  <div className="flex justify-between"><span>Mã Lô Thu Hoạch:</span><strong className="font-mono text-emerald-700">LOT-VIE-2026-H01</strong></div>
-                  <div className="flex justify-between"><span>Ngày Thu Hoạch:</span><strong>{harvestForm.harvestDate}</strong></div>
-                  <div className="flex justify-between"><span>Sản Lượng Đóng Gói:</span><strong>{harvestForm.totalYieldKg} kg (Hạng A: {harvestForm.gradeAKg}kg)</strong></div>
-                  <div className="flex justify-between"><span>Thời Gian Cách Ly PHI:</span><strong className="text-emerald-700">Đã đảm bảo 7 ngày</strong></div>
-                  <div className="flex justify-between"><span>Tiêu Chuẩn:</span><strong>TCVN 11892-1:2017</strong></div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsHarvestModalOpen(false)}>Đóng</Button>
-                <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5">
-                  <Printer size={15} /> In Tem Nhãn Bao Bì
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL 6: NHẬT KÝ CANH TÁC VIETGAP */}

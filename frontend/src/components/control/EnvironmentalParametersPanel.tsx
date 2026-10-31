@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Sliders, Droplets, Thermometer, Wind, Sun, CheckCircle2, Lock, FlaskConical, Zap, Activity } from 'lucide-react';
 import { Button, CropRangeBand } from '../ui/BaseUI';
 import { EnvironmentalTargetConfig } from '../../types';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { telemetryService, aiService } from '../../services';
 
 interface EnvironmentalParametersPanelProps {

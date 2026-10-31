@@ -14,6 +14,11 @@ public sealed class Zone : AuditableEntity
     public string? Notes { get; set; }
     public ZoneStatus Status { get; set; } = ZoneStatus.Inactive;
     public DateTime? ArchivedAtUtc { get; set; }
+    /// <summary>Cây đang trồng hiện tại của Zone. Độc lập với vụ mùa; null nghĩa là Zone chưa được gán cây.</summary>
+    public Guid? CropId { get; set; }
+    public Crop? Crop { get; set; }
+    public Guid? CropVarietyId { get; set; }
+    public CropVariety? Variety { get; set; }
 
     public ICollection<UserZoneAccess> UserAccesses { get; } = new List<UserZoneAccess>();
     public ICollection<PlantingSeason> PlantingSeasons { get; } = new List<PlantingSeason>();

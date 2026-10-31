@@ -1,221 +1,218 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../app/providers/AuthContext';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/app/providers/AuthContext';
 import { supportService, userService } from '../../services';
-import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
-import { ClipboardList, Plus, Calendar, UserCheck, MapPin, User, CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { extractApiError } from '../../services/api';
+import { Button, Modal, Input } from '../../components/ui/BaseUI';
+import { ClipboardList, Plus, Calendar, MapPin, CheckCircle2, AlertTriangle, UserPlus, X } from 'lucide-react';
+import { Employee, FarmTaskDetail, FarmTaskAssignment, TaskAssignmentStatus } from '../../types';
+
+const STATUS_LABEL: Record<TaskAssignmentStatus, { text: string; style: string }> = {
+  Pending: { text: 'Chờ nhận việc', style: 'bg-amber-50 text-amber-800 border-amber-200' },
+  Accepted: { text: 'Đã nhận việc', style: 'bg-sky-50 text-sky-800 border-sky-200' },
+  InProgress: { text: 'Đang thực hiện', style: 'bg-sky-50 text-sky-800 border-sky-200' },
+  CompletedPendingReview: { text: 'Chờ bạn duyệt', style: 'bg-violet-50 text-violet-800 border-violet-200' },
+  Approved: { text: 'Đã duyệt', style: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  Failed: { text: 'Thất bại', style: 'bg-rose-50 text-rose-800 border-rose-200' },
+  Overdue: { text: 'Quá hạn', style: 'bg-rose-50 text-rose-800 border-rose-200' },
+  Cancelled: { text: 'Đã gỡ', style: 'bg-slate-100 text-slate-600 border-slate-200' },
+  Declined: { text: 'Đã từ chối', style: 'bg-rose-50 text-rose-800 border-rose-200' }
+};
+
+type Filter = 'ALL' | 'PENDING' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' | 'ATTENTION';
+const FILTERS: { key: Filter; label: string; match: (s: TaskAssignmentStatus) => boolean }[] = [
+  { key: 'ALL', label: 'Tất cả', match: () => true },
+  { key: 'PENDING', label: 'Chờ nhận', match: s => s === 'Pending' },
+  { key: 'IN_PROGRESS', label: 'Đang làm', match: s => s === 'Accepted' || s === 'InProgress' },
+  { key: 'REVIEW', label: 'Chờ duyệt', match: s => s === 'CompletedPendingReview' },
+  { key: 'DONE', label: 'Hoàn thành', match: s => s === 'Approved' },
+  { key: 'ATTENTION', label: 'Cần xử lý', match: s => s === 'Overdue' || s === 'Failed' || s === 'Declined' }
+];
+
+const formatDateTime = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('vi-VN') : '—');
+const endOfDayIso = (dateText: string) => new Date(`${dateText}T23:59:00`).toISOString();
+const defaultDueDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 2);
+  return d.toISOString().substring(0, 10);
+};
+
+const StatusChip: React.FC<{ status: TaskAssignmentStatus }> = ({ status }) => {
+  const label = STATUS_LABEL[status] ?? { text: status, style: 'bg-slate-50 text-slate-700 border-slate-200' };
+  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${label.style}`}>{label.text}</span>;
+};
+
+/** Danh sách chọn nhiều nhân công; nhân công chưa có quyền Zone bị khóa kèm lý do. */
+const FarmerMultiSelect: React.FC<{
+  farmers: Employee[];
+  zoneId: string;
+  excludeIds?: string[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}> = ({ farmers, zoneId, excludeIds = [], selected, onChange }) => {
+  const candidates = farmers.filter(f => !excludeIds.includes(f.employeeId));
+  if (candidates.length === 0) return <p className="text-xs text-slate-500">Không còn nhân công nào để chọn.</p>;
+  return (
+    <div className="space-y-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl max-h-44 overflow-y-auto">
+      {candidates.map(f => {
+        const eligible = f.status === 'ACTIVE' && (f.zoneAccess ?? []).some(z => z.zoneId === zoneId);
+        const checked = selected.includes(f.employeeId);
+        return (
+          <label key={f.employeeId} className={`flex items-center justify-between gap-2 p-2 rounded-lg border text-xs ${eligible ? 'bg-white border-slate-200 cursor-pointer' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
+            <span className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                disabled={!eligible}
+                checked={checked}
+                onChange={() => onChange(checked ? selected.filter(id => id !== f.employeeId) : [...selected, f.employeeId])}
+              />
+              <span className="font-semibold text-slate-800">{f.fullName}</span>
+            </span>
+            {!eligible && <span className="text-[10px] text-amber-700">chưa có quyền Zone này</span>}
+          </label>
+        );
+      })}
+    </div>
+  );
+};
 
 export const TasksPage: React.FC = () => {
-  const { selectedFarmId, zones } = useAuth();
-  const farmId = selectedFarmId || '30000000-0000-0000-0000-000000000001';
-  const DEFAULT_INITIAL_TASKS = [
-    {
-      taskId: 'task-001',
-      title: 'Kiểm tra và vệ sinh hệ thống béc tưới nhỏ giọt',
-      description: 'Kiểm tra áp lực ống dẫn chính, thông tắc các đầu béc tưới hàng số 2 và số 4 tại nhà màng.',
-      priority: 'HIGH',
-      status: 'InProgress',
-      zoneName: 'Nhà màng Cà Chua 01',
-      assignedToName: 'Nguyễn Văn Nông (NV001)',
-      dueDate: '2026-10-16',
-      createdAt: '2026-10-14',
-    },
-    {
-      taskId: 'task-002',
-      title: 'Bón phân vi lượng đợt 2 cho giai đoạn nuôi quả',
-      description: 'Pha dung dịch dinh dưỡng A & B theo tỷ lệ EC 2.2 mS/cm, tưới bổ sung gốc vào đầu giờ sáng.',
-      priority: 'HIGH',
-      status: 'Pending',
-      zoneName: 'Nhà kính Dưa lưới 02',
-      assignedToName: 'Trần Thị Thắm (NV002)',
-      dueDate: '2026-10-17',
-      createdAt: '2026-10-15',
-    },
-    {
-      taskId: 'task-003',
-      title: 'Thu hoạch cà chua cherry chín bói đợt 1',
-      description: 'Thu hoạch chùm quả đạt độ chín màu từ 80%, xếp cẩn thận vào giỏ tiêu chuẩn tránh dập nát.',
-      priority: 'MEDIUM',
-      status: 'Completed',
-      zoneName: 'Nhà màng Cà Chua 01',
-      assignedToName: 'Nguyễn Văn Nông (NV001)',
-      dueDate: '2026-10-15',
-      createdAt: '2026-10-13',
-    },
-    {
-      taskId: 'task-004',
-      title: 'Tỉa chồi nách và cố định dây leo giàn',
-      description: 'Cắt tỉa toàn bộ chồi phụ dưới tầng hoa thứ 3 và quấn dây cố định thân cây dưa lưới theo chiều kim đồng hồ.',
-      priority: 'LOW',
-      status: 'Pending',
-      zoneName: 'Nhà kính Dưa lưới 02',
-      assignedToName: 'Lê Văn Lộc (NV003)',
-      dueDate: '2026-10-18',
-      createdAt: '2026-10-15',
-    },
-  ];
+  const { selectedFarmId, zones: allZones, farms, setSelectedFarmId } = useAuth();
+  // Công việc, nhân công và Zone đều theo Farm đang chọn.
+  const zones = (allZones as any[]).filter((z: any) => z.farmId === selectedFarmId);
+  const farmId = selectedFarmId;
+  const [searchParams] = useSearchParams();
+  const focusTaskId = searchParams.get('taskId');
+  const focusRef = useRef<HTMLDivElement | null>(null);
 
-  const [tasks, setTasks] = useState<any[]>(DEFAULT_INITIAL_TASKS);
-  const [farmers, setFarmers] = useState<any[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [tasks, setTasks] = useState<FarmTaskDetail[]>([]);
+  const [farmers, setFarmers] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [newTask, setNewTask] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
-    return {
-      title: '',
-      description: '',
-      zoneId: '',
-      assignedFarmerId: '',
-      priority: 'HIGH' as const,
-      dueDate: d.toISOString().substring(0, 10),
-    };
-  });
+  const [formError, setFormError] = useState<string | null>(null);
+  const [form, setForm] = useState({ title: '', description: '', zoneId: '', dueDate: defaultDueDate(), farmerIds: [] as string[] });
 
-  const loadTasks = async () => {
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [addIds, setAddIds] = useState<string[]>([]);
+  const [addDueDate, setAddDueDate] = useState(defaultDueDate());
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const load = useCallback(async () => {
+    if (!farmId) return;
+    setLoading(true);
     try {
-      const res = await supportService.getTasks(farmId);
-      if (Array.isArray(res) && res.length > 0) {
-        setTasks(res);
-      }
-    } catch {
-      // Giữ default tasks nếu API rỗng hoặc lỗi
+      const [taskList, members] = await Promise.all([supportService.getTasks(farmId), userService.getFarmers()]);
+      setTasks(Array.isArray(taskList) ? taskList : []);
+      // Chỉ nhân công thuộc Farm đang chọn.
+      setFarmers(Array.isArray(members) ? members.filter((m: any) => (m.assignedFarms ?? []).includes(farmId)) : []);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(extractApiError(err));
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const loadFarmers = async () => {
-    try {
-      const list = await userService.getFarmers();
-      if (Array.isArray(list)) setFarmers(list);
-    } catch {}
-  };
-
-  useEffect(() => {
-    loadTasks();
-    loadFarmers();
   }, [farmId]);
 
-  // Keep default zoneId and assignedFarmerId populated
   useEffect(() => {
-    if (zones && zones.length > 0 && !newTask.zoneId) {
-      setNewTask(prev => ({ ...prev, zoneId: zones[0].zoneId }));
-    }
-  }, [zones]);
+    load();
+  }, [load]);
 
   useEffect(() => {
-    if (farmers && farmers.length > 0 && !newTask.assignedFarmerId) {
-      setNewTask(prev => ({ ...prev, assignedFarmerId: farmers[0].employeeId || farmers[0].userId }));
-    }
-  }, [farmers]);
+    if (zones.length > 0 && !zones.some((z: any) => z.zoneId === form.zoneId)) setForm(prev => ({ ...prev, zoneId: zones[0].zoneId }));
+  }, [zones, form.zoneId]);
 
-  const handleAdd = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (focusTaskId && focusRef.current) focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusTaskId, tasks.length]);
+
+  // Chỉ thay công việc bằng dữ liệu backend trả về sau khi API xác nhận.
+  const replaceTask = (updated: FarmTaskDetail) => setTasks(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTask.zoneId) {
-      alert('Vui lòng chọn Khu vực / Nhà màng!');
-      return;
-    }
-    if (!newTask.assignedFarmerId) {
-      alert('Vui lòng chọn Công nhân phụ trách thực hiện công việc!');
-      return;
-    }
-
-    const selectedZoneObj = zones.find(z => z.zoneId === newTask.zoneId);
-    const selectedFarmerObj = farmers.find(f => (f.employeeId || f.userId) === newTask.assignedFarmerId);
-
-    const createdLocal = {
-      taskId: `task-${Date.now()}`,
-      farmId,
-      zoneName: selectedZoneObj?.name || 'Nhà màng canh tác',
-      title: newTask.title,
-      description: newTask.description,
-      priority: newTask.priority,
-      status: 'Pending',
-      assignedToName: selectedFarmerObj?.fullName || 'Công nhân phụ trách',
-      dueDate: newTask.dueDate,
-      createdAt: new Date().toISOString().substring(0, 10),
-    };
+    if (!farmId) return;
+    setFormError(null);
+    if (!form.zoneId) return setFormError('Hãy chọn Zone.');
+    if (form.farmerIds.length === 0) return setFormError('Hãy chọn ít nhất một nhân công nhận việc.');
+    const dueAtUtc = endOfDayIso(form.dueDate);
+    if (new Date(dueAtUtc).getTime() <= Date.now()) return setFormError('Hạn hoàn thành phải ở tương lai.');
 
     setIsSubmitting(true);
     try {
-      // Calculate future UTC deadline: at least 23:59:59 UTC of the selected date or tomorrow
-      const selectedDate = new Date(newTask.dueDate);
-      selectedDate.setHours(23, 59, 59, 0);
-      const now = new Date();
-      if (selectedDate <= now) {
-        selectedDate.setDate(now.getDate() + 1);
-      }
-      const dueAtUtc = selectedDate.toISOString();
-
       await supportService.createTask(farmId, {
-        zoneId: newTask.zoneId,
-        title: newTask.title.trim(),
-        description: newTask.description?.trim(),
+        zoneId: form.zoneId,
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
         dueAtUtc,
-        assignedFarmerId: newTask.assignedFarmerId,
+        farmerIds: form.farmerIds
       });
-
-      // Update state locally & refresh from server
-      setTasks(prev => [createdLocal, ...prev]);
-      await loadTasks();
-
       setIsModalOpen(false);
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 2);
-      setNewTask({
-        title: '',
-        description: '',
-        zoneId: zones[0]?.zoneId || '',
-        assignedFarmerId: farmers[0]?.employeeId || farmers[0]?.userId || '',
-        priority: 'HIGH',
-        dueDate: tomorrow.toISOString().substring(0, 10),
-      });
-
-      // Notify Topbar and other components to update badge
-      window.dispatchEvent(new CustomEvent('notification-refresh'));
-      setToast({ type: 'success', message: 'Đã giao công việc mới cho công nhân thành công!' });
-      setTimeout(() => setToast(null), 4000);
-    } catch (err: any) {
-      console.error('Create Task failed:', err);
-      // Vẫn thêm vào state để người dùng thấy ngay task vừa tạo
-      setTasks(prev => [createdLocal, ...prev]);
-      setIsModalOpen(false);
-      setToast({ type: 'success', message: 'Đã giao công việc thành công vào hệ thống!' });
-      setTimeout(() => setToast(null), 4000);
+      setForm({ title: '', description: '', zoneId: form.zoneId, dueDate: defaultDueDate(), farmerIds: [] });
+      await load();
+      window.dispatchEvent(new Event('notification-refresh'));
+      showToast('success', `Đã giao công việc cho ${form.farmerIds.length} nhân công và gửi thông báo.`);
+    } catch (err) {
+      // Giữ nguyên dữ liệu form; không báo thành công khi backend chưa lưu.
+      setFormError(extractApiError(err));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdateStatus = async (taskId: string, newStatus: string) => {
-    setTasks(prev =>
-      prev.map(t => {
-        const id = t.taskId || t.id;
-        if (id === taskId) {
-          return { ...t, status: newStatus };
-        }
-        return t;
-      })
-    );
-
-    // Chỉ gọi PUT tới backend nếu taskId là GUID thực tế từ DB
-    const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskId);
-    if (isGuid) {
-      try {
-        await supportService.updateTask(farmId, taskId, { action: newStatus === 'Approved' || newStatus === 'Completed' ? 'Approve' : newStatus });
-      } catch (err) {
-        console.warn('Backend updateTask failed:', err);
-      }
+  const approve = async (task: FarmTaskDetail, assignment: FarmTaskAssignment) => {
+    setBusyKey(`${task.id}:${assignment.farmerId}`);
+    try {
+      replaceTask(await supportService.updateTask(farmId, task.id, { action: 'Approve', farmerId: assignment.farmerId }));
+      showToast('success', `Đã duyệt kết quả của ${assignment.farmerName}.`);
+    } catch (err) {
+      showToast('error', extractApiError(err));
+    } finally {
+      setBusyKey(null);
     }
   };
 
-  const filteredTasks = tasks.filter(t => {
-    if (statusFilter === 'ALL') return true;
-    const st = (t.status || '').toUpperCase();
-    if (statusFilter === 'PENDING') return st === 'PENDING';
-    if (statusFilter === 'IN_PROGRESS') return st === 'INPROGRESS' || st === 'ACCEPTED';
-    if (statusFilter === 'COMPLETED') return st === 'COMPLETED' || st === 'APPROVED' || st === 'COMPLETEDPENDINGREVIEW';
-    return true;
+  const removeAssignee = async (task: FarmTaskDetail, assignment: FarmTaskAssignment) => {
+    setBusyKey(`${task.id}:${assignment.farmerId}`);
+    try {
+      replaceTask(await supportService.removeTaskAssignee(farmId, task.id, assignment.farmerId));
+      showToast('success', `Đã gỡ ${assignment.farmerName} khỏi công việc.`);
+    } catch (err) {
+      showToast('error', extractApiError(err));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const addAssignees = async (task: FarmTaskDetail) => {
+    if (addIds.length === 0) return showToast('error', 'Hãy chọn nhân công cần giao thêm.');
+    const overdue = new Date(task.dueAtUtc).getTime() <= Date.now();
+    setBusyKey(`${task.id}:add`);
+    try {
+      replaceTask(await supportService.addTaskAssignees(farmId, task.id, addIds, overdue ? endOfDayIso(addDueDate) : undefined));
+      setAddingFor(null);
+      setAddIds([]);
+      window.dispatchEvent(new Event('notification-refresh'));
+      showToast('success', 'Đã giao thêm công việc và gửi thông báo.');
+    } catch (err) {
+      showToast('error', extractApiError(err));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const visible = tasks.filter(t => {
+    const rule = FILTERS.find(f => f.key === filter)!;
+    return filter === 'ALL' || rule.match(t.status) || t.assignments.some(a => rule.match(a.status));
   });
 
   return (
@@ -223,232 +220,187 @@ export const TasksPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <ClipboardList className="text-[#119653]" size={22} /> Phân công Công việc Thực địa (Work Orders & Tasks)
+            <ClipboardList className="text-[#119653]" size={22} /> Phân công Công việc
           </h1>
-          <p className="text-xs text-slate-600 mt-1">Giao task kiểm tra, bón phân, thu hoạch cho công nhân và theo dõi trạng thái hoàn thành.</p>
+          <p className="text-xs text-slate-600 mt-1">Giao một công việc cho nhiều nhân công; theo dõi tiến độ và duyệt kết quả của từng người.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus size={16} className="mr-1.5" /> Giao Task Mới
+        <Button onClick={() => { setFormError(null); setIsModalOpen(true); }} disabled={!farmId}>
+          <Plus size={16} className="mr-1.5" /> Giao công việc mới
         </Button>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-medium">
-        {[
-          { key: 'ALL', label: `Tất cả (${tasks.length})` },
-          { key: 'PENDING', label: `Chờ thực hiện (${tasks.filter(t => (t.status || '').toUpperCase() === 'PENDING').length})` },
-          { key: 'IN_PROGRESS', label: `Đang làm (${tasks.filter(t => ['INPROGRESS', 'ACCEPTED'].includes((t.status || '').toUpperCase())).length})` },
-          { key: 'COMPLETED', label: `Đã hoàn thành (${tasks.filter(t => ['COMPLETED', 'APPROVED', 'COMPLETEDPENDINGREVIEW'].includes((t.status || '').toUpperCase())).length})` },
-        ].map(tab => (
+      {toast && (
+        <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 border ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+          {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />} <span>{toast.message}</span>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-white border border-slate-200 rounded-2xl text-xs">
+        <label className="font-bold text-slate-700">Nông trại:</label>
+        <select value={selectedFarmId} onChange={e => setSelectedFarmId(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium">
+          <option value="">-- Chọn nông trại --</option>
+          {(farms as any[]).map((x: any) => <option key={x.farmId} value={x.farmId}>{x.name}</option>)}
+        </select>
+        {farmId && <span className="text-slate-500">{tasks.length} công việc • {farmers.length} nhân công • {zones.length} Zone</span>}
+      </div>
+
+      {!farmId && <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">Hãy chọn một nông trại.</div>}
+      {loadError && <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">Không tải được công việc: {loadError}</div>}
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2 text-xs font-medium">
+        {FILTERS.map(f => (
           <button
-            key={tab.key}
-            onClick={() => setStatusFilter(tab.key)}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              statusFilter === tab.key
-                ? 'bg-[#119653] text-white font-semibold shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`px-3 py-1.5 rounded-lg ${filter === f.key ? 'bg-[#119653] text-white' : 'text-slate-600 hover:bg-slate-100'}`}
           >
-            {tab.label}
+            {f.label}
           </button>
         ))}
       </div>
 
-      {/* Tasks List */}
       <div className="space-y-3">
-        {filteredTasks.length === 0 ? (
+        {loading && tasks.length === 0 && <p className="text-xs text-slate-500">Đang tải…</p>}
+        {!loading && visible.length === 0 && (
           <div className="text-center py-12 bg-white border border-dashed border-slate-200 rounded-xl p-8">
             <ClipboardList size={36} className="mx-auto text-slate-300 mb-2" />
-            <p className="text-sm font-semibold text-slate-700">Chưa có công việc nào trong danh mục này</p>
-            <p className="text-xs text-slate-500 mt-1">Bấm nút "Giao Task Mới" ở trên để phân công nhiệm vụ cho công nhân nông trại.</p>
+            <p className="text-sm font-semibold text-slate-700">Chưa có công việc nào trong mục này</p>
+            <p className="text-xs text-slate-500 mt-1">Bấm "Giao công việc mới" để giao việc cho nhân công.</p>
           </div>
-        ) : (
-          filteredTasks.map(t => {
-            const id = t.taskId || t.id;
-            const statusUpper = (t.status || '').toUpperCase();
-            const isDone = ['COMPLETED', 'APPROVED', 'COMPLETEDPENDINGREVIEW'].includes(statusUpper);
-            const isInProgress = ['INPROGRESS', 'ACCEPTED'].includes(statusUpper);
-
-            // Tìm tên khu vực và công nhân nếu task từ API chỉ có GUID
-            const matchedZone = zones.find(z => z.zoneId === t.zoneId);
-            const matchedFarmer = farmers.find(f => (f.employeeId || f.userId) === t.assignedFarmerId);
-            const zoneDisplay = t.zoneName || matchedZone?.name || 'Khu vực sản xuất';
-            const farmerDisplay = t.assignedToName || matchedFarmer?.fullName || (t.assignedFarmerId ? `Công nhân #${t.assignedFarmerId.substring(0, 8)}` : 'Công nhân phụ trách');
-            const deadlineDisplay = t.dueDate || (t.dueAtUtc ? t.dueAtUtc.substring(0, 10) : 'Hôm nay');
-
-            return (
-              <div
-                key={id}
-                className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 transition-colors"
-              >
-                <div className="space-y-1.5 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-emerald-800 font-mono">#{id?.substring(0, 8)}</span>
-                    <StatusBadge
-                      status={
-                        isDone
-                          ? 'COMPLETED'
-                          : isInProgress
-                          ? 'IN_PROGRESS'
-                          : 'PENDING'
-                      }
-                    />
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                      t.priority === 'URGENT'
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : t.priority === 'HIGH'
-                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                        : 'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}>
-                      Độ ưu tiên: {t.priority || 'HIGH'}
-                    </span>
-                  </div>
-
-                  <h3 className="text-sm font-bold text-slate-900">{t.title}</h3>
-                  <p className="text-xs text-slate-600">{t.description || 'Không có mô tả chi tiết'}</p>
-
-                  <div className="text-[11px] text-slate-500 pt-1 flex items-center gap-4 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <MapPin size={12} className="text-emerald-700" />
-                      Khu vực: <strong className="text-slate-800">{zoneDisplay}</strong>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <User size={12} className="text-[#119653]" />
-                      Người thực hiện: <strong className="text-slate-900">{farmerDisplay}</strong>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar size={12} className="text-slate-500" />
-                      Hạn hoàn thành: <strong className="text-slate-800">{deadlineDisplay}</strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Quick actions for Owner */}
-                <div className="flex items-center gap-2 shrink-0">
-                  {!isDone && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleUpdateStatus(id, 'Completed')}
-                      className="text-xs"
-                    >
-                      <CheckCircle2 size={14} className="mr-1 text-emerald-600" /> Duyệt Hoàn thành
-                    </Button>
-                  )}
-                  {isDone && (
-                    <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
-                      <CheckCircle2 size={14} /> Đã nghiệm thu
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })
         )}
+
+        {visible.map(task => {
+          const zoneName = zones.find((z: any) => z.zoneId === task.zoneId)?.name || 'Zone';
+          const activeAssignments = task.assignments.filter(a => a.status !== 'Cancelled');
+          const isFocused = focusTaskId === task.id;
+          const overdue = new Date(task.dueAtUtc).getTime() <= Date.now();
+          const takenIds = activeAssignments.filter(a => !['Failed', 'Overdue', 'Declined'].includes(a.status)).map(a => a.farmerId);
+          return (
+            <div
+              key={task.id}
+              ref={isFocused ? focusRef : undefined}
+              className={`p-5 bg-white border rounded-xl shadow-xs space-y-3 ${isFocused ? 'border-[#119653] ring-2 ring-emerald-200' : 'border-slate-200'}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-bold text-slate-900">{task.title}</h3>
+                    <StatusChip status={task.status} />
+                  </div>
+                  {task.description && <p className="text-xs text-slate-600">{task.description}</p>}
+                  <div className="text-[11px] text-slate-500 flex items-center gap-4 flex-wrap">
+                    <span className="flex items-center gap-1"><MapPin size={12} className="text-emerald-700" /> {zoneName}</span>
+                    <span className="flex items-center gap-1"><Calendar size={12} /> Hạn: <strong className="text-slate-800">{formatDateTime(task.dueAtUtc)}</strong></span>
+                    <span>{activeAssignments.length} nhân công</span>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => { setAddingFor(addingFor === task.id ? null : task.id); setAddIds([]); }}>
+                  <UserPlus size={13} className="mr-1.5" /> Giao thêm
+                </Button>
+              </div>
+
+              {/* Tiến độ từng nhân công */}
+              <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl">
+                {task.assignments.length === 0 && <p className="p-3 text-xs text-slate-500">Chưa có nhân công nào được giao.</p>}
+                {task.assignments.map(a => {
+                  const key = `${task.id}:${a.farmerId}`;
+                  return (
+                    <div key={a.id} className="p-3 text-xs space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900">{a.farmerName}</span>
+                          <StatusChip status={a.status} />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {a.status === 'CompletedPendingReview' && (
+                            <Button size="sm" variant="outline" disabled={busyKey === key} onClick={() => approve(task, a)}>
+                              <CheckCircle2 size={13} className="mr-1 text-emerald-600" /> Duyệt kết quả
+                            </Button>
+                          )}
+                          {a.status !== 'Approved' && a.status !== 'Cancelled' && (
+                            <Button size="sm" variant="ghost" disabled={busyKey === key} onClick={() => removeAssignee(task, a)} aria-label={`Gỡ ${a.farmerName}`}>
+                              <X size={13} />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      {a.status !== 'Cancelled' && a.status !== 'Declined' && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#119653]" style={{ width: `${a.progressPercent}%` }} />
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-500 w-9 text-right">{a.progressPercent}%</span>
+                        </div>
+                      )}
+                      {a.progressNote && <p className="text-slate-500">Ghi chú tiến độ: {a.progressNote}</p>}
+                      {a.result && <p className="text-slate-700">Kết quả: {a.result}</p>}
+                      {a.failureReason && <p className="text-rose-700">Lý do: {a.failureReason}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {addingFor === task.id && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <FarmerMultiSelect farmers={farmers} zoneId={task.zoneId} excludeIds={takenIds} selected={addIds} onChange={setAddIds} />
+                  {overdue && (
+                    <label className="flex items-center gap-2 text-xs text-slate-700">
+                      Công việc đã quá hạn, đặt hạn mới:
+                      <input type="date" value={addDueDate} onChange={e => setAddDueDate(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1" />
+                    </label>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setAddingFor(null)}>Hủy</Button>
+                    <Button size="sm" disabled={busyKey === `${task.id}:add`} onClick={() => addAssignees(task)}>Giao cho {addIds.length} người</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Tạo Task Mới cho Công nhân">
-        <form onSubmit={handleAdd} className="space-y-4 text-xs">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Giao công việc mới">
+        <form onSubmit={handleCreate} className="space-y-4 text-xs">
           <div>
-            <label className="block text-slate-700 font-medium mb-1">Tên công việc (Task Title) *</label>
-            <Input required value={newTask.title} onChange={e => setNewTask({ ...newTask, title: e.target.value })} placeholder="Kiểm tra hệ thống béc tưới" />
+            <label className="block text-slate-700 font-bold mb-1">Tên công việc *</label>
+            <Input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Tỉa cành và buộc dây giàn cà chua" />
           </div>
-
           <div>
-            <label className="block text-slate-700 font-medium mb-1">Mô tả chi tiết công việc</label>
-            <Input value={newTask.description} onChange={e => setNewTask({ ...newTask, description: e.target.value })} placeholder="Vệ sinh đầu lọc béc tưới hàng 2..." />
+            <label className="block text-slate-700 font-bold mb-1">Mô tả</label>
+            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} className="w-full border border-slate-300 rounded-lg p-2 text-xs" />
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-700 font-medium mb-1">Khu vực / Nhà màng (Zone) *</label>
-              <select
-                required
-                value={newTask.zoneId}
-                onChange={e => setNewTask({ ...newTask, zoneId: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
-              >
-                {zones.length === 0 ? (
-                  <option value="">(Chưa có zone nào)</option>
-                ) : (
-                  zones.map(z => (
-                    <option key={z.zoneId} value={z.zoneId}>
-                      {z.name} ({z.currentCrop || 'Khu canh tác'})
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-medium mb-1">Người phụ trách (Công nhân) *</label>
-              <select
-                required
-                value={newTask.assignedFarmerId}
-                onChange={e => setNewTask({ ...newTask, assignedFarmerId: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
-              >
-                {farmers.length === 0 ? (
-                  <option value="">(Đang tải danh sách công nhân...)</option>
-                ) : (
-                  farmers.map(f => (
-                    <option key={f.employeeId || f.userId} value={f.employeeId || f.userId}>
-                      {f.fullName} {f.employeeCode ? `(${f.employeeCode})` : ''}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 font-medium mb-1">Độ ưu tiên</label>
-              <select value={newTask.priority} onChange={e => setNewTask({ ...newTask, priority: e.target.value as any })} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs">
-                <option value="LOW">Thấp</option>
-                <option value="MEDIUM">Trung bình</option>
-                <option value="HIGH">Cao</option>
-                <option value="URGENT">Khẩn cấp</option>
+              <label className="block text-slate-700 font-bold mb-1">Zone *</label>
+              <select
+                value={form.zoneId}
+                onChange={e => setForm({ ...form, zoneId: e.target.value, farmerIds: [] })}
+                className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white"
+              >
+                {zones.map((z: any) => <option key={z.zoneId} value={z.zoneId}>{z.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-slate-700 font-medium mb-1">Hạn hoàn thành</label>
-              <Input type="date" value={newTask.dueDate} onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })} />
+              <label className="block text-slate-700 font-bold mb-1">Hạn hoàn thành *</label>
+              <input type="date" required value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2 text-xs" />
             </div>
           </div>
-
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Nhân công nhận việc * ({form.farmerIds.length} đã chọn)</label>
+            <FarmerMultiSelect farmers={farmers} zoneId={form.zoneId} selected={form.farmerIds} onChange={ids => setForm({ ...form, farmerIds: ids })} />
+            <p className="text-[11px] text-slate-500 mt-1">Chỉ nhân công đã chấp nhận lời mời và có quyền truy cập Zone này mới chọn được. Giao việc không tự cấp quyền Zone.</p>
+          </div>
+          {formError && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 flex items-start gap-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" /> <span>{formError}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>Hủy</Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Đang giao...' : 'Xác nhận Giao Task'}
-            </Button>
+            <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Hủy</Button>
+            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Đang giao…' : 'Giao công việc'}</Button>
           </div>
         </form>
       </Modal>
-
-      {/* Floating Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed top-5 right-5 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border animate-in slide-in-from-top-3 fade-in duration-300 ${
-            toast.type === 'success'
-              ? 'bg-emerald-900/95 border-emerald-600 text-white'
-              : 'bg-rose-900/95 border-rose-600 text-white'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-          ) : (
-            <AlertTriangle size={18} className="text-rose-400 shrink-0" />
-          )}
-          <span className="text-xs font-semibold">{toast.message}</span>
-          <button
-            onClick={() => setToast(null)}
-            className="ml-2 text-white/70 hover:text-white transition-colors"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
     </div>
   );
 };

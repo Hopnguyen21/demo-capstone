@@ -56,6 +56,8 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<LowStockAlert> LowStockAlerts => Set<LowStockAlert>();
     public DbSet<FarmTask> FarmTasks => Set<FarmTask>();
     public DbSet<FarmTaskHistory> FarmTaskHistory => Set<FarmTaskHistory>();
+    public DbSet<FarmTaskAssignment> FarmTaskAssignments => Set<FarmTaskAssignment>();
+    public DbSet<FarmInvitation> FarmInvitations => Set<FarmInvitation>();
     public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
     public DbSet<ServiceRequestHistory> ServiceRequestHistories => Set<ServiceRequestHistory>();
     public DbSet<DeviceReplacement> DeviceReplacements => Set<DeviceReplacement>();

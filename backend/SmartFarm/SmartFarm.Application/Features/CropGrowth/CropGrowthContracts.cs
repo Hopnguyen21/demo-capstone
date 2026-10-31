@@ -69,7 +69,15 @@ public sealed record GrowthStageView(Guid StageId, string Name, int StageOrder, 
 public sealed record GrowthProfileView(Guid ProfileId, Guid CropId, string CropName, Guid? VarietyId, string? VarietyName, string Name, string? Description, bool IsDefault, bool IsSystemDefined, Guid? TenantId, Guid? SourceProfileId, IReadOnlyList<GrowthStageView> Stages);
 public sealed record RequirementUpdateView(Guid EffectiveProfileId, Guid EffectiveStageId, bool ClonedFromSystem, IReadOnlyList<RequirementView> Requirements);
 
-public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, Guid? FarmingSeasonId = null);
+public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, Guid? FarmingSeasonId = null, bool SetZoneCrop = false);
+/// <summary>Một Zone trong thao tác tạo vụ hàng loạt; ngày để trống thì dùng ngày chung. SetZoneCrop là xác nhận riêng của Owner cho Zone này.</summary>
+public sealed record BulkSeasonZoneItem(Guid ZoneId, DateOnly? StartDate, DateOnly? ExpectedEndDate, bool SetZoneCrop);
+public sealed record BulkCreateSeasonsCommand(
+    Guid FarmingSeasonId, Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string NamePrefix, DateOnly StartDate, DateOnly ExpectedEndDate,
+    IReadOnlyList<BulkSeasonZoneItem> Zones, bool DryRun, bool SkipInvalid);
+public sealed record BulkSeasonZoneResult(Guid ZoneId, string? ZoneName, bool Valid, IReadOnlyList<string> Problems, Guid? PlantingSeasonId);
+public sealed record BulkCreateSeasonsResult(bool Created, bool DryRun, int ValidCount, int InvalidCount, IReadOnlyList<BulkSeasonZoneResult> Zones);
+public sealed record StageDurationView(Guid ProfileId, Guid StageId, int DurationDays);
 public sealed record TransitionStageCommand(Guid GrowthStageId, string? Notes);
 public sealed record CloseSeasonCommand(DateOnly ActualEndDate, decimal? ActualYieldKg, string? Notes);
 public sealed record RecordSeasonYieldCommand(decimal ActualYieldKg, DateOnly? ActualEndDate, string? Notes, bool MarkCompleted);

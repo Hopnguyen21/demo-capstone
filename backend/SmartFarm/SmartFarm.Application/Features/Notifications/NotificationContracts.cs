@@ -30,5 +30,7 @@ public sealed record CreateNotificationCommand(
     AlertSeverity Severity = AlertSeverity.Info,
     string? TargetUrl = null,
     string? ReferenceId = null,
-    string? MetadataJson = null
+    string? MetadataJson = null,
+    /// <summary>Có ReferenceId trùng (cùng người nhận và loại) thì trả lại thông báo cũ thay vì tạo thêm; dùng khi thử lại.</summary>
+    bool DeduplicateByReference = false
 );

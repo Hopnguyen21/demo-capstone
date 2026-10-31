@@ -6,6 +6,15 @@ import {
   AlertTriangle, RefreshCw, User, Phone, MapPin, Tag, PlusCircle, History
 } from 'lucide-react';
 
+const CATEGORY_LABEL: Record<string, string> = {
+  GATEWAY: 'Gateway',
+  SOIL_SENSOR: 'Cảm biến đất',
+  AIR_SENSOR: 'Cảm biến khí hậu',
+  SENSOR_NODE: 'Cảm biến',
+  VALVE: 'Van điều khiển',
+  PUMP: 'Máy bơm'
+};
+
 interface ZoneContractDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,6 +38,8 @@ export const ZoneContractDetailsModal: React.FC<ZoneContractDetailsModalProps> =
   const totalValue = Number(contract.totalContractValueVnd || 0);
   const deposit = Number(contract.depositVnd || (totalValue * 0.3));
   const remaining = Math.max(0, totalValue - deposit);
+  const equipment = contract.equipment ?? [];
+  const totalDevices = equipment.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
   return (
     <Modal
@@ -201,6 +212,40 @@ export const ZoneContractDetailsModal: React.FC<ZoneContractDetailsModalProps> =
               <span className="font-mono text-sm">{remaining.toLocaleString('vi-VN')} đ</span>
             </div>
           </div>
+        </div>
+
+        {/* Equipment list */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2.5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h4 className="font-bold text-slate-900 text-xs">Thiết bị theo hợp đồng</h4>
+            {equipment.length > 0 && (
+              <span className="text-[10px] text-slate-500">{equipment.length} loại · tổng {totalDevices} thiết bị</span>
+            )}
+          </div>
+          {equipment.length === 0 ? (
+            <p className="text-slate-500">Hợp đồng này chưa ghi nhận danh mục thiết bị.</p>
+          ) : (
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-slate-400 text-[10px] uppercase border-b border-slate-100">
+                  <th className="pb-1.5">Thiết bị</th>
+                  <th className="pb-1.5">Loại</th>
+                  <th className="pb-1.5 text-right">Số lượng</th>
+                  <th className="pb-1.5 text-right">Đơn giá</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {equipment.map(item => (
+                  <tr key={item.code + item.name}>
+                    <td className="py-1.5 font-semibold text-slate-800">{item.name}</td>
+                    <td className="py-1.5 text-slate-500">{CATEGORY_LABEL[item.category] ?? item.category}</td>
+                    <td className="py-1.5 text-right font-mono">{item.quantity} {item.unit}</td>
+                    <td className="py-1.5 text-right font-mono">{Number(item.unitPrice).toLocaleString('vi-VN')} đ</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Special Terms & Notes */}

@@ -385,6 +385,13 @@ public sealed class SimulatedIotTelemetryWorker(
         if (readingsToAdd.Count > 0)
         {
             await db.TelemetryReadings.AddRangeAsync(readingsToAdd, ct);
+            // Gateway gửi số đo thì được ghi nhận là đang hoạt động.
+            var sendingGatewayIds = readingsToAdd.Select(r => r.GatewayId).Distinct().ToList();
+            foreach (var gateway in await db.Gateways.Where(g => sendingGatewayIds.Contains(g.Id)).ToListAsync(ct))
+            {
+                gateway.LastSeenAtUtc = now;
+                gateway.Status = GatewayStatus.Online;
+            }
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Generated {Count} simulated IoT telemetry readings across {Zones} zones.", readingsToAdd.Count, zones.Count);
 

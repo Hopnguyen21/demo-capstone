@@ -20,6 +20,9 @@ public sealed class IoTPlanningController(IIoTDeploymentService service) : Contr
     // IOT-V1-03
     [HttpPost("api/v1/zones/{zoneId:guid}/deployment-requests")]
     public async Task<ActionResult<DeploymentRequestView>> Create(Guid zoneId, DeploymentPlanRequest body, CancellationToken ct) { var result = await service.CreateRequestAsync(User.GetUserId(), User.GetTenantId(), zoneId, new(body.Items.Select(x => x.ToInput()).ToList(), body.Notes), ct); return CreatedAtAction(nameof(Get), new { requestId = result.RequestId }, result); }
+    // IOT-V1-03a: danh sách yêu cầu của Tenant trong JWT (tuỳ chọn lọc theo Zone)
+    [HttpGet("api/v1/deployment-requests")]
+    public async Task<ActionResult<IReadOnlyList<DeploymentRequestView>>> ListMine([FromQuery] Guid? zoneId, CancellationToken ct) => Ok(await service.ListOwnerRequestsAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
     // IOT-V1-04
     [HttpPut("api/v1/deployment-requests/{requestId:guid}/plan")]
     public async Task<ActionResult<DeploymentRequestView>> UpdatePlan(Guid requestId, DeploymentPlanRequest body, CancellationToken ct) => Ok(await service.UpdateOwnerPlanAsync(User.GetUserId(), User.GetTenantId(), requestId, body.Items.Select(x => x.ToInput()).ToList(), ct));

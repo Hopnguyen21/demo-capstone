@@ -39,6 +39,24 @@ public sealed class ReportTests
     }
 
     [Fact]
+    public async Task Reports_accept_an_iso_utc_range_as_sent_by_the_web_client()
+    {
+        using var factory = new TestApplicationFactory();
+        var seed = await factory.SeedAsync();
+        await SeedCommands(factory, seed);
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+        var to = DateTime.UtcNow.AddMinutes(1);
+        var query = $"?fromUtc={Uri.EscapeDataString(to.AddDays(-30).ToString("O"))}&toUtc={Uri.EscapeDataString(to.ToString("O"))}";
+
+        foreach (var path in new[] { "water-usage", "electricity", "tasks" })
+        {
+            var response = await client.GetAsync($"/api/v1/farms/{seed.FarmAId}/report/{path}{query}");
+            Assert.True(response.IsSuccessStatusCode, $"{path}: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    [Fact]
     public async Task Owner_cannot_read_any_cross_tenant_report()
     {
         using var factory = new TestApplicationFactory();

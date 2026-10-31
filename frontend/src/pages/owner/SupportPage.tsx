@@ -1,7 +1,8 @@
+import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest, ZoneContract } from '../../types';
 import { supportService, zoneContractService } from '../../services';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Headphones, Plus, CheckSquare, CheckCircle2, Clock, Wrench,
@@ -901,7 +902,7 @@ export const SupportPage: React.FC = () => {
                 const c = getZoneContract(z.zoneId);
                 return (
                   <option key={z.zoneId} value={z.zoneId}>
-                    {z.name} ({z.currentCrop}) {c ? `• [Đã có HĐ #${c.contractNumber}]` : ''}
+                    {z.name} ({zoneCropLabel(z)}) {c ? `• [Đã có HĐ #${c.contractNumber}]` : ''}
                   </option>
                 );
               })}

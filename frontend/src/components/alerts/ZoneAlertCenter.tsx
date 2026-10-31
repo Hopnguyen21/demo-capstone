@@ -1,3 +1,4 @@
+import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ShieldAlert, CheckCircle2, Bot, Plus, Settings, Trash2, Edit3,
@@ -6,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Button, StatusBadge, Modal } from '../ui/BaseUI';
 import { alertService, deviceService } from '../../services';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { Alert, AlertRule as DomainAlertRule } from '../../types';
 
 export interface ZoneAlertCenterProps {
@@ -86,7 +87,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   onNavigateToControl
 }) => {
   const { zones: authZones } = useAuth();
-  const targetZone = authZones.find(z => z.zoneId === zoneId) || (zoneId ? { zoneId, name: `Zone ${zoneId}`, currentCrop: 'Cà chua' } : null);
+  const targetZone = authZones.find(z => z.zoneId === zoneId) || (zoneId ? { zoneId, name: `Zone ${zoneId}`, currentCrop: undefined } : null);
 
   // Hardware-adaptive node tracking:
   const [internalNodes, setInternalNodes] = useState<any[]>(passedNodes || []);
@@ -735,7 +736,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                 <Sparkles size={16} className="text-emerald-600" /> Phân tích Sự cố từ AI Chuyên gia Nông nghiệp
               </span>
               <p className="text-slate-700">
-                Dựa trên loại cây trồng <strong>{targetZone?.currentCrop || 'Cà chua'}</strong> tại Zone <strong>{aiAdviceModalAlert.zoneId || targetZone?.name}</strong>:
+                Dựa trên loại cây trồng <strong>{targetZone?.currentCrop || NO_CROP_LABEL}</strong> tại Zone <strong>{aiAdviceModalAlert.zoneId || targetZone?.name}</strong>:
               </p>
             </div>
 

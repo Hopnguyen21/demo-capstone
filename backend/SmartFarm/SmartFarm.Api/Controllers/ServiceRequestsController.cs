@@ -11,7 +11,7 @@ namespace SmartFarm.Api.Controllers;
 public sealed class ServiceRequestsController(IServiceRequestService service) : ControllerBase
 {
     [HttpPost("api/v1/farms/{farmId:guid}/service-requests"), Authorize(Roles = "FarmOwner")] // SERVICE-V1-01
-    public async Task<ActionResult<ServiceRequestView>> Create(Guid farmId, CreateServiceRequest r, CancellationToken ct) { var x = await service.CreateAsync(User.GetUserId(), User.GetTenantId(), farmId, new(r.ZoneId, r.DeviceId, r.FailureCode, r.Description), ct); return Created($"/api/v1/service-requests/{x.Id}", x); }
+    public async Task<ActionResult<ServiceRequestView>> Create(Guid farmId, CreateServiceRequest r, CancellationToken ct) { var x = await service.CreateAsync(User.GetUserId(), User.GetTenantId(), farmId, new(r.ZoneId, r.DeviceId, r.FailureCode, r.Description, r.DeploymentRequestId), ct); return Created($"/api/v1/service-requests/{x.Id}", x); }
     [HttpGet("api/v1/service-requests"), Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")] // SERVICE-V1-02
     public async Task<ActionResult<IReadOnlyList<ServiceRequestView>>> List(CancellationToken ct) => Ok(await service.ListAsync(User.GetUserId(), User.GetOptionalTenantId(), ct));
     [HttpGet("api/v1/service-requests/{id:guid}"), Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")] // SERVICE-V1-03
@@ -34,7 +34,7 @@ public sealed class ServiceRequestsController(IServiceRequestService service) : 
     public async Task<ActionResult<ServiceRequestView>> Close(Guid id, CancellationToken ct) => Ok(await service.CloseAsync(User.GetUserId(), id, ct));
 }
 
-public sealed class CreateServiceRequest { public Guid ZoneId { get; init; } public Guid? DeviceId { get; init; } [Required, StringLength(100)] public string FailureCode { get; init; } = ""; [Required, StringLength(2000)] public string Description { get; init; } = ""; }
+public sealed class CreateServiceRequest { public Guid ZoneId { get; init; } public Guid? DeviceId { get; init; } public Guid? DeploymentRequestId { get; init; } [Required, StringLength(100)] public string FailureCode { get; init; } = ""; [Required, StringLength(2000)] public string Description { get; init; } = ""; }
 public sealed class AssignServiceRequest { public Guid TechnicianUserId { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class DiagnoseServiceRequest { [Required, StringLength(2000)] public string InspectionNotes { get; init; } = ""; [Required, StringLength(2000)] public string Diagnosis { get; init; } = ""; public ServiceResolutionAction ResolutionAction { get; init; } }
 public sealed class ServiceWorkRequest { [Required, StringLength(2000)] public string WorkPerformed { get; init; } = ""; }

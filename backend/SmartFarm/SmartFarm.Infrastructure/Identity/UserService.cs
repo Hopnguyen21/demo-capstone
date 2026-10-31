@@ -60,54 +60,6 @@ internal sealed class UserService(SmartFarmDbContext dbContext, TimeProvider tim
             : ToDetailView(user);
     }
 
-    public async Task<FarmerAssignmentView> InviteFarmerAsync(
-        Guid ownerUserId,
-        InviteFarmerCommand command,
-        CancellationToken cancellationToken)
-    {
-        var owner = await GetOwnerAsync(ownerUserId, cancellationToken);
-        var farm = await dbContext.Farms.SingleOrDefaultAsync(
-            x => x.Id == command.FarmId && x.TenantId == owner.TenantId,
-            cancellationToken);
-        if (farm is null)
-        {
-            throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
-        }
-
-        var normalizedEmail = AuthService.NormalizeEmail(command.Email);
-        var farmer = await dbContext.AppUsers.SingleOrDefaultAsync(
-            x => x.NormalizedEmail == normalizedEmail,
-            cancellationToken);
-        if (farmer is null || farmer.Role != UserRole.Farmer)
-        {
-            throw new ResourceNotFoundException("An eligible Farmer account was not found.");
-        }
-
-        if (farmer.Status != AccountStatus.Active)
-        {
-            throw new ResourceConflictException("The Farmer account is not active.");
-        }
-
-        if (farmer.TenantId.HasValue || farmer.FarmId.HasValue)
-        {
-            throw new ResourceConflictException("The Farmer already belongs to a Farm.");
-        }
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        farmer.TenantId = owner.TenantId;
-        farmer.FarmId = farm.Id;
-        farmer.UpdatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return new FarmerAssignmentView(
-            farmer.Id,
-            owner.TenantId!.Value,
-            farm.Id,
-            farmer.Status,
-            farmer.UpdatedAtUtc.Value);
-    }
-
     public async Task<ZoneAccessView> ReplaceZoneAccessAsync(
         Guid ownerUserId,
         Guid farmerUserId,

@@ -1,5 +1,4 @@
 using FluentAssertions;
-using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Infrastructure.Ai.Knowledge;
 using Xunit;
 
@@ -28,21 +27,4 @@ public class TopicClassifierTests
     [Fact]
     public void Content_hash_ignores_whitespace_case_and_unicode_form() =>
         TopicClassifier.ContentHash("Bón Phân  hữu cơ\n").Should().Be(TopicClassifier.ContentHash("bón phân hữu cơ".Normalize(System.Text.NormalizationForm.FormD)));
-
-    [Fact]
-    public void Profile_quotes_are_attributed_to_their_source_document()
-    {
-        var bundle = new CropSourceBundle("…", [
-            new(Guid.NewGuid(), "Hướng dẫn bón phân cà chua", null, "Bón thúc lần 1: 10-15 ngày sau khi trồng."),
-            new(Guid.NewGuid(), "Quy trình thu hoạch cà chua", null, "Thu hoạch khi quả chuyển màu đỏ.")
-        ]);
-        var draft = new VietGapGrowthProfileDraftResult("P", "D", 15, [
-            new GrowthStageDraft(1, "Cây con", 15, "10-15 ngày sau khi trồng", "", "", "", "", "", "", [])
-        ]);
-
-        var attributed = AgricultureDocumentService.AttributeSources(draft, bundle);
-
-        attributed.Stages[0].DurationEvidence.Should().EndWith("[Nguồn: Hướng dẫn bón phân cà chua]");
-        attributed.SourceDocuments.Should().Equal("Hướng dẫn bón phân cà chua", "Quy trình thu hoạch cà chua");
-    }
 }

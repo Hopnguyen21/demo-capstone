@@ -121,17 +121,58 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
                 cancellationToken);
 
             var saved = await documentService.GetDocumentByIdAsync(documentId, null, cancellationToken);
-            return CreatedAtAction(nameof(GetDocument), new { documentId }, new
+            return CreatedAtAction(nameof(GetDocument), new { documentId }, SavedDocumentResponse(documentId, saved));
+        }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException or IOException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Đọc và tự động trích xuất thông tin (cây trồng áp dụng, tiêu đề, mã số...) trực tiếp từ nội dung tệp.
+    /// Không lưu vào CSDL, dùng để tự động nhận diện trực tiếp từ nội dung tệp khi tải lên.
+    /// </summary>
+    [HttpPost("api/v1/ai/knowledge/detect-metadata")]
+    [Authorize(Roles = "PlatformAdmin")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<object>> DetectFileMetadata(
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("File is required and must not be empty.");
+
+        if (file.Length > DocumentTextExtractor.MaxFileBytes)
+            return BadRequest($"File size exceeds maximum allowed size of {DocumentTextExtractor.MaxFileBytes / (1024 * 1024)}MB.");
+
+        var ext = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
+        if (ext is not ("pdf" or "docx" or "txt"))
+            return BadRequest($"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, TXT.");
+
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, cancellationToken);
+            var bytes = ms.ToArray();
+            DocumentTextExtractor.ValidateFileSignature(bytes, ext);
+
+            var text = DocumentTextExtractor.Extract(bytes, ext);
+            var detection = VietGapMetadataExtractor.Detect(text, file.FileName);
+
+            return Ok(new
             {
-                id = documentId,
-                title = saved?.Title ?? request.Title,
-                cropScope = saved?.CropScope,
-                authorOrganization = saved?.AuthorOrganization,
-                version = saved?.Version,
-                category = saved?.Category,
-                reviewStatus = saved?.ReviewStatus,
-                reviewNotes = saved?.ReviewNotes,
-                message = "Tài liệu đã lưu độc lập với Growth Profile ở trạng thái chờ người duyệt; tài liệu chỉ vào RAG sau khi được xác nhận."
+                fileName = file.FileName,
+                cropScope = detection.Crops.Value ?? string.Empty,
+                cropsStatus = detection.Crops.Status,
+                cropsEvidence = detection.Crops.Evidence?.Quote,
+                cropsPage = detection.Crops.Evidence?.Page,
+                candidates = detection.Crops.Candidates,
+                title = detection.Title.Value ?? string.Empty,
+                publisher = detection.Publisher.Value ?? string.Empty,
+                standardCode = detection.StandardCode.Value ?? string.Empty,
+                version = detection.Version.Value ?? string.Empty,
+                documentType = detection.DocumentType.Value ?? string.Empty
             });
         }
         catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException or IOException)
@@ -225,22 +266,30 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
         var tenantId = isPlatformAdmin ? (Guid?)null : User.GetTenantId();
         var reviewed = await documentService.ReviewDocumentAsync(
             documentId, request.ContentText, request.Approve, request.ReviewNotes,
-            tenantId, isPlatformAdmin, cancellationToken);
+            tenantId, isPlatformAdmin,
+            new DocumentMetadataOverrides(request.Title, request.CropScope, request.AuthorOrganization, request.Version,
+                request.DocumentType, request.ConfirmGeneralScope),
+            cancellationToken);
         if (!reviewed) return NotFound();
         return Ok(new
         {
             reviewStatus = request.Approve ? "Approved" : "NeedsCorrection",
             message = request.Approve
-                ? "Đã xác nhận tài liệu. Nội dung này được phép dùng cho RAG và sinh profile."
+                ? "Đã xác nhận tài liệu. Nội dung này được phép dùng làm nguồn tri thức cho AI (RAG)."
                 : "Đã lưu nội dung rà soát với trạng thái cần chỉnh sửa."
         });
     }
 
-    /// <summary>Chạy lại AI trích các trường VietGAP kèm trích dẫn (tài liệu cũ hoặc sau khi sửa toàn văn).</summary>
-    [HttpPost("api/v1/ai/knowledge/documents/{documentId:guid}/extract")]
+    /// <summary>
+    /// Yêu cầu AI kiểm tra lại tài liệu có thuộc lĩnh vực nông nghiệp hay không (Pending, worker nền chạy). Không đổi trạng thái duyệt.
+    /// </summary>
+    [HttpPost("api/v1/ai/knowledge/documents/{documentId:guid}/verify")]
     [Authorize(Roles = "PlatformAdmin")]
-    public async Task<ActionResult<VietGapStructuredExtraction>> ReextractDocument(Guid documentId, CancellationToken cancellationToken) =>
-        Ok(await documentService.ReextractDocumentAsync(documentId, cancellationToken));
+    public async Task<ActionResult<DocumentVerificationResult>> VerifyDocument(Guid documentId, CancellationToken cancellationToken)
+    {
+        var result = await documentService.RequestVerificationAsync(documentId, cancellationToken);
+        return result is null ? Accepted() : Ok(result);
+    }
 
     /// <summary>
     /// Xóa một tài liệu khỏi kho tri thức.
@@ -316,63 +365,6 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     }
 
     /// <summary>
-    /// Sử dụng AI để soạn thảo Hồ Sơ Sinh Trưởng (Growth Profile) theo template của hệ thống SmartFarm
-    /// dựa trên tài liệu kỹ thuật VietGAP và mô hình canh tác.
-    /// </summary>
-    [HttpPost("api/v1/ai/knowledge/draft-growth-profile")]
-    [Authorize(Roles = "PlatformAdmin")]
-    public async Task<ActionResult<VietGapGrowthProfileDraftResult>> GenerateGrowthProfileDraft(
-        [FromBody] GenerateGrowthProfileDraftDto dto,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(dto.CropName))
-            return BadRequest(new { message = "Tên cây trồng không được để trống." });
-
-        var isPlatformAdmin = User.IsInRole("PlatformAdmin");
-        var tenantId = isPlatformAdmin ? (Guid?)null : User.GetTenantId();
-        var stageCount = dto.StageCount is >= 2 and <= 6 ? dto.StageCount : 4;
-
-        // Không chọn tài liệu: gom mọi tài liệu đã duyệt của cây trồng (thu hoạch, sâu bệnh, tưới... từ nhiều file).
-        // Profile chỉ được tạo khi các tài liệu đó cùng cung cấp đủ giai đoạn và ngưỡng có trích dẫn.
-        if (dto.DocumentId is null || dto.DocumentId == Guid.Empty)
-        {
-            var bundle = await documentService.BuildCropSourceBundleAsync(dto.CropName.Trim(), tenantId, cancellationToken);
-            if (bundle is null)
-                return Conflict(new { message = $"Chưa có tài liệu đã duyệt nào cho cây \"{dto.CropName.Trim()}\". Hãy tải lên và duyệt tài liệu trước." });
-
-            var draft = await documentService.GenerateGrowthProfileDraftAsync(
-                new VietGapGrowthProfileDraftRequest(dto.CropName.Trim(), bundle.CombinedContent, dto.CultivationModel, stageCount),
-                cancellationToken);
-            if (draft.IsFallback)
-                return Conflict(new
-                {
-                    message = $"Các tài liệu đã duyệt của cây \"{dto.CropName.Trim()}\" chưa đủ dữ liệu có trích dẫn (giai đoạn, số ngày, " +
-                              "nhiệt độ, độ ẩm không khí, ẩm đất, pH cho từng giai đoạn) để tạo Growth Profile. Bổ sung và duyệt thêm tài liệu.",
-                    sourceDocuments = bundle.Documents.Select(d => d.Title)
-                });
-            return Ok(AgricultureDocumentService.AttributeSources(draft, bundle));
-        }
-
-        var sourceDocument = await documentService.GetDocumentByIdAsync(dto.DocumentId.Value, tenantId, cancellationToken);
-        if (sourceDocument is null) return NotFound(new { message = "Không tìm thấy tài liệu nguồn hoặc bạn không có quyền truy cập." });
-        if (sourceDocument.ReviewStatus != "Approved")
-            return Conflict(new { message = "Tài liệu nguồn chưa được đối chiếu và duyệt. Hãy rà soát tài liệu trước khi tạo profile." });
-        if (string.IsNullOrWhiteSpace(sourceDocument.ContentText) || sourceDocument.ContentText.Trim().Length < 50)
-            return BadRequest(new { message = "Tài liệu đã duyệt không có đủ nội dung để tạo profile." });
-        if (sourceDocument.ContentText.Length > 200_000)
-            return BadRequest(new { message = "Toàn văn tài liệu vượt giới hạn 200.000 ký tự cho một lần phân tích; hãy chia tài liệu thành các phần nhỏ hơn." });
-
-        var request = new VietGapGrowthProfileDraftRequest(
-            dto.CropName.Trim(),
-            sourceDocument.ContentText,
-            dto.CultivationModel,
-            dto.StageCount is >= 2 and <= 6 ? dto.StageCount : 4);
-
-        var result = await documentService.GenerateGrowthProfileDraftAsync(request, cancellationToken);
-        return Ok(result);
-    }
-
-    /// <summary>
     /// Lưu trực tiếp tài liệu quy chuẩn dạng văn bản đã soạn thảo/chỉnh sửa vào CSDL.
     /// Tự động chia các chunks và sinh vector embeddings (pgvector).
     /// </summary>
@@ -382,9 +374,6 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
         [FromBody] SaveTextDocumentDto dto,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(dto.Title) || dto.Title.Trim().Length < 3)
-            return BadRequest(new { message = "Tiêu đề phải từ 3 đến 300 ký tự." });
-
         if (string.IsNullOrWhiteSpace(dto.Content) || dto.Content.Trim().Length < 50)
             return BadRequest(new { message = "Nội dung văn bản quy chuẩn phải có ít nhất 50 ký tự." });
 
@@ -403,29 +392,78 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
         if (isPlatformAdmin && tenantId == null) isPublic = true;
 
         var documentId = await documentService.IngestTextDocumentAsync(
-            dto.Title,
+            dto.Title ?? string.Empty,
             dto.Content,
             dto.AuthorOrganization,
             dto.Category ?? "general",
             dto.CropScope ?? string.Empty,
-            dto.Version ?? "V1.0",
+            dto.Version,
             dto.DocumentType,
             dto.Topics,
             tenantId,
             isPublic,
             cancellationToken);
 
-        return CreatedAtAction(nameof(GetDocument), new { documentId }, new
+        var saved = await documentService.GetDocumentByIdAsync(documentId, null, cancellationToken);
+        return CreatedAtAction(nameof(GetDocument), new { documentId }, SavedDocumentResponse(documentId, saved));
+    }
+
+    /// <summary>
+    /// Phản hồi sau khi lưu: metadata hệ thống đã nhận diện từ nội dung (kèm trạng thái và bằng chứng) để người duyệt đối chiếu.
+    /// Thông báo nêu đúng trạng thái: chưa có AI thẩm định nội dung, tài liệu chỉ chờ người duyệt.
+    /// </summary>
+    private static object SavedDocumentResponse(Guid documentId, AgricultureDocumentDetailView? saved)
+    {
+        var detection = saved?.MetadataDetection;
+        var unresolved = new List<string>();
+        if (saved is not null && string.IsNullOrWhiteSpace(saved.CropScope) && detection is not null && !detection.ScopeResolved(saved.CropScope))
+            unresolved.Add("cây áp dụng");
+        if (saved?.DocumentType == nameof(AgricultureDocumentType.Unspecified)) unresolved.Add("loại tài liệu");
+        var verification = saved?.Verification;
+        var verificationNote = saved?.VerificationStatus switch
+        {
+            DocumentVerificationResult.Pending => " AI đang kiểm tra tài liệu có thuộc lĩnh vực nông nghiệp không; chưa có kết quả.",
+            DocumentVerificationResult.Agricultural => " AI nhận định tài liệu thuộc lĩnh vực nông nghiệp (chỉ xác nhận chủ đề, không phải chứng nhận VietGAP).",
+            DocumentVerificationResult.NotAgricultural => " AI nhận định tài liệu có thể KHÔNG thuộc lĩnh vực nông nghiệp — cần xem lại file gốc.",
+            DocumentVerificationResult.Uncertain => " AI chưa xác định được tài liệu có thuộc lĩnh vực nông nghiệp hay không.",
+            DocumentVerificationResult.VerificationError => " AI gặp lỗi nên chưa kiểm tra được.",
+            _ => string.Empty
+        };
+        var message = "Đã lưu ở trạng thái chờ duyệt. Hệ thống tự đọc thông tin từ nội dung file bằng quy tắc (không phải xác nhận tài liệu đạt VietGAP); " +
+                      "tài liệu chỉ vào RAG sau khi quản trị viên đối chiếu file gốc và duyệt." + verificationNote;
+        if (unresolved.Count > 0) message += $" Chưa xác định được: {string.Join(", ", unresolved)} — cần người duyệt chọn trước khi duyệt.";
+        return new
         {
             id = documentId,
-            title = dto.Title,
-            message = "AI đã xác nhận tài liệu đủ thông tin. Đã lưu ở trạng thái chờ đối chiếu; tài liệu chỉ vào RAG sau khi người duyệt xác nhận."
-        });
+            title = saved?.Title,
+            cropScope = saved?.CropScope,
+            authorOrganization = saved?.AuthorOrganization,
+            version = saved?.Version,
+            category = saved?.Category,
+            documentType = saved?.DocumentType,
+            reviewStatus = saved?.ReviewStatus,
+            reviewNotes = saved?.ReviewNotes,
+            metadataDetection = detection,
+            verification,
+            verificationStatus = saved?.VerificationStatus,
+            needsDecision = unresolved,
+            message
+        };
     }
 }
 
 public sealed class ReviewKnowledgeDocumentDto
 {
+    /// <summary>Chỉnh metadata sau khi đối chiếu file gốc; trường bỏ trống = giữ nguyên giá trị đã nhận diện.</summary>
+    [StringLength(300)] public string? Title { get; init; }
+    [StringLength(500)] public string? CropScope { get; init; }
+    [StringLength(200)] public string? AuthorOrganization { get; init; }
+    [StringLength(50)] public string? Version { get; init; }
+    public AgricultureDocumentType? DocumentType { get; init; }
+
+    /// <summary>Xác nhận tài liệu áp dụng chung (không ghi cây) sau khi đối chiếu file gốc.</summary>
+    public bool ConfirmGeneralScope { get; init; }
+
     [Required, MinLength(50), StringLength(200000)]
     public string ContentText { get; init; } = string.Empty;
 
@@ -455,8 +493,9 @@ public sealed class GenerateVietGapDraftDto
 
 public sealed class SaveTextDocumentDto
 {
-    [Required, StringLength(300, MinimumLength = 3)]
-    public string Title { get; init; } = string.Empty;
+    /// <summary>Không bắt buộc: bỏ trống thì hệ thống đọc tiêu đề từ nội dung.</summary>
+    [StringLength(300)]
+    public string? Title { get; init; }
 
     [Required, MinLength(50)]
     public string Content { get; init; } = string.Empty;
@@ -475,8 +514,8 @@ public sealed class SaveTextDocumentDto
 
     public bool IsPublic { get; init; } = true;
 
-    /// <summary>Loại tài liệu quyết định mục bắt buộc: OfficialStandard, TechnicalGuide, Thematic (chuyên đề theo Category).</summary>
-    public AgricultureDocumentType DocumentType { get; init; } = AgricultureDocumentType.OfficialStandard;
+    /// <summary>Tùy chọn. Bỏ trống/Unspecified thì hệ thống nhận diện từ nội dung; không nhận diện được thì để chưa xác định cho người duyệt.</summary>
+    public AgricultureDocumentType DocumentType { get; init; } = AgricultureDocumentType.Unspecified;
 
     /// <summary>Chủ đề tài liệu bao quát: irrigation, pest, nutrition, harvest, record, climate, soil (có thể nhiều).</summary>
     public List<string>? Topics { get; init; }
@@ -504,8 +543,8 @@ public sealed class UploadKnowledgeDocumentRequest
 
     public bool IsPublic { get; init; } = true;
 
-    /// <summary>Loại tài liệu quyết định mục bắt buộc: OfficialStandard, TechnicalGuide, Thematic (chuyên đề theo Category).</summary>
-    public AgricultureDocumentType DocumentType { get; init; } = AgricultureDocumentType.OfficialStandard;
+    /// <summary>Tùy chọn. Bỏ trống/Unspecified thì hệ thống nhận diện từ nội dung; không nhận diện được thì để chưa xác định cho người duyệt.</summary>
+    public AgricultureDocumentType DocumentType { get; init; } = AgricultureDocumentType.Unspecified;
 
     /// <summary>Chủ đề tài liệu bao quát: irrigation, pest, nutrition, harvest, record, climate, soil (có thể nhiều).</summary>
     public List<string>? Topics { get; init; }
@@ -531,19 +570,4 @@ public sealed class UpdateKnowledgeDocumentRequest
 
     [StringLength(50)]
     public string? Version { get; init; }
-}
-
-public sealed class GenerateGrowthProfileDraftDto
-{
-    [Required, StringLength(100, MinimumLength = 1)]
-    public string CropName { get; init; } = string.Empty;
-
-    /// <summary>Tùy chọn: một tài liệu cụ thể. Bỏ trống để gom mọi tài liệu đã duyệt của cây trồng.</summary>
-    public Guid? DocumentId { get; init; }
-
-    [StringLength(100)]
-    public string? CultivationModel { get; init; }
-
-    [Range(2, 6)]
-    public int StageCount { get; init; } = 4;
 }

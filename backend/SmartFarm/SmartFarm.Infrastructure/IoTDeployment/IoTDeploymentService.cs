@@ -58,6 +58,15 @@ internal sealed partial class IoTDeploymentService(SmartFarmDbContext db) : IIoT
         if (user.Role is not (UserRole.FarmOwner or UserRole.PlatformTechnician)) throw new AuthorizationException(); return request.ToView();
     }
 
+    public async Task<IReadOnlyList<DeploymentRequestView>> ListOwnerRequestsAsync(Guid ownerId, Guid tenantId, Guid? zoneId, CancellationToken ct)
+    {
+        var user = await UserAsync(ownerId, ct);
+        if (user.Role != UserRole.FarmOwner || user.TenantId != tenantId) throw new AuthorizationException();
+        var query = RequestQuery().AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (zoneId.HasValue) query = query.Where(x => x.ZoneId == zoneId.Value);
+        return (await query.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct)).Select(x => x.ToView()).ToList();
+    }
+
     public async Task<IReadOnlyList<DeploymentRequestView>> ListTechnicianRequestsAsync(Guid technicianId, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); return (await RequestQuery().AsNoTracking().Where(x => (x.Status == DeploymentRequestStatus.Submitted && x.TechnicianUserId == null) || x.TechnicianUserId == technicianId).OrderByDescending(x => x.SubmittedAtUtc).ToListAsync(ct)).Select(x => x.ToView()).ToList(); }
     public async Task<DeploymentRequestView> AcceptAsync(Guid technicianId, Guid requestId, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct); var r = await LoadRequestEntityAsync(requestId, ct); EnsureStatus(r, DeploymentRequestStatus.Submitted); if (r.TechnicianUserId.HasValue) throw new ResourceConflictException("Deployment Request was already accepted."); r.TechnicianUserId = technicianId; Transition(r, technicianId, "Accepted", DeploymentRequestStatus.Accepted, null); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await LoadRequestAsync(r.Id, ct); }
     public async Task<DeploymentRequestView> SurveyAsync(Guid technicianId, Guid requestId, SurveyCommand command, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var r = await TechnicianRequestAsync(technicianId, requestId, ct); if (r.Status is not (DeploymentRequestStatus.Accepted or DeploymentRequestStatus.Surveyed)) throw new ResourceConflictException("Survey requires an Accepted request."); var survey = new DeploymentSurvey { DeploymentRequestId = r.Id, TechnicianUserId = technicianId, IsFeasible = command.IsFeasible, SiteConditions = Required(command.SiteConditions, "siteConditions", 2000), Notes = Required(command.Notes, "notes", 2000) }; db.DeploymentSurveys.Add(survey); Transition(r, technicianId, command.IsFeasible ? "SurveyFeasible" : "SurveyInfeasible", DeploymentRequestStatus.Surveyed, command.Notes); await db.SaveChangesAsync(ct); return await LoadRequestAsync(r.Id, ct); }

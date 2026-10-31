@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { UserRole } from '../../types';
 import {
   Sprout, ShieldCheck, ArrowRight, UserCheck, KeyRound,

@@ -15,7 +15,7 @@ import {
   Actuator, ControlExecutionLog, EnvironmentalTargetConfig, 
   ControlSchedule, AutomationRule, Zone, Field, Farm, Crop 
 } from '../../types';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 
 export interface CF3ControlSectionProps {
   scopeLevel: 'FARM' | 'FIELD' | 'ZONE' | 'GLOBAL' | 'FARMER';

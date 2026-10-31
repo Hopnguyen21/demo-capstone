@@ -58,19 +58,24 @@ public sealed class CropGrowthController(ICropGrowthService service) : Controlle
     public async Task<ActionResult<IReadOnlyList<GrowthProfileView>>> Profiles(Guid cropId, [FromQuery] Guid? varietyId, CancellationToken ct) => Ok(await service.ListProfilesAsync(User.GetUserId(), User.GetOptionalTenantId(), cropId, varietyId, ct));
 
     // API catalog #38
-    // Chỉ PlatformAdmin được tạo Growth Profile; FarmOwner chỉ chọn profile đã được admin lưu.
-    [HttpPost("api/v1/growth-profiles"), Authorize(Roles = "PlatformAdmin")]
+    // PlatformAdmin tạo profile hệ thống; FarmOwner chỉ được sao chép một profile hệ thống thành profile riêng của trang trại (sourceProfileId).
+    [HttpPost("api/v1/growth-profiles"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
     public async Task<ActionResult<GrowthProfileView>> CreateProfile(CreateGrowthProfileRequest request, CancellationToken ct)
     { var result = await service.CreateProfileAsync(User.GetUserId(), User.GetOptionalTenantId(), request.ToCommand(), ct); return Created($"/api/v1/growth-profiles/{result.ProfileId}/stages", result); }
 
     // Sửa tên, mô tả và profile mặc định (chưa có trong API catalog; giai đoạn/ngưỡng sửa qua #40).
-    [HttpPut("api/v1/growth-profiles/{profileId:guid}"), Authorize(Roles = "PlatformAdmin")]
+    [HttpPut("api/v1/growth-profiles/{profileId:guid}"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
     public async Task<ActionResult<GrowthProfileView>> UpdateProfile(Guid profileId, UpdateGrowthProfileRequest request, CancellationToken ct) =>
         Ok(await service.UpdateProfileAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, new(request.Name, request.Description, request.IsDefault), ct));
 
     // API catalog #39
     [HttpGet("api/v1/growth-profiles/{profileId:guid}/stages")]
     public async Task<ActionResult<IReadOnlyList<GrowthStageView>>> Stages(Guid profileId, CancellationToken ct) => Ok((await service.GetProfileAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, ct)).Stages);
+
+    // Đổi số ngày kế hoạch của một giai đoạn: PlatformAdmin cho profile hệ thống, FarmOwner chỉ cho bản sao của trang trại mình.
+    [HttpPut("api/v1/growth-stages/{stageId:guid}"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
+    public async Task<ActionResult<StageDurationView>> StageDuration(Guid stageId, UpdateStageDurationRequest request, CancellationToken ct) =>
+        Ok(await service.UpdateStageDurationAsync(User.GetUserId(), User.GetOptionalTenantId(), stageId, request.DurationDays, ct));
 
     // API catalog #40
     [HttpPut("api/v1/growth-stages/{stageId:guid}/requirements"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
@@ -140,6 +145,7 @@ public sealed class RequirementRequest { [Required] public EnvironmentalParamete
 public sealed class StageRequest { [Required, StringLength(150)] public string Name { get; init; } = ""; [Range(1, 100)] public int StageOrder { get; init; } [Range(1, 1000)] public int DurationDays { get; init; } [Required, MinLength(1)] public List<RequirementRequest> Requirements { get; init; } = []; [StringLength(4000)] public string? Description { get; init; } [StringLength(2000)] public string? FertilizerAction { get; init; } [StringLength(2000)] public string? IpmAction { get; init; } internal StageInput ToInput() => new(Name, StageOrder, DurationDays, Requirements.Select(x => x.ToInput()).ToList(), Description, FertilizerAction, IpmAction); }
 public sealed class CreateGrowthProfileRequest { public Guid CropId { get; init; } public Guid? VarietyId { get; init; } [Required, StringLength(200)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } public bool IsDefault { get; init; } public Guid? SourceProfileId { get; init; } public List<StageRequest>? Stages { get; init; } internal CreateGrowthProfileCommand ToCommand() => new(CropId, VarietyId, Name, Description, IsDefault, SourceProfileId, Stages?.Select(x => x.ToInput()).ToList()); }
 public sealed class UpdateGrowthProfileRequest { [Required, StringLength(200, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } public bool IsDefault { get; init; } }
+public sealed class UpdateStageDurationRequest { [Range(1, 365)] public int DurationDays { get; init; } }
 public sealed class UpdateRequirementsRequest { [Required, MinLength(1)] public List<RequirementRequest> Requirements { get; init; } = []; }
 
 [ApiController, Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin")]
@@ -151,6 +157,10 @@ public sealed class PlantingSeasonsController(ICropGrowthService service) : Cont
     // API catalog #42
     [HttpPost("api/v1/zones/{zoneId:guid}/planting-seasons"), Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<PlantingSeasonView>> Create(Guid zoneId, CreateSeasonRequest request, CancellationToken ct) { var result = await service.CreateSeasonAsync(User.GetUserId(), User.GetTenantId(), zoneId, request.ToCommand(), ct); return CreatedAtAction(nameof(Get), new { zoneId, seasonId = result.SeasonId }, result); }
+    // Tạo vụ hàng loạt: mỗi Zone một PlantingSeason riêng, cùng FarmingSeason. DryRun chỉ kiểm tra; không SkipInvalid thì tất cả hoặc không tạo gì.
+    [HttpPost("api/v1/farming-seasons/{farmingSeasonId:guid}/planting-seasons/bulk"), Authorize(Roles = "FarmOwner")]
+    public async Task<ActionResult<BulkCreateSeasonsResult>> BulkCreate(Guid farmingSeasonId, BulkCreateSeasonsRequest request, CancellationToken ct) =>
+        Ok(await service.BulkCreateSeasonsAsync(User.GetUserId(), User.GetTenantId(), request.ToCommand(farmingSeasonId), ct));
     // API catalog #43
     [HttpGet("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}")]
     public async Task<ActionResult<PlantingSeasonView>> Get(Guid zoneId, Guid seasonId, CancellationToken ct) => Ok(await service.GetSeasonAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, seasonId, ct));
@@ -165,7 +175,18 @@ public sealed class PlantingSeasonsController(ICropGrowthService service) : Cont
     public async Task<ActionResult<PlantingSeasonView>> RecordYield(Guid zoneId, Guid seasonId, RecordYieldRequest request, CancellationToken ct) => Ok(await service.RecordSeasonYieldAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, new(request.ActualYieldKg, request.ActualEndDate, request.Notes, request.MarkCompleted), ct));
 }
 
-public sealed class CreateSeasonRequest { public Guid CropId { get; init; } public Guid? VarietyId { get; init; } public Guid GrowthProfileId { get; init; } public Guid? FarmingSeasonId { get; init; } [Required, StringLength(200)] public string Name { get; init; } = ""; public DateOnly StartDate { get; init; } public DateOnly ExpectedEndDate { get; init; } internal CreatePlantingSeasonCommand ToCommand() => new(CropId, VarietyId, GrowthProfileId, Name, StartDate, ExpectedEndDate, FarmingSeasonId); }
+public sealed class BulkSeasonZoneRequest { public Guid ZoneId { get; init; } public DateOnly? StartDate { get; init; } public DateOnly? ExpectedEndDate { get; init; } public bool SetZoneCrop { get; init; } }
+public sealed class BulkCreateSeasonsRequest
+{
+    public Guid CropId { get; init; } public Guid? VarietyId { get; init; } public Guid GrowthProfileId { get; init; }
+    [Required, StringLength(150)] public string NamePrefix { get; init; } = "";
+    public DateOnly StartDate { get; init; } public DateOnly ExpectedEndDate { get; init; }
+    [Required] public List<BulkSeasonZoneRequest> Zones { get; init; } = [];
+    public bool DryRun { get; init; } public bool SkipInvalid { get; init; }
+    internal BulkCreateSeasonsCommand ToCommand(Guid farmingSeasonId) => new(farmingSeasonId, CropId, VarietyId, GrowthProfileId, NamePrefix, StartDate, ExpectedEndDate,
+        Zones.Select(z => new BulkSeasonZoneItem(z.ZoneId, z.StartDate, z.ExpectedEndDate, z.SetZoneCrop)).ToList(), DryRun, SkipInvalid);
+}
+public sealed class CreateSeasonRequest { public Guid CropId { get; init; } public Guid? VarietyId { get; init; } public Guid GrowthProfileId { get; init; } public Guid? FarmingSeasonId { get; init; } public bool SetZoneCrop { get; init; } [Required, StringLength(200)] public string Name { get; init; } = ""; public DateOnly StartDate { get; init; } public DateOnly ExpectedEndDate { get; init; } internal CreatePlantingSeasonCommand ToCommand() => new(CropId, VarietyId, GrowthProfileId, Name, StartDate, ExpectedEndDate, FarmingSeasonId, SetZoneCrop); }
 public sealed class TransitionStageRequest { public Guid GrowthStageId { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class CloseSeasonRequest { public DateOnly ActualEndDate { get; init; } [Range(typeof(decimal), "0", "999999999")] public decimal? ActualYieldKg { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class RecordYieldRequest { [Range(typeof(decimal), "0", "999999999")] public decimal ActualYieldKg { get; init; } public DateOnly? ActualEndDate { get; init; } [StringLength(1000)] public string? Notes { get; init; } public bool MarkCompleted { get; init; } }

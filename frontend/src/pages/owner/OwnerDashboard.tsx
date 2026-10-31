@@ -1,6 +1,7 @@
+import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import {
   farmService, fieldService, zoneService, deviceService,
   alertService, supportService, seasonService, telemetryService, aiService, zoneContractService
@@ -411,15 +412,15 @@ export const OwnerDashboard: React.FC = () => {
                   <div className="text-xs space-y-1 text-slate-600">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Nguyên giá:</span>
-                      <strong className="text-slate-800 font-mono">{(item.originalValue || 0).toLocaleString('vi-VN')} đ</strong>
+                      <strong className="text-slate-800 font-mono">{(item.originalCostVnd ?? item.originalValue ?? 0).toLocaleString('vi-VN')} đ</strong>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Khấu hao / tháng:</span>
-                      <strong className="text-rose-700 font-mono">{(item.monthlyDepreciation || 0).toLocaleString('vi-VN')} đ</strong>
+                      <strong className="text-rose-700 font-mono">{(item.monthlyDepreciationVnd ?? item.monthlyDepreciation ?? 0).toLocaleString('vi-VN')} đ</strong>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Giá trị còn lại:</span>
-                      <span className="font-mono font-medium text-slate-700">{(item.currentBookValue || 0).toLocaleString('vi-VN')} đ</span>
+                      <span className="font-mono font-medium text-slate-700">{(item.currentBookValueVnd ?? item.currentBookValue ?? 0).toLocaleString('vi-VN')} đ</span>
                     </div>
                   </div>
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
@@ -512,7 +513,7 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="text-2xl font-black text-slate-900 font-mono">
-                {depreciations.length || 6} <span className="text-xs font-normal text-slate-500">Thiết bị</span>
+                {depreciations.length} <span className="text-xs font-normal text-slate-500">Thiết bị</span>
               </div>
               <div className="text-[11px] flex items-center gap-1">
                 {expiringDepsCount > 0 ? (
@@ -669,11 +670,11 @@ export const OwnerDashboard: React.FC = () => {
                     <div className="p-2.5 bg-white border border-slate-200 rounded-lg text-xs space-y-1">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Cây trồng:</span>
-                        <strong className="text-emerald-800 font-bold">{z.currentCrop || 'Chưa đồng bộ mùa vụ từ DB'}</strong>
+                        <strong className="text-emerald-800 font-bold">{zoneCropLabel(z)}</strong>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Giai đoạn:</span>
-                        <strong className="text-sky-700">{z.currentStage || 'Chưa đồng bộ giai đoạn từ DB'}</strong>
+                        <strong className="text-sky-700">{zoneStageLabel(z)}</strong>
                       </div>
                     </div>
 

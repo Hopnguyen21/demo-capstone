@@ -25,9 +25,9 @@ public sealed class KnowledgeEmbeddingWorker(
                 var embedded = await documents.ProcessPendingEmbeddingsAsync(stoppingToken);
                 if (embedded > 0)
                     logger.LogInformation("Processed {Count} pending agriculture knowledge embeddings.", embedded);
-                // Trích xuất có trích dẫn chạy nền để request tải lên không phải chờ AI.
-                if (await documents.ProcessPendingExtractionAsync(stoppingToken))
-                    logger.LogInformation("Processed one pending agriculture document extraction.");
+                // AI rà soát đối chiếu nguồn quy chuẩn đã xác minh chạy nền để request tải lên không phải chờ AI.
+                if (await documents.ProcessPendingVerificationAsync(stoppingToken))
+                    logger.LogInformation("Processed one pending agriculture document verification.");
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

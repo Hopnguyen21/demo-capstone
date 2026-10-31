@@ -27,7 +27,7 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
   onSuccess,
 }) => {
   const [contractNumber, setContractNumber] = useState<string>('');
-  const [cropType, setCropType] = useState<string>('Cà chua Cherry Đà Lạt');
+  const [cropType, setCropType] = useState<string>('');
   const [lesseeName, setLesseeName] = useState<string>('HTX Nông Nghiệp Công Nghệ Cao LangBiang');
   const [lesseePhone, setLesseePhone] = useState<string>('0912345678');
   const [lesseeIdentityNumber, setLesseeIdentityNumber] = useState<string>('049095001234');

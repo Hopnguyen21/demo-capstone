@@ -403,21 +403,39 @@ ON CONFLICT ("Id") DO UPDATE SET
   quantity_at_open = 25;
 
 -- ── 17. FARM TASKS ─────────────────────────────────────────────────────────────
-INSERT INTO farm_tasks ("Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, assigned_farmer_id, created_by_owner_id, status, result, accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, assignment_version, created_at_utc)
+-- Mô hình công việc: một công việc có nhiều phân công (farm_task_assignments). Dữ liệu mẫu khai báo "một Farmer/việc" qua bảng tạm rồi tách thành công việc + phân công.
+DROP TABLE IF EXISTS seed_farm_tasks_legacy;
+CREATE TEMP TABLE seed_farm_tasks_legacy (
+  "Id" uuid, tenant_id uuid, farm_id uuid, zone_id uuid, title text, description text, requirements text, due_at_utc timestamptz,
+  assigned_farmer_id uuid, created_by_owner_id uuid, status text, result text, accepted_at_utc timestamptz, started_at_utc timestamptz,
+  submitted_at_utc timestamptz, approved_at_utc timestamptz, assignment_version int, created_at_utc timestamptz);
+
+INSERT INTO seed_farm_tasks_legacy ("Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, assigned_farmer_id, created_by_owner_id, status, result, accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, assignment_version, created_at_utc)
 VALUES
 ('73000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000001', 'Kiểm tra đường ống tưới nhỏ giọt Zone 1', 'Kiểm tra toàn bộ béc tưới và khớp nối xem có rò rỉ hay tắc nghẽn.', 'Xác nhận không còn điểm nghẹt.', CURRENT_TIMESTAMP + INTERVAL '2 days', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Approved', 'Đã thông 2 béc nghẹt, hệ thống hoạt động tốt.', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', 1, CURRENT_TIMESTAMP - INTERVAL '3 days'),
 ('73000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000003', 'Bổ sung dung dịch dinh dưỡng cho dàn thủy canh Zone 3', 'Pha dung dịch dinh dưỡng Hydro Umat V theo tỷ lệ EC 1.8 và pH 6.0.', 'Đo và ghi lại chỉ số sau khi pha.', CURRENT_TIMESTAMP + INTERVAL '1 day', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'InProgress', NULL, CURRENT_TIMESTAMP - INTERVAL '5 hours', CURRENT_TIMESTAMP - INTERVAL '4 hours', NULL, NULL, 1, CURRENT_TIMESTAMP - INTERVAL '1 day'),
 ('73000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000002', 'Tỉa cành phụ và buộc dây leo giàn cà chua Zone 2', 'Tỉa các nhánh phụ sát gốc, quấn thân cà chua vào dây đỡ.', 'Buộc chắc chắn không gãy ngọn.', CURRENT_TIMESTAMP + INTERVAL '3 days', '20000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001', 'Accepted', NULL, CURRENT_TIMESTAMP - INTERVAL '2 hours', NULL, NULL, NULL, 1, CURRENT_TIMESTAMP - INTERVAL '6 hours'),
-('73000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000001', 'Vệ sinh tấm lưới lọc đầu nguồn và châm phân', 'Tháo cốc lọc đĩa, rửa sạch cặn phèn và lắp lại đúng gioăng.', 'Kiểm tra áp lực nước sau lọc.', CURRENT_TIMESTAMP + INTERVAL '1 day', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'CompletedPendingReview', 'Đã rửa sạch màng lọc, áp lực đạt 2.2 bar.', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '3 hours', NULL, 1, CURRENT_TIMESTAMP - INTERVAL '2 days')
-ON CONFLICT ("Id") DO UPDATE SET
-  title = EXCLUDED.title,
-  status = EXCLUDED.status,
-  result = EXCLUDED.result;
+('73000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000001', 'Vệ sinh tấm lưới lọc đầu nguồn và châm phân', 'Tháo cốc lọc đĩa, rửa sạch cặn phèn và lắp lại đúng gioăng.', 'Kiểm tra áp lực nước sau lọc.', CURRENT_TIMESTAMP + INTERVAL '1 day', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'CompletedPendingReview', 'Đã rửa sạch màng lọc, áp lực đạt 2.2 bar.', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '3 hours', NULL, 1, CURRENT_TIMESTAMP - INTERVAL '2 days');
+
+INSERT INTO farm_tasks ("Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, created_by_owner_id, status, created_at_utc)
+SELECT "Id", tenant_id, farm_id, zone_id, title, description, requirements, due_at_utc, created_by_owner_id, status, created_at_utc FROM seed_farm_tasks_legacy
+ON CONFLICT ("Id") DO UPDATE SET title = EXCLUDED.title, status = EXCLUDED.status;
+
+INSERT INTO farm_task_assignments ("Id", farm_task_id, farmer_id, assigned_by_owner_id, assigned_at_utc, status, progress_percent, result,
+  accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, assignment_version, created_at_utc)
+SELECT md5("Id"::text || assigned_farmer_id::text)::uuid, "Id", assigned_farmer_id, created_by_owner_id, created_at_utc, status,
+  CASE WHEN status IN ('CompletedPendingReview', 'Approved') THEN 100 ELSE 0 END, result,
+  accepted_at_utc, started_at_utc, submitted_at_utc, approved_at_utc, GREATEST(assignment_version, 1), created_at_utc
+FROM seed_farm_tasks_legacy
+ON CONFLICT (farm_task_id, farmer_id) DO UPDATE SET status = EXCLUDED.status, result = EXCLUDED.result;
 
 INSERT INTO farm_task_history ("Id", farm_task_id, actor_user_id, event_type, from_status, to_status, previous_assignee_id, new_assignee_id, notes, created_at_utc)
 VALUES
 ('73100000-0000-0000-0000-000000000001', '73000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Approved', 'CompletedPendingReview', 'Approved', '20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'Chủ trang trại đã nghiệm thu hoàn thành.', CURRENT_TIMESTAMP - INTERVAL '1 day')
 ON CONFLICT ("Id") DO NOTHING;
+
+UPDATE farm_task_history SET subject_farmer_id = COALESCE(new_assignee_id, previous_assignee_id)
+WHERE subject_farmer_id IS NULL AND (new_assignee_id IS NOT NULL OR previous_assignee_id IS NOT NULL);
 
 -- ── 18. FINANCE TRANSACTIONS ───────────────────────────────────────────────────
 INSERT INTO finance_transactions (id, tenant_id, farm_id, transaction_type, expense_category, amount, occurred_at_utc, description, reference, created_by_owner_id, created_at_utc)
@@ -487,3 +505,10 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 COMMIT;
+
+-- Cây hiện tại của Zone: chỉ lấy từ Zone có đúng một vụ InProgress (cùng quy tắc với migration AddZoneCurrentCrop).
+UPDATE zones z SET crop_id = s.crop_id, crop_variety_id = s.variety_id
+FROM planting_seasons s
+WHERE s.zone_id = z.id AND s.status = 'InProgress'
+  AND (SELECT COUNT(*) FROM planting_seasons x WHERE x.zone_id = z.id AND x.status = 'InProgress') = 1
+  AND z.crop_id IS NULL;

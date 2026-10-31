@@ -16,8 +16,10 @@ public interface ICropGrowthService
     Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenantId, CreateGrowthProfileCommand command, CancellationToken cancellationToken);
     Task<GrowthProfileView> GetProfileAsync(Guid userId, Guid? tenantId, Guid profileId, CancellationToken cancellationToken);
     Task<GrowthProfileView> UpdateProfileAsync(Guid userId, Guid? tenantId, Guid profileId, UpdateGrowthProfileCommand command, CancellationToken cancellationToken);
+    Task<StageDurationView> UpdateStageDurationAsync(Guid userId, Guid? tenantId, Guid stageId, int durationDays, CancellationToken cancellationToken);
     Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken cancellationToken);
     Task<IReadOnlyList<PlantingSeasonView>> ListSeasonsAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken);
+    Task<BulkCreateSeasonsResult> BulkCreateSeasonsAsync(Guid userId, Guid tenantId, BulkCreateSeasonsCommand command, CancellationToken cancellationToken);
     Task<PlantingSeasonView> CreateSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, CreatePlantingSeasonCommand command, CancellationToken cancellationToken);
     Task<PlantingSeasonView> GetSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CancellationToken cancellationToken);
     Task<PlantingSeasonView> TransitionStageAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, TransitionStageCommand command, CancellationToken cancellationToken);

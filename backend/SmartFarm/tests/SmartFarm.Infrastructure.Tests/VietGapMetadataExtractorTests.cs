@@ -99,6 +99,6 @@ public sealed class VietGapMetadataExtractorTests
         var m = VietGapMetadataExtractor.Extract("Mã số: 01\nNgày: 12", "Quy_trinh_ot_chuong.pdf");
 
         Assert.Equal("Quy trinh ot chuong", m.Title);
-        Assert.Equal(string.Empty, m.CropScope);
+        Assert.Equal("ớt", m.CropScope); // tên file nêu cây (nhận diện theo tên file, xem VietGapMetadataExtractor)
     }
 }

@@ -42,7 +42,7 @@ public sealed class AgricultureKnowledgeAuthorizationTests
     }
 
     [Fact]
-    public async Task Farm_owner_cannot_save_text_document_review_or_draft_profile()
+    public async Task Farm_owner_cannot_save_text_document_review_or_draft_vietgap_document()
     {
         using var factory = new TestApplicationFactory();
         await factory.SeedAsync();
@@ -56,14 +56,11 @@ public sealed class AgricultureKnowledgeAuthorizationTests
             new { contentText = SampleText, approve = true });
         var draft = await client.PostAsJsonAsync("/api/v1/ai/knowledge/draft",
             new { cropName = "Cà chua" });
-        var draftProfile = await client.PostAsJsonAsync("/api/v1/ai/knowledge/draft-growth-profile",
-            new { cropName = "Cà chua", documentId = anyId, stageCount = 4 });
         var delete = await client.DeleteAsync($"/api/v1/ai/knowledge/documents/{anyId}");
 
         Assert.Equal(HttpStatusCode.Forbidden, saveText.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, review.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, draft.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, draftProfile.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
     }
 
@@ -172,21 +169,6 @@ public sealed class AgricultureKnowledgeAuthorizationTests
         Assert.Equal("Approved", current?.ReviewStatus);
     }
 
-    [Fact]
-    public async Task Crop_growth_profile_is_refused_without_approved_documents()
-    {
-        using var factory = new TestApplicationFactory();
-        await factory.SeedAsync();
-        using var client = factory.CreateClient();
-        await AuthorizeAsync(client, "admin@example.com");
-
-        // Tài liệu đã tải lên nhưng chưa duyệt không được dùng làm nguồn Growth Profile.
-        await UploadTextAsync(client, "Hướng dẫn thu hoạch cà chua", SampleText);
-        var response = await client.PostAsJsonAsync("/api/v1/ai/knowledge/draft-growth-profile", new { cropName = "cà chua" });
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-    }
-
     private static async Task<Guid> UploadTextAsync(HttpClient client, string title, string content)
     {
         var response = await client.PostAsJsonAsync("/api/v1/ai/knowledge/documents/text",
@@ -216,7 +198,7 @@ public sealed class AgricultureKnowledgeAuthorizationTests
         var created = await response.Content.ReadFromJsonAsync<CreatedPayload>();
         var detail = await client.GetFromJsonAsync<MetadataPayload>($"/api/v1/ai/knowledge/documents/{created!.Id}");
         Assert.StartsWith("QUY CHUẨN KỸ THUẬT CANH TÁC CÀ CHUA", detail!.Title);
-        Assert.Equal("cà chua", detail.CropScope);
+        Assert.Equal("Cà chua", detail.CropScope); // phạm vi được lưu theo tên chuẩn
         Assert.Equal("general", detail.Category);
         Assert.True(detail.IsPublic);
     }

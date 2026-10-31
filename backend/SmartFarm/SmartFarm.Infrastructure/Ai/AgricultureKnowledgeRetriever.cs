@@ -27,46 +27,39 @@ public sealed class AgricultureKnowledgeRetriever(
     // Cosine distance trong pgvector = 1 - cosine_similarity
     // Ngưỡng distance < 0.60 ≈ similarity > 0.40
     private const float MaxCosineDistance = 0.60f;
-    private const float MinKeywordScore = 0.05f;
+    // Đường từ khóa: một từ trùng trong câu hỏi dài chỉ ~0.07 nên ngưỡng cũ 0.05 cho lọt cả đoạn không liên quan.
+    // Cần khớp ít nhất khoảng một phần ba các từ có nghĩa của câu hỏi.
+    internal const float MinKeywordScore = 0.25f;
+    // Đoạn ngắn hơn ngần này ký tự (sau khi bỏ dòng metadata) không đủ làm căn cứ kỹ thuật.
+    internal const int MinSubstantiveChars = 80;
 
-    private static readonly (string[] Aliases, string Canonical)[] CropSynonyms =
-    [
-        (["cà chua", "ca chua", "tomato", "beefsteak", "cà chua beefsteak"], "cà chua"),
-        (["dưa leo", "dua leo", "dưa chuột", "dua chuot", "cucumber"], "dưa leo"),
-        (["dâu tây", "dau tay", "strawberry"], "dâu tây"),
-        (["dưa lưới", "dua luoi", "melon", "cantaloupe"], "dưa lưới"),
-        (["ớt", "ot", "ớt chuông", "ot chuong", "ớt ngọt", "sweet pepper", "bell pepper", "chili", "capsicum"], "ớt"),
-        (["xà lách", "xa lach", "lettuce", "batavia", "salad"], "xà lách"),
-        (["rau cải", "cải", "cai", "cabbage", "pak choi"], "cải"),
-        (["rau muống", "rau muong", "water spinach"], "rau muống")
-    ];
+    private static readonly Regex MetadataLine = new(
+        @"^\s*(trạng thái tài liệu|thẩm định|tác giả|nguồn|cơ quan ban hành|phiên bản|danh mục|trang)\b.*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
-    private static string NormalizeCrop(string cropName)
+    /// <summary>Đoạn có nội dung kỹ thuật thật, không chỉ là tiêu đề hay dòng trạng thái/thẩm định.</summary>
+    internal static bool IsSubstantive(string? content)
     {
-        var lower = cropName.ToLowerInvariant();
-        var words = lower.Split([' ', '(', ')', '-', ':', '/', ',', '.', ';'], StringSplitOptions.RemoveEmptyEntries);
-        foreach (var (aliases, canonical) in CropSynonyms)
-        {
-            foreach (var alias in aliases)
-            {
-                if (alias.Contains(' '))
-                {
-                    if (lower.Contains(alias)) return canonical;
-                }
-                else
-                {
-                    if (words.Contains(alias)) return canonical;
-                }
-            }
-        }
-        var first = words.FirstOrDefault();
-        return first ?? lower;
+        if (string.IsNullOrWhiteSpace(content)) return false;
+        var body = MetadataLine.Replace(content, string.Empty);
+        return body.Count(char.IsLetterOrDigit) >= MinSubstantiveChars;
     }
 
     // Một tài liệu đóng góp tối đa ngần này đoạn, để câu trả lời tổng hợp từ nhiều tài liệu đã duyệt.
     private const int MaxPassagesPerDocument = 2;
     // Điểm cộng cho đoạn cùng chủ đề với câu hỏi (ưu tiên, không loại đoạn khác chủ đề).
     private const float TopicBoost = 0.05f;
+    // Điểm cộng cho tài liệu chuyên biệt của đúng cây so với tài liệu áp dụng chung.
+    private const float CropSpecificBoost = 0.03f;
+
+    public Task<IReadOnlyList<KnowledgePassageView>> RetrievePassagesAsync(
+        string question,
+        string? cropName,
+        string? category,
+        Guid? tenantId,
+        int topK,
+        CancellationToken cancellationToken) =>
+        RetrievePassagesAsync(question, cropName, category, tenantId, topK, generalOnlyWhenCropUnknown: false, cancellationToken);
 
     public async Task<IReadOnlyList<KnowledgePassageView>> RetrievePassagesAsync(
         string question,
@@ -74,19 +67,59 @@ public sealed class AgricultureKnowledgeRetriever(
         string? category,
         Guid? tenantId,
         int topK,
+        bool generalOnlyWhenCropUnknown,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(question)) return [];
         question = question.Normalize(NormalizationForm.FormC).Trim();
         if (topK <= 0) topK = 5;
 
-        // Lấy dư ứng viên rồi mới chọn: ưu tiên chủ đề câu hỏi và giới hạn số đoạn mỗi tài liệu.
-        var candidates = await RetrieveCandidatesAsync(question, cropName, category, tenantId, topK * 3, cancellationToken);
-        return await DiversifyAsync(question, candidates, topK, cancellationToken);
+        var scope = await ResolveDocumentScopeAsync(cropName, tenantId, generalOnlyWhenCropUnknown, cancellationToken);
+        if (scope.Allowed is { Count: 0 }) return [];
+
+        // Lấy dư ứng viên rồi mới chọn: ưu tiên chủ đề câu hỏi, tài liệu đúng cây, và giới hạn số đoạn mỗi tài liệu.
+        var candidates = (await RetrieveCandidatesAsync(question, scope.Allowed, category, tenantId, topK * 3, cancellationToken))
+            .Where(c => IsSubstantive(c.Content)).ToList();
+        var selected = await DiversifyAsync(question, candidates, scope.CropSpecific, topK, cancellationToken);
+        return await WithVersionsAsync(selected, cancellationToken);
+    }
+
+    // Phiên bản tài liệu đi kèm đoạn để AI chỉ so sánh phiên bản khi metadata thật sự có.
+    private async Task<IReadOnlyList<KnowledgePassageView>> WithVersionsAsync(IReadOnlyList<KnowledgePassageView> passages, CancellationToken ct)
+    {
+        if (passages.Count == 0) return passages;
+        var ids = passages.Select(p => p.DocumentId).Distinct().ToList();
+        var versions = await db.AgricultureDocuments.AsNoTracking().Where(d => ids.Contains(d.Id))
+            .ToDictionaryAsync(d => d.Id, d => d.Version, ct);
+        return passages.Select(p => versions.TryGetValue(p.DocumentId, out var v) && !string.IsNullOrWhiteSpace(v) ? p with { Version = v } : p).ToList();
+    }
+
+    /// <summary>
+    /// Tài liệu được phép dùng cho câu hỏi. Có cây trồng: tài liệu áp dụng cho đúng cây đó (so theo tên chuẩn, không
+    /// so chuỗi con — "ớt" không khớp "ớt chuông") cộng tài liệu áp dụng chung (không ghi phạm vi cây). Không bao giờ
+    /// mở rộng sang tài liệu chuyên biệt của cây khác. Không có cây: mọi tài liệu, hoặc chỉ tài liệu chung nếu yêu cầu.
+    /// </summary>
+    private async Task<(HashSet<Guid>? Allowed, HashSet<Guid> CropSpecific)> ResolveDocumentScopeAsync(
+        string? cropName, Guid? tenantId, bool generalOnlyWhenCropUnknown, CancellationToken ct)
+    {
+        var hasCrop = !string.IsNullOrWhiteSpace(cropName);
+        if (!hasCrop && !generalOnlyWhenCropUnknown) return (null, []);
+
+        var docs = await db.AgricultureDocuments.AsNoTracking()
+            .Where(d => d.ReviewStatus == SmartFarm.Domain.Entities.AgricultureDocumentReviewStatus.Approved)
+            .Where(d => d.IsPublic || d.TenantId == tenantId)
+            .Select(d => new { d.Id, d.CropScope })
+            .ToListAsync(ct);
+
+        var general = docs.Where(d => string.IsNullOrWhiteSpace(d.CropScope)).Select(d => d.Id);
+        if (!hasCrop) return (general.ToHashSet(), []);
+
+        var specific = docs.Where(d => CropNames.ScopeIncludes(d.CropScope, cropName!)).Select(d => d.Id).ToHashSet();
+        return (specific.Concat(general).ToHashSet(), specific);
     }
 
     private async Task<IReadOnlyList<KnowledgePassageView>> DiversifyAsync(
-        string question, IReadOnlyList<KnowledgePassageView> candidates, int topK, CancellationToken ct)
+        string question, IReadOnlyList<KnowledgePassageView> candidates, HashSet<Guid> cropSpecific, int topK, CancellationToken ct)
     {
         if (candidates.Count == 0) return candidates;
         var questionTopics = SmartFarm.Infrastructure.Ai.Knowledge.TopicClassifier.ClassifyQuestion(question);
@@ -97,8 +130,9 @@ public sealed class AgricultureKnowledgeRetriever(
                 .ToDictionaryAsync(c => c.Id, c => c.Topic, ct);
 
         return candidates
-            .Select(c => (Passage: c, Score: c.SimilarityScore +
-                (topics.TryGetValue(c.ChunkId, out var t) && questionTopics.Contains(t) ? TopicBoost : 0f)))
+            .Select(c => (Passage: c, Score: c.SimilarityScore
+                + (topics.TryGetValue(c.ChunkId, out var t) && questionTopics.Contains(t) ? TopicBoost : 0f)
+                + (cropSpecific.Contains(c.DocumentId) ? CropSpecificBoost : 0f)))
             .OrderByDescending(x => x.Score)
             .GroupBy(x => x.Passage.DocumentId)
             .SelectMany(g => g.Take(MaxPassagesPerDocument))
@@ -110,13 +144,12 @@ public sealed class AgricultureKnowledgeRetriever(
 
     private async Task<IReadOnlyList<KnowledgePassageView>> RetrieveCandidatesAsync(
         string question,
-        string? cropName,
+        HashSet<Guid>? allowedDocumentIds,
         string? category,
         Guid? tenantId,
         int topK,
         CancellationToken cancellationToken)
     {
-
         // ── 1. Tạo embedding cho câu hỏi ─────────────────────────────────────
         var questionEmbedding = await embeddingProvider.EmbedQueryAsync(question, cancellationToken);
 
@@ -124,15 +157,8 @@ public sealed class AgricultureKnowledgeRetriever(
         {
             try
             {
-                var vectorResults = await SearchByVectorAsync(question, questionEmbedding, cropName, category, tenantId, topK, cancellationToken);
+                var vectorResults = await SearchByVectorAsync(question, questionEmbedding, allowedDocumentIds, category, tenantId, topK, cancellationToken);
                 if (vectorResults.Count > 0) return vectorResults;
-
-                // Nếu lọc theo cropName không ra kết quả, mở rộng tìm kiếm toàn bộ tài liệu VietGAP
-                if (!string.IsNullOrWhiteSpace(cropName))
-                {
-                    vectorResults = await SearchByVectorAsync(question, questionEmbedding, null, category, tenantId, topK, cancellationToken);
-                    if (vectorResults.Count > 0) return vectorResults;
-                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -140,18 +166,10 @@ public sealed class AgricultureKnowledgeRetriever(
             }
         }
 
-        // ── 2b. Fallback: keyword scoring khi chưa có embedding hoặc embedding chưa trả kết quả ──
+        // ── 2. Fallback: keyword scoring khi chưa có embedding hoặc embedding chưa trả kết quả ──
+        // Vẫn trong cùng phạm vi tài liệu (đúng cây + chung): không nới sang tài liệu của cây khác.
         logger.LogDebug("[RAG] Vector search empty or unavailable, using keyword fallback for question: {Q}", question[..Math.Min(100, question.Length)]);
-        var keywordResults = await SearchByKeywordsAsync(question, cropName, category, tenantId, topK, cancellationToken);
-        if (keywordResults.Count > 0) return keywordResults;
-
-        // Fallback keyword không lọc crop
-        if (!string.IsNullOrWhiteSpace(cropName))
-        {
-            return await SearchByKeywordsAsync(question, null, category, tenantId, topK, cancellationToken);
-        }
-
-        return [];
+        return await SearchByKeywordsAsync(question, allowedDocumentIds, category, tenantId, topK, cancellationToken);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -160,7 +178,7 @@ public sealed class AgricultureKnowledgeRetriever(
     private async Task<IReadOnlyList<KnowledgePassageView>> SearchByVectorAsync(
         string question,
         float[] questionEmbeddingValues,
-        string? cropName,
+        HashSet<Guid>? allowedDocumentIds,
         string? category,
         Guid? tenantId,
         int topK,
@@ -177,11 +195,8 @@ public sealed class AgricultureKnowledgeRetriever(
                 .Where(c => c.Document.ReviewStatus == SmartFarm.Domain.Entities.AgricultureDocumentReviewStatus.Approved)
                 .Where(c => c.Document.IsPublic || c.Document.TenantId == tenantId);
 
-            if (!string.IsNullOrWhiteSpace(cropName))
-            {
-                var normalizedCrop = NormalizeCrop(cropName);
-                query = query.Where(c => c.CropTags == string.Empty || EF.Functions.ILike(c.CropTags, $"%{normalizedCrop}%"));
-            }
+            // Chỉ tài liệu trong phạm vi được phép (đúng cây + áp dụng chung), so theo tên cây chuẩn hóa.
+            if (allowedDocumentIds is not null) query = query.Where(c => allowedDocumentIds.Contains(c.DocumentId));
 
             if (!string.IsNullOrWhiteSpace(category))
             {
@@ -222,12 +237,12 @@ public sealed class AgricultureKnowledgeRetriever(
         }
 
         // 2. High-precision in-memory vector cosine similarity (chuẩn xác 100% dựa trên vector 768 chiều từ DB)
-        return await SearchByVectorInMemoryAsync(questionEmbeddingValues, cropName, category, tenantId, topK, ct);
+        return await SearchByVectorInMemoryAsync(questionEmbeddingValues, allowedDocumentIds, category, tenantId, topK, ct);
     }
 
     private async Task<IReadOnlyList<KnowledgePassageView>> SearchByVectorInMemoryAsync(
         float[] questionVector,
-        string? cropName,
+        HashSet<Guid>? allowedDocumentIds,
         string? category,
         Guid? tenantId,
         int topK,
@@ -250,16 +265,6 @@ public sealed class AgricultureKnowledgeRetriever(
         pTenant.Value = tenantId ?? Guid.Empty;
         cmd.Parameters.Add(pTenant);
 
-        string? normalizedCrop = null;
-        if (!string.IsNullOrWhiteSpace(cropName))
-        {
-            normalizedCrop = NormalizeCrop(cropName);
-            sqlBuilder.Append(" AND (c.crop_tags = '' OR c.crop_tags ILIKE @cropPattern)");
-            var pCrop = cmd.CreateParameter();
-            pCrop.ParameterName = "@cropPattern";
-            pCrop.Value = $"%{normalizedCrop}%";
-            cmd.Parameters.Add(pCrop);
-        }
 
         if (!string.IsNullOrWhiteSpace(category))
         {
@@ -299,43 +304,8 @@ public sealed class AgricultureKnowledgeRetriever(
             }
         }
 
-        // Nếu bộ lọc quá hẹp không có chunk nào, query nới lỏng toàn bộ tài liệu public
-        if (list.Count == 0 && (!string.IsNullOrWhiteSpace(cropName) || !string.IsNullOrWhiteSpace(category)))
-        {
-            using var cmdFallback = conn.CreateCommand();
-            cmdFallback.CommandText = @"
-                SELECT c.id, c.document_id, d.title, d.author_organization, d.category, c.content, c.crop_tags, c.embedding::text, c.page_number, c.section_title
-                FROM agriculture_knowledge_chunks c
-                JOIN agriculture_documents d ON c.document_id = d.id
-                WHERE c.embedding IS NOT NULL AND d.review_status = 'Approved' AND (d.is_public = TRUE OR d.tenant_id = @tenantId)";
-            var pFallbackTenant = cmdFallback.CreateParameter();
-            pFallbackTenant.ParameterName = "@tenantId";
-            pFallbackTenant.Value = tenantId ?? Guid.Empty;
-            cmdFallback.Parameters.Add(pFallbackTenant);
-
-            using var readerFallback = await cmdFallback.ExecuteReaderAsync(ct);
-            while (await readerFallback.ReadAsync(ct))
-            {
-                var rawEmbedding = readerFallback.GetString(7);
-                if (string.IsNullOrWhiteSpace(rawEmbedding)) continue;
-
-                float[]? chunkVec = ParseVector(rawEmbedding);
-                if (chunkVec is null || chunkVec.Length != questionVector.Length) continue;
-
-                list.Add((
-                    readerFallback.GetGuid(0),
-                    readerFallback.GetGuid(1),
-                    readerFallback.GetString(2),
-                    readerFallback.IsDBNull(3) ? null : readerFallback.GetString(3),
-                    readerFallback.GetString(4),
-                    readerFallback.GetString(5),
-                    readerFallback.IsDBNull(6) ? string.Empty : readerFallback.GetString(6),
-                    chunkVec,
-                    readerFallback.IsDBNull(8) ? null : readerFallback.GetInt32(8),
-                    readerFallback.IsDBNull(9) ? null : readerFallback.GetString(9)
-                ));
-            }
-        }
+        // Lọc theo phạm vi tài liệu được phép; không nới sang toàn bộ kho khi không có kết quả (tránh lấy tài liệu của cây khác).
+        if (allowedDocumentIds is not null) list.RemoveAll(x => !allowedDocumentIds.Contains(x.docId));
 
         if (list.Count == 0) return [];
 
@@ -386,7 +356,7 @@ public sealed class AgricultureKnowledgeRetriever(
     // ────────────────────────────────────────────────────────────────────────
     private async Task<IReadOnlyList<KnowledgePassageView>> SearchByKeywordsAsync(
         string question,
-        string? cropName,
+        HashSet<Guid>? allowedDocumentIds,
         string? category,
         Guid? tenantId,
         int topK,
@@ -398,13 +368,8 @@ public sealed class AgricultureKnowledgeRetriever(
             .Where(c => c.Document.ReviewStatus == SmartFarm.Domain.Entities.AgricultureDocumentReviewStatus.Approved)
             .Where(c => c.Document.IsPublic || c.Document.TenantId == tenantId);
 
-        if (!string.IsNullOrWhiteSpace(cropName))
-        {
-            var normalizedCrop = NormalizeCrop(cropName);
-            query = query.Where(c =>
-                c.CropTags == string.Empty ||
-                EF.Functions.ILike(c.CropTags, $"%{normalizedCrop}%"));
-        }
+        // Chỉ tài liệu trong phạm vi được phép (đúng cây + áp dụng chung), so theo tên cây chuẩn hóa.
+        if (allowedDocumentIds is not null) query = query.Where(c => allowedDocumentIds.Contains(c.DocumentId));
 
         if (!string.IsNullOrWhiteSpace(category))
         {

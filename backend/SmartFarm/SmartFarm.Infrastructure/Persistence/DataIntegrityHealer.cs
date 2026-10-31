@@ -82,109 +82,16 @@ public static class DataIntegrityHealer
                 modified = false;
             }
 
-            // 2. Vá các Zone chưa có Vụ mùa (Planting Season) đang hoạt động (InProgress)
-            var zones = await db.Zones
-                .Include(z => z.Field)
-                .ThenInclude(f => f.Farm)
-                .Where(z => z.ArchivedAtUtc == null)
-                .ToListAsync(ct);
-
-            var activeSeasons = await db.PlantingSeasons
-                .Where(s => s.Status == PlantingSeasonStatus.InProgress)
-                .ToListAsync(ct);
-
-            var activeFarmingSeason = await db.FarmingSeasons.FirstOrDefaultAsync(fs => fs.IsActive, ct);
-
-            foreach (var zone in zones)
-            {
-                var hasActive = activeSeasons.Any(s => s.ZoneId == zone.Id);
-                if (!hasActive)
-                {
-                    logger.LogInformation("[DataIntegrityHealer] Zone '{Zone}' chưa có vụ mùa hoạt động. Đang gán mùa vụ VietGAP...", zone.Name);
-
-                    var zoneLower = (zone.Name + " " + (zone.Notes ?? "")).ToLowerInvariant();
-                    var tenantId = zone.Field.Farm.TenantId;
-                    var candidateCrops = crops.Where(c => c.TenantId == null || c.TenantId == tenantId).ToList();
-                    Crop? matchedCrop = null;
-                    if (zoneLower.Contains("cà chua") || zoneLower.Contains("ca chua") || zoneLower.Contains("tomato") || zoneLower.Contains("beefsteak"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Cà chua", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Ca Chua", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Tomato", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("dưa leo") || zoneLower.Contains("dua leo") || zoneLower.Contains("cucumber"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Dưa leo", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Dua leo", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Cucumber", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("dâu tây") || zoneLower.Contains("dau tay") || zoneLower.Contains("strawberry"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Dâu tây", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Dau Tay", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Strawberry", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("xà lách") || zoneLower.Contains("xa lach") || zoneLower.Contains("lettuce"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Xà lách", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Xa Lach", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Batavia", StringComparison.OrdinalIgnoreCase));
-                    else if (zoneLower.Contains("ớt") || zoneLower.Contains("ot") || zoneLower.Contains("pepper"))
-                        matchedCrop = candidateCrops.FirstOrDefault(c => c.Name.Contains("Ớt", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Ot", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Pepper", StringComparison.OrdinalIgnoreCase));
-
-                    // NẾU KHÔNG KHỚP TỪ KHÓA: LẤY CÂY TRỒNG MẪU ĐẦU TIÊN (Ví dụ Cà chua hoặc Dưa leo VietGAP) THAY VÌ BỎ QUA
-                    matchedCrop ??= candidateCrops.FirstOrDefault(c => c.Name.Contains("Cà chua", StringComparison.OrdinalIgnoreCase)) ?? candidateCrops.FirstOrDefault();
-
-                    if (matchedCrop is null) continue;
-
-                    var variety = await db.CropVarieties.FirstOrDefaultAsync(v => v.CropId == matchedCrop.Id, ct);
-                    var profile = await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements)
-                        .FirstOrDefaultAsync(p => p.CropId == matchedCrop.Id && (p.TenantId == null || p.TenantId == tenantId), ct)
-                        ?? await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements)
-                        .FirstOrDefaultAsync(p => p.CropId == matchedCrop.Id, ct);
-
-                    if (profile is null) continue;
-
-                    var stage = profile.Stages.FirstOrDefault()
-                        ?? await db.GrowthStages.Include(s => s.Requirements).FirstOrDefaultAsync(s => s.GrowthProfileId == profile.Id, ct);
-                    if (stage is null) continue;
-
-                    var newSeasonId = Guid.NewGuid();
-                    var season = new PlantingSeason
-                    {
-                        Id = newSeasonId,
-                        ZoneId = zone.Id,
-                        CropId = matchedCrop.Id,
-                        VarietyId = variety?.Id,
-                        GrowthProfileId = profile.Id,
-                        CurrentGrowthStageId = stage.Id,
-                        FarmingSeasonId = activeFarmingSeason?.Id,
-                        Name = $"Vụ {matchedCrop.Name} {now.Year}",
-                        StartDate = DateOnly.FromDateTime(now.AddDays(-15)),
-                        ExpectedEndDate = DateOnly.FromDateTime(now.AddDays(75)),
-                        Status = PlantingSeasonStatus.InProgress,
-                        CreatedAtUtc = now
-                    };
-                    db.PlantingSeasons.Add(season);
-                    activeSeasons.Add(season);
-
-                    if (stage.Requirements.Count > 0)
-                    {
-                        foreach (var req in stage.Requirements)
-                        {
-                            db.SeasonAppliedRequirements.Add(new SeasonAppliedRequirement
-                            {
-                                PlantingSeasonId = newSeasonId,
-                                ParameterCode = req.ParameterCode,
-                                MinValue = req.MinValue,
-                                MaxValue = req.MaxValue,
-                                TargetValue = req.TargetValue,
-                                Unit = req.Unit
-                            });
-                        }
-                    }
-                    modified = true;
-                }
-            }
-
-            if (modified)
-            {
-                await db.SaveChangesAsync(ct);
-                modified = false;
-            }
+            // 2. Không còn tự tạo vụ mùa/cây cho Zone: cây của Zone do Owner chọn, không suy ra từ tên Zone, ghi chú hay cây mặc định.
+            var zones = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).Where(z => z.ArchivedAtUtc == null).ToListAsync(ct);
 
             // 3. Phân quyền Zone cho Farmer ĐÚNG THEO TENANT (tuyệt đối không phân quyền chéo tenant)
             var farmers = await db.AppUsers.Where(u => u.Role == UserRole.Farmer).ToListAsync(ct);
             var existingAccesses = await db.UserZoneAccesses.ToListAsync(ct);
             foreach (var farmer in farmers)
             {
-                // Chỉ phân quyền các zone thuộc đúng farm cùng TenantId với tài khoản Farmer
-                foreach (var zone in zones.Where(z => z.Field.Farm.TenantId == farmer.TenantId))
+                // Chỉ phân quyền các Zone thuộc đúng Farm của Farmer (cùng Tenant là chưa đủ: API từ chối Zone ngoài Farm)
+                foreach (var zone in zones.Where(z => z.Field.Farm.TenantId == farmer.TenantId && z.Field.FarmId == farmer.FarmId))
                 {
                     if (!existingAccesses.Any(a => a.AppUserId == farmer.Id && a.ZoneId == zone.Id))
                     {

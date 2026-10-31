@@ -26,9 +26,62 @@ internal sealed class LowStockAlertConfiguration : IEntityTypeConfiguration<LowS
 }
 internal sealed class FarmTaskConfiguration : IEntityTypeConfiguration<FarmTask>
 {
-    public void Configure(EntityTypeBuilder<FarmTask> b) { b.ToTable("farm_tasks"); InventoryTaskConfig.Base(b); b.Property(x=>x.TenantId).HasColumnName("tenant_id"); b.Property(x=>x.FarmId).HasColumnName("farm_id"); b.Property(x=>x.ZoneId).HasColumnName("zone_id"); b.Property(x=>x.Title).HasColumnName("title").HasMaxLength(200); b.Property(x=>x.Description).HasColumnName("description").HasMaxLength(2000); b.Property(x=>x.Requirements).HasColumnName("requirements").HasMaxLength(2000); b.Property(x=>x.DueAtUtc).HasColumnName("due_at_utc"); b.Property(x=>x.AssignedFarmerId).HasColumnName("assigned_farmer_id"); b.Property(x=>x.CreatedByOwnerId).HasColumnName("created_by_owner_id"); b.Property(x=>x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.Result).HasColumnName("result").HasMaxLength(2000); b.Property(x=>x.FailureReason).HasColumnName("failure_reason").HasMaxLength(2000); b.Property(x=>x.AcceptedAtUtc).HasColumnName("accepted_at_utc"); b.Property(x=>x.StartedAtUtc).HasColumnName("started_at_utc"); b.Property(x=>x.SubmittedAtUtc).HasColumnName("submitted_at_utc"); b.Property(x=>x.ApprovedAtUtc).HasColumnName("approved_at_utc"); b.Property(x=>x.AssignmentVersion).HasColumnName("assignment_version"); b.HasOne(x=>x.Zone).WithMany().HasForeignKey(x=>x.ZoneId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x=>x.AssignedFarmer).WithMany().HasForeignKey(x=>x.AssignedFarmerId).OnDelete(DeleteBehavior.Restrict); b.HasOne<AppUser>().WithMany().HasForeignKey(x=>x.CreatedByOwnerId).OnDelete(DeleteBehavior.Restrict); b.HasIndex(x=>new{x.FarmId,x.Status,x.DueAtUtc}); }
+    public void Configure(EntityTypeBuilder<FarmTask> b) { b.ToTable("farm_tasks"); InventoryTaskConfig.Base(b); b.Property(x=>x.TenantId).HasColumnName("tenant_id"); b.Property(x=>x.FarmId).HasColumnName("farm_id"); b.Property(x=>x.ZoneId).HasColumnName("zone_id"); b.Property(x=>x.Title).HasColumnName("title").HasMaxLength(200); b.Property(x=>x.Description).HasColumnName("description").HasMaxLength(2000); b.Property(x=>x.Requirements).HasColumnName("requirements").HasMaxLength(2000); b.Property(x=>x.DueAtUtc).HasColumnName("due_at_utc"); b.Property(x=>x.CreatedByOwnerId).HasColumnName("created_by_owner_id"); b.Property(x=>x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(30); b.HasOne(x=>x.Zone).WithMany().HasForeignKey(x=>x.ZoneId).OnDelete(DeleteBehavior.Restrict); b.HasOne<AppUser>().WithMany().HasForeignKey(x=>x.CreatedByOwnerId).OnDelete(DeleteBehavior.Restrict); b.HasIndex(x=>new{x.FarmId,x.Status,x.DueAtUtc}); }
+}
+internal sealed class FarmTaskAssignmentConfiguration : IEntityTypeConfiguration<FarmTaskAssignment>
+{
+    public void Configure(EntityTypeBuilder<FarmTaskAssignment> b)
+    {
+        b.ToTable("farm_task_assignments", t => t.HasCheckConstraint("ck_farm_task_assignment_progress", "progress_percent BETWEEN 0 AND 100"));
+        InventoryTaskConfig.Base(b);
+        b.Property(x => x.FarmTaskId).HasColumnName("farm_task_id");
+        b.Property(x => x.FarmerId).HasColumnName("farmer_id");
+        b.Property(x => x.AssignedByOwnerId).HasColumnName("assigned_by_owner_id");
+        b.Property(x => x.AssignedAtUtc).HasColumnName("assigned_at_utc");
+        b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(30);
+        b.Property(x => x.ProgressPercent).HasColumnName("progress_percent");
+        b.Property(x => x.ProgressNote).HasColumnName("progress_note").HasMaxLength(1000);
+        b.Property(x => x.Result).HasColumnName("result").HasMaxLength(2000);
+        b.Property(x => x.FailureReason).HasColumnName("failure_reason").HasMaxLength(2000);
+        b.Property(x => x.AcceptedAtUtc).HasColumnName("accepted_at_utc");
+        b.Property(x => x.StartedAtUtc).HasColumnName("started_at_utc");
+        b.Property(x => x.SubmittedAtUtc).HasColumnName("submitted_at_utc");
+        b.Property(x => x.ApprovedAtUtc).HasColumnName("approved_at_utc");
+        b.Property(x => x.AssignmentVersion).HasColumnName("assignment_version");
+        b.HasOne(x => x.FarmTask).WithMany(x => x.Assignments).HasForeignKey(x => x.FarmTaskId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.Farmer).WithMany().HasForeignKey(x => x.FarmerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.AssignedByOwnerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.FarmTaskId, x.FarmerId }).IsUnique();
+        b.HasIndex(x => new { x.FarmerId, x.Status });
+    }
+}
+internal sealed class FarmInvitationConfiguration : IEntityTypeConfiguration<FarmInvitation>
+{
+    public void Configure(EntityTypeBuilder<FarmInvitation> b)
+    {
+        b.ToTable("farm_invitations");
+        InventoryTaskConfig.Base(b);
+        b.Property(x => x.TenantId).HasColumnName("tenant_id");
+        b.Property(x => x.FarmId).HasColumnName("farm_id");
+        b.Property(x => x.InvitedByOwnerId).HasColumnName("invited_by_owner_id");
+        b.Property(x => x.Email).HasColumnName("email").HasMaxLength(320);
+        b.Property(x => x.NormalizedEmail).HasColumnName("normalized_email").HasMaxLength(320);
+        b.Property(x => x.InviteeUserId).HasColumnName("invitee_user_id");
+        b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.ExpiresAtUtc).HasColumnName("expires_at_utc");
+        b.Property(x => x.RespondedAtUtc).HasColumnName("responded_at_utc");
+        b.Property(x => x.SendCount).HasColumnName("send_count");
+        b.Property(x => x.LastSentAtUtc).HasColumnName("last_sent_at_utc");
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Farm).WithMany().HasForeignKey(x => x.FarmId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.InvitedByOwnerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.FarmId, x.Status });
+        // Mỗi Farm chỉ có một lời mời đang chờ cho cùng một email.
+        b.HasIndex(x => new { x.FarmId, x.NormalizedEmail }).IsUnique().HasFilter("status = 'Pending'");
+        b.HasIndex(x => new { x.NormalizedEmail, x.Status });
+    }
 }
 internal sealed class FarmTaskHistoryConfiguration : IEntityTypeConfiguration<FarmTaskHistory>
 {
-    public void Configure(EntityTypeBuilder<FarmTaskHistory> b) { b.ToTable("farm_task_history"); InventoryTaskConfig.Base(b); b.Property(x=>x.FarmTaskId).HasColumnName("farm_task_id"); b.Property(x=>x.ActorUserId).HasColumnName("actor_user_id"); b.Property(x=>x.EventType).HasColumnName("event_type").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.FromStatus).HasColumnName("from_status").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.ToStatus).HasColumnName("to_status").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.PreviousAssigneeId).HasColumnName("previous_assignee_id"); b.Property(x=>x.NewAssigneeId).HasColumnName("new_assignee_id"); b.Property(x=>x.Notes).HasColumnName("notes").HasMaxLength(1000); b.HasOne(x=>x.FarmTask).WithMany(x=>x.History).HasForeignKey(x=>x.FarmTaskId).OnDelete(DeleteBehavior.Cascade); b.HasOne<AppUser>().WithMany().HasForeignKey(x=>x.ActorUserId).OnDelete(DeleteBehavior.Restrict); b.HasIndex(x=>new{x.FarmTaskId,x.CreatedAtUtc}); }
+    public void Configure(EntityTypeBuilder<FarmTaskHistory> b) { b.ToTable("farm_task_history"); InventoryTaskConfig.Base(b); b.Property(x=>x.FarmTaskId).HasColumnName("farm_task_id"); b.Property(x=>x.ActorUserId).HasColumnName("actor_user_id"); b.Property(x=>x.EventType).HasColumnName("event_type").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.FromStatus).HasColumnName("from_status").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.ToStatus).HasColumnName("to_status").HasConversion<string>().HasMaxLength(30); b.Property(x=>x.PreviousAssigneeId).HasColumnName("previous_assignee_id"); b.Property(x=>x.NewAssigneeId).HasColumnName("new_assignee_id"); b.Property(x=>x.SubjectFarmerId).HasColumnName("subject_farmer_id"); b.Property(x=>x.Notes).HasColumnName("notes").HasMaxLength(1000); b.HasOne(x=>x.FarmTask).WithMany(x=>x.History).HasForeignKey(x=>x.FarmTaskId).OnDelete(DeleteBehavior.Cascade); b.HasOne<AppUser>().WithMany().HasForeignKey(x=>x.ActorUserId).OnDelete(DeleteBehavior.Restrict); b.HasIndex(x=>new{x.FarmTaskId,x.CreatedAtUtc}); }
 }

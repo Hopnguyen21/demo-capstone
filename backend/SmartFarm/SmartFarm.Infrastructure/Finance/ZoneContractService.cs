@@ -182,6 +182,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             MonthlyRentVnd = command.MonthlyRentVnd,
             DepositVnd = deposit,
             TotalContractValueVnd = finalTotal,
+            DiscountPercent = discountPercent,
+            DiscountVnd = discount,
             StartDate = command.StartDate,
             EndDate = command.EndDate,
             Status = status,
@@ -508,8 +510,28 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
                 r.Notes,
                 r.CreatedAtUtc
             )).OrderByDescending(r => r.CreatedAtUtc).ToList(),
-            c.CreatedAtUtc
+            c.CreatedAtUtc,
+            // Giá gốc = tổng thanh toán - VAT + chiết khấu (tổng đã gồm VAT và đã trừ chiết khấu).
+            c.TotalContractValueVnd - c.VatAmountVnd + c.DiscountVnd,
+            c.DiscountPercent,
+            c.DiscountVnd,
+            c.VatPercent,
+            c.VatAmountVnd,
+            ParseEquipment(c.EquipmentJson)
         );
+    }
+
+    private static IReadOnlyList<ZoneContractEquipmentView> ParseEquipment(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<ZoneContractEquipmentView>>(json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? [];
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
     }
 
     private static DeviceDepreciationView MapToDepreciationView(DeviceDepreciation d, DateOnly today, bool isNearContractRenewal)
@@ -554,9 +576,26 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
     private static bool _contractsSeedChecked;
     private static bool _deprecSeedChecked;
 
+    // Nhiều yêu cầu song song cùng thấy bảng rỗng và cùng chèn dữ liệu mẫu (đã sinh hợp đồng trùng): chỉ một yêu cầu được tạo mỗi lần.
+    private static readonly SemaphoreSlim SeedLock = new(1, 1);
+
     private async Task EnsureSeedDataAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
         if (!IsDevelopment() || _contractsSeedChecked) return;
+        await SeedLock.WaitAsync(ct);
+        try
+        {
+            if (_contractsSeedChecked) return;
+            await EnsureSeedDataCoreAsync(ownerId, tenantId, ct);
+        }
+        finally
+        {
+            SeedLock.Release();
+        }
+    }
+
+    private async Task EnsureSeedDataCoreAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
+    {
         if (await db.ZoneContracts.AnyAsync(ct))
         {
             _contractsSeedChecked = true;
@@ -663,6 +702,20 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
     private async Task EnsureSeedDepreciationsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
     {
         if (!IsDevelopment() || _deprecSeedChecked) return;
+        await SeedLock.WaitAsync(ct);
+        try
+        {
+            if (_deprecSeedChecked) return;
+            await EnsureSeedDepreciationsCoreAsync(ownerId, tenantId, ct);
+        }
+        finally
+        {
+            SeedLock.Release();
+        }
+    }
+
+    private async Task EnsureSeedDepreciationsCoreAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
+    {
         if (await db.DeviceDepreciations.AnyAsync(ct))
         {
             _deprecSeedChecked = true;

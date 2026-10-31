@@ -7,7 +7,7 @@ public sealed record UpdateFinanceCommand(decimal Amount, DateTime OccurredAtUtc
 public sealed record FinanceTransactionView(Guid Id, Guid FarmId, FinanceTransactionType Type, ExpenseCategory? ExpenseCategory, decimal Amount, DateTime OccurredAtUtc, string Description, string? Reference, DateTime CreatedAtUtc);
 public sealed record CashFlowReportView(Guid FarmId, DateTime? FromUtc, DateTime? ToUtc, decimal Revenue, decimal Expense, decimal NetCashFlow, IReadOnlyDictionary<ExpenseCategory, decimal> ExpensesByCategory);
 
-public sealed record CreateServiceRequestCommand(Guid ZoneId, Guid? DeviceId, string FailureCode, string Description);
+public sealed record CreateServiceRequestCommand(Guid ZoneId, Guid? DeviceId, string FailureCode, string Description, Guid? DeploymentRequestId = null);
 public sealed record AssignServiceRequestCommand(Guid TechnicianUserId, string? Notes);
 public sealed record DiagnoseServiceRequestCommand(string InspectionNotes, string Diagnosis, ServiceResolutionAction ResolutionAction);
 public sealed record RecordServiceWorkCommand(string WorkPerformed);
@@ -15,7 +15,7 @@ public sealed record ReplaceServiceDeviceCommand(Guid NewDeviceId, string? Notes
 public sealed record ServiceConnectionTestCommand(bool Succeeded, decimal? Rssi, decimal? Snr, int? RoundTripLatencyMs, DateTime ObservedAtUtc, string? ErrorCode, string? ErrorMessage);
 public sealed record ServiceHistoryView(Guid Id, ServiceHistoryEventType EventType, ServiceRequestStatus FromStatus, ServiceRequestStatus ToStatus, Guid ActorUserId, string? Notes, DateTime CreatedAtUtc);
 public sealed record DeviceReplacementView(Guid Id, Guid OldDeviceId, Guid NewDeviceId, Guid ZoneId, DateTime CreatedAtUtc);
-public sealed record ServiceRequestView(Guid Id, Guid TenantId, Guid FarmId, Guid ZoneId, Guid? OriginalDeviceId, Guid? CurrentDeviceId, string FailureCode, string Description, ServiceRequestStatus Status, Guid? AssignedTechnicianId, string? InspectionNotes, string? Diagnosis, ServiceResolutionAction? ResolutionAction, string? WorkPerformed, DateTime? ClosedAtUtc, IReadOnlyList<ServiceHistoryView> History, IReadOnlyList<DeviceReplacementView> Replacements);
+public sealed record ServiceRequestView(Guid Id, Guid TenantId, Guid FarmId, Guid ZoneId, Guid? OriginalDeviceId, Guid? CurrentDeviceId, string FailureCode, string Description, ServiceRequestStatus Status, Guid? AssignedTechnicianId, string? InspectionNotes, string? Diagnosis, ServiceResolutionAction? ResolutionAction, string? WorkPerformed, DateTime? ClosedAtUtc, IReadOnlyList<ServiceHistoryView> History, IReadOnlyList<DeviceReplacementView> Replacements, Guid DeploymentRequestId = default);
 
 public interface IFinanceService
 {

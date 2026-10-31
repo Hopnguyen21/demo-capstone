@@ -67,7 +67,7 @@ public sealed class InventoryTaskTests
 
         var failedTask = await Read<FarmTaskView>(await client.PostAsJsonAsync($"/api/v1/farms/{seed.FarmAId}/tasks", NewTask(seed.ZoneAId, seed.UnassignedFarmerId)));
         await Login(client, "farmer@example.com"); await Act(client, seed.FarmAId, failedTask.Id, "Accept"); var failed = await Act(client, seed.FarmAId, failedTask.Id, "Fail", failure: "Irrigation line is blocked"); Assert.Equal(FarmTaskStatus.Failed, failed.Status);
-        await Login(client, "owner-a@example.com"); var reassigned = await Act(client, seed.FarmAId, failedTask.Id, "Reassign", assignedFarmerId: farmers.OtherFarmerId); Assert.Equal(FarmTaskStatus.Pending, reassigned.Status); Assert.Equal(2, reassigned.AssignmentVersion); Assert.Contains(reassigned.History, x => x.EventType == FarmTaskEventType.Reassigned);
+        await Login(client, "owner-a@example.com"); var reassigned = await Act(client, seed.FarmAId, failedTask.Id, "Reassign", assignedFarmerId: farmers.OtherFarmerId); Assert.Equal(FarmTaskStatus.Pending, reassigned.Status); Assert.Equal(2, reassigned.Assignments.Count); Assert.Equal(FarmTaskStatus.Pending, reassigned.Assignments.Single(a => a.FarmerId == farmers.OtherFarmerId).Status); Assert.Contains(reassigned.History, x => x.EventType == FarmTaskEventType.AssigneeAdded && x.SubjectFarmerId == farmers.OtherFarmerId);
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public sealed class InventoryTaskTests
     }
 
     private static object Item(string name, decimal initial, decimal threshold = 1) => new { name, materialType = "Fertilizer", unit = "kg", lowStockThreshold = threshold, initialQuantity = initial };
-    private static object NewTask(Guid zoneId, Guid farmerId) => new { zoneId, title = "Inspect crop", description = "Inspect all beds", requirements = "Attach notes", dueAtUtc = DateTime.UtcNow.AddDays(1), assignedFarmerId = farmerId };
-    private static async Task<FarmTaskView> Act(HttpClient c, Guid farm, Guid task, string action, string? result = null, string? failure = null, Guid? assignedFarmerId = null) { var r = await c.PutAsJsonAsync($"/api/v1/farms/{farm}/tasks/{task}", new { action, result, failureReason = failure, assignedFarmerId }); r.EnsureSuccessStatusCode(); return await Read<FarmTaskView>(r); }
+    private static object NewTask(Guid zoneId, Guid farmerId) => new { zoneId, title = "Inspect crop", description = "Inspect all beds", requirements = "Attach notes", dueAtUtc = DateTime.UtcNow.AddDays(1), farmerIds = new[] { farmerId } };
+    private static async Task<FarmTaskView> Act(HttpClient c, Guid farm, Guid task, string action, string? result = null, string? failure = null, Guid? assignedFarmerId = null) { var r = await c.PutAsJsonAsync($"/api/v1/farms/{farm}/tasks/{task}", new { action, result, failureReason = failure, farmerId = assignedFarmerId }); r.EnsureSuccessStatusCode(); return await Read<FarmTaskView>(r); }
     private static async Task<(Guid OtherFarmerId, Guid TenantId)> AttachFarmers(TestApplicationFactory factory, SeedData seed)
     {
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>(); var farm = await db.Farms.SingleAsync(x => x.Id == seed.FarmAId); var farmer = await db.AppUsers.SingleAsync(x => x.Id == seed.UnassignedFarmerId);

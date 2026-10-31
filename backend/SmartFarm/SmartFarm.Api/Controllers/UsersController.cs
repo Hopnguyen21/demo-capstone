@@ -10,7 +10,7 @@ namespace SmartFarm.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/users")]
-public sealed class UsersController(IUserService userService) : ControllerBase
+public sealed class UsersController(IUserService userService, IFarmInvitationService invitations) : ControllerBase
 {
     // API catalog #6
     [Authorize(Roles = "FarmOwner,PlatformAdmin")]
@@ -41,14 +41,13 @@ public sealed class UsersController(IUserService userService) : ControllerBase
     // API catalog #10
     [Authorize(Roles = "FarmOwner")]
     [HttpPost("invite")]
-    public async Task<ActionResult<FarmerAssignmentView>> Invite(
+    public async Task<ActionResult<FarmInvitationView>> Invite(
         InviteFarmerRequest request,
         CancellationToken cancellationToken)
     {
-        return Ok(await userService.InviteFarmerAsync(
-            User.GetUserId(),
-            new InviteFarmerCommand(request.Email, request.FarmId),
-            cancellationToken));
+        // Không gắn Farmer vào Farm ngay: tạo lời mời chờ Farmer chấp nhận.
+        var invitation = await invitations.InviteAsync(User.GetUserId(), new InviteFarmerByEmailCommand(request.Email, request.FarmId), cancellationToken);
+        return Created($"/api/v1/farm-invitations/{invitation.Id}", invitation);
     }
 
     // Auth contract USER-V1-01

@@ -10,6 +10,7 @@ public interface IIoTDeploymentService
     Task<DeploymentRequestView> UpdateOwnerPlanAsync(Guid ownerId, Guid tenantId, Guid requestId, IReadOnlyList<PlanItemInput> items, CancellationToken ct);
     Task<DeploymentRequestView> SubmitAsync(Guid ownerId, Guid tenantId, Guid requestId, CancellationToken ct);
     Task<DeploymentRequestView> GetRequestAsync(Guid userId, Guid? tenantId, Guid requestId, CancellationToken ct);
+    Task<IReadOnlyList<DeploymentRequestView>> ListOwnerRequestsAsync(Guid ownerId, Guid tenantId, Guid? zoneId, CancellationToken ct);
     Task<IReadOnlyList<DeploymentRequestView>> ListTechnicianRequestsAsync(Guid technicianId, CancellationToken ct);
     Task<DeploymentRequestView> AcceptAsync(Guid technicianId, Guid requestId, CancellationToken ct);
     Task<DeploymentRequestView> SurveyAsync(Guid technicianId, Guid requestId, SurveyCommand command, CancellationToken ct);

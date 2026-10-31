@@ -16,6 +16,7 @@ public interface ITelemetryIngestionService
 public interface ITelemetryAlertService
 {
     Task<LatestTelemetryView> LatestAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken);
+    Task<ZoneDeviceTelemetryView> LatestByDeviceAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken);
     Task<TelemetryHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, EnvironmentalParameterCode parameterCode, DateTime fromUtc, DateTime toUtc, string interval, CancellationToken cancellationToken);
     Task<TelemetryStatsView> StatsAsync(Guid ownerId, Guid tenantId, Guid zoneId, int days, CancellationToken cancellationToken);
     Task<IReadOnlyList<AlertRuleView>> ListRulesAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken);

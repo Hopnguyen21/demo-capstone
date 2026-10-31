@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Infrastructure.Identity;
+using SmartFarm.Application.Features.Users;
 using SmartFarm.Infrastructure.FarmStructure;
 using SmartFarm.Infrastructure.CropGrowth;
 using SmartFarm.Infrastructure.IoTDeployment;
@@ -59,6 +60,8 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddOptions<InvitationOptions>().Bind(configuration.GetSection(InvitationOptions.SectionName));
+        services.AddScoped<IFarmInvitationService, FarmInvitationService>();
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<ITechnicianService, TechnicianService>();
         services.AddScoped<FarmStructureService>();
@@ -125,9 +128,15 @@ public static class DependencyInjection
             string.IsNullOrWhiteSpace(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.ApiKey)
                 ? provider.GetRequiredService<UnavailableAiAdvisoryProvider>()
                 : provider.GetRequiredService<GeminiAiAdvisoryProvider>());
+        services.AddScoped<GeminiQuestionIntentClassifier>();
+        services.AddScoped<UnavailableQuestionIntentClassifier>();
+        services.AddScoped<IQuestionIntentClassifier>(provider =>
+            string.IsNullOrWhiteSpace(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.ApiKey)
+                ? provider.GetRequiredService<UnavailableQuestionIntentClassifier>()
+                : provider.GetRequiredService<GeminiQuestionIntentClassifier>());
         services.AddScoped<GeminiEmbeddingProvider>();
         services.AddScoped<IDocumentSufficiencyValidator, VietGapDocumentAiValidator>();
-        services.AddScoped<VietGapStructuredExtractor>();
+        services.AddScoped<VietGapDocumentVerifier>();
         services.AddScoped<AgricultureDocumentService>();
         services.AddScoped<IAgricultureDocumentService>(sp => sp.GetRequiredService<AgricultureDocumentService>());
         services.AddScoped<IAgricultureKnowledgeRetriever, AgricultureKnowledgeRetriever>();

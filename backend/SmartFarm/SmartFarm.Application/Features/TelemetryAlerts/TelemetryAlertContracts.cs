@@ -9,6 +9,9 @@ public sealed record TelemetryEnvelope(string MessageId, Guid DeviceId, Guid Zon
 public sealed record TelemetryIngestionResult(Guid GatewayId, Guid DeviceId, Guid ZoneId, string MessageId, bool IsDuplicate, int StoredReadings, int AlertsCreated);
 
 public sealed record LatestMetricView(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc, DateTime ReceivedAtUtc, bool IsFresh, string ThresholdStatus);
+/// <summary>Số đo mới nhất theo từng thông số của một thiết bị (node) trong Zone.</summary>
+public sealed record DeviceLatestTelemetryView(Guid DeviceId, string HardwareAddress, DeviceType DeviceType, DeviceStatus Status, int? BatteryLevel, decimal? Rssi, IReadOnlyList<string> Sensors, IReadOnlyList<string> Actuators, IReadOnlyList<LatestMetricView> Metrics);
+public sealed record ZoneDeviceTelemetryView(Guid ZoneId, IReadOnlyList<DeviceLatestTelemetryView> Devices);
 public sealed record LatestTelemetryView(Guid ZoneId, DateTime? LatestReceivedAtUtc, bool HasFreshTelemetry, IReadOnlyList<LatestMetricView> Metrics);
 public sealed record TelemetryHistoryPoint(DateTime BucketStartUtc, decimal Average, decimal Minimum, decimal Maximum, int Count);
 public sealed record TelemetryHistoryView(Guid ZoneId, EnvironmentalParameterCode ParameterCode, string Interval, IReadOnlyList<TelemetryHistoryPoint> Data);

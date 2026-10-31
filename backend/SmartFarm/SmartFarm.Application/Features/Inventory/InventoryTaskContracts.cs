@@ -11,10 +11,14 @@ public sealed record InventoryItemView(Guid Id, Guid FarmId, string Name, Materi
 public sealed record InventoryMovementView(Guid Id, Guid ItemId, InventoryMovementType Type, decimal Quantity, decimal BalanceAfter, Guid? ZoneId, Guid? TaskId, DateTime CreatedAtUtc);
 public sealed record LowStockAlertView(Guid Id, Guid ItemId, string ItemName, LowStockAlertStatus Status, decimal QuantityAtOpen, DateTime OpenedAtUtc, DateTime? ResolvedAtUtc);
 
-public sealed record CreateFarmTaskCommand(Guid ZoneId, string Title, string? Description, string? Requirements, DateTime DueAtUtc, Guid AssignedFarmerId);
-public sealed record UpdateFarmTaskCommand(FarmTaskAction Action, string? Result, string? FailureReason, Guid? AssignedFarmerId, string? Notes);
-public sealed record FarmTaskHistoryView(Guid Id, FarmTaskEventType EventType, FarmTaskStatus? FromStatus, FarmTaskStatus ToStatus, Guid ActorUserId, Guid? PreviousAssigneeId, Guid? NewAssigneeId, string? Notes, DateTime CreatedAtUtc);
-public sealed record FarmTaskView(Guid Id, Guid FarmId, Guid ZoneId, string Title, string? Description, string? Requirements, DateTime DueAtUtc, Guid AssignedFarmerId, FarmTaskStatus Status, string? Result, string? FailureReason, int AssignmentVersion, DateTime CreatedAtUtc, IReadOnlyList<FarmTaskHistoryView> History);
+public sealed record CreateFarmTaskCommand(Guid ZoneId, string Title, string? Description, string? Requirements, DateTime DueAtUtc, IReadOnlyList<Guid> FarmerIds);
+/// <summary>FarmerId: Farmer mục tiêu khi Owner duyệt/giao lại; Farmer luôn chỉ thao tác trên phân công của chính mình. ProgressPercent: 0-100 cho UpdateProgress.</summary>
+public sealed record UpdateFarmTaskCommand(FarmTaskAction Action, string? Result, string? FailureReason, Guid? FarmerId, int? ProgressPercent, string? Notes);
+/// <summary>NewDueAtUtc: đặt hạn mới (UTC, ở tương lai) khi giao lại công việc đã quá hạn.</summary>
+public sealed record AddTaskAssigneesCommand(IReadOnlyList<Guid> FarmerIds, DateTime? NewDueAtUtc = null);
+public sealed record FarmTaskHistoryView(Guid Id, FarmTaskEventType EventType, FarmTaskStatus? FromStatus, FarmTaskStatus ToStatus, Guid ActorUserId, Guid? SubjectFarmerId, string? Notes, DateTime CreatedAtUtc);
+public sealed record FarmTaskAssignmentView(Guid Id, Guid FarmerId, string FarmerName, FarmTaskStatus Status, int ProgressPercent, string? ProgressNote, string? Result, string? FailureReason, int AssignmentVersion, DateTime AssignedAtUtc, DateTime? AcceptedAtUtc, DateTime? StartedAtUtc, DateTime? SubmittedAtUtc, DateTime? ApprovedAtUtc);
+public sealed record FarmTaskView(Guid Id, Guid FarmId, Guid ZoneId, string Title, string? Description, string? Requirements, DateTime DueAtUtc, FarmTaskStatus Status, DateTime CreatedAtUtc, IReadOnlyList<FarmTaskAssignmentView> Assignments, IReadOnlyList<FarmTaskHistoryView> History);
 
 public interface IInventoryTaskService
 {
@@ -27,4 +31,6 @@ public interface IInventoryTaskService
     Task<IReadOnlyList<FarmTaskView>> ListTasksAsync(Guid userId, Guid tenantId, Guid farmId, CancellationToken ct);
     Task<FarmTaskView> CreateTaskAsync(Guid ownerId, Guid tenantId, Guid farmId, CreateFarmTaskCommand command, CancellationToken ct);
     Task<FarmTaskView> UpdateTaskAsync(Guid userId, Guid tenantId, Guid farmId, Guid taskId, UpdateFarmTaskCommand command, CancellationToken ct);
+    Task<FarmTaskView> AddAssigneesAsync(Guid ownerId, Guid tenantId, Guid farmId, Guid taskId, AddTaskAssigneesCommand command, CancellationToken ct);
+    Task<FarmTaskView> RemoveAssigneeAsync(Guid ownerId, Guid tenantId, Guid farmId, Guid taskId, Guid farmerId, CancellationToken ct);
 }

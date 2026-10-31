@@ -12,7 +12,8 @@ public sealed record KnowledgePassageView(
     string Content,
     float SimilarityScore,
     int? PageNumber = null,
-    string? SectionTitle = null);
+    string? SectionTitle = null,
+    string? Version = null);
 
 /// <summary>
 /// Tìm kiếm các đoạn tài liệu nông học phù hợp nhất với câu hỏi
@@ -35,5 +36,18 @@ public interface IAgricultureKnowledgeRetriever
         string? category,
         Guid? tenantId,
         int topK,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Như trên; <paramref name="generalOnlyWhenCropUnknown"/> = true thì khi chưa biết cây chỉ dùng tài liệu áp dụng chung
+    /// (không ghi phạm vi cây), để không trả hướng dẫn riêng của một cây cho câu hỏi chưa rõ cây.
+    /// </summary>
+    Task<IReadOnlyList<KnowledgePassageView>> RetrievePassagesAsync(
+        string question,
+        string? cropName,
+        string? category,
+        Guid? tenantId,
+        int topK,
+        bool generalOnlyWhenCropUnknown,
         CancellationToken cancellationToken);
 }

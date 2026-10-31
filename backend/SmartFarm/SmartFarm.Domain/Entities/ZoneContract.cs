@@ -20,6 +20,14 @@ public sealed class ZoneContract : AuditableEntity
     public decimal MonthlyRentVnd { get; set; }
     public decimal DepositVnd { get; set; }
     public decimal TotalContractValueVnd { get; set; }
+    /// <summary>Phần chiết khấu đã trừ khỏi giá gốc (VND) và tỷ lệ; 0 nếu không có.</summary>
+    public decimal DiscountVnd { get; set; }
+    public decimal DiscountPercent { get; set; }
+    /// <summary>Thuế VAT nằm trong TotalContractValueVnd (VND) và thuế suất; 0 nếu hợp đồng không tách VAT.</summary>
+    public decimal VatAmountVnd { get; set; }
+    public decimal VatPercent { get; set; }
+    /// <summary>Danh mục thiết bị theo hợp đồng (JSON: code, name, category, unit, quantity, unitPrice); null nếu hợp đồng không gắn báo giá.</summary>
+    public string? EquipmentJson { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public ZoneContractStatus Status { get; set; } = ZoneContractStatus.Active;

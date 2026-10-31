@@ -28,6 +28,11 @@ internal sealed class ZoneConfiguration : IEntityTypeConfiguration<Zone>
         builder.Property(x => x.ArchivedAtUtc).HasColumnName("archived_at_utc");
         builder.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
         builder.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc");
+        builder.Property(x => x.CropId).HasColumnName("crop_id");
+        builder.Property(x => x.CropVarietyId).HasColumnName("crop_variety_id");
+        builder.HasOne(x => x.Crop).WithMany().HasForeignKey(x => x.CropId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Variety).WithMany().HasForeignKey(x => x.CropVarietyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.CropId);
         builder.HasIndex(x => new { x.FieldId, x.Name }).IsUnique();
         builder.HasIndex(x => x.BoundaryGeoJson).HasDatabaseName("ix_zones_boundary_gist").HasMethod("gist");
         builder.HasOne(x => x.Field).WithMany(x => x.Zones).HasForeignKey(x => x.FieldId).OnDelete(DeleteBehavior.Restrict);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { useAuth } from '../providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { Shell } from '../../components/layout/Shell';
 import { HomePage } from '../../pages/public/HomePage';
 import { LoginPage } from '../../pages/auth/LoginPage';
@@ -42,6 +42,7 @@ import { SupportPage } from '../../pages/owner/SupportPage';
 import { FarmerHome } from '../../pages/farmer/FarmerHome';
 import { FarmerZonesPage } from '../../pages/farmer/FarmerZonesPage';
 import { FarmerTasksPage } from '../../pages/farmer/FarmerTasksPage';
+import { FarmerInvitationsPage } from '../../pages/farmer/FarmerInvitationsPage';
 import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
 import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 
@@ -158,6 +159,7 @@ export const router = createBrowserRouter([
       { path: '/farmer/monitoring', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><MonitoringRealtime /></RequireRole> },
       { path: '/farmer/alerts', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><AlertsPage /></RequireRole> },
       { path: '/farmer/tasks', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerTasksPage /></RequireRole> },
+      { path: '/farmer/invitations', element: <RequireRole allowedRoles={['FARMER']}><FarmerInvitationsPage /></RequireRole> },
       { path: '/farmer/irrigation', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerIrrigationPage /></RequireRole> },
       { path: '/farmer/ai', element: <RequireRole allowedRoles={['FARMER']}><FarmerAIPage /></RequireRole> },
       { path: '*', element: <RoleBasedRedirect /> },

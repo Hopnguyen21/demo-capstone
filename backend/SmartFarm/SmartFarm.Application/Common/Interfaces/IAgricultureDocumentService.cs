@@ -19,10 +19,12 @@ public sealed record AgricultureDocumentSummaryView(
     string? ReviewNotes,
     DateTime? ReviewedAtUtc,
     bool HasOriginalFile,
-    string DocumentType = "OfficialStandard",
+    string DocumentType = "Unspecified",
     string Topics = "",
     /// <summary>Chủ đề hệ thống tự nhận diện từ nội dung các đoạn (khác với Topics do người tải lên khai báo).</summary>
-    string DetectedTopics = "");
+    string DetectedTopics = "",
+    /// <summary>Trạng thái AI kiểm tra chủ đề nông nghiệp (null = chưa có).</summary>
+    string? VerificationStatus = null);
 
 public sealed record AgricultureChunkView(
     Guid Id,
@@ -53,31 +55,56 @@ public sealed record AgricultureDocumentDetailView(
     string? ReviewNotes,
     DateTime? ReviewedAtUtc,
     bool HasOriginalFile,
-    VietGapStructuredExtraction? Extraction = null,
-    string DocumentType = "OfficialStandard",
-    string Topics = "");
+    DocumentVerificationResult? Verification = null,
+    string DocumentType = "Unspecified",
+    string Topics = "",
+    DocumentMetadataDetection? MetadataDetection = null,
+    /// <summary>Trạng thái rà soát (kể cả Pending khi AI chưa có kết quả).</summary>
+    string? VerificationStatus = null);
+
+/// <summary>Bằng chứng nguồn của một giá trị nhận diện: câu trích nguyên văn và số trang nếu file có đánh dấu trang.</summary>
+public sealed record MetadataEvidence(string Quote, int? Page);
 
 /// <summary>
-/// Một trường thông tin VietGAP do AI trích từ tài liệu. Value chỉ có khi Evidence là câu trích nguyên văn
-/// tìm thấy trong toàn văn; không có trích dẫn khớp thì Value = null (không có trong tài liệu).
+/// Một metadata nhận diện từ nội dung. Status: "detected" (có bằng chứng rõ), "uncertain" (suy ra từ bằng chứng gián tiếp,
+/// cần người duyệt đối chiếu) hoặc "not_found" (file không có bằng chứng; Value = null, không đoán).
 /// </summary>
-public sealed record VietGapExtractedField(string Key, string Label, string? Value, string? Evidence, int? Page);
+public sealed record DetectedMetadataField(
+    string Status, string? Value, MetadataEvidence? Evidence, double Confidence, IReadOnlyList<string>? Candidates = null);
 
-public sealed record VietGapExtractedStage(
-    int StageOrder, string Name, int? DurationDays, string? TemperatureRange, string? MoistureRange,
-    string? Ph, string? Ec, string? FertilizerAction, string? IpmAction, string Evidence, int? Page);
+public sealed record DetectedTopic(string Topic, int ChunkCount, MetadataEvidence Evidence);
 
-public sealed record VietGapStructuredExtraction(
-    IReadOnlyList<VietGapExtractedField> Fields,
-    IReadOnlyList<VietGapExtractedStage> Stages,
-    string ExtractedBy,
-    DateTime ExtractedAtUtc,
-    /// <summary>Phiên bản quy tắc kiểm chứng đã tạo kết quả; thấp hơn bản hiện hành thì kết quả cần trích xuất lại.</summary>
-    int RulesVersion = 0,
-    /// <summary>Trường AI đề xuất nhưng bị loại vì câu trích không có trong tài liệu hoặc số liệu không khớp.</summary>
-    IReadOnlyList<string>? RejectedFields = null,
-    /// <summary>Số trường AI có đề xuất giá trị (trước khi kiểm chứng).</summary>
-    int ProposedCount = 0);
+/// <summary>
+/// Kết quả nhận diện metadata của một tài liệu. Chủ đề là gợi ý để tìm kiếm, không đòi tài liệu có đủ mọi chủ đề.
+/// GeneralScopeConfirmed: người duyệt xác nhận tài liệu áp dụng chung (không ghi cây) sau khi đối chiếu file gốc.
+/// </summary>
+public sealed record DocumentMetadataDetection(
+    int RulesVersion,
+    DetectedMetadataField Title,
+    DetectedMetadataField Crops,
+    DetectedMetadataField GeneralScope,
+    DetectedMetadataField Publisher,
+    DetectedMetadataField StandardCode,
+    DetectedMetadataField Version,
+    DetectedMetadataField EffectiveDate,
+    DetectedMetadataField DocumentType,
+    IReadOnlyList<DetectedTopic> Topics,
+    bool GeneralScopeConfirmed = false)
+{
+    public const string Detected = "detected";
+    public const string Uncertain = "uncertain";
+    public const string NotFound = "not_found";
+    public const int CurrentRulesVersion = 1;
+
+    /// <summary>Phạm vi cây đã có căn cứ: có cây nhận diện/được người duyệt chọn, hoặc áp dụng chung có bằng chứng/xác nhận.</summary>
+    public bool ScopeResolved(string cropScope) =>
+        !string.IsNullOrWhiteSpace(cropScope) || GeneralScopeConfirmed || GeneralScope.Status == Detected;
+}
+
+/// <summary>Chỉnh sửa metadata của người duyệt sau khi đối chiếu file gốc; trường null = giữ nguyên.</summary>
+public sealed record DocumentMetadataOverrides(
+    string? Title, string? CropScope, string? AuthorOrganization, string? Version,
+    AgricultureDocumentType? DocumentType, bool ConfirmGeneralScope);
 
 public sealed record AgricultureOriginalFileView(byte[] Content, string FileName, string ContentType);
 
@@ -91,9 +118,12 @@ public interface IAgricultureDocumentService
     Task<AgricultureOriginalFileView?> GetOriginalFileAsync(Guid documentId, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
     Task<Guid> IngestDocumentAsync(string title, string fileName, string fileType, byte[] fileBytes, string? authorOrganization, string category, string cropScope, string? version, AgricultureDocumentType documentType, IReadOnlyList<string>? topics, Guid? tenantId, bool isPublic, CancellationToken cancellationToken);
     Task<bool> UpdateDocumentAsync(Guid documentId, string title, string? fileName, string? fileType, byte[]? fileBytes, string? contentText, string? authorOrganization, string category, string cropScope, string? version, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
-    Task<bool> ReviewDocumentAsync(Guid documentId, string? contentText, bool approve, string? reviewNotes, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
-    /// <summary>Chạy lại trích xuất có trích dẫn cho tài liệu (ví dụ tài liệu cũ hoặc sau khi sửa toàn văn).</summary>
-    Task<VietGapStructuredExtraction?> ReextractDocumentAsync(Guid documentId, CancellationToken cancellationToken);
+    Task<bool> ReviewDocumentAsync(Guid documentId, string? contentText, bool approve, string? reviewNotes, Guid? tenantId, bool isPlatformAdmin, DocumentMetadataOverrides? overrides, CancellationToken cancellationToken);
+    /// <summary>
+    /// Yêu cầu AI kiểm tra lại tài liệu có thuộc lĩnh vực nông nghiệp hay không (đánh dấu Pending, worker nền chạy).
+    /// Không ảnh hưởng trạng thái duyệt.
+    /// </summary>
+    Task<DocumentVerificationResult?> RequestVerificationAsync(Guid documentId, CancellationToken cancellationToken);
     Task<bool> DeleteDocumentAsync(Guid documentId, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
     Task<IReadOnlyList<KnowledgePassageView>> SearchAsync(string query, string? cropName, Guid? tenantId, int topK, CancellationToken cancellationToken);
     Task<int> BackfillEmbeddingsAsync(CancellationToken cancellationToken);
@@ -101,14 +131,8 @@ public interface IAgricultureDocumentService
     Task<int> RechunkAllDocumentsAsync(CancellationToken cancellationToken);
     Task SeedVietGapKnowledgeAsync(CancellationToken cancellationToken = default);
     Task<VietGapDraftResult> GenerateVietGapDraftAsync(VietGapDraftRequest request, CancellationToken cancellationToken);
-    Task<VietGapGrowthProfileDraftResult> GenerateGrowthProfileDraftAsync(VietGapGrowthProfileDraftRequest request, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Gom toàn văn mọi tài liệu đã duyệt áp dụng cho một cây trồng (mỗi tài liệu có tiêu đề nguồn) làm đầu vào Growth Profile.
-    /// Null nếu chưa có tài liệu đã duyệt nào cho cây đó.
-    /// </summary>
-    Task<CropSourceBundle?> BuildCropSourceBundleAsync(string cropName, Guid? tenantId, CancellationToken cancellationToken);
     Task<Guid> IngestTextDocumentAsync(string title, string text, string? authorOrganization, string category, string cropScope, string? version, AgricultureDocumentType documentType, IReadOnlyList<string>? topics, Guid? tenantId, bool isPublic, CancellationToken cancellationToken);
+
 }
 
 /// <summary>Kết quả xác minh độ đầy đủ của tài liệu trước khi lưu vào kho tri thức.</summary>
@@ -166,44 +190,3 @@ public sealed record VietGapDraftResult(
     string Content,
     bool IsFallback = false,
     string Source = "ai");
-
-public sealed record VietGapGrowthProfileDraftRequest(
-    string CropName,
-    string? DocumentContent,
-    string? CultivationModel,
-    int StageCount);
-
-public sealed record GrowthRequirementDraft(
-    string ParameterCode,
-    decimal MinValue,
-    decimal MaxValue,
-    decimal TargetValue,
-    string Unit,
-    string SourceEvidence);
-
-public sealed record GrowthStageDraft(
-    int StageOrder,
-    string Name,
-    int DurationDays,
-    string DurationEvidence,
-    string Description,
-    string DescriptionEvidence,
-    string FertilizerAction,
-    string FertilizerEvidence,
-    string IpmAction,
-    string IpmEvidence,
-    List<GrowthRequirementDraft> Requirements);
-
-public sealed record VietGapGrowthProfileDraftResult(
-    string ProfileName,
-    string Description,
-    int TotalCycleDays,
-    List<GrowthStageDraft> Stages,
-    bool IsFallback = false,
-    string Source = "ai",
-    IReadOnlyList<string>? SourceDocuments = null);
-
-/// <summary>Toàn văn ghép từ nhiều tài liệu đã duyệt cho một cây trồng, kèm danh sách nguồn để gắn trích dẫn.</summary>
-public sealed record CropSourceBundle(string CombinedContent, IReadOnlyList<CropSourceDocument> Documents);
-
-public sealed record CropSourceDocument(Guid Id, string Title, string? AuthorOrganization, string ContentText);

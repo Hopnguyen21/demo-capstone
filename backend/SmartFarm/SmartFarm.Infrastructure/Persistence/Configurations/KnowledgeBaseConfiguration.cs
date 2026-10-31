@@ -32,6 +32,10 @@ internal sealed class AgricultureDocumentConfiguration : IEntityTypeConfiguratio
         b.Property(x => x.DocumentType).HasColumnName("document_type")
             .HasConversion<string>().HasMaxLength(30).HasDefaultValue(AgricultureDocumentType.OfficialStandard);
         b.Property(x => x.ReviewedAtUtc).HasColumnName("reviewed_at_utc");
+        b.Property(x => x.MetadataDetectionJson).HasColumnName("metadata_detection").HasColumnType("text");
+        b.Property(x => x.VerificationStatus).HasColumnName("verification_status").HasMaxLength(30);
+        b.Property(x => x.VerificationJson).HasColumnName("verification_result").HasColumnType("text");
+        b.Property(x => x.VerificationAttemptedAtUtc).HasColumnName("verification_attempted_at_utc");
         b.Property(x => x.StructuredExtractionJson).HasColumnName("structured_extraction").HasColumnType("text");
         b.Property(x => x.ExtractionAttemptedAtUtc).HasColumnName("extraction_attempted_at_utc");
         b.Property(x => x.ExtractionRulesVersion).HasColumnName("extraction_rules_version").HasDefaultValue(0);

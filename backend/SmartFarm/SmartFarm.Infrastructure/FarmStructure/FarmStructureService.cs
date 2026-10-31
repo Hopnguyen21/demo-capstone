@@ -283,6 +283,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         await GetFieldEntityAsync(tenantId, fieldId, tracking: false, cancellationToken);
         var query = dbContext.Zones.AsNoTracking()
             .Include(x => x.Field)
+            .Include(x => x.Crop).Include(x => x.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
@@ -299,6 +300,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var query = dbContext.Zones.AsNoTracking()
             .Include(x => x.Field).ThenInclude(f => f.Farm)
+            .Include(x => x.Crop).Include(x => x.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
@@ -362,12 +364,17 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             }
         }
 
+        var (cropId, varietyId) = await ResolveZoneCropAsync(tenantId, command.CropId, command.VarietyId, cancellationToken);
         var zone = (command with { Name = name, ZoneType = zoneType, Notes = NormalizeOptional(command.Notes, 1000) })
             .ToEntity(fieldId, boundary);
+        zone.CropId = cropId;
+        zone.CropVarietyId = varietyId;
         field.AvailableAreaM2 -= zone.AreaM2;
         dbContext.Zones.Add(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await dbContext.Entry(zone).Reference(x => x.Crop).LoadAsync(cancellationToken);
+        await dbContext.Entry(zone).Reference(x => x.Variety).LoadAsync(cancellationToken);
         return ToZoneView(zone, field.FarmId);
     }
 
@@ -446,6 +453,23 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             }
         }
 
+        // Cây hiện tại của Zone độc lập với vụ mùa: đổi cây không được tạo ra lệch với vụ đang chạy.
+        if (command.ClearCrop || command.CropId.HasValue)
+        {
+            var (newCropId, newVarietyId) = command.ClearCrop
+                ? ((Guid?)null, (Guid?)null)
+                : await ResolveZoneCropAsync(tenantId, command.CropId, command.VarietyId, cancellationToken);
+            if ((newCropId != zone.CropId || newVarietyId != zone.CropVarietyId) &&
+                zone.PlantingSeasons.Any(s => s.Status == PlantingSeasonStatus.InProgress && (s.CropId != newCropId || (newVarietyId.HasValue && s.VarietyId != newVarietyId))))
+            {
+                throw new ResourceConflictException("Zone đang có vụ mùa InProgress với cây/giống khác. Hãy kết thúc hoặc hủy vụ đó trước khi đổi cây của Zone.");
+            }
+            zone.CropId = newCropId;
+            zone.CropVarietyId = newVarietyId;
+            zone.Crop = null;
+            zone.Variety = null;
+        }
+
         zone.Field.AvailableAreaM2 = capacity - requestedArea;
         (command with
         {
@@ -455,7 +479,26 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         }).ApplyTo(zone, boundary);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await dbContext.Entry(zone).Reference(x => x.Crop).LoadAsync(cancellationToken);
+        await dbContext.Entry(zone).Reference(x => x.Variety).LoadAsync(cancellationToken);
         return ToZoneView(zone, zone.Field.FarmId);
+    }
+
+    /// <summary>Cây phải thuộc danh mục hiển thị cho Tenant (hệ thống hoặc của Tenant); giống phải thuộc đúng cây đó. Cả hai đều có thể để trống.</summary>
+    private async Task<(Guid? CropId, Guid? VarietyId)> ResolveZoneCropAsync(Guid tenantId, Guid? cropId, Guid? varietyId, CancellationToken cancellationToken)
+    {
+        if (!cropId.HasValue)
+        {
+            if (varietyId.HasValue) throw new RequestValidationException("VarietyId", "Phải chọn cây trước khi chọn giống.");
+            return (null, null);
+        }
+        var visibleTenant = tenantId == Guid.Empty ? (Guid?)null : tenantId;
+        if (!await dbContext.Crops.AsNoTracking().AnyAsync(x => x.Id == cropId && (x.TenantId == null || x.TenantId == visibleTenant), cancellationToken))
+            throw new RequestValidationException("CropId", "Cây trồng không tồn tại hoặc không thuộc danh mục của bạn.");
+        if (varietyId.HasValue &&
+            !await dbContext.CropVarieties.AsNoTracking().AnyAsync(x => x.Id == varietyId && x.CropId == cropId && (x.TenantId == null || x.TenantId == visibleTenant), cancellationToken))
+            throw new RequestValidationException("VarietyId", "Giống không thuộc cây đã chọn.");
+        return (cropId, varietyId);
     }
 
     async Task<ArchiveView> IZoneService.ArchiveAsync(
@@ -519,6 +562,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
     {
         var query = dbContext.Zones
             .Include(x => x.Field).ThenInclude(x => x.Farm)
+            .Include(x => x.Crop).Include(x => x.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
@@ -544,23 +588,25 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
 
     private static ZoneView ToZoneView(Zone zone, Guid farmId)
     {
-        var activeSeason = zone.PlantingSeasons
-            .Where(ps => ps.Status == PlantingSeasonStatus.InProgress || ps.Status == PlantingSeasonStatus.Planned)
-            .OrderByDescending(ps => ps.StartDate)
-            .FirstOrDefault()
-            ?? zone.PlantingSeasons.OrderByDescending(ps => ps.StartDate).FirstOrDefault();
+        // Cây hiện tại chỉ là thuộc tính của Zone. Vụ mùa không bao giờ trở thành "cây hiện tại": vụ InProgress chỉ cho giai đoạn
+        // (khi cùng cây với Zone), vụ Planned chỉ là cây dự kiến, vụ Completed/Cancelled không hiển thị.
+        var cropName = zone.Crop?.Name;
+        var varietyName = zone.Variety?.Name;
+        var currentCrop = string.IsNullOrWhiteSpace(cropName)
+            ? null
+            : !string.IsNullOrWhiteSpace(varietyName) && !varietyName.Equals(cropName, StringComparison.OrdinalIgnoreCase) ? $"{cropName} ({varietyName})" : cropName;
 
-        var cropName = activeSeason?.Crop?.Name;
-        var varietyName = activeSeason?.Variety?.Name;
-        var currentCrop = !string.IsNullOrWhiteSpace(cropName)
-            ? (!string.IsNullOrWhiteSpace(varietyName) && !varietyName.Equals(cropName, StringComparison.OrdinalIgnoreCase) ? $"{cropName} ({varietyName})" : cropName)
-            : (!string.IsNullOrWhiteSpace(varietyName) ? varietyName : zone.Notes);
-        var currentStage = activeSeason?.CurrentGrowthStage?.Name ?? (activeSeason != null ? "Đang canh tác" : null);
+        var inProgress = zone.PlantingSeasons.FirstOrDefault(ps => ps.Status == PlantingSeasonStatus.InProgress);
+        var planned = zone.PlantingSeasons.Where(ps => ps.Status == PlantingSeasonStatus.Planned).OrderBy(ps => ps.StartDate).FirstOrDefault();
+        var matches = inProgress is not null && zone.CropId.HasValue && inProgress.CropId == zone.CropId && (zone.CropVarietyId is null || inProgress.VarietyId is null || inProgress.VarietyId == zone.CropVarietyId);
+        var seasonStatus = inProgress is not null ? (matches ? "InProgress" : "Mismatch") : planned is not null ? "PlannedOnly" : "None";
+        var currentStage = matches ? inProgress!.CurrentGrowthStage?.Name : null;
 
         return new(
             zone.Id, zone.FieldId, farmId, zone.Name, zone.AreaM2, zone.ZoneType, zone.Notes, zone.Status,
             ParseJson(zone.BoundaryGeoJson), zone.CreatedAtUtc, zone.UpdatedAtUtc, zone.ArchivedAtUtc,
-            currentCrop, currentStage);
+            currentCrop, currentStage, zone.CropId, zone.CropVarietyId, cropName, varietyName,
+            seasonStatus, inProgress?.Name, inProgress?.Crop?.Name, planned?.Crop?.Name);
     }
 
     private static JsonElement? ParseJson(string? value)

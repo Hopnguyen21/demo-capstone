@@ -76,6 +76,24 @@ export const authService = {
 // 2. USER SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** Lời mời Farmer tham gia nhân công của Farm (gửi bằng thông báo trong ứng dụng, Farmer phải chấp nhận). */
+export const farmInvitationService = {
+  /** GET /api/v1/farms/{farmId}/invitations (Owner) */
+  listForFarm: async (farmId: string) => (await apiClient.get(`/api/v1/farms/${farmId}/invitations`)).data,
+  /** POST /api/v1/farms/{farmId}/invitations (Owner) */
+  invite: async (farmId: string, email: string) => (await apiClient.post(`/api/v1/farms/${farmId}/invitations`, { email })).data,
+  /** POST /api/v1/farm-invitations/{id}/resend (Owner) */
+  resend: async (invitationId: string) => (await apiClient.post(`/api/v1/farm-invitations/${invitationId}/resend`)).data,
+  /** POST /api/v1/farm-invitations/{id}/cancel (Owner) */
+  cancel: async (invitationId: string) => (await apiClient.post(`/api/v1/farm-invitations/${invitationId}/cancel`)).data,
+  /** GET /api/v1/farm-invitations/mine (Farmer) */
+  mine: async () => (await apiClient.get('/api/v1/farm-invitations/mine')).data,
+  /** POST /api/v1/farm-invitations/{id}/accept (Farmer) */
+  accept: async (invitationId: string) => (await apiClient.post(`/api/v1/farm-invitations/${invitationId}/accept`)).data,
+  /** POST /api/v1/farm-invitations/{id}/decline (Farmer) */
+  decline: async (invitationId: string) => (await apiClient.post(`/api/v1/farm-invitations/${invitationId}/decline`)).data,
+};
+
 export const userService = {
   /** GET /api/v1/users/me */
   getMe: async () => {
@@ -107,42 +125,34 @@ export const userService = {
     return res.data;
   },
 
-  /** POST /api/v1/users/invite  (FarmOwner invites farmer) */
-  createFarmer: async (data: { email: string; fullName: string; phone?: string }) => {
-    const res = await apiClient.post('/api/v1/users/invite', data);
-    return res.data;
-  },
-
-  /** Alias: createUser = createFarmer / invite */
-  createUser: async (data: any) => {
-    const res = await apiClient.post('/api/v1/users/invite', data);
-    return res.data;
-  },
-
-  /** Alias: getFarmers = getUsers mapped to Employee format */
+  /**
+   * Nhân công đã tham gia Farm (đã chấp nhận lời mời). Chỉ dùng dữ liệu thật từ API; trường thiếu để trống thay vì điền giá trị mẫu.
+   */
   getFarmers: async () => {
-    const res = await apiClient.get('/api/v1/users').catch(() => ({ data: [] }));
+    const res = await apiClient.get('/api/v1/users');
     const rawList = res.data?.value ?? res.data ?? [];
     return rawList
-      .filter((u: any) => u.role === 'Farmer' || !u.role)
-      .map((u: any, idx: number) => ({
-        employeeId: u.userId || u.employeeId || `emp-${idx}`,
-        tenantId: u.tenantId || '',
-        userId: u.userId,
-        employeeCode: u.employeeCode || `FARMER-${String(idx + 1).padStart(3, '0')}`,
-        fullName: u.fullName || 'Công nhân nông nghiệp',
-        phone: u.phone || '0900000000',
-        email: u.email || '',
-        position: u.position || 'Công nhân thực địa',
-        status: (u.status?.toUpperCase() === 'ACTIVE' || u.status === 'Active') ? 'ACTIVE' : 'INACTIVE',
-        joinedAt: u.createdAtUtc ? new Date(u.createdAtUtc).toLocaleDateString('vi-VN') : '01/01/2026',
-        assignedFarms: u.farmId ? [u.farmId] : [],
-        assignedZones: Array.isArray(u.assignedZones)
-          ? u.assignedZones
-          : Array.isArray(u.zoneAccess)
-            ? u.zoneAccess.map((za: any) => za.zoneId || za)
-            : [],
-      }));
+      .filter((u: any) => u.role === 'Farmer')
+      .map((u: any) => {
+        const zoneAccess: { zoneId: string; canControl: boolean }[] = Array.isArray(u.zoneAccess)
+          ? u.zoneAccess.map((za: any) => ({ zoneId: za.zoneId, canControl: Boolean(za.canControl) }))
+          : [];
+        return {
+          employeeId: u.userId,
+          tenantId: u.tenantId || '',
+          userId: u.userId,
+          employeeCode: String(u.userId || '').substring(0, 8).toUpperCase(),
+          fullName: u.fullName || u.email,
+          phone: u.phone || '',
+          email: u.email || '',
+          position: 'Nhân công',
+          status: u.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
+          joinedAt: '',
+          assignedFarms: u.farmId ? [u.farmId] : [],
+          assignedZones: zoneAccess.map(z => z.zoneId),
+          zoneAccess,
+        };
+      });
   },
 
   /** PUT /api/v1/users/me/password */
@@ -151,16 +161,13 @@ export const userService = {
     return res.data;
   },
 
-  /** Update farmer zone access */
-  updateFarmerZones: async (farmerId: string, zoneIds: string[]) => {
-    try {
-      const res = await apiClient.put(`/api/v1/users/${farmerId}/zone-access`, {
-        access: zoneIds.map(zid => ({ zoneId: zid, canControl: true }))
-      });
-      return res.data;
-    } catch {
-      return { success: true, farmerId, zoneIds };
-    }
+  /**
+   * PUT /api/v1/users/{userId}/zone-access — Owner cấu hình rõ từng Zone: được truy cập và (riêng biệt) được điều khiển thiết bị.
+   * Lỗi được ném lên cho giao diện hiển thị; không giả vờ thành công.
+   */
+  updateFarmerZones: async (farmerId: string, access: { zoneId: string; canControl: boolean }[]) => {
+    const res = await apiClient.put(`/api/v1/users/${farmerId}/zone-access`, { access });
+    return res.data;
   },
 };
 
@@ -424,6 +431,8 @@ export const zoneService = {
     areaM2: number;
     zoneType?: string;
     notes?: string;
+    cropId?: string | null;
+    varietyId?: string | null;
     polygonGeoJson?: any;
     boundaryGeoJson?: any;
   }) => {
@@ -432,6 +441,8 @@ export const zoneService = {
       areaM2: data.areaM2,
       zoneType: data.zoneType || 'Greenhouse',
       notes: data.notes,
+      cropId: data.cropId || undefined,
+      varietyId: data.varietyId || undefined,
       polygonGeoJson: data.polygonGeoJson || data.boundaryGeoJson,
     };
     const res = await apiClient.post(`/api/v1/fields/${fieldId}/zones`, payload);
@@ -577,6 +588,12 @@ export const cropService = {
     return res.data;
   },
 
+  /** PUT /api/v1/growth-stages/{stageId} — đổi số ngày kế hoạch của giai đoạn (bản của trang trại hoặc PlatformAdmin) */
+  updateStageDuration: async (stageId: string, durationDays: number) => {
+    const res = await apiClient.put(`/api/v1/growth-stages/${stageId}`, { durationDays });
+    return res.data;
+  },
+
   /** PUT /api/v1/growth-stages/{stageId}/requirements — sửa dải ngưỡng vi khí hậu của giai đoạn */
   updateStageRequirements: async (stageId: string, requirements: Array<{
     parameterCode: string;
@@ -655,6 +672,16 @@ export const seasonService = {
     }));
   },
 
+  /** POST /api/v1/farming-seasons/{id}/planting-seasons/bulk: mỗi Zone một vụ trồng riêng; dryRun chỉ kiểm tra. */
+  bulkCreate: async (farmingSeasonId: string, data: {
+    cropId: string; varietyId?: string; growthProfileId: string; namePrefix: string; startDate: string; expectedEndDate: string;
+    zones: Array<{ zoneId: string; startDate?: string; expectedEndDate?: string; setZoneCrop?: boolean }>;
+    dryRun?: boolean; skipInvalid?: boolean;
+  }) => {
+    const res = await apiClient.post(`/api/v1/farming-seasons/${farmingSeasonId}/planting-seasons/bulk`, data);
+    return res.data as { created: boolean; dryRun: boolean; validCount: number; invalidCount: number; zones: Array<{ zoneId: string; zoneName?: string; valid: boolean; problems: string[]; plantingSeasonId?: string }> };
+  },
+
   /** POST /api/v1/zones/{zoneId}/planting-seasons */
   createSeason: async (
     zoneId: string,
@@ -666,6 +693,8 @@ export const seasonService = {
       farmingSeasonId?: string;
       startDate: string;
       expectedEndDate: string;
+      /** Owner xác nhận gán/đổi cây của Zone theo cây của vụ này (cùng giao dịch với việc bắt đầu vụ). */
+      setZoneCrop?: boolean;
     }
   ) => {
     const res = await apiClient.post(`/api/v1/zones/${zoneId}/planting-seasons`, data);
@@ -785,9 +814,9 @@ export const deviceService = {
         id: d.deviceId || d.nodeId || d.id,
         name: d.name || d.hardwareAddress || `Node ${String(d.deviceId || d.nodeId || '').slice(0, 8)}`,
         nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || 'NODE',
-        batteryLevel: d.batteryLevel ?? (d.latestConnectionTest ? 92 : 88),
+        batteryLevel: d.batteryLevel ?? undefined, // không bịa mức pin khi thiết bị không báo
         status: (d.status === 'Online' || d.status === 'ONLINE') ? 'ONLINE' : (d.status === 'Offline' || d.status === 'OFFLINE' ? 'OFFLINE' : (d.status || 'ONLINE')),
-        rssi: d.rssi ?? d.latestConnectionTest?.rssi ?? -70,
+        rssi: d.rssi ?? d.latestConnectionTest?.rssi ?? undefined,
       }));
     } catch {
       return [];
@@ -822,15 +851,21 @@ export const deviceService = {
   getSensors: async (zoneId?: string) => {
     try {
       const devices = await deviceService.getNodes(zoneId);
+      // API trả danh sách cảm biến của node dưới dạng mảng tên loại (ví dụ "Temperature"), không phải object.
       const allSensors = devices.flatMap((d: any) =>
-        (d.sensors || []).map((s: any) => ({
-          ...s,
-          deviceId: d.nodeId || d.deviceId,
-          deviceName: d.name,
-          zoneId: d.zoneId,
-          lastValue: s.lastReading?.value ?? s.currentValue ?? s.value ?? '--',
-          status: d.status || 'ONLINE',
-        }))
+        (d.sensors || []).map((s: any) => {
+          const sensorType = typeof s === 'string' ? s : (s?.sensorType || s?.parameterCode || '');
+          return {
+            ...(typeof s === 'string' ? {} : s),
+            sensorId: `${d.nodeId || d.deviceId}:${sensorType}`,
+            sensorType,
+            parameterCode: sensorType,
+            deviceId: d.nodeId || d.deviceId,
+            deviceName: d.name,
+            zoneId: d.zoneId,
+            status: d.status || 'ONLINE',
+          };
+        })
       );
       return allSensors;
     } catch {
@@ -899,6 +934,12 @@ export const deviceService = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const telemetryService = {
+  /** GET /api/v1/zones/{zoneId}/telemetry/latest-by-device — số đo mới nhất theo từng node */
+  getLatestByDevice: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/latest-by-device`);
+    return res.data;
+  },
+
   /** GET /api/v1/zones/{zoneId}/telemetry/latest */
   getRealtime: async (zoneId: string) => {
     const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/latest`);
@@ -1276,15 +1317,42 @@ export const knowledgeService = {
     return res.data as AgricultureDocumentDetail;
   },
 
+  /** POST /api/v1/ai/knowledge/detect-metadata — Đọc tệp và tự động trích xuất loại cây, tiêu đề, mã số trực tiếp từ nội dung */
+  detectMetadata: async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await apiClient.post('/api/v1/ai/knowledge/detect-metadata', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data as {
+      fileName: string;
+      cropScope: string;
+      cropsStatus: 'detected' | 'uncertain' | 'not_found' | string;
+      cropsEvidence?: string;
+      cropsPage?: number;
+      candidates?: string[];
+      title: string;
+      publisher: string;
+      standardCode: string;
+      version: string;
+      documentType: string;
+    };
+  },
+
   /** POST /api/v1/ai/knowledge/documents/{documentId}/review */
-  reviewDocument: async (documentId: string, data: { contentText: string; approve: boolean; reviewNotes?: string }) => {
+  reviewDocument: async (documentId: string, data: {
+    contentText: string; approve: boolean; reviewNotes?: string;
+    // Chỉnh metadata sau khi đối chiếu file gốc; bỏ trống = giữ giá trị hệ thống đã nhận diện.
+    title?: string; cropScope?: string; authorOrganization?: string; version?: string;
+    documentType?: string; confirmGeneralScope?: boolean;
+  }) => {
     const res = await apiClient.post(`/api/v1/ai/knowledge/documents/${documentId}/review`, data, { timeout: 180_000 });
     return res.data as { reviewStatus: string; message: string };
   },
 
-  /** POST /api/v1/ai/knowledge/documents/{documentId}/extract — chạy lại AI trích trường VietGAP kèm trích dẫn */
-  reextractDocument: async (documentId: string) => {
-    const res = await apiClient.post(`/api/v1/ai/knowledge/documents/${documentId}/extract`, null, { timeout: 180_000 });
+  /** POST /api/v1/ai/knowledge/documents/{documentId}/verify — yêu cầu AI kiểm tra lại tài liệu có thuộc lĩnh vực nông nghiệp */
+  verifyDocument: async (documentId: string) => {
+    const res = await apiClient.post(`/api/v1/ai/knowledge/documents/${documentId}/verify`);
     return res.data;
   },
 
@@ -1373,50 +1441,24 @@ export const knowledgeService = {
     return res.data as { id: string; title: string; message: string };
   },
 
-  /** POST /api/v1/ai/knowledge/draft-growth-profile - Soạn thảo Hồ Sơ Sinh Trưởng theo template SmartFarm bằng AI */
-  generateGrowthProfileDraft: async (data: {
-    cropName: string;
-    /** Bỏ trống: gom mọi tài liệu đã duyệt của cây trồng */
-    documentId?: string;
-    cultivationModel?: string;
-    stageCount?: number;
-  }) => {
-    const res = await apiClient.post('/api/v1/ai/knowledge/draft-growth-profile', data, { timeout: 180_000 });
-    return res.data as {
-      profileName: string;
-      description: string;
-      totalCycleDays: number;
-      isFallback?: boolean;
-      source?: string;
-      sourceDocuments?: string[];
-      stages: Array<{
-        stageOrder: number;
-        name: string;
-        durationDays: number;
-        durationEvidence: string;
-        description: string;
-        descriptionEvidence: string;
-        fertilizerAction: string;
-        fertilizerEvidence: string;
-        ipmAction: string;
-        ipmEvidence: string;
-        requirements: Array<{
-          parameterCode: string;
-          minValue: number;
-          maxValue: number;
-          targetValue: number;
-          unit: string;
-          sourceEvidence: string;
-        }>;
-      }>;
-    };
-  },
 };
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 14. SUPPORT & SERVICE REQUESTS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/** Suy ra loại phần cứng từ mã/tên khi dòng báo giá không có loại (không mặc định GATEWAY cho mọi dòng). */
+export const inferHardwareCategory = (code?: string, name?: string): string => {
+  const c = (code || '').toUpperCase();
+  const n = (name || '').toLowerCase();
+  if (c.startsWith('GW') || n.includes('gateway') || n.includes('trạm central')) return 'GATEWAY';
+  if (c.includes('VALVE') || n.includes('van ') || n.includes('solenoid')) return 'VALVE';
+  if (c.includes('PUMP') || n.includes('bơm')) return 'PUMP';
+  if (c.includes('SOIL') || n.includes('đất')) return 'SOIL_SENSOR';
+  if (c.includes('AIR') || n.includes('không khí') || n.includes('vi khí hậu')) return 'AIR_SENSOR';
+  return 'SENSOR_NODE';
+};
 
 export const supportService = {
   /** GET /api/v1/service-requests */
@@ -1472,7 +1514,7 @@ export const supportService = {
                 id: it.id,
                 code: it.code || it.hardwareItemCode || 'HW-01',
                 name: it.name || it.hardwareItemName || 'Thiết bị IoT',
-                category: it.category || 'GATEWAY',
+                category: it.category || inferHardwareCategory(it.code || it.hardwareItemCode, it.name || it.hardwareItemName),
                 unit: it.unit || 'Bộ',
                 quantity: it.quantity || 1,
                 unitPrice: it.unitPrice || 0,
@@ -1652,17 +1694,13 @@ export const supportService = {
     return res.data;
   },
 
-  /** GET /api/v1/farms/{farmId}/tasks */
+  /** GET /api/v1/farms/{farmId}/tasks — Owner thấy mọi phân công; Farmer chỉ thấy phân công của chính mình. */
   getTasks: async (farmId: string) => {
-    try {
-      const res = await apiClient.get(`/api/v1/farms/${farmId}/tasks`);
-      return res.data?.value ?? res.data ?? [];
-    } catch {
-      return [];
-    }
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/tasks`);
+    return res.data?.value ?? res.data ?? [];
   },
 
-  /** POST /api/v1/farms/{farmId}/tasks */
+  /** POST /api/v1/farms/{farmId}/tasks — giao một công việc cho nhiều Farmer */
   createTask: async (
     farmId: string,
     data: {
@@ -1671,20 +1709,36 @@ export const supportService = {
       description?: string;
       requirements?: string;
       dueAtUtc: string;
-      assignedFarmerId: string;
+      farmerIds: string[];
     }
   ) => {
     const res = await apiClient.post(`/api/v1/farms/${farmId}/tasks`, data);
     return res.data;
   },
 
-  /** PUT /api/v1/farms/{farmId}/tasks/{taskId} */
+  /**
+   * PUT /api/v1/farms/{farmId}/tasks/{taskId}
+   * Farmer: Accept | Decline | Start | UpdateProgress | Complete | Fail (chỉ trên phân công của chính mình).
+   * Owner: Approve (kèm farmerId khi có nhiều kết quả chờ duyệt).
+   */
   updateTask: async (
     farmId: string,
     taskId: string,
-    data: { action: string; result?: string; notes?: string }
+    data: { action: string; result?: string; failureReason?: string; farmerId?: string; progressPercent?: number; notes?: string }
   ) => {
     const res = await apiClient.put(`/api/v1/farms/${farmId}/tasks/${taskId}`, data);
+    return res.data;
+  },
+
+  /** POST /api/v1/farms/{farmId}/tasks/{taskId}/assignees — Owner giao thêm/giao lại (kèm hạn mới nếu công việc đã quá hạn) */
+  addTaskAssignees: async (farmId: string, taskId: string, farmerIds: string[], newDueAtUtc?: string) => {
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/tasks/${taskId}/assignees`, { farmerIds, newDueAtUtc });
+    return res.data;
+  },
+
+  /** DELETE /api/v1/farms/{farmId}/tasks/{taskId}/assignees/{farmerId} — Owner gỡ một Farmer */
+  removeTaskAssignee: async (farmId: string, taskId: string, farmerId: string) => {
+    const res = await apiClient.delete(`/api/v1/farms/${farmId}/tasks/${taskId}/assignees/${farmerId}`);
     return res.data;
   },
 
@@ -1716,7 +1770,7 @@ export const supportService = {
       items: items.map((i: any) => ({
         code: i.code || i.itemCode || 'HARDWARE-01',
         name: i.name || i.itemName || 'Linh kiện thiết bị',
-        category: i.category || 'GATEWAY',
+        category: i.category || inferHardwareCategory(i.code || i.itemCode, i.name || i.itemName),
         unit: i.unit || 'Cái',
         quantity: i.quantity || 1,
         unitPrice: i.unitPrice || i.price || 100000,
@@ -2075,7 +2129,7 @@ export const zoneContractService = {
         ...d,
         status: d.depreciationStatus || d.status || 'Active',
         depreciationStatus: d.depreciationStatus || d.status || 'Active',
-        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths ?? 24,
+        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths,
       }));
     } catch {
       return [];
@@ -2092,7 +2146,7 @@ export const zoneContractService = {
         ...d,
         status: d.depreciationStatus || d.status || 'Active',
         depreciationStatus: d.depreciationStatus || d.status || 'Active',
-        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths ?? 24,
+        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths,
       }));
     } catch {
       return [];
@@ -2108,7 +2162,7 @@ export const zoneContractService = {
         ...d,
         status: d.depreciationStatus || d.status || 'Active',
         depreciationStatus: d.depreciationStatus || d.status || 'Active',
-        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths ?? 24,
+        remainingLifespanMonths: d.remainingMonths ?? d.remainingLifespanMonths,
       };
     }
     return d;
@@ -2117,3 +2171,20 @@ export const zoneContractService = {
 
 
 
+
+export interface ReportRange { fromUtc?: string; toUtc?: string }
+export interface ResourceUsageBucket { zoneId: string; zoneName: string; year: number; month: number; value: number; countedCommandCount: number; unmeasuredCommandCount: number }
+export interface ResourceUsageReport { total: number; unit: string; countedCommandCount: number; unmeasuredCommandCount: number; buckets: ResourceUsageBucket[] }
+export interface FarmOverviewReport { activeSeasonCount: number; onlineDeviceCount: number; alertsLast7Days: number; openAlertCount: number; openTaskCount: number; zoneCount: number }
+export interface TaskReport { total: number; approved: number; failed: number; overdue: number; completionRatePercent: number }
+
+export const reportService = {
+  /** GET /api/v1/farms/{farmId}/report/overview */
+  getOverview: async (farmId: string): Promise<FarmOverviewReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/overview`)).data,
+  /** GET /api/v1/farms/{farmId}/report/water-usage */
+  getWater: async (farmId: string, range: ReportRange): Promise<ResourceUsageReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/water-usage`, { params: range })).data,
+  /** GET /api/v1/farms/{farmId}/report/electricity */
+  getElectricity: async (farmId: string, range: ReportRange): Promise<ResourceUsageReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/electricity`, { params: range })).data,
+  /** GET /api/v1/farms/{farmId}/report/tasks */
+  getTasks: async (farmId: string, range: ReportRange): Promise<TaskReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/tasks`, { params: range })).data,
+};

@@ -76,6 +76,8 @@ public sealed class UpdateZoneRequest
     [StringLength(50)] public string? ZoneType { get; init; }
     [StringLength(1000)] public string? Notes { get; init; }
     public ZoneStatus? Status { get; init; }
+    // Cây của Zone chỉ được gán khi tạo vụ mùa; ở đây chỉ cho gỡ cây (bị chặn nếu đang có vụ InProgress).
+    public bool ClearCrop { get; init; }
 
-    internal UpdateZoneCommand ToCommand() => new(Name, AreaM2, PolygonGeoJson, ZoneType, Notes, Status);
+    internal UpdateZoneCommand ToCommand() => new(Name, AreaM2, PolygonGeoJson, ZoneType, Notes, Status, null, null, ClearCrop);
 }

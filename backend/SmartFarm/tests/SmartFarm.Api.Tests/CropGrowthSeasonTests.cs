@@ -39,15 +39,20 @@ public sealed class CropGrowthSeasonTests
     }
 
     [Fact]
-    public async Task Owner_cannot_update_stage_requirements_or_clone_system_profile()
+    public async Task Owner_edit_of_a_system_stage_changes_only_the_tenant_copy_and_not_running_seasons()
     {
-        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync();
         using var client = factory.CreateClient(); await AuthenticateAsync(client, "owner-a@example.com");
+        Assert.Equal(HttpStatusCode.Created, (await PostSeasonAsync(client, seed.ZoneAId, "Vụ đang chạy")).StatusCode);
+
         var response = await client.PutAsJsonAsync($"/api/v1/growth-stages/{VegetativeStage}/requirements", new { requirements = new[] { Requirement("Temperature", 22m, 31m, 26m, "C") } });
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+        response.EnsureSuccessStatusCode();
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
-        Assert.Equal(21m, (await db.EnvironmentalRequirements.SingleAsync(x => x.GrowthStageId == VegetativeStage && x.ParameterCode == EnvironmentalParameterCode.Temperature)).MinValue);
-        Assert.False(await db.GrowthProfiles.AnyAsync(x => x.SourceProfileId == SystemProfile));
+        Assert.Equal(21m, (await db.EnvironmentalRequirements.SingleAsync(x => x.GrowthStageId == VegetativeStage && x.ParameterCode == EnvironmentalParameterCode.Temperature)).MinValue); // profile hệ thống không đổi
+        Assert.True(await db.GrowthProfiles.AnyAsync(x => x.SourceProfileId == SystemProfile && x.TenantId != null)); // bản sao của trang trại
+        var applied = await db.SeasonAppliedRequirements.Where(x => x.ParameterCode == EnvironmentalParameterCode.Temperature).Select(x => x.MinValue).ToListAsync();
+        Assert.DoesNotContain(22m, applied); // vụ đang chạy giữ ngưỡng đã chụp
     }
 
     [Fact]
@@ -103,15 +108,53 @@ public sealed class CropGrowthSeasonTests
     }
 
     [Fact]
-    public async Task Owner_cannot_create_growth_profile()
+    public async Task Owner_can_only_create_a_profile_by_copying_a_system_profile()
     {
         using var factory = new TestApplicationFactory(); await factory.SeedAsync();
         using var client = factory.CreateClient(); await AuthenticateAsync(client, "owner-a@example.com");
-        var stage = new { name = "Seedling", stageOrder = 1, durationDays = 15, requirements = new[] { Requirement("Temperature", 20m, 26m, 23m, "C"), Requirement("SoilMoisture", 60m, 80m, 70m, "%"), Requirement("AirHumidity", 60m, 80m, 70m, "%"), Requirement("Ph", 6.0m, 6.5m, 6.2m, "pH") } };
-        var response = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Owner Profile", stages = new[] { stage } });
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var stage = new { name = "Seedling", stageOrder = 1, durationDays = 15, requirements = new[] { Requirement("Temperature", 20m, 26m, 23m, "C"), Requirement("SoilMoisture", 60m, 80m, 70m, "%"), Requirement("AirHumidity", 60m, 80m, 70m, "%"), Requirement("LightIntensity", 100m, 500m, 300m, "lux") } };
+
+        var scratch = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Owner Profile", stages = new[] { stage } });
+        Assert.Equal(HttpStatusCode.BadRequest, scratch.StatusCode);
+
+        var copy = await client.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Bản của trang trại", sourceProfileId = SystemProfile, isDefault = false });
+        Assert.Equal(HttpStatusCode.Created, copy.StatusCode);
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
-        Assert.False(await db.GrowthProfiles.AnyAsync(x => x.Name == "Owner Profile"));
+        var created = await db.GrowthProfiles.SingleAsync(x => x.Name == "Bản của trang trại");
+        Assert.Equal(SystemProfile, created.SourceProfileId);
+        Assert.NotNull(created.TenantId);
+        Assert.False(created.IsSystemDefined);
+    }
+
+    [Fact]
+    public async Task Owner_can_change_stage_days_on_their_copy_only()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var owner = factory.CreateClient(); await AuthenticateAsync(owner, "owner-a@example.com");
+        var copy = await owner.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Bản ngày", sourceProfileId = SystemProfile, isDefault = false });
+        var stages = JsonDocument.Parse(await copy.Content.ReadAsStringAsync()).RootElement.GetProperty("stages");
+        var copyStage = stages[0].GetProperty("stageId").GetGuid();
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/growth-stages/{copyStage}", new { durationDays = 20 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/v1/growth-stages/{copyStage}", new { durationDays = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.PutAsJsonAsync($"/api/v1/growth-stages/{VegetativeStage}", new { durationDays = 20 })).StatusCode); // profile hệ thống
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.Equal(20, (await db.GrowthStages.SingleAsync(x => x.Id == copyStage)).DurationDays);
+    }
+
+    [Fact]
+    public async Task Owner_can_edit_their_own_copy_but_not_a_system_profile_or_another_tenants_copy()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var owner = factory.CreateClient(); await AuthenticateAsync(owner, "owner-a@example.com");
+        var copy = await owner.PostAsJsonAsync("/api/v1/growth-profiles", new { cropId = SystemCrop, varietyId = SystemVariety, name = "Bản A", sourceProfileId = SystemProfile, isDefault = false });
+        var copyId = JsonDocument.Parse(await copy.Content.ReadAsStringAsync()).RootElement.GetProperty("profileId").GetGuid();
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/growth-profiles/{copyId}", new { name = "Bản A đổi tên", isDefault = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.PutAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}", new { name = "Owner rename", isDefault = false })).StatusCode);
+
+        using var other = factory.CreateClient(); await AuthenticateAsync(other, "owner-b@example.com");
+        Assert.Equal(HttpStatusCode.NotFound, (await other.PutAsJsonAsync($"/api/v1/growth-profiles/{copyId}", new { name = "Trộm", isDefault = false })).StatusCode);
     }
 
     [Fact]
@@ -155,7 +198,7 @@ public sealed class CropGrowthSeasonTests
 
         using var ownerClient = factory.CreateClient(); await AuthenticateAsync(ownerClient, "owner-a@example.com");
         var forbidden = await ownerClient.PutAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}", new { name = "Owner rename", isDefault = false });
-        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode); // Owner không sửa được profile hệ thống
     }
 
     private static object Requirement(string code, decimal min, decimal max, decimal target, string unit) => new { parameterCode = code, minValue = min, maxValue = max, targetValue = target, unit };

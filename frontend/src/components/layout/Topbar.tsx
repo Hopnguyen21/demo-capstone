@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
 import { alertService, supportService, notificationService, NotificationItem, isAuthenticated, zoneContractService } from '../../services';
 import { openMeteoService } from '../../services/openMeteoService';

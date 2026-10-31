@@ -66,18 +66,33 @@ public sealed class FarmTask : AuditableEntity
     public string? Description { get; set; }
     public string? Requirements { get; set; }
     public DateTime DueAtUtc { get; set; }
-    public Guid AssignedFarmerId { get; set; }
-    public AppUser AssignedFarmer { get; set; } = null!;
     public Guid CreatedByOwnerId { get; set; }
+    /// <summary>Trạng thái tổng hợp từ các phân công đang hiệu lực (xem FarmTaskAggregate); không do một Farmer đơn lẻ quyết định.</summary>
     public FarmTaskStatus Status { get; set; } = FarmTaskStatus.Pending;
+    public ICollection<FarmTaskAssignment> Assignments { get; } = new List<FarmTaskAssignment>();
+    public ICollection<FarmTaskHistory> History { get; } = new List<FarmTaskHistory>();
+}
+
+/// <summary>Một cặp Công việc–Farmer với trạng thái, tiến độ và kết quả riêng; Farmer này không ảnh hưởng đến Farmer khác.</summary>
+public sealed class FarmTaskAssignment : AuditableEntity
+{
+    public Guid FarmTaskId { get; set; }
+    public FarmTask FarmTask { get; set; } = null!;
+    public Guid FarmerId { get; set; }
+    public AppUser Farmer { get; set; } = null!;
+    public Guid AssignedByOwnerId { get; set; }
+    public DateTime AssignedAtUtc { get; set; }
+    public FarmTaskStatus Status { get; set; } = FarmTaskStatus.Pending;
+    public int ProgressPercent { get; set; }
+    public string? ProgressNote { get; set; }
     public string? Result { get; set; }
     public string? FailureReason { get; set; }
     public DateTime? AcceptedAtUtc { get; set; }
     public DateTime? StartedAtUtc { get; set; }
     public DateTime? SubmittedAtUtc { get; set; }
     public DateTime? ApprovedAtUtc { get; set; }
+    /// <summary>Tăng mỗi lần giao lại cho cùng Farmer sau khi bị gỡ/từ chối/thất bại.</summary>
     public int AssignmentVersion { get; set; } = 1;
-    public ICollection<FarmTaskHistory> History { get; } = new List<FarmTaskHistory>();
 }
 
 public sealed class FarmTaskHistory : AuditableEntity
@@ -90,5 +105,7 @@ public sealed class FarmTaskHistory : AuditableEntity
     public FarmTaskStatus ToStatus { get; set; }
     public Guid? PreviousAssigneeId { get; set; }
     public Guid? NewAssigneeId { get; set; }
+    /// <summary>Farmer mà sự kiện này nói tới (null = sự kiện chung của công việc). Dùng để Farmer chỉ thấy lịch sử của chính mình.</summary>
+    public Guid? SubjectFarmerId { get; set; }
     public string? Notes { get; set; }
 }

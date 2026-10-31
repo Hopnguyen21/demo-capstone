@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../app/providers/AuthContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { extractApiError } from '../../services';
 import {
   Sprout, ShieldCheck, ArrowRight, KeyRound, Mail,

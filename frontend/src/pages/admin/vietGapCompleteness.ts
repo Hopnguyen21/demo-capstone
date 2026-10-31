@@ -28,7 +28,7 @@ export const foldVietnamese = (s: string): string =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
 const FOLDED_RULES = RULES.map(rule => ({ ...rule, allOf: rule.allOf.map(p => new RegExp(foldVietnamese(p.source), 'i')) }));
 
-export type AgricultureDocumentType = 'OfficialStandard' | 'TechnicalGuide' | 'Thematic';
+export type AgricultureDocumentType = 'OfficialStandard' | 'TechnicalGuide' | 'Thematic' | 'Unspecified';
 
 export const DOCUMENT_TYPE_INFO: Record<AgricultureDocumentType, { label: string; requirement: string }> = {
   OfficialStandard: {
@@ -42,6 +42,10 @@ export const DOCUMENT_TYPE_INFO: Record<AgricultureDocumentType, { label: string
   Thematic: {
     label: 'Tài liệu chuyên đề',
     requirement: 'Bắt buộc: nguồn ban hành và nội dung của chuyên đề đã chọn (tưới, IPM, dinh dưỡng...).',
+  },
+  Unspecified: {
+    label: 'Chưa xác định loại tài liệu',
+    requirement: 'Hệ thống chưa phân biệt được từ nội dung. Người duyệt cần chọn loại trước khi duyệt.',
   },
 };
 

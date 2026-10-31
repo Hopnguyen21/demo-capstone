@@ -15,6 +15,9 @@ public sealed class TelemetryController(ITelemetryAlertService service) : Contro
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/latest")]
     public async Task<ActionResult<LatestTelemetryView>> Latest(Guid zoneId, CancellationToken ct) => Ok(await service.LatestAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
 
+    [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/latest-by-device")]
+    public async Task<ActionResult<ZoneDeviceTelemetryView>> LatestByDevice(Guid zoneId, CancellationToken ct) => Ok(await service.LatestByDeviceAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
+
     // API catalog #70
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/history")]
     public async Task<ActionResult<TelemetryHistoryView>> History(Guid zoneId, [FromQuery] EnvironmentalParameterCode parameterCode, [FromQuery] DateTime fromUtc, [FromQuery] DateTime toUtc, [FromQuery] string interval = "15m", CancellationToken ct = default) => Ok(await service.HistoryAsync(User.GetUserId(), User.GetTenantId(), zoneId, parameterCode, fromUtc, toUtc, interval, ct));

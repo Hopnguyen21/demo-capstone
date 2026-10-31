@@ -1,19 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { Sensor } from '../../types';
-import { deviceService, telemetryService, controlService } from '../../services';
-import { useAuth } from '../../app/providers/AuthContext';
+import { deviceService, telemetryService, controlService, seasonService } from '../../services';
+import { useAuth } from '@/app/providers/AuthContext';
 import {
   Gauge, RefreshCw, Sun, CloudRain, ShieldCheck, Activity, AlertTriangle,
   Radio, CheckCircle2, AlertOctagon, Wrench, Droplets, Clock, ShieldAlert,
-  Sliders, Info, Sparkles, X
+  Sliders, Info, Sparkles, X, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { StatusBadge, Button, CropRangeBand, Modal } from '../../components/ui/BaseUI';
+
+const PARAMETER_LABELS: Record<string, string> = {
+  SoilMoisture: 'Độ ẩm đất',
+  Temperature: 'Nhiệt độ không khí',
+  AirHumidity: 'Độ ẩm không khí',
+  LightIntensity: 'Cường độ ánh sáng',
+  Ph: 'Độ chua/kiềm đất (pH)',
+  Ec: 'Độ dẫn điện EC (dinh dưỡng)'
+};
+
+const PARAMETER_ORDER = ['Temperature', 'SoilMoisture', 'AirHumidity', 'Ph', 'LightIntensity', 'Ec'];
+const normalizeCode = (v: unknown) => (typeof v === 'number' ? PARAMETER_ORDER[v] ?? String(v) : String(v ?? ''));
+const sameCode = (a: unknown, b: unknown) => normalizeCode(a).toLowerCase() === normalizeCode(b).toLowerCase();
+const isActuatorNode = (d: any) => String(d?.deviceType ?? '').toLowerCase().includes('actuator') || d?.deviceType === 1;
+const THRESHOLD_LABEL: Record<string, { text: string; style: string }> = {
+  Normal: { text: 'Trong ngưỡng', style: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  Below: { text: 'Thấp hơn ngưỡng', style: 'bg-amber-50 text-amber-700 border-amber-200' },
+  Above: { text: 'Cao hơn ngưỡng', style: 'bg-rose-50 text-rose-700 border-rose-200' }
+};
+const formatTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('vi-VN') : null);
+
+const ParameterReading: React.FC<{ label: string; metric?: any; requirement?: any }> = ({ label, metric, requirement }) => {
+  if (!metric) {
+    return (
+      <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+        <div className="text-xs font-medium text-slate-700">{label}</div>
+        <div className="text-lg font-bold text-slate-300 mt-1">--</div>
+        <div className="text-[11px] text-slate-500">Chưa có số đo cho thông số này</div>
+      </div>
+    );
+  }
+  const note = metric.isFresh ? null : 'Số đo cũ, không còn là giá trị hiện tại';
+  if (!requirement) {
+    return (
+      <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-700">{label}</span>
+          <span className="text-lg font-bold text-slate-900">{metric.value} <span className="text-xs font-normal text-slate-500">{metric.unit}</span></span>
+        </div>
+        <div className="text-[11px] text-slate-500 mt-1">Hồ sơ cây chưa có ngưỡng cho thông số này</div>
+        {note && <div className="text-[11px] text-amber-700">{note}</div>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <CropRangeBand
+        label={label}
+        min={Number(requirement.minValue)}
+        max={Number(requirement.maxValue)}
+        target={Number(requirement.targetValue)}
+        current={Number(metric.value)}
+        unit={metric.unit || requirement.unit}
+      />
+      {note && <div className="text-[11px] text-amber-700 mt-1 px-1">{note}</div>}
+    </div>
+  );
+};
 
 export const MonitoringRealtime: React.FC = () => {
   const { zones } = useAuth();
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
-  const [sensors, setSensors] = useState<Sensor[]>([]);
+  // Số đo mới nhất theo từng node của Zone (null = chưa tải được).
+  const [nodeTelemetry, setNodeTelemetry] = useState<any>(null);
+  const [nodeFilter, setNodeFilter] = useState<string>('ALL');
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [latestTelemetry, setLatestTelemetry] = useState<any>(null);
+  // Ngưỡng của giai đoạn hiện tại trong vụ mùa đang chạy của Zone (không có vụ thì không có ngưỡng).
+  const [requirements, setRequirements] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [trustTag, setTrustTag] = useState<'LIVE' | 'CACHED' | 'DEMO' | 'UNAVAILABLE'>('LIVE');
   const [cachedTime, setCachedTime] = useState<string>('');
@@ -32,22 +95,16 @@ export const MonitoringRealtime: React.FC = () => {
     setIsLoading(true);
     try {
       const activeZone = selectedZoneId || (zones[0]?.zoneId || '');
-      const [sensorData, telemetryData] = await Promise.all([
-        deviceService.getSensors(activeZone).catch(() => []),
+      const [nodeData, telemetryData, seasonData] = await Promise.all([
+        activeZone ? telemetryService.getLatestByDevice(activeZone).catch(() => null) : Promise.resolve(null),
         activeZone ? telemetryService.getRealtime(activeZone).catch(() => null) : Promise.resolve(null),
+        activeZone ? seasonService.getSeasons(activeZone).catch(() => []) : Promise.resolve([]),
       ]);
 
-      if (Array.isArray(sensorData) && sensorData.length > 0) {
-        setSensors(sensorData);
-      } else {
-        // Fallback demo sensors
-        setSensors([
-          { sensorId: 's1', nodeId: 'NODE_01', parameterCode: 'TEMPERATURE', sensorCode: 'TH_NODE01', name: 'Cảm biến Không khí SHT30', lastReading: 24.8, unit: '°C', status: 'ACTIVE', lastReadingAt: 'Vừa xong' },
-          { sensorId: 's2', nodeId: 'NODE_01', parameterCode: 'SOIL_MOISTURE', sensorCode: 'SOIL_NODE01', name: 'Cảm biến Độ ẩm Đất RS485', lastReading: 68.4, unit: '%', status: 'ACTIVE', lastReadingAt: 'Vừa xong' },
-          { sensorId: 's3', nodeId: 'NODE_02', parameterCode: 'LIGHT_INTENSITY', sensorCode: 'LUX_NODE02', name: 'Cảm biến Quang kỳ BH1750', lastReading: 740, unit: 'lux', status: 'ACTIVE', lastReadingAt: 'Vừa xong' },
-          { sensorId: 's4', nodeId: 'NODE_01', parameterCode: 'EC', sensorCode: 'EC_NODE01', name: 'Đầu đo Dinh dưỡng EC Đất', lastReading: 1.8, unit: 'mS/cm', status: 'ACTIVE', lastReadingAt: 'Vừa xong' },
-        ]);
-      }
+      setNodeTelemetry(nodeData);
+      setNodeFilter('ALL');
+      const activeSeason = (Array.isArray(seasonData) ? seasonData : []).find((x: any) => x.status === 'ACTIVE');
+      setRequirements(activeSeason?.appliedRequirements ?? []);
 
       if (telemetryData) {
         setLatestTelemetry(telemetryData);
@@ -60,13 +117,13 @@ export const MonitoringRealtime: React.FC = () => {
           setTrustTag('UNAVAILABLE');
         }
       } else {
-        setTrustTag('LIVE'); // Demo live view
-        setCachedTime(new Date().toLocaleTimeString('vi-VN'));
+        // Không lấy được số đo thì báo không khả dụng, không giả làm số liệu trực tiếp.
+        setLatestTelemetry(null);
+        setTrustTag('UNAVAILABLE');
       }
     } catch (err) {
       console.error('Failed to load telemetry:', err);
-      setTrustTag('CACHED');
-      setCachedTime(new Date().toLocaleTimeString('vi-VN'));
+      setTrustTag('UNAVAILABLE');
     } finally {
       setIsLoading(false);
     }
@@ -91,15 +148,36 @@ export const MonitoringRealtime: React.FC = () => {
   };
 
   const activeZone = zones.find(z => z.zoneId === selectedZoneId) || zones[0];
-  const activeZoneName = activeZone?.name || 'Nhà màng Cà Chua 01 (Zone 1)';
+  const activeZoneName = activeZone?.name || 'Chưa chọn Zone';
 
-  // Dynamic values or fallback
-  const soilMoistureVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'SoilMoisture' || m.parameterCode === 1)?.value ?? 68.4;
-  const tempVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'Temperature' || m.parameterCode === 0)?.value ?? 24.8;
-  const humidityVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'AirHumidity' || m.parameterCode === 2)?.value ?? 71.5;
-  const luxVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'LightIntensity' || m.parameterCode === 3 || m.parameterCode === 4)?.value ?? 740;
-  const phVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'Ph' || m.parameterCode === 3 || m.parameterCode?.toString().toLowerCase() === 'ph')?.value ?? 6.43;
-  const ecVal = latestTelemetry?.metrics?.find((m: any) => m.parameterCode === 'Ec' || m.parameterCode === 5 || m.parameterCode?.toString().toLowerCase() === 'ec')?.value ?? 2.05;
+  const metricOf = (code: string) => (latestTelemetry?.metrics ?? []).find((m: any) => sameCode(m.parameterCode, code));
+  const requirementOf = (code: string) => requirements.find((r: any) => sameCode(r.parameterCode, code));
+
+  // Mỗi node: nhãn theo loại, các thông số cảm biến của node và số đo mới nhất RIÊNG của node đó.
+  const nodes = (() => {
+    const list: any[] = nodeTelemetry?.devices ?? [];
+    const counters = { sensor: 0, actuator: 0 };
+    return list.map(d => {
+      const isActuator = isActuatorNode(d);
+      const label = isActuator ? `Node chấp hành ${++counters.actuator}` : `Node cảm biến ${++counters.sensor}`;
+      const metrics: any[] = d.metrics ?? [];
+      const codes: string[] = [
+        ...new Set<string>([...(d.sensors ?? []).map(normalizeCode), ...metrics.map((m: any) => normalizeCode(m.parameterCode))])
+      ].sort((a, b) => PARAMETER_ORDER.indexOf(a) - PARAMETER_ORDER.indexOf(b));
+      return {
+        deviceId: String(d.deviceId),
+        hardwareAddress: d.hardwareAddress,
+        status: String(d.status ?? ''),
+        batteryLevel: d.batteryLevel,
+        rssi: d.rssi,
+        actuators: (d.actuators ?? []) as string[],
+        isActuator,
+        label,
+        rows: codes.map(code => ({ code, metric: metrics.find((m: any) => sameCode(m.parameterCode, code)) }))
+      };
+    });
+  })();
+  const visibleNodes = nodeFilter === 'ALL' ? nodes : nodes.filter(n => n.deviceId === nodeFilter);
 
   return (
     <div className="space-y-6 pb-12">
@@ -250,112 +328,128 @@ export const MonitoringRealtime: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-          <CropRangeBand
-            label="Độ ẩm đất (Soil Moisture)"
-            min={60}
-            max={80}
-            target={70}
-            current={soilMoistureVal}
-            unit="%"
-          />
-          <CropRangeBand
-            label="Nhiệt độ không khí (Air Temp)"
-            min={18}
-            max={28}
-            target={24}
-            current={tempVal}
-            unit="°C"
-          />
-          <CropRangeBand
-            label="Độ ẩm không khí (Air Humidity)"
-            min={60}
-            max={80}
-            target={70}
-            current={humidityVal}
-            unit="%"
-          />
-          <CropRangeBand
-            label="Cường độ ánh sáng (Light)"
-            min={500}
-            max={950}
-            target={750}
-            current={luxVal}
-            unit="lux"
-          />
-          <CropRangeBand
-            label="Độ chua/kiềm Đất (pH)"
-            min={5.5}
-            max={7.5}
-            target={6.5}
-            current={phVal}
-            unit="pH"
-          />
-          <CropRangeBand
-            label="Độ dẫn điện EC (Dinh dưỡng)"
-            min={1.2}
-            max={2.5}
-            target={1.8}
-            current={ecVal}
-            unit="mS/cm"
-          />
+          {Object.entries(PARAMETER_LABELS).map(([code, label]) => (
+            <ParameterReading key={code} label={label} metric={metricOf(code)} requirement={requirementOf(code)} />
+          ))}
         </div>
       </div>
 
-      {/* Sensor Nodes & Diagnostic Status Cards */}
+      {/* Số đo theo từng node */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Activity size={16} className="text-emerald-600" />
-            Chi Tiết Đầu Đo &amp; Trạng Thái Chất Lượng Dữ Liệu
+            Chi Tiết Theo Từng Node
           </h3>
-          <span className="text-xs text-slate-500">{sensors.length} Thiết bị đo kiểm</span>
+          <div className="flex items-center gap-2">
+            <label htmlFor="node-filter" className="text-xs text-slate-500">Xem:</label>
+            <select
+              id="node-filter"
+              value={nodeFilter}
+              onChange={e => setNodeFilter(e.target.value)}
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-900"
+            >
+              <option value="ALL">Tất cả node ({nodes.length})</option>
+              {nodes.map(n => (
+                <option key={n.deviceId} value={n.deviceId}>{n.label} — {n.hardwareAddress}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {sensors.map((s, idx) => {
-            // Quality status simulation/check
-            const isOutOfBound = s.lastReading !== undefined && typeof s.lastReading === 'number' && (s.lastReading < 0 || s.lastReading > 100000);
-            const qualityLabel = isOutOfBound ? 'OUT_OF_BOUNDS' : 'VALID';
+        {nodeTelemetry === null ? (
+          <div className="p-4 bg-white border border-slate-200/80 rounded-2xl text-xs text-slate-500">
+            Không tải được số đo theo node. Hãy tải lại trang hoặc đăng nhập lại.
+          </div>
+        ) : nodes.length === 0 ? (
+          <div className="p-4 bg-white border border-slate-200/80 rounded-2xl text-xs text-slate-500">
+            Zone chưa có thiết bị nào được gán.
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {visibleNodes.map(n => {
+              const open = nodeFilter !== 'ALL' || !!expandedNodes[n.deviceId];
+              const freshCount = n.rows.filter(r => r.metric?.isFresh).length;
+              return (
+                <div key={n.deviceId} className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => nodeFilter === 'ALL' && setExpandedNodes(prev => ({ ...prev, [n.deviceId]: !prev[n.deviceId] }))}
+                    className="w-full flex flex-wrap items-center gap-x-4 gap-y-1 p-3.5 text-left hover:bg-slate-50"
+                  >
+                    {open ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-slate-900">{n.label}</div>
+                      <div className="text-[11px] font-mono text-slate-500">{n.hardwareAddress}</div>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">{n.isActuator ? 'Chấp hành' : 'Cảm biến'}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">{n.status}</span>
+                    <span className="ml-auto text-[11px] text-slate-500">
+                      {n.isActuator
+                        ? `${n.actuators.length} thiết bị chấp hành`
+                        : n.rows.length === 0
+                          ? 'Chưa cấu hình cảm biến'
+                          : `${freshCount}/${n.rows.length} số đo mới`}
+                      {typeof n.batteryLevel === 'number' ? ` · Pin ${n.batteryLevel}%` : ''}
+                      {typeof n.rssi === 'number' ? ` · ${n.rssi} dBm` : ''}
+                    </span>
+                  </button>
 
-            return (
-              <div
-                key={s.sensorId || idx}
-                className="p-4 bg-white border border-slate-200/80 rounded-2xl shadow-xs space-y-2.5 hover:border-emerald-300 transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                    {s.sensorCode || `NODE_${idx + 1}`}
-                  </span>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                    qualityLabel === 'VALID'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}>
-                    {qualityLabel}
-                  </span>
+                  {open && (
+                    <div className="border-t border-slate-100 px-3.5 py-3">
+                      {n.isActuator && (
+                        <p className="text-xs text-slate-600 mb-2">
+                          Thiết bị chấp hành: {n.actuators.length > 0 ? n.actuators.join(', ') : 'chưa cấu hình'}
+                        </p>
+                      )}
+                      {n.rows.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="text-slate-400 text-[10px] uppercase border-b border-slate-100">
+                                <th className="pb-1.5">Thông số</th>
+                                <th className="pb-1.5 text-right">Giá trị</th>
+                                <th className="pb-1.5 pl-3">Trạng thái số đo</th>
+                                <th className="pb-1.5">So với ngưỡng</th>
+                                <th className="pb-1.5 text-right">Đo lúc</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {n.rows.map(r => {
+                                const threshold = r.metric ? THRESHOLD_LABEL[r.metric.thresholdStatus] : undefined;
+                                return (
+                                  <tr key={r.code}>
+                                    <td className="py-1.5 font-semibold text-slate-800">{PARAMETER_LABELS[r.code] || r.code}</td>
+                                    <td className="py-1.5 text-right font-mono text-slate-900">
+                                      {r.metric ? `${r.metric.value} ${r.metric.unit}` : '--'}
+                                    </td>
+                                    <td className="py-1.5 pl-3">
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${!r.metric ? 'bg-slate-50 text-slate-500 border-slate-200' : r.metric.isFresh ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                        {!r.metric ? 'Chưa có số đo' : r.metric.isFresh ? 'Số đo mới' : 'Số đo cũ'}
+                                      </span>
+                                    </td>
+                                    <td className="py-1.5">
+                                      {threshold ? (
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${threshold.style}`}>{threshold.text}</span>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-400">{r.metric ? 'Chưa có ngưỡng' : ''}</span>
+                                      )}
+                                    </td>
+                                    <td className="py-1.5 text-right text-slate-500">{formatTime(r.metric?.capturedAtUtc) ?? 'Chưa có'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{s.name}</h4>
-                  <div className="text-2xl font-black text-slate-900 pt-1">
-                    {s.lastReading ?? '--'} <span className="text-xs font-normal text-slate-500">{s.unit}</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 space-y-1 text-[10px] text-slate-500">
-                  <div className="flex items-center justify-between">
-                    <span>Hiệu chuẩn:</span>
-                    <strong className="text-emerald-700 font-semibold">Đạt chuẩn VietGAP</strong>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Cập nhật:</span>
-                    <span>{s.lastReadingAt || 'Vừa xong'}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Emergency Stop Confirmation Modal */}
