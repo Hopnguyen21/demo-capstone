@@ -39,6 +39,65 @@ public sealed class CropGrowthSeasonTests
     }
 
     [Fact]
+    public async Task Platform_admin_sees_tenant_crops_in_the_catalog_but_other_tenants_do_not()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using (var owner = factory.CreateClient())
+        {
+            await AuthenticateAsync(owner, "owner-a@example.com");
+            var created = await owner.PostAsJsonAsync("/api/v1/crops", new { name = "Dragon Fruit", scientificName = "Selenicereus undatus", description = "Tenant crop" });
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        }
+
+        async Task<string> NamesAsync(string email)
+        {
+            using var client = factory.CreateClient(); await AuthenticateAsync(client, email);
+            return await client.GetStringAsync("/api/v1/crops");
+        }
+
+        Assert.Contains("Dragon Fruit", await NamesAsync("admin@example.com"));
+        Assert.Contains("Dragon Fruit", await NamesAsync("owner-a@example.com"));
+        Assert.DoesNotContain("Dragon Fruit", await NamesAsync("owner-b@example.com"));
+    }
+
+    [Fact]
+    public async Task Admin_adds_stages_at_the_end_and_in_the_middle_and_orders_stay_contiguous()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using var client = factory.CreateClient(); await AuthenticateAsync(client, "admin@example.com");
+
+        var end = await client.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "Thu hoạch", durationDays = 20 });
+        Assert.Equal(HttpStatusCode.Created, end.StatusCode);
+        var middle = await client.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "Ra hoa", durationDays = 15, insertAtOrder = 2 });
+        Assert.Equal(HttpStatusCode.Created, middle.StatusCode);
+
+        var list = await client.GetAsync($"/api/v1/growth-profiles/{SystemProfile}/stages"); list.EnsureSuccessStatusCode();
+        using var json = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+        var stages = json.RootElement.EnumerateArray().OrderBy(x => x.GetProperty("stageOrder").GetInt32()).ToList();
+        Assert.Equal(4, stages.Count);
+        Assert.Equal([1, 2, 3, 4], stages.Select(x => x.GetProperty("stageOrder").GetInt32()).ToArray());
+        Assert.Equal("Ra hoa", stages[1].GetProperty("name").GetString());
+        Assert.Equal("Thu hoạch", stages[3].GetProperty("name").GetString());
+        Assert.Equal(0, stages[1].GetProperty("requirements").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Add_stage_rejects_duplicate_names_bad_positions_and_owners_of_system_profiles()
+    {
+        using var factory = new TestApplicationFactory(); await factory.SeedAsync();
+        using (var admin = factory.CreateClient())
+        {
+            await AuthenticateAsync(admin, "admin@example.com");
+            Assert.Equal(HttpStatusCode.Created, (await admin.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "Ra hoa", durationDays = 10 })).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "ra hoa", durationDays = 10 })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "Quả", durationDays = 10, insertAtOrder = 9 })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "Quả", durationDays = 0 })).StatusCode);
+        }
+        using var owner = factory.CreateClient(); await AuthenticateAsync(owner, "owner-a@example.com");
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.PostAsJsonAsync($"/api/v1/growth-profiles/{SystemProfile}/stages", new { name = "Quả", durationDays = 10 })).StatusCode);
+    }
+
+    [Fact]
     public async Task Owner_edit_of_a_system_stage_changes_only_the_tenant_copy_and_not_running_seasons()
     {
         using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync();

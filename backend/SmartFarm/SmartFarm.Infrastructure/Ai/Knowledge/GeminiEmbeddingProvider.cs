@@ -37,7 +37,11 @@ public sealed class GeminiEmbeddingProvider
         this.logger = logger;
     }
 
-    public bool IsAvailable => !string.IsNullOrWhiteSpace(settings.ApiKey);
+    // Hết quota ngày của Gemini (429 "per day"): tạm ngừng gọi embedding để không đốt thêm yêu cầu, tìm tri thức dùng từ khóa trong lúc chờ.
+    private static DateTime quotaBlockedUntilUtc = DateTime.MinValue;
+    private static readonly TimeSpan QuotaCooldown = TimeSpan.FromMinutes(60);
+
+    public bool IsAvailable => !string.IsNullOrWhiteSpace(settings.ApiKey) && DateTime.UtcNow >= quotaBlockedUntilUtc;
     public int Dimensions => settings.Dimensions;
 
     public async Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken ct = default)
@@ -75,6 +79,9 @@ public sealed class GeminiEmbeddingProvider
     {
         if (string.IsNullOrWhiteSpace(settings.ApiKey))
             throw new InvalidOperationException("Gemini API key is not configured for embedding.");
+
+        if (DateTime.UtcNow < quotaBlockedUntilUtc)
+            throw new HttpRequestException("Gemini embedding is paused after the daily quota was exceeded.", null, System.Net.HttpStatusCode.TooManyRequests);
 
         if (text.Length > 7500) text = text[..7500];
 
@@ -143,6 +150,18 @@ public sealed class GeminiEmbeddingProvider
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
                     throw new HttpRequestException($"Gemini embedding API returned 400 Bad Request: {errorBody}", null, System.Net.HttpStatusCode.BadRequest);
+                }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    var quotaBody = await response.Content.ReadAsStringAsync(cts.Token);
+                    // Quota theo ngày không hồi lại sau vài trăm ms: không thử lại, tạm ngừng toàn bộ lệnh gọi embedding.
+                    if (quotaBody.Contains("per day", StringComparison.OrdinalIgnoreCase))
+                    {
+                        quotaBlockedUntilUtc = DateTime.UtcNow + QuotaCooldown;
+                        logger.LogWarning("[Embedding] Daily quota exceeded; embedding paused for {Minutes} minutes.", QuotaCooldown.TotalMinutes);
+                        throw new HttpRequestException($"Gemini embedding daily quota exceeded (429): {quotaBody}", null, response.StatusCode);
+                    }
                 }
 
                 var isRetryable = response.StatusCode == System.Net.HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500;

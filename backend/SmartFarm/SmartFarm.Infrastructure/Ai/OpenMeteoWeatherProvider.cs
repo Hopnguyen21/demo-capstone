@@ -69,15 +69,17 @@ public sealed class OpenMeteoWeatherProvider(
 
     private static string Describe(int code) => code switch
     {
-        0 => "Clear sky",
-        1 or 2 or 3 => "Partly cloudy or overcast",
-        45 or 48 => "Fog",
-        51 or 53 or 55 or 56 or 57 => "Drizzle",
-        61 or 63 or 65 or 66 or 67 => "Rain",
-        71 or 73 or 75 or 77 => "Snow",
-        80 or 81 or 82 => "Rain showers",
-        85 or 86 => "Snow showers",
-        95 or 96 or 99 => "Thunderstorm",
-        _ => "Weather observation available"
+        0 => "Trời quang",
+        1 => "Ít mây",
+        2 => "Có mây",
+        3 => "Âm u",
+        45 or 48 => "Sương mù",
+        51 or 53 or 55 or 56 or 57 => "Mưa phùn",
+        61 or 63 or 65 or 66 or 67 => "Mưa",
+        71 or 73 or 75 or 77 => "Tuyết",
+        80 or 81 or 82 => "Mưa rào",
+        85 or 86 => "Mưa tuyết rào",
+        95 or 96 or 99 => "Dông",
+        _ => "Có dữ liệu thời tiết quan trắc"
     };
 }

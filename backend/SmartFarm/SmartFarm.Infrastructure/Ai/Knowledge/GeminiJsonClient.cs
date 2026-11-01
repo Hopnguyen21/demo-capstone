@@ -14,8 +14,7 @@ internal static class GeminiJsonClient
         HttpClient httpClient, GeminiOptions settings, string systemInstruction, string userText,
         int maxOutputTokens, TimeSpan overallTimeout, CancellationToken ct)
     {
-        var apiKeys = (settings.ApiKeys ?? []).Append(settings.ApiKey)
-            .Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).Distinct().ToList();
+        var apiKeys = GeminiKeyPool.Ordered(settings);
         if (apiKeys.Count == 0 || string.IsNullOrWhiteSpace(settings.Model))
             throw new GeminiUnavailableException("Chưa cấu hình Gemini.");
 
@@ -44,6 +43,7 @@ internal static class GeminiJsonClient
                     using var response = await httpClient.SendAsync(request, overallCts.Token);
                     if (!response.IsSuccessStatusCode)
                     {
+                        GeminiKeyPool.ReportStatus(apiKey, (int)response.StatusCode);
                         lastError = new HttpRequestException($"Gemini ({model}) trả về HTTP {(int)response.StatusCode}.");
                         // 404 = model không còn cấp cho tài khoản: thử key khác cũng vô ích, sang model kế tiếp.
                         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) break;

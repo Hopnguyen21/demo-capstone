@@ -93,7 +93,7 @@ export const FarmerZonesPage: React.FC = () => {
         code: n.hardwareAddress || `NODE-0${idx + 1}`,
         type: (n.deviceType?.includes('Actuator') || n.hardwareAddress?.includes('VALVE') || n.hardwareAddress?.includes('ACT')) ? 'ACTUATOR' : 'SENSOR',
         status: n.status || 'ONLINE',
-        batteryLevel: n.batteryLevel ?? 100,
+        batteryLevel: n.batteryLevel,
         coords: [n.latitude, n.longitude] as [number, number],
       }));
   }, [zoneNodes]);
@@ -295,7 +295,7 @@ export const FarmerZonesPage: React.FC = () => {
                           </div>
                         </div>
                         <span className="text-[10px] font-mono font-bold text-emerald-700 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                          🔋 {n.batteryLevel ?? 95}%
+                          🔋 {typeof n.batteryLevel === 'number' ? `${n.batteryLevel}%` : '—'}
                         </span>
                       </div>
 

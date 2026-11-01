@@ -929,10 +929,10 @@ export const VietGapStandardsPage: React.FC = () => {
       return;
     }
 
-    if (file.size > 15 * 1024 * 1024) {
+    if (file.size > 50 * 1024 * 1024) {
       setSelectedUploadFile(null);
       e.target.value = '';
-      setNotification({ type: 'error', message: 'Dung lượng tệp vượt quá giới hạn tối đa 15 MB!' });
+      setNotification({ type: 'error', message: 'Dung lượng tệp vượt quá giới hạn tối đa 50 MB!' });
       return;
     }
 
@@ -1277,27 +1277,36 @@ export const VietGapStandardsPage: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoc?.id]);
 
+  // Lỗi kiểm tra khi duyệt hiện ngay cạnh nút bấm: thông báo chung nằm đầu trang nên người đang ở cuối khung rà soát không thấy.
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const showReviewError = (n: { type: 'success' | 'error' | 'warning'; message: string }) => {
+    setNotification(n);
+    setReviewError(n.message);
+  };
+  useEffect(() => { setReviewError(null); }, [selectedDoc?.id, isReviewPanelOpen]);
+
   const handleReviewDocument = async (approve: boolean) => {
     if (!selectedDoc) return;
+    setReviewError(null);
     if (reviewText.trim().length < 50) {
-      setNotification({ type: 'error', message: 'Nội dung rà soát cần có ít nhất 50 ký tự.' });
+      showReviewError({ type: 'error', message: 'Nội dung rà soát cần có ít nhất 50 ký tự.' });
       return;
     }
     if (approve && !reviewConfirmed) {
-      setNotification({ type: 'error', message: 'Vui lòng xác nhận đã đối chiếu nội dung với tài liệu gốc.' });
+      showReviewError({ type: 'error', message: 'Vui lòng xác nhận đã đối chiếu nội dung với tài liệu gốc.' });
       return;
     }
     if (approve && missingCriticalChecks.length > 0 && reviewNotes.trim().length < MIN_NOTES_FOR_INCOMPLETE_APPROVAL) {
-      setNotification({ type: 'error', message: `Tài liệu chưa thấy: ${missingCriticalChecks.map(c => c.label).join(', ')}. Bổ sung nội dung hoặc ghi chú lý do duyệt (tối thiểu ${MIN_NOTES_FOR_INCOMPLETE_APPROVAL} ký tự).` });
+      showReviewError({ type: 'error', message: `Tài liệu chưa thấy: ${missingCriticalChecks.map(c => c.label).join(', ')}. Bổ sung nội dung hoặc ghi chú lý do duyệt (tối thiểu ${MIN_NOTES_FOR_INCOMPLETE_APPROVAL} ký tự).` });
       return;
     }
     if (approve && reviewMeta.documentType === 'Unspecified') {
-      setNotification({ type: 'error', message: 'Chưa xác định loại tài liệu: hãy chọn loại (tiêu chuẩn, hướng dẫn kỹ thuật hoặc chuyên đề) trước khi duyệt.' });
+      showReviewError({ type: 'error', message: 'Chưa xác định loại tài liệu: hãy chọn loại (tiêu chuẩn, hướng dẫn kỹ thuật hoặc chuyên đề) trước khi duyệt.' });
       return;
     }
     const det = selectedDoc.metadataDetection;
     if (approve && det && !reviewMeta.cropScope.trim() && !reviewMeta.confirmGeneral && det.generalScope?.status !== 'detected') {
-      setNotification({ type: 'error', message: 'Chưa xác định cây áp dụng: hãy nhập cây, hoặc xác nhận tài liệu áp dụng chung sau khi đối chiếu file gốc.' });
+      showReviewError({ type: 'error', message: 'Chưa xác định cây áp dụng: hãy nhập cây, hoặc xác nhận tài liệu áp dụng chung sau khi đối chiếu file gốc.' });
       return;
     }
     setIsSavingReview(true);
@@ -1331,7 +1340,7 @@ export const VietGapStandardsPage: React.FC = () => {
       const validationErrors = err?.response?.data?.errors
         ? Object.values(err.response.data.errors as Record<string, string[]>).flat().join(' ')
         : '';
-      setNotification({ type: 'error', message: `Không lưu được rà soát: ${validationErrors || err?.response?.data?.message || err?.message || 'Lỗi máy chủ'}` });
+      showReviewError({ type: 'error', message: `Không lưu được rà soát: ${validationErrors || err?.response?.data?.message || err?.message || 'Lỗi máy chủ'}` });
     } finally {
       setIsSavingReview(false);
     }
@@ -1854,6 +1863,12 @@ export const VietGapStandardsPage: React.FC = () => {
                       <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} className="mt-0.5" />
                       {selectedDoc.hasOriginalFile ? 'Tôi đã đối chiếu nội dung ở trên với file gốc đã tải xuống' : 'Tôi đã đối chiếu nội dung với nguồn đáng tin cậy bên ngoài hoặc xác minh đây là nội dung nhập chủ động'}; việc duyệt không đồng nghĩa chứng nhận tuân thủ VietGAP.
                     </label>
+                    {reviewError && (
+                      <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{reviewError}</span>
+                      </div>
+                    )}
                     <div className="flex flex-wrap justify-end gap-2">
                       <button type="button" disabled={isSavingReview} onClick={() => handleReviewDocument(false)} className="px-3 py-2 rounded-lg border border-rose-300 bg-white text-rose-800 text-xs font-bold disabled:opacity-50">Lưu · cần chỉnh sửa</button>
                       <button type="button" disabled={isSavingReview || !reviewConfirmed} onClick={() => handleReviewDocument(true)} className="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold disabled:opacity-50">{isSavingReview ? 'Đang lưu…' : 'Xác nhận & duyệt'}</button>

@@ -213,6 +213,69 @@ public sealed class AiAdvisoryTests
         Assert.Contains("tuỳ chỉnh của trang trại", answer.Details);
     }
 
+    [Theory]
+    [InlineData("small_talk", "chào bạn nhé")]
+    [InlineData("out_of_scope", "giá vàng hôm nay")]
+    public async Task Greeting_or_out_of_scope_is_answered_without_calling_the_model(string topic, string question)
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        factory.IntentClassifier.Understands(question, new QuestionIntent([topic], []));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Equal(0, factory.AiProvider.Calls);
+        Assert.False(answer.IsActionable);
+        Assert.DoesNotContain("hoạt động bình thường", answer.Details);
+    }
+
+    [Fact]
+    public async Task Sensor_and_device_topics_together_do_not_repeat_the_readings()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "thông tin các cảm biến";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.SensorReadings, QuestionTopics.Devices], [], WantsDeviceDetail: true));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Contains("35", answer.Details);
+        Assert.DoesNotContain("Số đo mới nhất của Zone", answer.Details);
+    }
+
+    [Fact]
+    public async Task Failed_overall_comment_does_not_lose_the_readings()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        factory.AiProvider.Throw = true;
+
+        var answer = await AskAsync(factory, fixture.ZoneId, "thông tin cảm biến hiện tại");
+
+        Assert.Contains("35", answer.Details);
+        Assert.DoesNotContain("Nhận xét tổng thể", answer.Details);
+    }
+
+    [Fact]
+    public async Task Control_node_without_configured_channels_is_not_reported_as_missing_device()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            db.DeviceActuators.RemoveRange(db.DeviceActuators.Where(a => a.Device.ZoneId == fixture.ZoneId));
+            await db.SaveChangesAsync();
+        }
+        const string question = "các thiết bị chấp hành của zone";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.Devices], [], false, false, QuestionIntent.ScopeActuators));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Contains("chưa cấu hình kênh chấp hành", answer.Summary + answer.Details);
+        Assert.DoesNotContain("chưa lắp hoặc chưa gán", answer.Details);
+    }
+
     [Fact]
     public async Task Harvest_only_intent_still_requires_approved_documents_and_keeps_season_facts()
     {
@@ -351,6 +414,22 @@ public sealed class AiAdvisoryTests
         Assert.Contains("35", answer.Details);
         Assert.Contains("tài liệu", answer.Details);
         Assert.Equal(AiRecommendationStatus.InsufficientData, answer.Status);
+    }
+
+    [Fact]
+    public async Task Knowledge_question_without_documents_still_shows_the_configured_thresholds_of_the_asked_parameter()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "nếu độ ẩm đất giảm còn 0 thì sao";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.AgronomyKnowledge], [EnvironmentalParameterCode.SoilMoisture]));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Equal(AiRecommendationStatus.InsufficientData, answer.Status);
+        Assert.Contains("ngưỡng đã cấu hình", answer.Details);
+        Assert.Contains("Độ ẩm đất", answer.Details);
+        Assert.Contains("không phải kết luận về tác hại", answer.Details);
     }
 
     [Fact]
@@ -574,6 +653,45 @@ public sealed class AiAdvisoryTests
         Assert.Contains("35–48", answer.Details);
         Assert.Contains("Node cảm biến 1: 48", answer.Details);
         Assert.Contains("Node chấp hành 1: 35", answer.Details);
+    }
+
+    [Fact]
+    public async Task History_request_lists_the_requested_number_of_recent_readings_per_node()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var device = await db.Devices.SingleAsync(d => d.ZoneId == fixture.ZoneId);
+            var template = await db.TelemetryReadings.FirstAsync(r => r.DeviceId == device.Id);
+            for (var i = 1; i <= 4; i++)
+                db.TelemetryReadings.Add(new TelemetryReading { TenantId = template.TenantId, FarmId = template.FarmId, ZoneId = fixture.ZoneId, DeviceId = device.Id, GatewayId = device.GatewayId, MessageId = $"ai-{Guid.NewGuid():N}", ParameterCode = template.ParameterCode, Value = 40 + i, Unit = template.Unit, CapturedAtUtc = DateTime.UtcNow.AddMinutes(-10 * i), ReceivedAtUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        const string question = "3 bản ghi mới nhất của node cảm biến 1";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.SensorReadings], [], WantsHistory: true, HistoryCount: 3, DeviceNumber: 1));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Contains("3 bản ghi gần nhất của Node chấp hành 1", answer.Details);
+        Assert.Contains("41", answer.Details);
+        Assert.Contains("42", answer.Details);
+        Assert.DoesNotContain("44", answer.Details);
+    }
+
+    [Fact]
+    public async Task History_request_for_a_missing_node_names_the_nodes_that_exist()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "5 bản ghi của node cảm biến 9";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.SensorReadings], [], WantsHistory: true, HistoryCount: 5, DeviceNumber: 9));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Contains("Node cảm biến 9", answer.Details);
+        Assert.Contains("Các node cảm biến hiện có", answer.Details);
     }
 
     [Fact]

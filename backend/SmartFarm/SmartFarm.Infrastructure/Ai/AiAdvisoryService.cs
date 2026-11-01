@@ -30,7 +30,7 @@ public sealed class AiAdvisoryService(
     public async Task<AiZoneContext> GetContextAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
         var (zone, _) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
-        return await BuildContextAsync(zone, includeHistory: false, cancellationToken);
+        return await BuildContextAsync(zone, includeHistory: false, historyCount: 0, cancellationToken);
     }
 
     public Task<AiRecommendationView> AskAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, CancellationToken cancellationToken) =>
@@ -161,11 +161,15 @@ public sealed class AiAdvisoryService(
             throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
 
         var now = clock.GetUtcNow().UtcDateTime;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        long classifyMs, contextMs, ragMs = 0, providerMs = 0;
         var intent = await ClassifyIntentAsync(question, cancellationToken);
+        classifyMs = stopwatch.ElapsedMilliseconds;
         // Hỏi thu hoạch (không chỉ hỏi số ngày của vụ) cần cả tài liệu thu hoạch đã duyệt, nên không để classifier bỏ sót chủ đề kiến thức.
         if (intent.Has(QuestionTopics.Harvest) && !intent.Has(QuestionTopics.Season) && !intent.Has(QuestionTopics.AgronomyKnowledge))
             intent = intent with { Topics = [.. intent.Topics, QuestionTopics.AgronomyKnowledge] };
-        var context = await BuildContextAsync(zone, includeHistory: intent.WantsHistory, cancellationToken);
+        var context = await BuildContextAsync(zone, includeHistory: intent.WantsHistory, historyCount: intent.HistoryCount, cancellationToken);
+        contextMs = stopwatch.ElapsedMilliseconds - classifyMs;
         var request = new AiConsultationRequest
         {
             TenantId = tenantId,
@@ -254,8 +258,21 @@ public sealed class AiAdvisoryService(
             goto Persist;
         }
 
-        // Ưu tiên cây của Zone đang hỏi: cây trong vụ mùa, rồi tên Zone (vd. "Khu cà chua 12");
-        // chỉ dùng tên trong câu hỏi nếu Zone chưa cho biết cây.
+        // Câu chào hỏi hoặc ngoài phạm vi (không kèm ý nào khác): trả lời cố định, không gọi mô hình nên không tốn lượt và không có gì để bịa.
+        if (intent.Topics.Count == 1 && (intent.Has(QuestionTopics.SmallTalk) || intent.Has(QuestionTopics.OutOfScope)))
+        {
+            var isGreeting = intent.Has(QuestionTopics.SmallTalk);
+            recommendation = CreateLimited(request, context, AiRecommendationStatus.Ready,
+                isGreeting ? "Xin chào! Tôi là trợ lý SmartFarm của khu vực này." : "Câu hỏi này nằm ngoài phạm vi hỗ trợ của trợ lý nông nghiệp.",
+                isGreeting
+                    ? "Bạn có thể hỏi về số đo cảm biến, thiết bị, thời tiết, vụ mùa, lịch tưới hoặc kỹ thuật canh tác theo tài liệu đã duyệt."
+                    : "Trợ lý chỉ hỗ trợ thông tin vận hành, thiết bị và kỹ thuật canh tác của khu vực. Vui lòng hỏi nội dung liên quan đến cây trồng hoặc thiết bị.",
+                [], now);
+            recommendation.SourcesJson = "[]";
+            request.ProviderName = "Template";
+            request.Status = AiConsultationStatus.Completed;
+            goto Persist;
+        }
 
         if (missingRequiredData)
         {
@@ -303,6 +320,7 @@ public sealed class AiAdvisoryService(
                 IReadOnlyList<KnowledgePassageView>? passages = [];
                 if (!isDeviceInventoryQuestion)
                 {
+                    var ragStart = stopwatch.ElapsedMilliseconds;
                     try
                     {
                         passages = await knowledgeRetriever.RetrievePassagesAsync(
@@ -312,7 +330,8 @@ public sealed class AiAdvisoryService(
                             tenantId: tenantId,
                             topK: 4,
                             generalOnlyWhenCropUnknown: true,
-                            cancellationToken);
+                            cancellationToken,
+                            expansionTerms: intent.SearchTerms);
 
                         // Đoạn khớp yếu không được đưa cho model: có đưa thì model vẫn có thể trả lời từ kiến thức chung rồi gắn như có tài liệu.
                         passages = passages.Where(p => p.SimilarityScore >= MinDisplayedSourceScore).ToList();
@@ -327,16 +346,17 @@ public sealed class AiAdvisoryService(
                         logger.LogWarning(ex, "[RAG] Knowledge retrieval failed; threshold-dependent irrigation advice will fail closed unless the active Growth Profile provides the threshold.");
                         passages = [];
                     }
+                    ragMs = stopwatch.ElapsedMilliseconds - ragStart;
                 }
 
                 // Câu hỏi tri thức không có tài liệu đã duyệt phù hợp: trả lời rõ là chưa tìm thấy, không để model tự bịa.
                 if (requiresAgronomyEvidence && passages is { Count: 0 })
                 {
                     recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
-                        "Chưa tìm thấy tài liệu đã duyệt",
+                        NoDocumentSummary(intent),
                         WithZoneDataParts(intent, context, string.IsNullOrWhiteSpace(ragCrop)
-                            ? "Kho tri thức chưa có tài liệu áp dụng chung đã duyệt cho câu hỏi này. Hãy nêu rõ tên cây hoặc chọn vụ mùa cho khu vực."
-                            : $"Kho tri thức chưa có tài liệu đã duyệt cho {ragCrop} (hoặc tài liệu áp dụng chung) trả lời được câu hỏi này."),
+                            ? "Kho tri thức chưa có tài liệu áp dụng chung đã duyệt cho câu hỏi này, nên AI chưa tư vấn phần kỹ thuật. Hãy nêu rõ tên cây hoặc chọn vụ mùa cho khu vực." + NoDocumentHint
+                            : $"Kho tri thức chưa có tài liệu đã duyệt cho {ragCrop} (hoặc tài liệu áp dụng chung) trả lời được phần kỹ thuật của câu hỏi này, nên AI chưa tư vấn nội dung đó." + NoDocumentHint),
                         ["Không có tài liệu VietGAP/kỹ thuật đã duyệt phù hợp"], now);
                     recommendation.SourcesJson = "[]";
                     request.ProviderName = "None";
@@ -359,9 +379,11 @@ public sealed class AiAdvisoryService(
 
                 var providerRequest = new AiProviderRequest(question, providerContext, passages);
                 var promptText = AiPromptBuilder.Build(providerRequest);
+                var providerStart = stopwatch.ElapsedMilliseconds;
                 var result = await provider.GenerateAsync(
                     providerRequest,
                     cancellationToken);
+                providerMs = stopwatch.ElapsedMilliseconds - providerStart;
                 recommendation = await FromProviderAsync(request, context, result, now, cancellationToken);
 
                 // Chỉ hiện làm nguồn những đoạn đủ liên quan; model trích dẫn một đoạn khớp yếu cũng không biến nó thành căn cứ.
@@ -390,8 +412,8 @@ public sealed class AiAdvisoryService(
                 if (requiresAgronomyEvidence && sources.Count == 0)
                 {
                     recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
-                        "Chưa tìm thấy tài liệu đã duyệt",
-                        WithZoneDataParts(intent, context, "Không có đoạn tài liệu VietGAP/kỹ thuật đã duyệt đủ liên quan để làm căn cứ trả lời câu hỏi này, nên hệ thống không đưa ra nội dung kỹ thuật."),
+                        NoDocumentSummary(intent),
+                        WithZoneDataParts(intent, context, "Kho tri thức chưa có đoạn tài liệu đã duyệt đủ liên quan đến phần kỹ thuật của câu hỏi này, nên AI chưa tư vấn nội dung đó thay vì tự suy đoán." + NoDocumentHint),
                         ["Không có nguồn tài liệu đủ liên quan"], now);
                 }
 
@@ -422,6 +444,9 @@ public sealed class AiAdvisoryService(
         request.CompletedAtUtc = now;
         db.AiRecommendations.Add(recommendation);
         await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "[AI timing] total={TotalMs}ms classify={ClassifyMs}ms context={ContextMs}ms rag={RagMs}ms provider={ProviderMs}ms answeredBy={Provider} topics={Topics}",
+            stopwatch.ElapsedMilliseconds, classifyMs, contextMs, ragMs, providerMs, request.ProviderName, string.Join(',', intent.Topics));
         return ToView(recommendation);
     }
 
@@ -542,7 +567,7 @@ public sealed class AiAdvisoryService(
         };
     }
 
-    private async Task<AiZoneContext> BuildContextAsync(Zone zone, bool includeHistory, CancellationToken cancellationToken)
+    private async Task<AiZoneContext> BuildContextAsync(Zone zone, bool includeHistory, int historyCount, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var inProgressSeason = await db.PlantingSeasons.AsNoTracking()
@@ -666,6 +691,23 @@ public sealed class AiAdvisoryService(
                 .Select(g => g.OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).First())
                 .ToListAsync(cancellationToken);
         }
+        // N bản ghi gần nhất của từng thiết bị theo từng thông số (chỉ khi người dùng hỏi lịch sử theo số bản ghi).
+        var recentByDevice = new Dictionary<Guid, List<AiTelemetryHistoryItem>>();
+        if (historyCount > 0)
+        {
+            foreach (var deviceId in zoneDeviceIds)
+            {
+                var rows = await db.TelemetryReadings.AsNoTracking()
+                    .Where(x => x.DeviceId == deviceId && x.CapturedAtUtc <= now)
+                    .OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc)
+                    .Take(historyCount * 7)
+                    .ToListAsync(cancellationToken);
+                recentByDevice[deviceId] = rows.GroupBy(x => x.ParameterCode).OrderBy(g => g.Key)
+                    .SelectMany(g => g.Take(historyCount))
+                    .Select(x => new AiTelemetryHistoryItem(x.ParameterCode, x.Value, x.Unit, x.CapturedAtUtc))
+                    .ToList();
+            }
+        }
         var labelByDevice = zoneDevices
             .GroupBy(d => d.DeviceType)
             .SelectMany(g => g.Select((d, i) => (d.Id, Label: $"{(g.Key == DeviceType.ActuatorNode ? "Node chấp hành" : "Node cảm biến")} {i + 1}")))
@@ -688,7 +730,8 @@ public sealed class AiAdvisoryService(
                     .ToList(),
                 d.Actuators.Select(a => a.ActuatorType).OrderBy(x => x).ToList(),
                 d.BatteryLevel,
-                d.Rssi))
+                d.Rssi,
+                recentByDevice.GetValueOrDefault(d.Id)))
             .ToList();
 
         // Gateway phục vụ các node của Zone (qua GatewayId của thiết bị); chỉ thông tin vận hành, không gồm mã định danh/chứng chỉ.
@@ -812,13 +855,34 @@ public sealed class AiAdvisoryService(
         return string.IsNullOrWhiteSpace(planned) ? (null, null) : (planned, "planned_season");
     }
 
+    private const string NoDocumentHint = " Quản trị viên có thể bổ sung tài liệu VietGAP/kỹ thuật phù hợp vào Kho tri thức (mục Tài liệu tri thức) để AI trả lời được nội dung này.";
+
+    // Tiêu đề nói đúng phần nào đã trả lời: câu hỏi nhiều ý đã có phần dữ liệu Zone thì không để tiêu đề chỉ báo "chưa có tài liệu".
+    private static string NoDocumentSummary(QuestionIntent intent) =>
+        intent.Topics.Any(t => t is not (QuestionTopics.AgronomyKnowledge or QuestionTopics.IrrigationOrControl or QuestionTopics.SmallTalk or QuestionTopics.OutOfScope))
+            ? "Đã trả lời phần dữ liệu Zone; chưa có tài liệu cho phần kỹ thuật"
+            : "Chưa có tài liệu đã duyệt cho câu hỏi này";
+
     /// <summary>Ghép các phần dữ liệu Zone trả lời trực tiếp được vào câu trả lời, để câu hỏi nhiều ý không mất các phần còn lại khi phần kiến thức/tưới thiếu căn cứ.</summary>
     private static string WithZoneDataParts(QuestionIntent intent, AiZoneContext context, string details)
     {
+    // Chưa có tài liệu làm căn cứ thì vẫn nêu dữ liệu có thật của hệ thống về thông số được hỏi: ngưỡng đã cấu hình cho giai đoạn hiện tại.
+        var thresholds = ConfiguredThresholdFacts(intent, context);
+        if (thresholds is not null) details = $"{details}\n\n{thresholds}";
         var rest = intent with { Topics = intent.Topics.Where(t => t is not (QuestionTopics.AgronomyKnowledge or QuestionTopics.IrrigationOrControl)).ToList() };
         if (rest.Topics.Count == 0) return details;
         var answer = TryAnswerFromZoneData(rest, context);
         return answer is null ? details : $"{answer.Details}\n\n{details}";
+    }
+
+    private static string? ConfiguredThresholdFacts(QuestionIntent intent, AiZoneContext context)
+    {
+        if (intent.Parameters.Count == 0) return null;
+        var lines = context.Requirements.Where(r => intent.Parameters.Contains(r.ParameterCode)).OrderBy(r => r.ParameterCode)
+            .Select(r => $"• {ParameterLabel(r.ParameterCode)}: {Num(r.MinValue)}–{Num(r.MaxValue)} {r.Unit} (mục tiêu {Num(r.TargetValue)} {r.Unit})").ToList();
+        if (lines.Count == 0) return null;
+        var stage = string.IsNullOrWhiteSpace(context.GrowthStageName) ? "giai đoạn hiện tại" : $"giai đoạn {context.GrowthStageName}";
+        return $"Dữ liệu có sẵn trong hệ thống — ngưỡng đã cấu hình cho {stage} (từ hồ sơ sinh trưởng, không phải kết luận về tác hại hay cách xử lý):\n{string.Join("\n", lines)}";
     }
 
     private static string PastSeasonSentence(AiPastSeason p) =>
@@ -908,9 +972,19 @@ public sealed class AiAdvisoryService(
 
         var parts = new List<ZoneDataAnswer>();
         if (intent.Has(QuestionTopics.Gateways)) parts.Add(BuildGatewayAnswer(context));
-        if (intent.Has(QuestionTopics.Devices)) parts.Add(BuildDeviceListAnswer(intent, context));
-        if (intent.Has(QuestionTopics.SensorReadings))
-            parts.Add(BuildSensorOverviewAnswer(context, intent.Parameters.Count > 0 ? intent.Parameters.ToHashSet() : null));
+        // Hỏi "N bản ghi gần nhất" của node: trả lịch sử từng node thay vì chỉ số đo mới nhất.
+        var historyAnswered = intent.HistoryCount > 0 && (intent.Has(QuestionTopics.SensorReadings) || intent.Has(QuestionTopics.Devices))
+            && intent.DeviceScope != QuestionIntent.ScopeActuators;
+        if (historyAnswered) parts.Add(BuildDeviceHistoryAnswer(intent, context));
+        else if (intent.Has(QuestionTopics.Devices)) parts.Add(BuildDeviceListAnswer(intent, context));
+        if (intent.Has(QuestionTopics.SensorReadings) && !historyAnswered)
+        {
+            var sensors = BuildSensorOverviewAnswer(context, intent.Parameters.Count > 0 ? intent.Parameters.ToHashSet() : null);
+            var deviceListShowsReadings = intent.Has(QuestionTopics.Devices) && intent.Parameters.Count == 0 && intent.DeviceScope != QuestionIntent.ScopeActuators
+                && sensors.Status == AiRecommendationStatus.Ready && parts[^1].Status == AiRecommendationStatus.Ready && parts[^1].Details.Contains("số đo:");
+            if (deviceListShowsReadings) parts[^1] = parts[^1] with { WantsOverallComment = sensors.WantsOverallComment };
+            else parts.Add(sensors);
+        }
         var zoneTopics = new[]
         {
             QuestionTopics.Alerts, QuestionTopics.Commands, QuestionTopics.Schedules, QuestionTopics.Tasks, QuestionTopics.Season, QuestionTopics.Harvest,
@@ -934,7 +1008,8 @@ public sealed class AiAdvisoryService(
     {
         try
         {
-            return await intentClassifier.ClassifyAsync(question, cancellationToken) ?? QuestionIntent.Unknown;
+            var classified = await intentClassifier.ClassifyAsync(question, cancellationToken) ?? QuestionIntent.Unknown;
+            return classified.Topics.Count == 0 ? WithHypotheticalFallback(question, classified) : classified;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -943,8 +1018,20 @@ public sealed class AiAdvisoryService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Question intent classification failed; continuing without a pre-classified intent.");
-            return QuestionIntent.Unknown;
+            return WithHypotheticalFallback(question, QuestionIntent.Unknown);
         }
+    }
+
+    // Câu giả định về hậu quả ("nếu ... thì sao", "có sao không") là câu hỏi kiến thức cần tài liệu. Khi AI phân loại không khả dụng
+    // (quá tải, hết thời gian) vẫn không để model trả lời hậu quả nông học từ kiến thức chung không có căn cứ.
+    private static readonly Regex HypotheticalConsequence = new(
+        @"(neu.*thi.*(sao|the nao|ra sao))|(co sao khong)|(anh huong (gi|nhu the nao))|(phai lam sao)|(lam sao de)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
+    internal static QuestionIntent WithHypotheticalFallback(string question, QuestionIntent intent)
+    {
+        var plain = SmartFarm.Infrastructure.Ai.Knowledge.AgricultureKnowledgeRetriever.RemoveDiacritics(question.ToLowerInvariant());
+        return HypotheticalConsequence.IsMatch(plain) ? intent with { Topics = [QuestionTopics.AgronomyKnowledge] } : intent;
     }
 
     private sealed record ZoneDataAnswer(AiRecommendationStatus Status, string Summary, string Details, string[] Limitations, bool WantsOverallComment = false);
@@ -954,6 +1041,8 @@ public sealed class AiAdvisoryService(
         "WaterPump" => "máy bơm tưới",
         "Fan" => "quạt thông gió",
         "Valve" => "van tưới",
+        "IrrigationValve" => "van tưới nhỏ giọt",
+        "IrrigationPump" or "Pump" => "máy bơm tưới",
         "Light" => "đèn trợ sáng",
         _ => type
     };
@@ -1068,6 +1157,10 @@ public sealed class AiAdvisoryService(
             $"Zone kết nối qua {gateways.Count} gateway:\n{string.Join("\n", lines)}", limitations.ToArray());
     }
 
+    /// <summary>Gộp các kênh cùng loại: "4 van tưới nhỏ giọt" thay vì lặp tên từng kênh.</summary>
+    private static string GroupedActuators(IEnumerable<string> types) =>
+        string.Join(", ", types.GroupBy(t => t).Select(g => g.Count() > 1 ? $"{g.Count()} {ActuatorLabel(g.Key)}" : ActuatorLabel(g.Key)));
+
     private static string DeviceReadings(AiZoneDeviceSummary d, string tz)
     {
         if (d.LatestReadings.Count == 0) return "chưa có số đo";
@@ -1091,6 +1184,54 @@ public sealed class AiAdvisoryService(
 
     private static string Reading(AiTelemetryContextItem x, string timeZoneId) =>
         $"{ParameterLabel(x.ParameterCode)}: {x.Value.ToString("0.##", CultureInfo.InvariantCulture)} {x.Unit} (lúc {LocalTime(x.CapturedAtUtc, timeZoneId)})";
+
+    private static ZoneDataAnswer BuildDeviceHistoryAnswer(QuestionIntent intent, AiZoneContext context)
+    {
+        var tz = context.FarmTimeZone;
+        // Thiết bị đã gửi số đo cũng được coi là có cảm biến (node điều khiển có thể kèm cảm biến chưa khai báo).
+        var sensorDevices = (context.ZoneDevices ?? []).Where(d => d.SensorCount > 0 || d.LatestReadings.Count > 0).ToList();
+        if (intent.DeviceNumber is { } number)
+        {
+            var wanted = $"Node cảm biến {number}";
+            var picked = sensorDevices.Where(d => string.Equals(d.DeviceLabel, wanted, StringComparison.OrdinalIgnoreCase)).ToList();
+            // Node điều khiển cũng có thể gắn cảm biến (nhãn "Node chấp hành N"): khi chỉ có đúng một thiết bị mang số đó thì dùng nó.
+            if (picked.Count == 0)
+                picked = sensorDevices.Where(d => d.DeviceLabel.EndsWith($" {number}", StringComparison.Ordinal)).ToList() is { Count: 1 } byNumber ? byNumber : picked;
+            if (picked.Count == 0)
+                return new ZoneDataAnswer(AiRecommendationStatus.InsufficientData, "Không thấy node được hỏi",
+                    $"Zone không có \"{wanted}\". Các node cảm biến hiện có: {(sensorDevices.Count == 0 ? "chưa có" : string.Join(", ", sensorDevices.Select(d => d.DeviceLabel)))}.", []);
+            sensorDevices = picked;
+        }
+        if (sensorDevices.Count == 0)
+            return new ZoneDataAnswer(AiRecommendationStatus.Ready, "Zone chưa có node cảm biến", "Zone chưa có thiết bị cảm biến nào được gán.", []);
+
+        var n = intent.HistoryCount;
+        bool Wanted(EnvironmentalParameterCode c) => intent.Parameters.Count == 0 || intent.Parameters.Contains(c);
+        var blocks = new List<string>();
+        var anyData = false;
+        foreach (var d in sensorDevices)
+        {
+            var rows = (d.RecentReadings ?? []).Where(r => Wanted(r.ParameterCode)).GroupBy(r => r.ParameterCode).OrderBy(g => g.Key).ToList();
+            if (rows.Count == 0) { blocks.Add($"{d.DeviceLabel} (trạng thái {d.Status}): chưa có số đo."); continue; }
+            anyData = true;
+            var lines = rows.Select(g =>
+            {
+                var items = g.OrderByDescending(r => r.CapturedAtUtc).Take(n).ToList();
+                var shown = string.Join("; ", items.Select(r => $"{Num(r.Value)} ({LocalTime(r.CapturedAtUtc, tz)})"));
+                return $"  • {ParameterLabel(g.Key)} ({items[0].Unit}): {shown}{(items.Count < n ? $" — chỉ có {items.Count} bản ghi" : string.Empty)}";
+            });
+            blocks.Add($"{d.DeviceLabel} (trạng thái {d.Status}):\n{string.Join("\n", lines)}");
+        }
+
+        var limitations = new List<string> { "Mỗi dòng liệt kê từ mới nhất đến cũ hơn; giờ theo múi giờ của Farm." };
+        // Nhiều node báo y hệt nhau ở mọi thông số: nêu đúng điều quan sát được, không kết luận nguyên nhân.
+        var sameValues = sensorDevices.Count > 1 && sensorDevices.All(d => d.LatestReadings.Count > 0) &&
+            sensorDevices.Select(d => string.Join("|", d.LatestReadings.OrderBy(r => r.ParameterCode).Select(r => $"{r.ParameterCode}={Num(r.Value)}"))).Distinct().Count() == 1;
+        if (sameValues) limitations.Add("Các node cảm biến đang báo số đo giống hệt nhau; nếu không đúng thực tế thì nên kiểm tra nguồn dữ liệu của các node.");
+        var subject = intent.DeviceNumber is not null ? sensorDevices[0].DeviceLabel : "các node cảm biến";
+        return new ZoneDataAnswer(anyData ? AiRecommendationStatus.Ready : AiRecommendationStatus.InsufficientData,
+            $"{n} bản ghi gần nhất của {subject}", $"{n} bản ghi gần nhất của {subject}:\n{string.Join("\n", blocks)}", limitations.ToArray());
+    }
 
     private static ZoneDataAnswer BuildSensorOverviewAnswer(AiZoneContext context, IReadOnlySet<EnvironmentalParameterCode>? only = null)
     {
@@ -1155,6 +1296,8 @@ public sealed class AiAdvisoryService(
     /// Một câu nhận xét tổng thể từ AI dựa trên số đo mới và ngưỡng giai đoạn hiện tại. Chỉ lấy câu tóm tắt; không gửi thiết bị chấp hành
     /// nên không thể sinh hành động điều khiển. Mọi lỗi/độ tin cậy thấp/nội dung bất thường đều bỏ qua nhận xét, không ảnh hưởng danh sách số đo.
     /// </summary>
+    private static readonly TimeSpan OverallCommentTimeout = TimeSpan.FromSeconds(4);
+
     private async Task<string?> TryOverallCommentAsync(AiZoneContext context, CancellationToken cancellationToken)
     {
         const string commentQuestion = "Viết đúng MỘT câu nhận xét tổng thể (tối đa 30 từ) về tình trạng hiện tại của Zone, chỉ dựa trên các số đo mới so với ngưỡng của giai đoạn hiện tại. Không liệt kê lại số đo, không đề xuất điều khiển. Nếu thiếu ngưỡng để so sánh, nói chưa đủ căn cứ để nhận xét.";
@@ -1169,7 +1312,9 @@ public sealed class AiAdvisoryService(
                 RecentCommands = null,
                 AutoRules = null
             };
-            var result = await provider.GenerateAsync(new AiProviderRequest(commentQuestion, commentContext, null), cancellationToken);
+            using var commentTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            commentTimeout.CancelAfter(OverallCommentTimeout);
+            var result = await provider.GenerateAsync(new AiProviderRequest(commentQuestion, commentContext, null), commentTimeout.Token);
             var text = (result.Summary ?? string.Empty).Trim();
             if (result.Confidence < settings.MinimumConfidence || text.Length is 0 or > 300 || text.Contains('<') || text.Contains('\n'))
                 return null;
@@ -1205,14 +1350,20 @@ public sealed class AiAdvisoryService(
             QuestionIntent.ScopeActuators => "thiết bị chấp hành",
             _ => "thiết bị"
         };
+        // Node điều khiển đã lắp nhưng chưa có kênh chấp hành (bơm, van...) được cấu hình: không nói là "chưa có thiết bị".
+        var controlNodesWithoutChannels = (context.ZoneDevices ?? []).Where(d => d.DeviceType == "ActuatorNode" && d.ActuatorTypes.Count == 0).ToList();
+        if (devices.Count == 0 && scope == QuestionIntent.ScopeActuators && controlNodesWithoutChannels.Count > 0)
+            return new ZoneDataAnswer(AiRecommendationStatus.Ready, "Node điều khiển chưa cấu hình kênh chấp hành",
+                $"Zone có {controlNodesWithoutChannels.Count} node điều khiển ({string.Join(", ", controlNodesWithoutChannels.GroupBy(d => d.Status).Select(g => $"{g.Count()} {g.Key}"))}) nhưng chưa có kênh chấp hành nào (bơm, van...) được cấu hình trên node, nên chưa điều khiển được. Kỹ thuật viên cần khai báo kênh chấp hành cho node khi lắp đặt.",
+                ["Node điều khiển chưa có kênh chấp hành được cấu hình."]);
         if (devices.Count == 0)
             return new ZoneDataAnswer(AiRecommendationStatus.Ready, $"Zone chưa có {label}",
                 $"Zone chưa có {label} nào được gán (chưa lắp hoặc chưa gán thiết bị vào Zone).", []);
 
         var lines = devices.Select(d =>
         {
-            var sensors = d.SensorCount > 0 ? $"{d.SensorCount} cảm biến ({string.Join(", ", d.SensorTypes)})" : (d.ActuatorTypes.Count > 0 ? "node điều khiển" : "không có cảm biến");
-            var actuators = d.ActuatorTypes.Count > 0 ? $"; thiết bị chấp hành: {string.Join(", ", d.ActuatorTypes.Select(ActuatorLabel))}" : string.Empty;
+            var sensors = d.SensorCount > 0 ? $"{d.SensorCount} cảm biến ({string.Join(", ", d.SensorTypes)})" : (d.ActuatorTypes.Count > 0 ? "node điều khiển" : d.DeviceType == "ActuatorNode" ? "node điều khiển (chưa cấu hình kênh chấp hành)" : "không có cảm biến");
+            var actuators = d.ActuatorTypes.Count > 0 ? $"; thiết bị chấp hành: {GroupedActuators(d.ActuatorTypes)}" : string.Empty;
             // Hỏi thông tin/số đo: nêu giá trị từng thiết bị (chỉ số đo của đúng thiết bị đó); hỏi danh sách: chỉ nêu giờ số đo gần nhất.
             var last = intent.WantsDeviceDetail
                 ? $"; số đo: {DeviceReadings(d, tz)}"

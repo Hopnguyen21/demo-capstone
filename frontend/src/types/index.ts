@@ -208,10 +208,10 @@ export interface Crop {
   optimalTemperatureMax?: number; // °C
   optimalSoilMoistureMin?: number;// %
   optimalSoilMoistureMax?: number;// %
-  optimalpHMin?: number;          // pH
-  optimalpHMax?: number;          // pH
-  optimalECMin?: number;           // mS/cm
-  optimalECMax?: number;           // mS/cm
+  optimalPhMin?: number;          // pH
+  optimalPhMax?: number;          // pH
+  optimalEcMin?: number;           // mS/cm
+  optimalEcMax?: number;           // mS/cm
   optimalLux?: number;             // Lux
 
   // Lịch tưới theo định dạng cuốn lịch (Sáng - Trưa - Chiều)
@@ -337,8 +337,8 @@ export interface SensorNode {
   longitude: number;
   status: 'ONLINE' | 'OFFLINE' | 'WARNING' | 'CRITICAL';
   firmwareVersion: string;
-  batteryLevel: number; // 0-100%
-  rssi: number;
+  batteryLevel?: number; // 0-100%; thiết bị không báo thì để trống
+  rssi?: number;
   lastSeenAt: string;
   sensorsCount: number;
   actuatorsCount: number;

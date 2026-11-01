@@ -78,6 +78,8 @@ public sealed record BulkCreateSeasonsCommand(
 public sealed record BulkSeasonZoneResult(Guid ZoneId, string? ZoneName, bool Valid, IReadOnlyList<string> Problems, Guid? PlantingSeasonId);
 public sealed record BulkCreateSeasonsResult(bool Created, bool DryRun, int ValidCount, int InvalidCount, IReadOnlyList<BulkSeasonZoneResult> Zones);
 public sealed record StageDurationView(Guid ProfileId, Guid StageId, int DurationDays);
+/// <summary>Thêm giai đoạn vào hồ sơ có sẵn. InsertAtOrder trống = thêm vào cuối; có số thì giai đoạn mới nằm ở vị trí đó và các giai đoạn sau lùi một bậc.</summary>
+public sealed record AddStageCommand(string Name, int DurationDays, int? InsertAtOrder, string? Description);
 public sealed record TransitionStageCommand(Guid GrowthStageId, string? Notes);
 public sealed record CloseSeasonCommand(DateOnly ActualEndDate, decimal? ActualYieldKg, string? Notes);
 public sealed record RecordSeasonYieldCommand(decimal ActualYieldKg, DateOnly? ActualEndDate, string? Notes, bool MarkCompleted);

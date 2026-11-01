@@ -243,12 +243,12 @@ export const FarmGISMap: React.FC<{
 
                   <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 text-xs">
                     <div className="flex items-center gap-1 text-slate-700">
-                      <Battery size={12} className={node.batteryLevel < 30 ? 'text-amber-600' : 'text-emerald-600'} />
-                      <span>{node.batteryLevel}% Pin</span>
+                      <Battery size={12} className={typeof node.batteryLevel === 'number' && node.batteryLevel < 30 ? 'text-amber-600' : 'text-emerald-600'} />
+                      <span>{typeof node.batteryLevel === 'number' ? `${node.batteryLevel}% Pin` : 'Pin: không báo'}</span>
                     </div>
                     <div className="flex items-center gap-1 text-slate-700">
                       <Wifi size={12} className="text-sky-600" />
-                      <span>{node.rssi} dBm</span>
+                      <span>{typeof node.rssi === 'number' ? `${node.rssi} dBm` : 'Tín hiệu: không báo'}</span>
                     </div>
                   </div>
 

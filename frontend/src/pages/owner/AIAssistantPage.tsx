@@ -886,7 +886,6 @@ export const AIAssistantPage: React.FC = () => {
                   {aiContext?.cropName && (
                     <span className="text-emerald-900 font-semibold bg-emerald-100/80 px-2.5 py-0.5 rounded-full border border-emerald-300 text-xs">
                       🌿 {aiContext.cropName}{aiContext.growthStageName ? ` • ${aiContext.growthStageName}` : ''}{(aiContext.seasonAgeDays ?? aiContext.daysSinceStart) !== undefined ? ` (Ngày ${aiContext.seasonAgeDays ?? aiContext.daysSinceStart})` : ''}
-                      {aiContext.growthProfileName ? ` • 📜 ${aiContext.growthProfileName}` : ''}
                     </span>
                   )}
                 </span>

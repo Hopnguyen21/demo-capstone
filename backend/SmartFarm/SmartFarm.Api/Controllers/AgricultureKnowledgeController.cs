@@ -67,6 +67,8 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     [HttpPost("api/v1/ai/knowledge/documents")]
     [Authorize(Roles = "PlatformAdmin")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(DocumentTextExtractor.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = DocumentTextExtractor.MaxRequestBytes)]
     public async Task<ActionResult<object>> UploadDocument(
         [FromForm] UploadKnowledgeDocumentRequest request,
         CancellationToken cancellationToken)
@@ -136,6 +138,8 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     [HttpPost("api/v1/ai/knowledge/detect-metadata")]
     [Authorize(Roles = "PlatformAdmin")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(DocumentTextExtractor.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = DocumentTextExtractor.MaxRequestBytes)]
     public async Task<ActionResult<object>> DetectFileMetadata(
         IFormFile file,
         CancellationToken cancellationToken)
@@ -188,6 +192,8 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     [HttpPut("api/v1/ai/knowledge/documents/{documentId:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(DocumentTextExtractor.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = DocumentTextExtractor.MaxRequestBytes)]
     public async Task<IActionResult> UpdateDocument(
         Guid documentId,
         [FromForm] UpdateKnowledgeDocumentRequest request,

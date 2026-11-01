@@ -147,21 +147,25 @@ export interface RangeBandProps {
   min: number;
   max: number;
   target: number;
-  current: number;
+  /** Số đo thực tế; bỏ trống khi chỉ hiển thị ngưỡng mẫu (không có số đo nào để so sánh). */
+  current?: number;
   unit: string;
 }
 
 export const CropRangeBand: React.FC<RangeBandProps> = ({ label, min, max, target, current, unit }) => {
-  const isHealthy = current >= min && current <= max;
-  const pct = Math.min(Math.max(((current - (min - 10)) / ((max + 10) - (min - 10))) * 100, 5), 95);
+  const hasCurrent = typeof current === 'number';
+  const shown = hasCurrent ? current : target;
+  const isHealthy = shown >= min && shown <= max;
+  const pct = Math.min(Math.max(((shown - (min - 10)) / ((max + 10) - (min - 10))) * 100, 5), 95);
 
   return (
     <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-slate-700">{label}</span>
         <div className="flex items-baseline gap-1">
+          {!hasCurrent && <span className="text-[10px] font-semibold uppercase text-slate-400">Mục tiêu</span>}
           <span className={cn('text-lg font-bold', isHealthy ? 'text-emerald-700' : 'text-amber-600')}>
-            {current}
+            {shown}
           </span>
           <span className="text-xs text-slate-500">{unit}</span>
         </div>

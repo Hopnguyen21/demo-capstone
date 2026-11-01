@@ -797,22 +797,22 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
               <div className="flex items-center justify-between font-bold text-slate-900">
                 <span>{currentCropObj.name}</span>
                 <span className="text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded">
-                  {currentCropObj.growthCycleDays || 90} ngày vụ
+                  {currentCropObj.growthCycleDays ? `${currentCropObj.growthCycleDays} ngày vụ` : 'Chưa có chu kỳ'}
                 </span>
               </div>
 
               <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-[10px] text-slate-600">
                 <div className="p-2 bg-white rounded border border-slate-200">
                   <span className="block text-amber-700 font-bold">🌅 Ca Sáng</span>
-                  <span>{currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'MORNING')?.startTime || '07:30'} ({currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'MORNING')?.durationMinutes || 20}m)</span>
+                  <span>{(() => { const x = currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'MORNING'); return x ? `${x.startTime} (${x.durationMinutes}m)` : 'Chưa có'; })()}</span>
                 </div>
                 <div className="p-2 bg-white rounded border border-slate-200">
                   <span className="block text-rose-700 font-bold">☀️ Ca Trưa</span>
-                  <span>{currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'NOON')?.startTime || '12:00'} ({currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'NOON')?.durationMinutes || 10}m)</span>
+                  <span>{(() => { const x = currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'NOON'); return x ? `${x.startTime} (${x.durationMinutes}m)` : 'Chưa có'; })()}</span>
                 </div>
                 <div className="p-2 bg-white rounded border border-slate-200">
                   <span className="block text-indigo-700 font-bold">🌇 Ca Chiều</span>
-                  <span>{currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'AFTERNOON')?.startTime || '16:30'} ({currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'AFTERNOON')?.durationMinutes || 15}m)</span>
+                  <span>{(() => { const x = currentCropObj.calendarIrrigationPlan?.sessions?.find(s => s.session === 'AFTERNOON'); return x ? `${x.startTime} (${x.durationMinutes}m)` : 'Chưa có'; })()}</span>
                 </div>
               </div>
             </div>

@@ -861,18 +861,30 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
                 ZoneId = zoneId,
                 ActuatorId = actuatorId,
                 Name = $"[AutoSync] {profile.Name} {h:D2}:{m:D2}",
-                CronExpression = $"0 {m} {h} * * *",
+                // Cron 5 trường (phút giờ ngày tháng thứ); bộ chạy lịch không đọc dạng 6 trường có giây.
+                CronExpression = $"{m} {h} * * *",
                 DurationSeconds = dur * 60,
                 EnableRainDelay = true,
                 RainThresholdPercent = 70,
                 IsActive = true,
-                NextRunAtUtc = DateTime.UtcNow.AddMinutes(30)
+                NextRunAtUtc = NextDailyRunUtc(h, m, zone.Field.Farm.TimeZone)
             };
             created.Add(cs);
             db.ControlSchedules.Add(cs);
         }
         await db.SaveChangesAsync(ct);
         return created.Select(x => (object)new { x.Id, x.Name, x.CronExpression, x.DurationSeconds, x.IsActive }).ToList();
+    }
+
+    /// <summary>Lần chạy kế tiếp (UTC) của lịch hằng ngày lúc giờ:phút theo múi giờ của Farm.</summary>
+    private static DateTime NextDailyRunUtc(int hour, int minute, string timeZoneId)
+    {
+        TimeZoneInfo tz;
+        try { tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId); } catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { tz = TimeZoneInfo.Utc; }
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        var next = nowLocal.Date.AddHours(hour).AddMinutes(minute);
+        if (next <= nowLocal) next = next.AddDays(1);
+        return TimeZoneInfo.ConvertTimeToUtc(next, tz);
     }
 }
 

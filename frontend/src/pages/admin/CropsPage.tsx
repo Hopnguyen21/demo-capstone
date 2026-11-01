@@ -36,27 +36,8 @@ export const CropsPage: React.FC = () => {
   const [formData, setFormData] = useState<Partial<Crop>>({
     name: '',
     scientificName: '',
-    category: 'Rau ăn quả',
-    growthCycleDays: 90,
-    description: '',
-    optimalTemperatureMin: 20,
-    optimalTemperatureMax: 28,
-    optimalSoilMoistureMin: 65,
-    optimalSoilMoistureMax: 80,
-    optimalpHMin: 6.0,
-    optimalpHMax: 6.8,
-    optimalECMin: 1.8,
-    optimalECMax: 2.5,
-    optimalLux: 25000,
-    calendarIrrigationPlan: {
-      repeatType: 'DAILY',
-      lunarSyncEnabled: true,
-      sessions: [
-        { session: 'MORNING', title: 'Tưới Sáng Khởi Động', startTime: '07:30', durationMinutes: 20, volumeMl: 500, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-        { session: 'NOON', title: 'Tưới Trưa Giảm Nhiệt', startTime: '12:00', durationMinutes: 10, volumeMl: 300, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-        { session: 'AFTERNOON', title: 'Tưới Chiều Bổ Sung', startTime: '16:30', durationMinutes: 15, volumeMl: 400, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }
-      ]
-    }
+    category: '',
+    description: ''
   });
 
   const [editingCropId, setEditingCropId] = useState<string | null>(null);
@@ -65,22 +46,11 @@ export const CropsPage: React.FC = () => {
   const [vietgapDocCount, setVietgapDocCount] = useState<number>(0);
 
   // Chuẩn hóa dữ liệu cây trồng (ưu tiên 100% dữ liệu thật từ Backend PostgreSQL, chỉ fallback tối thiểu nếu chưa cấu hình)
-  const normalizeCrop = (c: Crop): Crop => {
-    return {
-      ...c,
-      category: c.category || 'Rau ăn quả',
-      growthCycleDays: c.growthCycleDays ?? 90,
-      optimalTemperatureMin: c.optimalTemperatureMin ?? 20,
-      optimalTemperatureMax: c.optimalTemperatureMax ?? 28,
-      optimalSoilMoistureMin: c.optimalSoilMoistureMin ?? 65,
-      optimalSoilMoistureMax: c.optimalSoilMoistureMax ?? 80,
-      optimalECMin: c.optimalECMin ?? 1.8,
-      optimalECMax: c.optimalECMax ?? 2.5,
-      optimalpHMin: c.optimalpHMin ?? 6.0,
-      optimalpHMax: c.optimalpHMax ?? 6.8,
-      optimalLux: c.optimalLux ?? 30000,
-    };
-  };
+  // Dữ liệu cây trồng lấy nguyên từ backend; ô nào chưa có dữ liệu thì để trống, không điền giá trị mặc định.
+  const normalizeCrop = (c: Crop): Crop => ({ ...c });
+
+  const fmtRange = (min?: number | null, max?: number | null, unit = '') =>
+    min == null && max == null ? 'Chưa có dữ liệu' : `${min ?? '—'}-${max ?? '—'}${unit}`;
 
   const loadData = async () => {
     const [fetchedCrops, fetchedZones, allVarieties, docs] = await Promise.all([
@@ -113,31 +83,7 @@ export const CropsPage: React.FC = () => {
 
   const openCreateModal = () => {
     setEditingCropId(null);
-    setFormData({
-      name: '',
-      scientificName: '',
-      category: 'Rau ăn quả',
-      growthCycleDays: 90,
-      description: '',
-      optimalTemperatureMin: 20,
-      optimalTemperatureMax: 28,
-      optimalSoilMoistureMin: 65,
-      optimalSoilMoistureMax: 80,
-      optimalpHMin: 6.0,
-      optimalpHMax: 6.8,
-      optimalECMin: 1.8,
-      optimalECMax: 2.5,
-      optimalLux: 25000,
-      calendarIrrigationPlan: {
-        repeatType: 'DAILY',
-        lunarSyncEnabled: true,
-        sessions: [
-          { session: 'MORNING', title: 'Tưới Sáng Khởi Động', startTime: '07:30', durationMinutes: 20, volumeMl: 500, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-          { session: 'NOON', title: 'Tưới Trưa Giảm Nhiệt', startTime: '12:00', durationMinutes: 10, volumeMl: 300, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
-          { session: 'AFTERNOON', title: 'Tưới Chiều Bổ Sung', startTime: '16:30', durationMinutes: 15, volumeMl: 400, enabled: true, daysOfWeek: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }
-        ]
-      }
-    });
+    setFormData({ name: '', scientificName: '', category: '', description: '' });
     setActiveModalTab('INFO');
     setIsModalOpen(true);
   };
@@ -441,12 +387,12 @@ export const CropsPage: React.FC = () => {
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 mb-1 inline-block">
-                      {c.category || 'Rau ăn quả'} • {c.growthCycleDays || 90} ngày
+                      {[c.category, c.growthCycleDays ? `${c.growthCycleDays} ngày` : null].filter(Boolean).join(' • ') || 'Chưa phân nhóm'}
                     </span>
                     <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-950 transition-colors">{c.name}</h3>
                     <p className="text-xs italic text-emerald-800 font-serif font-medium">{c.scientificName}</p>
                   </div>
-                  <StatusBadge status={c.isSystemDefined ? 'ACTIVE' : 'WARNING'} label={c.isSystemDefined ? 'VietGAP' : 'Custom'} />
+                  <StatusBadge status={c.isSystemDefined ? 'ACTIVE' : 'WARNING'} label={c.isSystemDefined ? 'VietGAP' : 'Của Farm'} />
                 </div>
 
                 <p className="text-xs text-slate-600 line-clamp-2">{c.description}</p>
@@ -455,41 +401,47 @@ export const CropsPage: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 text-[11px]">
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Thermometer size={13} className="text-rose-600" />
-                    <span>Nhiệt độ: <strong>{(c.optimalTemperatureMin ?? 20)}-{(c.optimalTemperatureMax ?? 28)}°C</strong></span>
+                    <span>Nhiệt độ: <strong>{fmtRange(c.optimalTemperatureMin, c.optimalTemperatureMax, '°C')}</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Droplets size={13} className="text-sky-600" />
-                    <span>Độ ẩm đất: <strong>{(c.optimalSoilMoistureMin ?? 65)}-{(c.optimalSoilMoistureMax ?? 80)}%</strong></span>
+                    <span>Độ ẩm đất: <strong>{fmtRange(c.optimalSoilMoistureMin, c.optimalSoilMoistureMax, '%')}</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Zap size={13} className="text-amber-600" />
-                    <span>EC: <strong>{(c.optimalECMin ?? 1.8)}-{(c.optimalECMax ?? 2.5)} mS/cm</strong></span>
+                    <span>EC: <strong>{fmtRange(c.optimalEcMin, c.optimalEcMax, ' mS/cm')}</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-700">
                     <Sun size={13} className="text-yellow-600" />
-                    <span>pH: <strong>{(c.optimalpHMin ?? 6.0)}-{(c.optimalpHMax ?? 6.8)}</strong></span>
+                    <span>pH: <strong>{fmtRange(c.optimalPhMin, c.optimalPhMax)}</strong></span>
                   </div>
                 </div>
 
-                {/* Calendar schedule summary badge */}
+                {/* Lịch tưới mẫu: chỉ hiện khi cây thật sự có dữ liệu; không điền giờ mặc định. */}
                 <div className="p-2.5 bg-emerald-50/60 border border-emerald-100 rounded-xl space-y-1.5">
                   <div className="flex items-center justify-between text-[11px] font-bold text-emerald-950">
-                    <span className="flex items-center gap-1"><CalendarIcon size={13} /> Cuốn Lịch Tưới 3 Ca</span>
-                    <span className="text-[10px] bg-emerald-200/80 text-emerald-950 px-1.5 py-0.2 rounded font-mono">
-                      {c.calendarIrrigationPlan?.repeatType === 'DAILY' ? 'Hàng ngày' : 'Định kỳ'}
-                    </span>
+                    <span className="flex items-center gap-1"><CalendarIcon size={13} /> Lịch tưới mẫu</span>
+                    {sessions.length > 0 && (
+                      <span className="text-[10px] bg-emerald-200/80 text-emerald-950 px-1.5 py-0.2 rounded font-mono">
+                        {c.calendarIrrigationPlan?.repeatType === 'DAILY' ? 'Hàng ngày' : 'Định kỳ'}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-600">
-                    <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${mSess?.enabled ? 'bg-amber-100 text-amber-900 font-semibold' : 'bg-slate-100 opacity-50'}`}>
-                      🌅 Sáng {mSess?.startTime || '07:30'}
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${nSess?.enabled ? 'bg-rose-100 text-rose-900 font-semibold' : 'bg-slate-100 opacity-50'}`}>
-                      ☀️ Trưa {nSess?.startTime || '12:00'}
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${aSess?.enabled ? 'bg-indigo-100 text-indigo-900 font-semibold' : 'bg-slate-100 opacity-50'}`}>
-                      🌇 Chiều {aSess?.startTime || '16:30'}
-                    </span>
-                  </div>
+                  {sessions.length === 0 ? (
+                    <p className="text-[10px] text-slate-500">Chưa có lịch tưới mẫu cho cây này.</p>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[10px] text-slate-600">
+                      {mSess && (
+                        <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${mSess.enabled ? 'bg-amber-100 text-amber-900 font-semibold' : 'bg-slate-100 opacity-50'}`}>🌅 Sáng {mSess.startTime}</span>
+                      )}
+                      {nSess && (
+                        <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${nSess.enabled ? 'bg-rose-100 text-rose-900 font-semibold' : 'bg-slate-100 opacity-50'}`}>☀️ Trưa {nSess.startTime}</span>
+                      )}
+                      {aSess && (
+                        <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${aSess.enabled ? 'bg-indigo-100 text-indigo-900 font-semibold' : 'bg-slate-100 opacity-50'}`}>🌇 Chiều {aSess.startTime}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Plant Varieties Badge Row (Item 10) */}
@@ -639,10 +591,11 @@ export const CropsPage: React.FC = () => {
                   <div>
                     <label className="block font-medium text-slate-700 mb-1">Phân nhóm loài cây</label>
                     <select
-                      value={formData.category || 'Rau ăn quả'}
+                      value={formData.category || ''}
                       onChange={e => setFormData({ ...formData, category: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
                     >
+                      <option value="">Chưa chọn nhóm</option>
                       <option value="Rau ăn quả">Rau ăn quả (Tomato, Chili, Cucumber)</option>
                       <option value="Rau ăn lá">Rau ăn lá (Hydroponic Leafy Greens)</option>
                       <option value="Cây ăn trái">Cây ăn trái (Fruit Crops)</option>
@@ -652,7 +605,7 @@ export const CropsPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block font-medium text-slate-700 mb-1">Chu kỳ sinh trưởng vụ mùa (số ngày)</label>
-                    <Input type="number" min={10} max={365} value={formData.growthCycleDays ?? 90} onChange={e => setFormData({ ...formData, growthCycleDays: Number(e.target.value) })} />
+                    <Input type="number" min={10} max={365} value={formData.growthCycleDays ?? ''} onChange={e => setFormData({ ...formData, growthCycleDays: e.target.value === '' ? undefined : Number(e.target.value) })} />
                   </div>
                 </div>
 
@@ -691,8 +644,8 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
                           <Input
                             type="number"
-                            value={formData.optimalTemperatureMin ?? 20}
-                            onChange={e => setFormData({ ...formData, optimalTemperatureMin: Number(e.target.value) })}
+                            value={formData.optimalTemperatureMin ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalTemperatureMin: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -700,8 +653,8 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
                           <Input
                             type="number"
-                            value={formData.optimalTemperatureMax ?? 28}
-                            onChange={e => setFormData({ ...formData, optimalTemperatureMax: Number(e.target.value) })}
+                            value={formData.optimalTemperatureMax ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalTemperatureMax: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -721,8 +674,8 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Min</span>
                           <Input
                             type="number"
-                            value={formData.optimalSoilMoistureMin ?? 65}
-                            onChange={e => setFormData({ ...formData, optimalSoilMoistureMin: Number(e.target.value) })}
+                            value={formData.optimalSoilMoistureMin ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalSoilMoistureMin: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -730,8 +683,8 @@ export const CropsPage: React.FC = () => {
                           <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1 text-center">Max</span>
                           <Input
                             type="number"
-                            value={formData.optimalSoilMoistureMax ?? 80}
-                            onChange={e => setFormData({ ...formData, optimalSoilMoistureMax: Number(e.target.value) })}
+                            value={formData.optimalSoilMoistureMax ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalSoilMoistureMax: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -752,8 +705,8 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalpHMin ?? 6.0}
-                            onChange={e => setFormData({ ...formData, optimalpHMin: Number(e.target.value) })}
+                            value={formData.optimalPhMin ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalPhMin: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -762,8 +715,8 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalpHMax ?? 6.8}
-                            onChange={e => setFormData({ ...formData, optimalpHMax: Number(e.target.value) })}
+                            value={formData.optimalPhMax ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalPhMax: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -784,8 +737,8 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalECMin ?? 1.8}
-                            onChange={e => setFormData({ ...formData, optimalECMin: Number(e.target.value) })}
+                            value={formData.optimalEcMin ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalEcMin: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -794,8 +747,8 @@ export const CropsPage: React.FC = () => {
                           <Input
                             type="number"
                             step="0.1"
-                            value={formData.optimalECMax ?? 2.5}
-                            onChange={e => setFormData({ ...formData, optimalECMax: Number(e.target.value) })}
+                            value={formData.optimalEcMax ?? ''}
+                            onChange={e => setFormData({ ...formData, optimalEcMax: e.target.value === '' ? undefined : Number(e.target.value) })}
                             className="px-1.5 py-1 text-center text-xs font-semibold h-8 rounded-lg bg-slate-50 focus:bg-white"
                           />
                         </div>
@@ -934,8 +887,8 @@ export const CropsPage: React.FC = () => {
                               <div className="grid grid-cols-4 gap-1.5 p-2 bg-slate-50 rounded-lg text-[10px] font-mono">
                                 <div>Nhiệt: <strong className="text-emerald-700">{tReq ? `${tReq.minValue}-${tReq.maxValue}°C` : `${formData.optimalTemperatureMin}-${formData.optimalTemperatureMax}°C`}</strong></div>
                                 <div>Ẩm đất: <strong className="text-sky-700">{mReq ? `${mReq.minValue}-${mReq.maxValue}%` : `${formData.optimalSoilMoistureMin}-${formData.optimalSoilMoistureMax}%`}</strong></div>
-                                <div>pH: <strong className="text-amber-800">{pReq ? `${pReq.minValue}-${pReq.maxValue}` : `${formData.optimalpHMin}-${formData.optimalpHMax}`}</strong></div>
-                                <div>EC: <strong className="text-purple-700">{eReq ? `${eReq.minValue}-${eReq.maxValue}` : `${formData.optimalECMin}-${formData.optimalECMax}`}</strong></div>
+                                <div>pH: <strong className="text-amber-800">{pReq ? `${pReq.minValue}-${pReq.maxValue}` : `${formData.optimalPhMin}-${formData.optimalPhMax}`}</strong></div>
+                                <div>EC: <strong className="text-purple-700">{eReq ? `${eReq.minValue}-${eReq.maxValue}` : `${formData.optimalEcMin}-${formData.optimalEcMax}`}</strong></div>
                               </div>
                             </div>
                           );

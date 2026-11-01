@@ -494,8 +494,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
               longitude: hasLng ? loc.longitude : center[1] + (Math.floor(idx / 4) - 0.5) * 0.0004,
               status: (loc.status?.toUpperCase() || 'ONLINE') as any,
               firmwareVersion: 'v2.4.1',
-              batteryLevel: loc.batteryLevel ?? 95,
-              rssi: loc.rssi ?? -70,
+              batteryLevel: loc.batteryLevel ?? undefined,
+              rssi: loc.rssi ?? undefined,
               lastSeenAt: 'Trực tuyến',
               sensorsCount: (loc.deviceType === 'SensorNode' || nodeCode.includes('SN')) ? 2 : 0,
               actuatorsCount: (loc.deviceType === 'ActuatorNode' || nodeCode.includes('VALVE') || nodeCode.includes('ACT')) ? 1 : 0,
@@ -615,8 +615,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       longitude: lng,
       status: 'ONLINE',
       firmwareVersion: 'v3.0.0-PROV',
-      batteryLevel: 100,
-      rssi: -65,
+      // Pin và tín hiệu chỉ có khi thiết bị báo về; không điền số giả.
       lastSeenAt: 'Vừa chấm vị trí',
       sensorsCount: selectedDevice.type.includes('SENSOR') ? 2 : 0,
       actuatorsCount: selectedDevice.type === 'VALVE' || selectedDevice.type === 'PUMP' ? 1 : 0,
@@ -1081,7 +1080,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold font-mono">
-                          {n.batteryLevel}%
+                          {typeof n.batteryLevel === 'number' ? `${n.batteryLevel}%` : 'Pin: —'}
                         </span>
                         <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
                           ONLINE

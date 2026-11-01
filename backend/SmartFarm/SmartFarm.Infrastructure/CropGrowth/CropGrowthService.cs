@@ -17,8 +17,11 @@ internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : 
 
     public async Task<IReadOnlyList<CropView>> ListCropsAsync(Guid userId, Guid? tenantId, bool? systemDefined, CancellationToken ct)
     {
-        await EnsureUserAsync(userId, tenantId, false, ct);
-        var query = dbContext.Crops.AsNoTracking().Where(x => x.TenantId == null || x.TenantId == tenantId);
+        var user = await EnsureUserAsync(userId, tenantId, false, ct);
+        // Quản trị nền tảng thấy cả cây do các Farm tự thêm (nhãn "của Farm" ở giao diện); người dùng Farm chỉ thấy cây hệ thống và cây của tenant mình.
+        var query = user.Role == UserRole.PlatformAdmin
+            ? dbContext.Crops.AsNoTracking()
+            : dbContext.Crops.AsNoTracking().Where(x => x.TenantId == null || x.TenantId == tenantId);
         if (systemDefined.HasValue) query = query.Where(x => x.IsSystemDefined == systemDefined.Value);
         return (await query.OrderBy(x => x.Name).ToListAsync(ct)).Select(x => x.ToView()).ToList();
     }
@@ -240,6 +243,38 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
         stage.DurationDays = durationDays; stage.UpdatedAtUtc = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(ct);
         return new(stage.GrowthProfileId, stage.Id, stage.DurationDays);
+    }
+
+    public async Task<GrowthStageView> AddStageAsync(Guid userId, Guid? tenantId, Guid profileId, AddStageCommand command, CancellationToken ct)
+    {
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
+        var name = Required(command.Name, nameof(command.Name), 150);
+        if (command.DurationDays is < 1 or > 365) throw new RequestValidationException(nameof(command.DurationDays), "Số ngày của giai đoạn phải từ 1 đến 365.");
+        var profile = await dbContext.GrowthProfiles.Include(x => x.Stages).ThenInclude(x => x.Requirements)
+            .SingleOrDefaultAsync(x => x.Id == profileId && (x.TenantId == tenantId || (x.TenantId == null && user.Role == UserRole.PlatformAdmin)), ct)
+            ?? throw new ResourceNotFoundException("Growth Profile was not found.");
+        var normalized = Normalize(name);
+        if (profile.Stages.Any(x => Normalize(x.Name) == normalized)) throw new ResourceConflictException("Hồ sơ đã có giai đoạn trùng tên.");
+        var count = profile.Stages.Count;
+        var order = command.InsertAtOrder ?? count + 1;
+        if (order < 1 || order > count + 1) throw new RequestValidationException(nameof(command.InsertAtOrder), $"Vị trí giai đoạn phải từ 1 đến {count + 1}.");
+
+        await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var toShift = profile.Stages.Where(x => x.StageOrder >= order).OrderByDescending(x => x.StageOrder).ToList();
+        if (toShift.Count > 0)
+        {
+            // Chỉ mục duy nhất (hồ sơ, thứ tự): đưa các giai đoạn sau ra vùng tạm trước, rồi mới đặt thứ tự cuối cùng.
+            foreach (var s in toShift) s.StageOrder += 1000;
+            await dbContext.SaveChangesAsync(ct);
+            foreach (var s in toShift) { s.StageOrder = s.StageOrder - 1000 + 1; s.UpdatedAtUtc = DateTime.UtcNow; }
+            await dbContext.SaveChangesAsync(ct);
+        }
+        var stage = new GrowthStage { GrowthProfileId = profile.Id, Name = name, StageOrder = order, DurationDays = command.DurationDays, Description = Optional(command.Description, 4000) };
+        dbContext.GrowthStages.Add(stage);
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return stage.ToView();
     }
 
     public async Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken ct)

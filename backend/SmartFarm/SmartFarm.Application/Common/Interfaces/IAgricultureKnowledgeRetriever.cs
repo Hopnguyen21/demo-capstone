@@ -49,5 +49,6 @@ public interface IAgricultureKnowledgeRetriever
         Guid? tenantId,
         int topK,
         bool generalOnlyWhenCropUnknown,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? expansionTerms = null);
 }

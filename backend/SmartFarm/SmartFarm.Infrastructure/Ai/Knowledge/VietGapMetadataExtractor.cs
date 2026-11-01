@@ -33,13 +33,13 @@ public static class VietGapMetadataExtractor
     private static readonly Regex CropLine = new(
         @"^\s*[-•*]?\s*(?:cây trồng áp dụng|cay trong ap dung|cây trồng|cay trong|đối tượng cây trồng|doi tuong cay trong|đối tượng áp dụng|doi tuong ap dung|áp dụng cho cây|ap dung cho cay|áp dụng cho|ap dung cho)\s*[:：]\s*(?<v>.+)$", Opts);
     private static readonly Regex CodeLine = new(
-        @"^\s*[-•*]?\s*(?:mã số tiêu chuẩn|mã tiêu chuẩn|mã quy chuẩn|số hiệu tiêu chuẩn|tiêu chuẩn áp dụng)\s*[:：]\s*(?<v>.+)$", Opts);
+        @"^\s*[-•*]?\s*(?:mã số tiêu chuẩn|ma so tieu chuan|mã tiêu chuẩn|ma tieu chuan|mã quy chuẩn|ma quy chuan|số hiệu tiêu chuẩn|so hieu tieu chuan|tiêu chuẩn áp dụng|tieu chuan ap dung)\s*[:：]\s*(?<v>.+)$", Opts);
     private static readonly Regex CodeInline = new(
         @"\b(?:TCVN|QCVN)\s*[\d\-]+(?:\s*[-:]\s*[\d]+)*(?::\d{4})?(?:/[A-ZĐ]+)?", Opts);
     private static readonly Regex AuthorLine = new(
-        @"^\s*[-•*]?\s*(?:đơn vị ban hành|cơ quan ban hành|ban hành bởi|cơ quan thẩm định|tổ chức ban hành|đơn vị biên soạn)\s*[:：]\s*(?<v>.+)$", Opts);
+        @"^\s*[-•*]?\s*(?:đơn vị ban hành|don vi ban hanh|cơ quan ban hành|co quan ban hanh|ban hành bởi|ban hanh boi|cơ quan thẩm định|co quan tham dinh|tổ chức ban hành|to chuc ban hanh|đơn vị biên soạn|don vi bien soan)\s*[:：]\s*(?<v>.+)$", Opts);
     private static readonly Regex VersionLine = new(
-        @"^\s*[-•*]?\s*(?:phiên bản|version|lần ban hành|thời hạn hiệu lực|năm ban hành)\s*[:：]\s*(?<v>.+)$", Opts);
+        @"^\s*[-•*]?\s*(?:phiên bản|phien ban|version|lần ban hành|lan ban hanh|thời hạn hiệu lực|thoi han hieu luc|năm ban hành|nam ban hanh)\s*[:：]\s*(?<v>.+)$", Opts);
     private static readonly Regex EffectiveDateLine = new(
         @"(?:ngày (?:ban hành|có hiệu lực|hiệu lực)|có hiệu lực từ(?: ngày)?)\s*[:：]?\s*(?<v>\d{1,2}[/\-.]\d{1,2}[/\-.]\d{4})", Opts);
     private static readonly Regex GeneralScopePhrase = new(

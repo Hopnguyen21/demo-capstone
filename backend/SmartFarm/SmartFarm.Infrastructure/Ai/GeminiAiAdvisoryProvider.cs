@@ -49,12 +49,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
 
     public async Task<AiProviderResult> GenerateAsync(AiProviderRequest request, CancellationToken cancellationToken)
     {
-        var apiKeys = (settings.ApiKeys ?? [])
-            .Append(settings.ApiKey)
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Select(k => k.Trim())
-            .Distinct()
-            .ToList();
+        var apiKeys = GeminiKeyPool.Ordered(settings);
         if (apiKeys.Count == 0)
             throw new InvalidOperationException("Gemini API key is not configured.");
         if (!ModelName().IsMatch(settings.Model))
@@ -124,6 +119,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
                 }
 
                 var statusCode = (int)response.StatusCode;
+                GeminiKeyPool.ReportStatus(apiKey, statusCode);
                 logger.LogWarning("[Gemini] Model {Model} (key #{KeyIndex}) returned HTTP {StatusCode}. Body: {Body}", model, keyIndex + 1, statusCode, Truncate(currentBody, 1000));
 
                 var retriable = statusCode is 400 or 401 or 403 or 404 or 429 or 500 or 502 or 503 or 504;

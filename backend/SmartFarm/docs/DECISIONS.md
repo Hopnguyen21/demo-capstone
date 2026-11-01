@@ -149,3 +149,8 @@ check remains advisory and does not claim technical or VietGAP compliance.
 - Rule change (2026-10-31): the Zone crop is assigned only by creating a planting season (single or bulk). `POST /fields/{id}/zones` and `PUT /zones/{id}` no longer accept `cropId`/`varietyId` (ignored); `PUT` keeps `clearCrop` (409 while an InProgress season exists). A Zone with no crop gets the season crop automatically; a Zone with another crop needs `setZoneCrop` (per Zone in bulk). The web Zone form no longer has a crop selector.
 
 - Growth profile ownership (2026-10-31): FarmOwner may only copy a system profile (`POST /growth-profiles` with `sourceProfileId`; building one from scratch is refused) and edit that tenant copy (`PUT /growth-profiles/{id}`, `PUT /growth-stages/{id}/requirements`); system profiles stay editable by PlatformAdmin only (an Owner edit of a system stage lands on the tenant copy). Edits never change the thresholds already snapshotted on running seasons; they apply to seasons created afterwards. The season form labels profiles as system or farm-owned. Web: managed inside the Zone detail panel (no separate menu page).
+
+## AI advisory performance (2026-11-01)
+
+- Each answer logs `[AI timing]` per stage. The question intent is cached in memory for 6 hours by normalized question text (it depends only on the text, not on Zone or Tenant) and the query embedding likewise; answers themselves are never cached because they depend on live data.
+- A question that is only a greeting or out of scope gets a fixed answer without calling the model. The optional overall sensor comment is limited to 4 seconds and the readings are returned without it. After a failed query embedding, retrieval uses keyword search for 5 minutes without calling the API.

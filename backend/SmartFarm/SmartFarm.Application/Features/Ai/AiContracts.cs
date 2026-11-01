@@ -42,7 +42,9 @@ public sealed record AiZoneDeviceSummary(
     IReadOnlyList<string> ActuatorTypes,
     /// <summary>Sức khỏe thiết bị theo báo cáo của chính thiết bị; null = không báo (không được suy đoán).</summary>
     int? BatteryLevel = null,
-    decimal? Rssi = null);
+    decimal? Rssi = null,
+    /// <summary>Các số đo gần nhất của chính thiết bị này (mới → cũ, mỗi thông số tối đa N bản ghi); chỉ có khi người dùng hỏi lịch sử.</summary>
+    IReadOnlyList<AiTelemetryHistoryItem>? RecentReadings = null);
 
 /// <summary>
 /// Gateway phục vụ các thiết bị của Zone (không gồm MAC, client id, chứng chỉ). NodesInZone: số node của Zone qua gateway này.

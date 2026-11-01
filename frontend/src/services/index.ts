@@ -594,6 +594,12 @@ export const cropService = {
     return res.data;
   },
 
+  /** POST /api/v1/growth-profiles/{profileId}/stages — thêm giai đoạn vào hồ sơ (cuối hồ sơ, hoặc chèn ở vị trí insertAtOrder) */
+  addGrowthStage: async (profileId: string, data: { name: string; durationDays: number; insertAtOrder?: number; description?: string }) => {
+    const res = await apiClient.post(`/api/v1/growth-profiles/${profileId}/stages`, data);
+    return res.data;
+  },
+
   /** PUT /api/v1/growth-stages/{stageId}/requirements — sửa dải ngưỡng vi khí hậu của giai đoạn */
   updateStageRequirements: async (stageId: string, requirements: Array<{
     parameterCode: string;

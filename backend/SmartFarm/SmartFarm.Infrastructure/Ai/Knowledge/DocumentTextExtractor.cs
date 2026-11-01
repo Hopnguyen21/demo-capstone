@@ -11,7 +11,10 @@ namespace SmartFarm.Infrastructure.Ai.Knowledge;
 /// </summary>
 public static class DocumentTextExtractor
 {
-    public const int MaxFileBytes = 15 * 1024 * 1024; // 15MB
+    public const int MaxFileBytes = 50 * 1024 * 1024; // 50MB
+
+    /// <summary>Giới hạn thân request multipart: tệp tối đa cộng phần trường form kèm theo.</summary>
+    public const long MaxRequestBytes = MaxFileBytes + 2L * 1024 * 1024;
 
     /// <summary>
     /// Kiểm tra chữ ký nhị phân (Magic Bytes / File Signature) để ngăn chặn giả mạo phần mở rộng file.

@@ -17,16 +17,22 @@ export const GrowthProfilesPage: React.FC = () => {
   // Trạng thái modal chỉnh sửa Dải ngưỡng vi khí hậu cho Giai đoạn
   const [isEditingThresholds, setIsEditingThresholds] = useState(false);
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const [isAddingStage, setIsAddingStage] = useState(false);
+  const [isSavingStage, setIsSavingStage] = useState(false);
+  const [stageError, setStageError] = useState('');
+  const [newStage, setNewStage] = useState({ name: '', durationDays: '', position: '' });
   const [isSavingThresholds, setIsSavingThresholds] = useState(false);
   const [thresholdError, setThresholdError] = useState('');
   const [thresholdSuccess, setThresholdSuccess] = useState('');
-  const [thresholdForm, setThresholdForm] = useState({
-    soilMoisture: { min: 60, target: 70, max: 80, unit: '%' },
-    temperature: { min: 18, target: 24, max: 28, unit: '°C' },
-    airHumidity: { min: 60, target: 70, max: 80, unit: '%' },
-    lightIntensity: { min: 500, target: 750, max: 950, unit: 'lux' },
-    ph: { min: 5.8, target: 6.4, max: 6.8, unit: 'pH' },
-    ec: { min: 1.2, target: 1.8, max: 2.4, unit: 'mS/cm' },
+  type ThresholdField = { min: number | ''; target: number | ''; max: number | ''; unit: string };
+  const emptyField = (unit: string): ThresholdField => ({ min: '', target: '', max: '', unit });
+  const [thresholdForm, setThresholdForm] = useState<Record<'soilMoisture' | 'temperature' | 'airHumidity' | 'lightIntensity' | 'ph' | 'ec', ThresholdField>>({
+    soilMoisture: emptyField('%'),
+    temperature: emptyField('°C'),
+    airHumidity: emptyField('%'),
+    lightIntensity: emptyField('Lux'),
+    ph: emptyField('pH'),
+    ec: emptyField('mS/cm'),
   });
 
   // Nạp danh sách tất cả Growth Profiles từ Backend API CSDL
@@ -44,7 +50,7 @@ export const GrowthProfilesPage: React.FC = () => {
           cropId: p.cropId,
           name: p.profileName || p.name || `Hồ sơ ${p.cropName || idx + 1}`,
           cropName: p.cropName || 'Cây trồng',
-          totalDays: p.totalDays || 90,
+          totalDays: p.totalDays || 0,
           isSystemDefined: p.isSystemDefined ?? false
         }));
 
@@ -112,8 +118,8 @@ export const GrowthProfilesPage: React.FC = () => {
           growthStageId: st.stageId || st.growthStageId || st.id || `stg-${idx + 1}`,
           stageOrder: st.stageOrder ?? (idx + 1),
           name: st.name || st.stageName || `Giai đoạn ${idx + 1}`,
-          durationDays: Math.max(1, Number(st.durationDays) || 15),
-          description: st.description || `Chăm sóc vi khí hậu theo quy chuẩn cho ${targetProfile.cropName || targetProfile.name}.`,
+          durationDays: Number(st.durationDays) || 0,
+          description: st.description || '',
           fertilizerAction: st.fertilizerAction || '',
           ipmAction: st.ipmAction || '',
           requirements: Array.isArray(st.requirements) ? st.requirements : []
@@ -124,7 +130,7 @@ export const GrowthProfilesPage: React.FC = () => {
         setActiveProfile({
           ...targetProfile,
           name: targetProfile.profileName || targetProfile.name,
-          totalDays: totalDays || targetProfile.totalDays || 90,
+          totalDays,
           stages: mappedStages
         });
 
@@ -133,7 +139,7 @@ export const GrowthProfilesPage: React.FC = () => {
         setActiveProfile({
           ...targetProfile,
           name: targetProfile.profileName || targetProfile.name,
-          totalDays: targetProfile.totalDays || 90,
+          totalDays: 0,
           stages: []
         });
       }
@@ -189,12 +195,12 @@ export const GrowthProfilesPage: React.FC = () => {
     return c === code.toUpperCase() || c.includes(code.toUpperCase());
   });
 
-  const soilMoist = getParam('SOIL_MOISTURE') || getParam('SOILMOISTURE') || { minValue: 60, maxValue: 80, targetValue: 70, unit: '%' };
-  const airTemp = getParam('TEMPERATURE') || getParam('TEMP') || { minValue: 18, maxValue: 28, targetValue: 24, unit: '°C' };
-  const airHumid = getParam('AIR_HUMIDITY') || getParam('AIRHUMIDITY') || getParam('HUMIDITY') || { minValue: 60, maxValue: 80, targetValue: 70, unit: '%' };
-  const light = getParam('LIGHT_INTENSITY') || getParam('LIGHTINTENSITY') || getParam('LIGHT') || { minValue: 500, maxValue: 950, targetValue: 750, unit: 'lux' };
-  const phVal = getParam('PH') || { minValue: 6.0, maxValue: 6.8, targetValue: 6.4, unit: 'pH' };
-  const ecVal = getParam('EC') || { minValue: 1.5, maxValue: 2.4, targetValue: 2.0, unit: 'mS/cm' };
+  const soilMoist = getParam('SOIL_MOISTURE') || getParam('SOILMOISTURE');
+  const airTemp = getParam('TEMPERATURE') || getParam('TEMP');
+  const airHumid = getParam('AIR_HUMIDITY') || getParam('AIRHUMIDITY') || getParam('HUMIDITY');
+  const light = getParam('LIGHT_INTENSITY') || getParam('LIGHTINTENSITY') || getParam('LIGHT');
+  const phVal = getParam('PH');
+  const ecVal = getParam('EC');
 
   // Giá trị đo giả lập tiệm cận điểm mục tiêu
   const calcCurrent = (target: number, min: number, max: number) => {
@@ -215,43 +221,16 @@ export const GrowthProfilesPage: React.FC = () => {
 
   // Mở modal cấu hình dải ngưỡng vi khí hậu
   const openEditThresholds = () => {
+    const fill = (req: any, unit: string): ThresholdField => req
+      ? { min: Number(req.minValue), target: Number(req.targetValue), max: Number(req.maxValue), unit: req.unit || unit }
+      : emptyField(unit);
     setThresholdForm({
-      soilMoisture: {
-        min: Number(soilMoist.minValue) || 60,
-        target: Number(soilMoist.targetValue) || 70,
-        max: Number(soilMoist.maxValue) || 80,
-        unit: soilMoist.unit || '%',
-      },
-      temperature: {
-        min: Number(airTemp.minValue) || 18,
-        target: Number(airTemp.targetValue) || 24,
-        max: Number(airTemp.maxValue) || 28,
-        unit: airTemp.unit || '°C',
-      },
-      airHumidity: {
-        min: Number(airHumid.minValue) || 60,
-        target: Number(airHumid.targetValue) || 70,
-        max: Number(airHumid.maxValue) || 80,
-        unit: airHumid.unit || '%',
-      },
-      lightIntensity: {
-        min: Number(light.minValue) || 500,
-        target: Number(light.targetValue) || 750,
-        max: Number(light.maxValue) || 950,
-        unit: light.unit || 'lux',
-      },
-      ph: {
-        min: Number(phVal.minValue) || 5.8,
-        target: Number(phVal.targetValue) || 6.4,
-        max: Number(phVal.maxValue) || 6.8,
-        unit: phVal.unit || 'pH',
-      },
-      ec: {
-        min: Number(ecVal.minValue) || 1.2,
-        target: Number(ecVal.targetValue) || 1.8,
-        max: Number(ecVal.maxValue) || 2.4,
-        unit: ecVal.unit || 'mS/cm',
-      },
+      soilMoisture: fill(soilMoist, '%'),
+      temperature: fill(airTemp, '°C'),
+      airHumidity: fill(airHumid, '%'),
+      lightIntensity: fill(light, 'Lux'),
+      ph: fill(phVal, 'pH'),
+      ec: fill(ecVal, 'mS/cm'),
     });
     setThresholdError('');
     setThresholdSuccess('');
@@ -259,6 +238,33 @@ export const GrowthProfilesPage: React.FC = () => {
   };
 
   // Lưu cấu hình dải ngưỡng vi khí hậu xuống CSDL thông qua API
+  const handleAddStage = async () => {
+    const profId = activeProfile?.profileId || activeProfile?.growthProfileId || activeProfile?.id;
+    if (!profId) return;
+    const name = newStage.name.trim();
+    const days = Number(newStage.durationDays);
+    if (!name) { setStageError('Nhập tên giai đoạn.'); return; }
+    if (!Number.isInteger(days) || days < 1 || days > 365) { setStageError('Số ngày phải là số nguyên từ 1 đến 365.'); return; }
+    setIsSavingStage(true);
+    setStageError('');
+    try {
+      const created = await cropService.addGrowthStage(profId, {
+        name,
+        durationDays: days,
+        insertAtOrder: newStage.position ? Number(newStage.position) : undefined,
+      });
+      await loadProfileDetails({ ...activeProfile, stages: [] });
+      setSelectedStageId(created?.stageId || created?.growthStageId);
+      setNewStage({ name: '', durationDays: '', position: '' });
+      setIsAddingStage(false);
+    } catch (err: any) {
+      const data = err?.response?.data;
+      setStageError(data?.detail || data?.message || (data?.errors ? Object.values(data.errors).flat().join(' ') : '') || 'Không thêm được giai đoạn (cần quyền sửa hồ sơ này).');
+    } finally {
+      setIsSavingStage(false);
+    }
+  };
+
   const handleSaveThresholds = async () => {
     const stageId = currentStage?.growthStageId || currentStage?.stageId;
     if (!stageId) return;
@@ -276,7 +282,16 @@ export const GrowthProfilesPage: React.FC = () => {
       { key: 'ec', label: 'Độ dẫn điện EC', data: thresholdForm.ec, code: 'Ec' },
     ];
 
+    const filledConfigs = [] as typeof configs;
     for (const c of configs) {
+      const raw = [c.data.min, c.data.target, c.data.max];
+      const blanks = raw.filter(v => v === '' || v === null || v === undefined).length;
+      if (blanks === 3) continue; // để trống = hồ sơ không có ngưỡng cho thông số này
+      if (blanks > 0) {
+        setThresholdError(`Vui lòng nhập đủ Tối thiểu, Mục tiêu và Tối đa cho ${c.label}, hoặc để trống cả ba ô nếu hồ sơ không có ngưỡng này.`);
+        setIsSavingThresholds(false);
+        return;
+      }
       const min = Number(c.data.min);
       const tgt = Number(c.data.target);
       const max = Number(c.data.max);
@@ -290,9 +305,15 @@ export const GrowthProfilesPage: React.FC = () => {
         setIsSavingThresholds(false);
         return;
       }
+      filledConfigs.push(c);
+    }
+    if (filledConfigs.length === 0) {
+      setThresholdError('Cần có ít nhất một thông số có ngưỡng.');
+      setIsSavingThresholds(false);
+      return;
     }
 
-    const payload = configs.map(c => ({
+    const payload = filledConfigs.map(c => ({
       parameterCode: c.code,
       minValue: Number(c.data.min),
       targetValue: Number(c.data.target),
@@ -394,7 +415,7 @@ export const GrowthProfilesPage: React.FC = () => {
 
         <div className="text-left sm:text-right shrink-0 bg-slate-50 sm:bg-transparent p-3 sm:p-0 rounded-xl border sm:border-0 border-slate-200 w-full sm:w-auto">
           <span className="text-xs text-slate-500 block">Tổng thời gian chu kỳ</span>
-          <span className="text-2xl font-bold text-[#119653] font-mono">{profile.totalDays || 90} Ngày</span>
+          <span className="text-2xl font-bold text-[#119653] font-mono">{profile.totalDays ? `${profile.totalDays} Ngày` : "Chưa có"}</span>
           <span className="text-[11px] text-slate-500 block">({stages.length} giai đoạn liên tục)</span>
         </div>
       </div>
@@ -408,10 +429,47 @@ export const GrowthProfilesPage: React.FC = () => {
             </h3>
             <p className="text-xs text-slate-500">Nhấp chọn một giai đoạn bên dưới để xem và điều chỉnh dải ngưỡng vi khí hậu IoT tương ứng.</p>
           </div>
-          <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 w-fit">
-            Đang chọn: Giai đoạn {currentStage?.stageOrder} ({currentStage?.name})
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 w-fit">
+              Đang chọn: Giai đoạn {currentStage?.stageOrder} ({currentStage?.name})
+            </span>
+            <button
+              type="button"
+              onClick={() => { setIsAddingStage(v => !v); setStageError(''); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-600 bg-white text-emerald-800 font-bold text-xs hover:bg-emerald-50"
+            >
+              + Thêm giai đoạn
+            </button>
+          </div>
         </div>
+
+        {isAddingStage && (
+          <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/40 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="text-xs font-semibold text-slate-700">Tên giai đoạn
+                <input value={newStage.name} onChange={e => setNewStage({ ...newStage, name: e.target.value })} maxLength={150}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal" placeholder="Ví dụ: Ra hoa" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">Số ngày (1–365)
+                <input type="number" min={1} max={365} value={newStage.durationDays} onChange={e => setNewStage({ ...newStage, durationDays: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">Vị trí
+                <select value={newStage.position} onChange={e => setNewStage({ ...newStage, position: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal">
+                  <option value="">Thêm vào cuối</option>
+                  {stages.map((st: any) => (<option key={st.growthStageId} value={st.stageOrder}>Trước giai đoạn {st.stageOrder} ({st.name})</option>))}
+                </select>
+              </label>
+            </div>
+            <p className="text-[11px] text-slate-600">Giai đoạn mới chưa có ngưỡng vi khí hậu: chọn giai đoạn đó rồi dùng "Sửa trực tiếp các ngưỡng" để bổ sung. Vụ đang chạy giữ nguyên giai đoạn hiện tại, chỉ vụ tạo sau mới dùng giai đoạn mới.</p>
+            {stageError && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-2.5 text-xs font-semibold text-rose-800">{stageError}</div>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => { setIsAddingStage(false); setStageError(''); }} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700">Hủy</button>
+              <button type="button" disabled={isSavingStage} onClick={handleAddStage} className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold disabled:opacity-50">{isSavingStage ? 'Đang thêm…' : 'Thêm giai đoạn'}</button>
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Stages Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
@@ -443,7 +501,7 @@ export const GrowthProfilesPage: React.FC = () => {
                     {st.name}
                   </h4>
                   <p className="text-xs text-slate-600 leading-snug line-clamp-3">
-                    {st.description || 'Chăm sóc tối ưu theo giai đoạn sinh trưởng'}
+                    {st.description}
                   </p>
                 </div>
 
@@ -530,7 +588,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.soilMoisture.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, min: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -540,7 +598,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.soilMoisture.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, target: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -550,7 +608,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.soilMoisture.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, max: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -572,7 +630,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.temperature.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, min: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -582,7 +640,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.temperature.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, target: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -592,7 +650,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.temperature.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, max: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -614,7 +672,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.airHumidity.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, min: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -624,7 +682,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.airHumidity.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, target: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -634,7 +692,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.5"
                       value={thresholdForm.airHumidity.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, max: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -656,7 +714,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="50"
                       value={thresholdForm.lightIntensity.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, min: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -666,7 +724,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="50"
                       value={thresholdForm.lightIntensity.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, target: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -676,7 +734,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="50"
                       value={thresholdForm.lightIntensity.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, max: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -698,7 +756,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.1"
                       value={thresholdForm.ph.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, min: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -708,7 +766,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.1"
                       value={thresholdForm.ph.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, target: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -718,7 +776,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.1"
                       value={thresholdForm.ph.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, max: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -740,7 +798,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.1"
                       value={thresholdForm.ec.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, min: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -750,7 +808,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.1"
                       value={thresholdForm.ec.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, target: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
                     />
                   </div>
@@ -760,7 +818,7 @@ export const GrowthProfilesPage: React.FC = () => {
                       type="number"
                       step="0.1"
                       value={thresholdForm.ec.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, max: parseFloat(e.target.value) || 0 } })}
+                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                       className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -800,54 +858,28 @@ export const GrowthProfilesPage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <CropRangeBand 
-              label="Độ ẩm đất (Soil Moisture)" 
-              min={Number(soilMoist.minValue) || 60} 
-              max={Number(soilMoist.maxValue) || 80} 
-              target={Number(soilMoist.targetValue) || 70} 
-              current={calcCurrent(soilMoist.targetValue, soilMoist.minValue, soilMoist.maxValue)} 
-              unit={soilMoist.unit || '%'} 
-            />
-            <CropRangeBand 
-              label="Nhiệt độ không khí (Air Temp)" 
-              min={Number(airTemp.minValue) || 18} 
-              max={Number(airTemp.maxValue) || 28} 
-              target={Number(airTemp.targetValue) || 24} 
-              current={calcCurrent(airTemp.targetValue, airTemp.minValue, airTemp.maxValue)} 
-              unit={airTemp.unit || '°C'} 
-            />
-            <CropRangeBand 
-              label="Độ ẩm không khí (Humidity)" 
-              min={Number(airHumid.minValue) || 60} 
-              max={Number(airHumid.maxValue) || 80} 
-              target={Number(airHumid.targetValue) || 70} 
-              current={calcCurrent(airHumid.targetValue, airHumid.minValue, airHumid.maxValue)} 
-              unit={airHumid.unit || '%'} 
-            />
-            <CropRangeBand 
-              label="Cường độ ánh sáng (Lux)" 
-              min={Number(light.minValue) || 500} 
-              max={Number(light.maxValue) || 950} 
-              target={Number(light.targetValue) || 750} 
-              current={calcCurrent(light.targetValue, light.minValue, light.maxValue)} 
-              unit={light.unit || 'lux'} 
-            />
-            <CropRangeBand 
-              label="Độ pH đất / giá thể (pH)" 
-              min={Number(phVal.minValue) || 5.8} 
-              max={Number(phVal.maxValue) || 6.8} 
-              target={Number(phVal.targetValue) || 6.4} 
-              current={calcCurrent(phVal.targetValue, phVal.minValue, phVal.maxValue)} 
-              unit={phVal.unit || 'pH'} 
-            />
-            <CropRangeBand 
-              label="Độ dẫn điện EC (mS/cm)" 
-              min={Number(ecVal.minValue) || 1.2} 
-              max={Number(ecVal.maxValue) || 2.4} 
-              target={Number(ecVal.targetValue) || 1.8} 
-              current={calcCurrent(ecVal.targetValue, ecVal.minValue, ecVal.maxValue)} 
-              unit={ecVal.unit || 'mS/cm'} 
-            />
+            {[
+              { label: 'Độ ẩm đất (Soil Moisture)', req: soilMoist, unit: '%' },
+              { label: 'Nhiệt độ không khí (Air Temp)', req: airTemp, unit: '°C' },
+              { label: 'Độ ẩm không khí (Humidity)', req: airHumid, unit: '%' },
+              { label: 'Cường độ ánh sáng (Lux)', req: light, unit: 'Lux' },
+              { label: 'Độ pH đất / giá thể (pH)', req: phVal, unit: 'pH' },
+              { label: 'Độ dẫn điện EC (mS/cm)', req: ecVal, unit: 'mS/cm' },
+            ].map(p => p.req ? (
+              <CropRangeBand
+                key={p.label}
+                label={p.label}
+                min={Number(p.req.minValue)}
+                max={Number(p.req.maxValue)}
+                target={Number(p.req.targetValue)}
+                unit={p.req.unit || p.unit}
+              />
+            ) : (
+              <div key={p.label} className="p-3.5 rounded-xl border border-dashed border-slate-300 bg-slate-50/60">
+                <span className="text-xs font-medium text-slate-700">{p.label}</span>
+                <p className="mt-2 text-[11px] text-slate-500">Hồ sơ chưa có ngưỡng cho thông số này. Dùng "Sửa trực tiếp các ngưỡng" để bổ sung khi đã có nguồn số liệu.</p>
+              </div>
+            ))}
           </div>
         )}
 
@@ -946,7 +978,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.soilMoisture.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, min: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -956,7 +988,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.soilMoisture.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, target: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
                       />
                     </div>
@@ -966,7 +998,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.soilMoisture.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, max: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -990,7 +1022,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.temperature.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, min: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1000,7 +1032,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.temperature.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, target: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
                       />
                     </div>
@@ -1010,7 +1042,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.temperature.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, max: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1034,7 +1066,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.airHumidity.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, min: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1044,7 +1076,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.airHumidity.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, target: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
                       />
                     </div>
@@ -1054,7 +1086,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.airHumidity.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, max: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1078,7 +1110,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="10"
                         value={thresholdForm.lightIntensity.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, min: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1088,7 +1120,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="10"
                         value={thresholdForm.lightIntensity.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, target: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
                       />
                     </div>
@@ -1098,7 +1130,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="10"
                         value={thresholdForm.lightIntensity.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, max: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1122,7 +1154,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.ph.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, min: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1132,7 +1164,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.ph.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, target: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
                       />
                     </div>
@@ -1142,7 +1174,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.ph.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, max: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1166,7 +1198,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.ec.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, min: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>
@@ -1176,7 +1208,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.ec.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, target: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
                       />
                     </div>
@@ -1186,7 +1218,7 @@ export const GrowthProfilesPage: React.FC = () => {
                         type="number"
                         step="0.1"
                         value={thresholdForm.ec.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, max: parseFloat(e.target.value) || 0 } })}
+                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
                         className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
                       />
                     </div>

@@ -25,8 +25,8 @@ export const TechnicianDashboard: React.FC = () => {
     }).catch(err => console.error(err));
   }, []);
 
-  const lowBatteryNodes = nodes.filter(n => n.batteryLevel < 30);
-  const weakSignalNodes = nodes.filter(n => n.rssi < -90);
+  const lowBatteryNodes = nodes.filter(n => typeof n.batteryLevel === 'number' && n.batteryLevel < 30);
+  const weakSignalNodes = nodes.filter(n => typeof n.rssi === 'number' && n.rssi < -90);
 
   const installationRequests = requests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP');
   const maintenanceRequests = requests.filter(r => r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT');

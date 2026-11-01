@@ -743,6 +743,7 @@ public sealed class AgricultureDocumentService(
     {
         if (!embedding.IsAvailable) return 0;
         var done = 0;
+        var quotaStop = false;
         const int batch = 20;
 
         while (true)
@@ -766,6 +767,13 @@ public sealed class AgricultureDocumentService(
                     c.Status = KnowledgeChunkStatus.Completed;
                     done++;
                 }
+                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    // Hết quota: giữ chunk ở trạng thái chờ và dừng cả đợt, không đánh dấu Failed hàng loạt.
+                    logger.LogWarning("[RAG] Embedding quota exhausted; stopping this batch with {Remaining} chunk(s) left pending.", chunks.Count);
+                    quotaStop = true;
+                    break;
+                }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     c.Status = KnowledgeChunkStatus.Failed;
@@ -775,6 +783,7 @@ public sealed class AgricultureDocumentService(
             }
             await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();
+            if (quotaStop) break;
 
             if (maxChunks > 0 && done >= maxChunks) break;
         }
@@ -955,12 +964,7 @@ public sealed class AgricultureDocumentService(
         var extra = request.AdditionalRequirements?.Trim() ?? string.Empty;
 
         var settings = geminiOptions.Value;
-        var apiKeys = (settings.ApiKeys ?? [])
-            .Append(settings.ApiKey)
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Select(k => k.Trim())
-            .Distinct()
-            .ToList();
+        var apiKeys = GeminiKeyPool.Ordered(settings);
 
         if (apiKeys.Count > 0 && !string.IsNullOrWhiteSpace(settings.Model))
         {

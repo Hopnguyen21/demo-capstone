@@ -77,6 +77,15 @@ public sealed class CropGrowthController(ICropGrowthService service) : Controlle
     public async Task<ActionResult<StageDurationView>> StageDuration(Guid stageId, UpdateStageDurationRequest request, CancellationToken ct) =>
         Ok(await service.UpdateStageDurationAsync(User.GetUserId(), User.GetOptionalTenantId(), stageId, request.DurationDays, ct));
 
+    // Thêm giai đoạn mới vào hồ sơ có sẵn (cùng quyền như đổi số ngày): PlatformAdmin cho profile hệ thống, FarmOwner chỉ cho bản sao của trang trại mình.
+    // Giai đoạn mới chưa có ngưỡng; đặt ngưỡng qua PUT /growth-stages/{id}/requirements. Vụ đang chạy giữ nguyên giai đoạn hiện tại của nó.
+    [HttpPost("api/v1/growth-profiles/{profileId:guid}/stages"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
+    public async Task<ActionResult<GrowthStageView>> AddStage(Guid profileId, AddStageRequest request, CancellationToken ct)
+    {
+        var result = await service.AddStageAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, new(request.Name, request.DurationDays, request.InsertAtOrder, request.Description), ct);
+        return Created($"/api/v1/growth-profiles/{profileId}/stages", result);
+    }
+
     // API catalog #40
     [HttpPut("api/v1/growth-stages/{stageId:guid}/requirements"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
     public async Task<ActionResult<RequirementUpdateView>> Requirements(Guid stageId, UpdateRequirementsRequest request, CancellationToken ct) => Ok(await service.UpdateRequirementsAsync(User.GetUserId(), User.GetOptionalTenantId(), stageId, request.Requirements.Select(x => x.ToInput()).ToList(), ct));
@@ -146,6 +155,7 @@ public sealed class StageRequest { [Required, StringLength(150)] public string N
 public sealed class CreateGrowthProfileRequest { public Guid CropId { get; init; } public Guid? VarietyId { get; init; } [Required, StringLength(200)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } public bool IsDefault { get; init; } public Guid? SourceProfileId { get; init; } public List<StageRequest>? Stages { get; init; } internal CreateGrowthProfileCommand ToCommand() => new(CropId, VarietyId, Name, Description, IsDefault, SourceProfileId, Stages?.Select(x => x.ToInput()).ToList()); }
 public sealed class UpdateGrowthProfileRequest { [Required, StringLength(200, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } public bool IsDefault { get; init; } }
 public sealed class UpdateStageDurationRequest { [Range(1, 365)] public int DurationDays { get; init; } }
+public sealed class AddStageRequest { [Required, StringLength(150, MinimumLength = 1)] public string Name { get; init; } = ""; [Range(1, 365)] public int DurationDays { get; init; } [Range(1, 100)] public int? InsertAtOrder { get; init; } [StringLength(4000)] public string? Description { get; init; } }
 public sealed class UpdateRequirementsRequest { [Required, MinLength(1)] public List<RequirementRequest> Requirements { get; init; } = []; }
 
 [ApiController, Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin")]

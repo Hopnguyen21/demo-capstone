@@ -628,7 +628,7 @@ export const FarmsPage: React.FC = () => {
         code: n.nodeCode || n.hardwareAddress || `N-0${idx + 1}`,
         type: (n.actuatorsCount && n.actuatorsCount > 0) || (n.deviceType?.includes('Actuator')) || (n.hardwareAddress?.includes('VALVE')) ? 'ACTUATOR' : 'SENSOR',
         status: n.status || 'ONLINE',
-        batteryLevel: n.batteryLevel ?? 100,
+        batteryLevel: n.batteryLevel,
         coords: [n.latitude, n.longitude] as [number, number],
       }));
   }, [selectedZone, nodes]);

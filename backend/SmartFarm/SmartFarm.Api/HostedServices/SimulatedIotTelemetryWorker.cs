@@ -328,14 +328,15 @@ public sealed class SimulatedIotTelemetryWorker(
                 var curPh = ph;
                 var curEc = ec;
 
-                // Nếu là node thứ 2 trở lên trong cùng luống, mô phỏng chênh lệch vi khí hậu thực tế giữa đầu luống & cuối luống
-                if (devIdx > 0)
+                // Node thứ 2 trở đi lệch dần theo vị trí trên luống (đầu → cuối luống) cộng nhiễu riêng từng node, để các node không báo giá trị trùng hệt nhau.
+                if (devIdx > 0 && !isFaultCycle)
                 {
-                    curTemp = Math.Round(temp + 0.8m, 1);
-                    curSoil = Math.Round(Math.Max(35m, soilMoisture - 8.2m), 1); // Cuối luống khô hơn do áp lực nước tưới nhỏ giọt giảm
-                    curHum = Math.Round(Math.Max(40m, airHumidity - 3.2m), 1);
-                    curLight = Math.Round(light + 1150m, 0);
-                    curEc = Math.Round(ec + 0.12m, 2);
+                    decimal Jitter(double span) => (decimal)((Rnd.NextDouble() - 0.5) * span);
+                    curTemp = Math.Round(temp + 0.8m * devIdx + Jitter(0.6), 1);
+                    curSoil = Math.Round(Math.Max(35m, soilMoisture - 8.2m * devIdx + Jitter(2.0)), 1); // Cuối luống khô hơn do áp lực nước tưới nhỏ giọt giảm
+                    curHum = Math.Round(Math.Max(40m, airHumidity - 3.2m * devIdx + Jitter(1.6)), 1);
+                    curLight = Math.Round(light + 1150m * devIdx + Jitter(600), 0);
+                    curEc = Math.Round(ec + 0.12m * devIdx + Jitter(0.06), 2);
                 }
 
                 var messageId = $"sim-{now.Ticks}-{Rnd.Next(1000, 9999)}-n{devIdx}";

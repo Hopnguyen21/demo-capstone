@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using SmartFarm.Application.Features.Ai;
 using SmartFarm.Domain.Enums;
@@ -14,9 +15,13 @@ namespace SmartFarm.Infrastructure.Ai;
 public sealed class GeminiQuestionIntentClassifier(
     HttpClient httpClient,
     IOptions<GeminiOptions> options,
-    ILogger<GeminiQuestionIntentClassifier> logger) : IQuestionIntentClassifier
+    ILogger<GeminiQuestionIntentClassifier> logger,
+    IMemoryCache? cache = null) : IQuestionIntentClassifier
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(12);
+    // Phân loại chậm thì thà đi tiếp với đầy đủ ngữ cảnh còn hơn để người dùng chờ.
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(8);
+    // Ý định chỉ phụ thuộc nội dung câu hỏi nên dùng lại được; không phụ thuộc Zone hay Tenant.
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(6);
 
     private const string SystemInstruction = """
         Bạn phân loại ý định của câu hỏi mà người dùng gửi cho trợ lý của MỘT khu vực (Zone) trong trang trại thông minh. Chỉ phân loại, không trả lời câu hỏi.
@@ -37,6 +42,7 @@ public sealed class GeminiQuestionIntentClassifier(
         - device_health: hỏi về pin, cường độ tín hiệu, tình trạng hoạt động của thiết bị.
         - irrigation_or_control: hỏi có nên/cần tưới hay không, hoặc yêu cầu bật/tắt/điều khiển thiết bị.
         - agronomy_knowledge: hỏi kiến thức nông học, kỹ thuật canh tác, quy chuẩn VietGAP, ngưỡng khuyến nghị, sâu bệnh, bón phân, thu hoạch... (cần tài liệu tham khảo, không phải dữ liệu của Zone).
+        Câu giả định về hậu quả ("nếu nhiệt độ xuống 0 độ thì sao", "độ ẩm 95% có sao không", "ảnh hưởng gì đến cây") là agronomy_knowledge, kể cả khi có nhắc thông số.
         - harvest: hỏi thời gian đến thu hoạch, số ngày chín, cây chín sau bao lâu, khi nào thu hoạch, tiêu chí hoặc phương pháp thu hoạch (có thể chọn cùng season và agronomy_knowledge).
         - small_talk: chào hỏi, cảm ơn, hỏi bạn làm được gì.
         - out_of_scope: không liên quan nông nghiệp hay vận hành trang trại.
@@ -46,21 +52,29 @@ public sealed class GeminiQuestionIntentClassifier(
 
         parameters: các thông số môi trường mà câu hỏi nhắc tới, chọn trong Temperature, SoilMoisture, AirHumidity, Ph, LightIntensity, Ec.
         Chỉ điền khi câu hỏi nói rõ thông số. "Độ ẩm" không nói rõ đất hay không khí thì điền cả SoilMoisture và AirHumidity.
-        wantsHistory: true khi hỏi lịch sử, xu hướng, biến thiên qua các lần đo.
+        wantsHistory: true khi hỏi lịch sử, xu hướng, biến thiên qua các lần đo, hoặc xin "N bản ghi/lần đo gần nhất".
+        historyCount: số bản ghi gần nhất người dùng muốn xem (1-20); 0 nếu không nêu số cụ thể hoặc không hỏi lịch sử.
+        searchTerms: chỉ khi hỏi kiến thức nông học (agronomy_knowledge, harvest, irrigation_or_control): 3-8 từ khóa hoặc cụm từ tiếng Việt ngắn mà tài liệu kỹ thuật VietGAP/canh tác hay dùng cho nội dung câu hỏi (thuật ngữ đồng nghĩa, nguyên nhân, biện pháp; ví dụ "úa lá" → "thiếu đạm", "vàng lá", "bón phân"). Không có thì [].
+        deviceNumber: số thứ tự node khi câu hỏi nhắc một node cụ thể ("node cảm biến 1" → 1); bỏ qua hoặc 0 nếu hỏi tất cả node.
         wantsDeviceDetail: true khi hỏi chi tiết/số đo/thông tin của từng thiết bị.
         deviceScope (khi hỏi về thiết bị): "sensors" nếu chỉ hỏi về cảm biến; "actuators" nếu chỉ hỏi về thiết bị chấp hành/điều khiển (bơm, quạt, van, đèn, rơ-le); "all" nếu hỏi chung về "thiết bị" hoặc cả hai loại hoặc không rõ.
 
-        Trả JSON đúng dạng: {"topics":[...],"parameters":[...],"wantsHistory":false,"wantsDeviceDetail":false,"deviceScope":"all"}
+        Trả JSON đúng dạng: {"topics":[...],"parameters":[...],"wantsHistory":false,"wantsDeviceDetail":false,"deviceScope":"all","historyCount":0,"deviceNumber":0,"searchTerms":[]}
         """;
 
     public async Task<QuestionIntent?> ClassifyAsync(string question, CancellationToken cancellationToken)
     {
         var settings = options.Value;
+        var cacheKey = "ai_intent_" + string.Join(' ', question.ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (cache is not null && cache.TryGetValue(cacheKey, out QuestionIntent? cached) && cached is not null) return cached;
         try
         {
             var user = $"<question>{AiPromptBuilder.Escape(question)}</question>";
             var (json, _) = await GeminiJsonClient.SendAsync(httpClient, settings, SystemInstruction, user, 1024, Timeout, cancellationToken);
-            return Parse(json);
+            var intent = Parse(json);
+            // Chỉ nhớ kết quả hợp lệ; lỗi hoặc kết quả rỗng lần sau được phân loại lại.
+            if (intent is not null) cache?.Set(cacheKey, intent, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = CacheDuration });
+            return intent;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -92,7 +106,14 @@ public sealed class GeminiQuestionIntentClassifier(
             var scope = root.TryGetProperty("deviceScope", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString()?.Trim().ToLowerInvariant() : null;
             // Thiếu hoặc không hợp lệ thì liệt kê tất cả: không bao giờ âm thầm giấu một loại thiết bị.
             scope = scope is QuestionIntent.ScopeSensors or QuestionIntent.ScopeActuators ? scope : QuestionIntent.ScopeAll;
-            return new QuestionIntent(topics, parameters, ReadBool(root, "wantsHistory"), ReadBool(root, "wantsDeviceDetail"), scope);
+            var wantsHistory = ReadBool(root, "wantsHistory");
+            var historyCount = Math.Clamp(ReadInt(root, "historyCount"), 0, QuestionIntent.MaxHistoryCount);
+            // Xin "bản ghi gần nhất" mà không nêu số thì lấy số mặc định; có nêu số thì chắc chắn là hỏi lịch sử.
+            if (historyCount == 0 && wantsHistory) historyCount = QuestionIntent.DefaultHistoryCount;
+            var deviceNumber = ReadInt(root, "deviceNumber");
+            return new QuestionIntent(topics, parameters, wantsHistory || historyCount > 0, ReadBool(root, "wantsDeviceDetail"), scope,
+                historyCount, deviceNumber is > 0 and <= 999 ? deviceNumber : null,
+                ReadStrings(root, "searchTerms").Select(t => t.Trim()).Where(t => t.Length is >= 2 and <= 40).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList());
         }
         catch (JsonException)
         {
@@ -104,6 +125,9 @@ public sealed class GeminiQuestionIntentClassifier(
         root.TryGetProperty(name, out var arr) && arr.ValueKind == JsonValueKind.Array
             ? arr.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString() ?? string.Empty)
             : [];
+
+    private static int ReadInt(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : 0;
 
     private static bool ReadBool(JsonElement root, string name) =>
         root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;

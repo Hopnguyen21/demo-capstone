@@ -39,8 +39,17 @@ public sealed record QuestionIntent(
     IReadOnlyList<EnvironmentalParameterCode> Parameters,
     bool WantsHistory = false,
     bool WantsDeviceDetail = false,
-    string DeviceScope = QuestionIntent.ScopeAll)
+    string DeviceScope = QuestionIntent.ScopeAll,
+    /// <summary>Số bản ghi gần nhất người dùng muốn xem cho mỗi thông số (0 = chỉ hỏi giá trị hiện tại; tối đa <see cref="MaxHistoryCount"/>).</summary>
+    int HistoryCount = 0,
+    /// <summary>Số thứ tự node được nhắc tới ("node cảm biến 1" → 1); null = tất cả node.</summary>
+    int? DeviceNumber = null,
+    /// <summary>Từ khóa/thuật ngữ nông học đồng nghĩa với câu hỏi (do AI phân loại sinh ra) để tìm tài liệu khi không có embedding.</summary>
+    IReadOnlyList<string>? SearchTerms = null)
 {
+    public const int MaxHistoryCount = 20;
+    public const int DefaultHistoryCount = 5;
+
     /// <summary>Phạm vi liệt kê thiết bị: chỉ cảm biến, chỉ thiết bị chấp hành, hoặc tất cả (mặc định, kể cả khi AI không nói rõ).</summary>
     public const string ScopeAll = "all";
     public const string ScopeSensors = "sensors";

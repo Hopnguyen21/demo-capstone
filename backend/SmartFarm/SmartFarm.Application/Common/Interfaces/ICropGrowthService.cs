@@ -17,6 +17,7 @@ public interface ICropGrowthService
     Task<GrowthProfileView> GetProfileAsync(Guid userId, Guid? tenantId, Guid profileId, CancellationToken cancellationToken);
     Task<GrowthProfileView> UpdateProfileAsync(Guid userId, Guid? tenantId, Guid profileId, UpdateGrowthProfileCommand command, CancellationToken cancellationToken);
     Task<StageDurationView> UpdateStageDurationAsync(Guid userId, Guid? tenantId, Guid stageId, int durationDays, CancellationToken cancellationToken);
+    Task<GrowthStageView> AddStageAsync(Guid userId, Guid? tenantId, Guid profileId, AddStageCommand command, CancellationToken cancellationToken);
     Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken cancellationToken);
     Task<IReadOnlyList<PlantingSeasonView>> ListSeasonsAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken);
     Task<BulkCreateSeasonsResult> BulkCreateSeasonsAsync(Guid userId, Guid tenantId, BulkCreateSeasonsCommand command, CancellationToken cancellationToken);
