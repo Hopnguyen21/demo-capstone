@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
-import { supportService } from '../../services';
+import { supportService, deviceService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
 import { ExperimentReportModal, HardwareItem } from '../../components/control/ExperimentReportModal';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
@@ -12,6 +12,7 @@ import {
 
 export const ProvisioningPage: React.FC = () => {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [deploymentRequests, setDeploymentRequests] = useState<any[]>([]);
   const [selectedRequestForExperiment, setSelectedRequestForExperiment] = useState<ServiceRequest | null>(null);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
   const [selectedHardwareItems, setSelectedHardwareItems] = useState<any[]>([]);
@@ -27,9 +28,24 @@ export const ProvisioningPage: React.FC = () => {
     try {
       const data = await supportService.getServiceRequests();
       if (Array.isArray(data)) setRequests(data);
+      const deployments = await deviceService.getTechnicianDeploymentRequests().catch(() => []);
+      setDeploymentRequests(Array.isArray(deployments) ? deployments : []);
     } catch (err) {
       console.error('Failed to load requests:', err);
     }
+  };
+
+  const refreshDeploymentRequests = async () => setDeploymentRequests(await deviceService.getTechnicianDeploymentRequests().catch(() => []));
+  const advanceDeployment = async (request: any) => {
+    const id = request.requestId || request.deploymentRequestId;
+    const status = String(request.status || '').toLowerCase();
+    try {
+      if (status === 'submitted') await deviceService.acceptDeploymentRequest(id);
+      else if (status === 'accepted') await deviceService.surveyDeploymentRequest(id, { isFeasible: true, siteConditions: 'Khảo sát tại hiện trường', notes: 'Đủ điều kiện triển khai Gateway ngoài Zone và chấm Node trên GIS.' });
+      else if (status === 'surveyed') await deviceService.confirmDeploymentRequest(id);
+      else if (status === 'planconfirmed') await deviceService.startDeploymentInstallation(id);
+      await refreshDeploymentRequests();
+    } catch (error: any) { alert(error?.response?.data?.message || error?.message || 'Không thể chuyển trạng thái Deployment.'); }
   };
 
   useEffect(() => {
@@ -43,7 +59,7 @@ export const ProvisioningPage: React.FC = () => {
     try {
       const req = requests.find(r => r.serviceRequestId === requestId);
       const zoneId = req?.zoneId || '32000000-0000-0000-0000-000000000001';
-      await supportService.updateMappedNodes(zoneId, nodes, requestId);
+      await supportService.updateMappedNodes(zoneId, nodes, requestId, req?.deploymentRequestId);
       await loadRequests();
       setSuccessMsg(`✅ Đã cập nhật biểu đồ GIS và lưu thành công ${mappedCount} Nodes cho Phân khu! Vui lòng báo Owner ký Biên bản Nghiệm thu & 70% còn lại.`);
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -97,6 +113,11 @@ export const ProvisioningPage: React.FC = () => {
           <span>{successMsg}</span>
         </div>
       )}
+
+      {false && <section className="p-4 bg-slate-900 text-white rounded-2xl border border-emerald-500/30 shadow-md space-y-3">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-sm">Luồng Deployment IoT chuẩn</h2><p className="text-[11px] text-slate-300">Đây là nơi chuyển request sang Installing trước khi provision Gateway.</p></div><Button size="sm" variant="outline" onClick={refreshDeploymentRequests} className="text-white border-slate-500">Làm mới</Button></div>
+        {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-slate-800 border border-slate-700"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-slate-300">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-slate-700 text-xs font-bold">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
+      </section>}
 
       {/* Workflow Steps Indicator */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs font-semibold">

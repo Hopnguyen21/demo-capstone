@@ -342,6 +342,7 @@ export interface SensorNode {
   lastSeenAt: string;
   sensorsCount: number;
   actuatorsCount: number;
+  sensorParameters?: any[];
 }
 
 export interface Sensor {
@@ -578,6 +579,7 @@ export interface AcceptanceDetails {
 
 export interface ServiceRequest {
   serviceRequestId: string;
+  deploymentRequestId?: string;
   tenantId: string;
   farmId: string;
   farmName: string;
