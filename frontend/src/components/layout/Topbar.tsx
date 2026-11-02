@@ -3,15 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
 import { alertService, supportService, notificationService, NotificationItem, isAuthenticated, zoneContractService } from '../../services';
-import { openMeteoService } from '../../services/openMeteoService';
-import { mockWeather } from '../../mocks/mockData';
 import {
-  Sprout, Bell, Sun, CloudRain, UserCheck, LogOut,
-  ChevronDown, ShieldAlert, CheckCircle2, Layers, Check, ExternalLink, Clock
+  Sprout, Bell, UserCheck, LogOut,
+  ChevronDown, CheckCircle2, Check, ExternalLink, Clock
 } from 'lucide-react';
 
 export const Topbar: React.FC = () => {
-  const { user, role, switchRole, selectedFarmId, setSelectedFarmId, selectedZoneId, setSelectedZoneId, logout, farms, zones } = useAuth();
+  const { user, role, switchRole, logout } = useAuth();
   const navigate = useNavigate();
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
@@ -105,48 +103,7 @@ export const Topbar: React.FC = () => {
     alertService.getAlerts().then(res => {
       if (res) setAlerts(res);
     }).catch(() => {});
-
-    const activeFarm = farms.find(f => f.farmId === selectedFarmId);
-    const lat = activeFarm?.latitude || 11.9404;
-    const lng = activeFarm?.longitude || 108.4583;
-    const farmName = activeFarm?.name || 'Đà Lạt';
-
-    openMeteoService.fetchLandWeather(lat, lng, farmName).then(omData => {
-      if (omData && omData.current) {
-        setWeather(prev => ({
-          ...prev,
-          temperature: Math.round(omData.current.temperature),
-          humidity: omData.current.humidity,
-          condition: `${omData.current.weatherText} (${farmName})`,
-          rainProbability: omData.daily[0]?.rainProbabilityMaxPercent ?? (omData.current.precipitationMm > 0 ? 80 : 10),
-          windSpeedKmH: Math.round(omData.current.windSpeedKmH),
-          rainfallMm: omData.current.precipitationMm,
-        }));
-      }
-    }).catch(() => {
-      if (selectedFarmId) {
-        supportService.getWeather(selectedFarmId).then((wData: any) => {
-          if (wData && wData.temperature !== undefined) {
-            const rainProb = wData.precipitationProbability ?? 
-                             wData.dailyForecast?.[0]?.precipitationProbability ?? 
-                             prevRainProb(wData);
-            setWeather(prev => ({
-              ...prev,
-              temperature: Number(wData.temperature),
-              humidity: wData.humidity ? Number(wData.humidity) : prev.humidity,
-              condition: wData.weatherDescription ?? prev.condition,
-              rainProbability: rainProb !== null && rainProb !== undefined ? Number(rainProb) : prev.rainProbability,
-            }));
-          }
-        }).catch(() => {});
-      }
-    });
-  }, [selectedFarmId, farms]);
-
-  const prevRainProb = (w: any) => {
-    if (String(w?.weatherDescription || '').toLowerCase().includes('mưa')) return 100;
-    return 0;
-  };
+  }, []);
 
   const handleRoleSwitch = (targetRole: UserRole) => {
     switchRole(targetRole);
@@ -169,7 +126,6 @@ export const Topbar: React.FC = () => {
     }
   };
 
-  const [weather, setWeather] = useState(mockWeather);
   const activeAlerts = alerts.filter(a => a.status === 'OPEN');
 
   const roleLabels: Record<UserRole, { label: string; color: string }> = {
@@ -200,51 +156,12 @@ export const Topbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Farm & Zone Context Selector */}
-        {(role === 'FARM_OWNER' || role === 'FARMER') && (
-          <div className="hidden md:flex items-center gap-2 pl-4 border-l border-white/20">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-100">
-              <Layers size={14} className="text-white" />
-              <span>Nông trang:</span>
-            </div>
-            <select
-              value={selectedFarmId}
-              onChange={(e) => setSelectedFarmId(e.target.value)}
-              className="bg-[#0e8046] border border-[#14a85e] text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-white cursor-pointer"
-            >
-              {farms.map(f => (
-                <option key={f.farmId} value={f.farmId} className="bg-[#119653] text-white">{f.name}</option>
-              ))}
-            </select>
 
-            <select
-              value={selectedZoneId}
-              onChange={(e) => setSelectedZoneId(e.target.value)}
-              className="bg-[#0e8046] border border-[#14a85e] text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-white cursor-pointer"
-            >
-              {zones.map(z => (
-                <option key={z.zoneId} value={z.zoneId} className="bg-[#119653] text-white">{z.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
 
       {/* Right section: Weather, Notifications, Dev Role Switcher, Profile */}
       <div className="flex items-center gap-3">
-        {/* Live Weather Widget */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-[#0e8046] border border-[#14a85e] rounded-lg text-xs" title="Thời tiết tham khảo (Demo / Giả lập)">
-          <Sun size={15} className="text-amber-300" />
-          <div className="flex flex-col">
-            <span className="font-semibold text-white flex items-center gap-1.5">
-              {weather.temperature}°C Đà Lạt
-              <span className="text-[9px] bg-amber-400/30 text-amber-100 px-1 py-0.2 rounded font-normal">Demo</span>
-            </span>
-            <span className="text-[10px] text-emerald-100/90 flex items-center gap-1">
-              <CloudRain size={10} className="text-sky-200" /> Mưa: {weather.rainProbability}%
-            </span>
-          </div>
-        </div>
+
 
         {/* Notifications Bell */}
         <div className="relative" ref={notificationRef}>

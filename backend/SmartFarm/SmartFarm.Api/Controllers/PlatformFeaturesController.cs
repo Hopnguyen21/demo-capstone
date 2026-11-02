@@ -61,7 +61,7 @@ public sealed class PlatformFeaturesController(
 
     // ─── 4. Platform Hardware Items (Central Catalog & Inventory) ─────────────
     [HttpGet("api/v1/platform/hardware-items")]
-    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
+    [Authorize(Roles = "PlatformAdmin,PlatformTechnician,FarmOwner")]
     public async Task<ActionResult<IReadOnlyList<PlatformHardwareItemView>>> ListHardwareItems(CancellationToken ct)
     {
         return Ok(await adminService.ListHardwareItemsAsync(ct));

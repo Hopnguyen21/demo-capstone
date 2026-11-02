@@ -21,6 +21,7 @@ import { OpenMeteoWeatherWidget } from '../../components/weather/OpenMeteoWeathe
 import { ZoneContractDetailsModal } from '../../components/contracts/ZoneContractDetailsModal';
 import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
 import { DeviceDepreciationModal } from '../../components/contracts/DeviceDepreciationModal';
+import { HoneycombEstimator } from '../../components/estimation/HoneycombEstimator';
 
 export const FarmsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -43,7 +44,7 @@ export const FarmsPage: React.FC = () => {
   const [showContractDetailModal, setShowContractDetailModal] = useState<boolean>(false);
   const [showRenewContractModal, setShowRenewContractModal] = useState<boolean>(false);
   const [showCreateDepreciationModal, setShowCreateDepreciationModal] = useState<boolean>(false);
-  const [zoneActiveTab, setZoneActiveTab] = useState<'OVERVIEW' | 'CONTRACTS' | 'DEPRECIATION' | 'CF3'>('OVERVIEW');
+  const [zoneActiveTab, setZoneActiveTab] = useState<'OVERVIEW' | 'CONTRACTS' | 'DEPRECIATION' | 'CF3' | 'ESTIMATION'>('OVERVIEW');
 
   // Assigned Employee mapping per Zone: { [zoneId: string]: employeeId }
   const [assignedEmployeeIdMap, setAssignedEmployeeIdMap] = useState<Record<string, string>>({});
@@ -186,9 +187,23 @@ export const FarmsPage: React.FC = () => {
     }
   }, [location.state, zones, fields, farms]);
 
-  // Helper to find the active contract for a Zone
+  // Helper to check if a contract is signed successfully
+  const isContractSignedSuccessfully = (c: ZoneContract | null | undefined): boolean => {
+    if (!c) return false;
+    // Bắt buộc hợp đồng phải có thông tin đã ký (signedAtUtc) hoặc trạng thái hợp lệ đã ký (Active, ExpiringSoon, Expired, Renewed)
+    // Và tuyệt đối không phải trạng thái chờ ký hoặc nháp (Draft, Pending)
+    const statusStr = String(c.status || '').toLowerCase();
+    if (statusStr === 'pending' || statusStr === 'draft' || statusStr === 'chờ ký' || statusStr === 'chờ đặt cọc') {
+      return false;
+    }
+    const hasSignedDate = Boolean(c.signedAtUtc && String(c.signedAtUtc).trim() !== '');
+    const isSignedStatus = statusStr === 'active' || statusStr === 'expiringsoon' || statusStr === 'expired' || statusStr === 'renewed' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1));
+    return hasSignedDate || isSignedStatus;
+  };
+
+  // Helper to find the active contract for a Zone (chỉ lấy hợp đồng đã ký thành công)
   const getZoneActiveContract = (zoneId: string): ZoneContract | undefined => {
-    const list = allContracts.filter(c => c.zoneId === zoneId);
+    const list = allContracts.filter(c => c.zoneId === zoneId && isContractSignedSuccessfully(c));
     return list.find(c => c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1)))
       || list[0];
   };
@@ -239,11 +254,11 @@ export const FarmsPage: React.FC = () => {
             return [...others, ...zContracts];
           });
         }
-      }).catch(() => {});
+      }).catch(() => { });
 
       zoneContractService.getDepreciationsByZone(zid).then(deps => {
         if (Array.isArray(deps)) setZoneDepreciations(deps);
-      }).catch(() => {});
+      }).catch(() => { });
 
       telemetryService.getRealtime(zid).then(setZoneLatest).catch(() => setZoneLatest(null));
 
@@ -288,7 +303,7 @@ export const FarmsPage: React.FC = () => {
     if (location.state && (farms.length > 0 || fields.length > 0 || zones.length > 0)) {
       const { farmId, farmName, zoneId, zoneName, openContract } = location.state as any;
       const stateKey = `${farmId || ''}_${farmName || ''}_${zoneId || ''}_${zoneName || ''}_${openContract || ''}`;
-      
+
       if (handledDeepLinkRef.current === stateKey) return;
 
       // 1. Find Target Zone (match by zoneId or name)
@@ -633,16 +648,17 @@ export const FarmsPage: React.FC = () => {
       }));
   }, [selectedZone, nodes]);
 
-  // Memoized zone contract and depreciation helpers
+  // Memoized zone contract and depreciation helpers (Chỉ hiển thị hợp đồng ĐÃ KÝ THÀNH CÔNG)
   const currentZoneContracts = React.useMemo(() => {
     if (!selectedZone) return [];
     const zid = selectedZone.zoneId || (selectedZone as any).id;
-    return allContracts.filter(c => c.zoneId === zid);
+    return allContracts.filter(c => c.zoneId === zid && isContractSignedSuccessfully(c));
   }, [selectedZone, allContracts]);
 
   const activeZoneContract = React.useMemo(() => {
+    if (currentZoneContracts.length === 0) return null;
     return currentZoneContracts.find(c => c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1)))
-      || currentZoneContracts[0];
+      || (currentZoneContracts.length > 0 ? currentZoneContracts[0] : null);
   }, [currentZoneContracts]);
 
   const historicalZoneContracts = React.useMemo(() => {
@@ -652,13 +668,30 @@ export const FarmsPage: React.FC = () => {
 
   const currentZoneDepreciations = React.useMemo(() => {
     if (!selectedZone) return [];
-    const zid = selectedZone.zoneId || (selectedZone as any).id;
-    return zoneDepreciations.filter(d => d.zoneId === zid);
+    const zid = (selectedZone.zoneId || (selectedZone as any).id || '').toString().toLowerCase();
+    return zoneDepreciations.filter(d => (d.zoneId || '').toString().toLowerCase() === zid);
   }, [selectedZone, zoneDepreciations]);
 
   const criticalDepreciationAlerts = React.useMemo(() => {
     return currentZoneDepreciations.filter(d => d.isNearContractRenewal || ((d.status === 'ExpiringSoon' || d.status === 'FullyDepreciated') && activeZoneContract && activeZoneContract.daysRemaining <= 45));
   }, [currentZoneDepreciations, activeZoneContract]);
+
+  // Tự động tải mới danh sách khấu hao thiết bị từ DB khi mở tab DEPRECIATION
+  useEffect(() => {
+    if (selectedZone && zoneActiveTab === 'DEPRECIATION') {
+      const zid = selectedZone.zoneId || (selectedZone as any).id;
+      if (zid) {
+        zoneContractService.getDepreciationsByZone(zid).then(deps => {
+          if (Array.isArray(deps)) {
+            setZoneDepreciations(prev => {
+              const others = prev.filter(d => (d.zoneId || '').toString().toLowerCase() !== zid.toString().toLowerCase());
+              return [...others, ...deps];
+            });
+          }
+        }).catch(() => { });
+      }
+    }
+  }, [selectedZone, zoneActiveTab]);
 
   // Sync edit polygon when selectedZone changes
   useEffect(() => {
@@ -1359,28 +1392,26 @@ export const FarmsPage: React.FC = () => {
                   const isExpSoon = contract && !isExp && contract.daysRemaining <= 30;
 
                   return (
-                    <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
-                      !contract
+                    <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${!contract
                         ? 'bg-slate-50 border-slate-200 text-slate-600'
                         : isExp
-                        ? 'bg-rose-50/70 border-rose-200 text-rose-950'
-                        : isExpSoon
-                        ? 'bg-amber-50/80 border-amber-300 text-amber-950'
-                        : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
-                    }`}>
+                          ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                          : isExpSoon
+                            ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                            : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                      }`}>
                       <div className="flex items-center justify-between">
                         <span className="font-bold flex items-center gap-1.5">
                           <FileText size={13} className={isExp ? 'text-rose-600' : isExpSoon ? 'text-amber-600' : 'text-emerald-700'} />
                           Hợp đồng đang áp dụng:
                         </span>
                         {contract ? (
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            isExp
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isExp
                               ? 'bg-rose-200 text-rose-900'
                               : isExpSoon
-                              ? 'bg-amber-200 text-amber-900 animate-pulse'
-                              : 'bg-emerald-200 text-emerald-900'
-                          }`}>
+                                ? 'bg-amber-200 text-amber-900 animate-pulse'
+                                : 'bg-emerald-200 text-emerald-900'
+                            }`}>
                             {isExp ? 'ĐÃ HẾT HẠN' : isExpSoon ? `SẮP HẾT HẠN (${contract.daysRemaining} ngày)` : 'CÒN HIỆU LỰC'}
                           </span>
                         ) : (
@@ -1559,31 +1590,28 @@ export const FarmsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setZoneActiveTab('OVERVIEW')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                zoneActiveTab === 'OVERVIEW'
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'OVERVIEW'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <Sprout size={15} />
-              <span>🌿 Vi Khí Hậu & GIS (Tổng quan)</span>
+              <span> Vi Khí Hậu & GIS (Tổng quan)</span>
             </button>
 
             <button
               type="button"
               onClick={() => setZoneActiveTab('CONTRACTS')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                zoneActiveTab === 'CONTRACTS'
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'CONTRACTS'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <FileText size={15} />
-              <span>📜 Lịch Sử Hợp Đồng Phân Khu</span>
+              <span> Lịch Sử Hợp Đồng Phân Khu</span>
               {currentZoneContracts.length > 0 && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  zoneActiveTab === 'CONTRACTS' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-700'
-                }`}>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${zoneActiveTab === 'CONTRACTS' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-700'
+                  }`}>
                   {currentZoneContracts.length}
                 </span>
               )}
@@ -1592,14 +1620,13 @@ export const FarmsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setZoneActiveTab('DEPRECIATION')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                zoneActiveTab === 'DEPRECIATION'
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'DEPRECIATION'
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <Cpu size={15} />
-              <span>⏱️ Khấu Hao & Tuổi Thọ Thiết Bị</span>
+              <span> Khấu Hao & Tuổi Thọ Thiết Bị</span>
               {criticalDepreciationAlerts.length > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white animate-pulse">
                   {criticalDepreciationAlerts.length} Cảnh báo!
@@ -1610,14 +1637,25 @@ export const FarmsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setZoneActiveTab('CF3')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                zoneActiveTab === 'CF3'
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'CF3'
                   ? 'bg-teal-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <Gauge size={15} />
-              <span>⚡ Điều Khiển CF3 & Lịch Tự Động</span>
+              <span> Điều Khiển CF3 & Lịch Tự Động</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setZoneActiveTab('ESTIMATION')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'ESTIMATION'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                }`}
+            >
+              <Layers size={15} />
+              <span> Ước Tính Mạng Tổ Ong</span>
             </button>
           </div>
 
@@ -1626,30 +1664,27 @@ export const FarmsPage: React.FC = () => {
             <div className="space-y-6">
               {/* Quick Contract & Crop Bar */}
               {activeZoneContract ? (
-                <div className={`p-4 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                  activeZoneContract.daysRemaining < 0
+                <div className={`p-4 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${activeZoneContract.daysRemaining < 0
                     ? 'bg-rose-50/80 border-rose-200 text-rose-950'
                     : activeZoneContract.daysRemaining <= 30
-                    ? 'bg-amber-50/90 border-amber-300 text-amber-950'
-                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
-                }`}>
+                      ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                      : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                  }`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
-                      activeZoneContract.daysRemaining < 0 ? 'bg-rose-600 text-white' : activeZoneContract.daysRemaining <= 30 ? 'bg-amber-500 text-white animate-pulse' : 'bg-emerald-600 text-white'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${activeZoneContract.daysRemaining < 0 ? 'bg-rose-600 text-white' : activeZoneContract.daysRemaining <= 30 ? 'bg-amber-500 text-white animate-pulse' : 'bg-emerald-600 text-white'
+                      }`}>
                       <FileText size={20} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-slate-900">Hợp đồng phân khu đang áp dụng:</span>
                         <span className="font-mono font-bold text-indigo-700">#{activeZoneContract.contractNumber}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          activeZoneContract.daysRemaining < 0
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${activeZoneContract.daysRemaining < 0
                             ? 'bg-rose-200 text-rose-900'
                             : activeZoneContract.daysRemaining <= 30
-                            ? 'bg-amber-200 text-amber-900 animate-pulse'
-                            : 'bg-emerald-200 text-emerald-900'
-                        }`}>
+                              ? 'bg-amber-200 text-amber-900 animate-pulse'
+                              : 'bg-emerald-200 text-emerald-900'
+                          }`}>
                           {activeZoneContract.daysRemaining < 0 ? 'ĐÃ HẾT HẠN' : activeZoneContract.daysRemaining <= 30 ? `SẮP HẾT HẠN (${activeZoneContract.daysRemaining} ngày)` : 'CÒN HIỆU LỰC'}
                         </span>
                       </div>
@@ -2021,10 +2056,10 @@ export const FarmsPage: React.FC = () => {
                         {employees
                           .filter(emp => (emp.assignedFarms ?? []).includes(selectedZone.farmId))
                           .map(emp => (
-                          <option key={emp.employeeId || emp.userId} value={emp.employeeId || emp.userId}>
-                            👤 {emp.fullName} ({emp.position || emp.role}) - {emp.phone}
-                          </option>
-                        ))}
+                            <option key={emp.employeeId || emp.userId} value={emp.employeeId || emp.userId}>
+                              👤 {emp.fullName} ({emp.position || emp.role}) - {emp.phone}
+                            </option>
+                          ))}
                       </select>
                       {!employees.some(emp => (emp.assignedFarms ?? []).includes(selectedZone.farmId)) && (
                         <p className="text-[11px] text-amber-700">Farm này chưa có nhân công. Hãy mời Farmer vào Farm (Farmer chấp nhận lời mời) rồi quay lại phân công.</p>
@@ -2159,18 +2194,23 @@ export const FarmsPage: React.FC = () => {
                           <span className="font-mono font-bold text-base text-indigo-950">
                             #{activeZoneContract.contractNumber}
                           </span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            activeZoneContract.daysRemaining < 0
+                          {activeZoneContract.signedAtUtc && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                              <CheckCircle2 size={12} className="text-emerald-600" />
+                              ĐÃ KÝ: {new Date(activeZoneContract.signedAtUtc).toLocaleDateString('vi-VN')}
+                            </span>
+                          )}
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${activeZoneContract.daysRemaining < 0
                               ? 'bg-rose-100 text-rose-800 border border-rose-300'
                               : activeZoneContract.daysRemaining <= 30
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
-                              : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          }`}>
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            }`}>
                             {activeZoneContract.daysRemaining < 0
                               ? 'HẾT HẠN'
                               : activeZoneContract.daysRemaining <= 30
-                              ? `SẮP HẾT HẠN (${activeZoneContract.daysRemaining} ngày)`
-                              : 'ĐANG HOẠT ĐỘNG'}
+                                ? `SẮP HẾT HẠN (${activeZoneContract.daysRemaining} ngày)`
+                                : 'ĐANG HOẠT ĐỘNG'}
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-800 mt-1">
@@ -2247,13 +2287,12 @@ export const FarmsPage: React.FC = () => {
                         <div className="text-[11px] text-slate-600">
                           Thời hạn: <strong>{activeZoneContract.durationMonths} tháng</strong>
                         </div>
-                        <div className={`text-[11px] font-bold ${
-                          activeZoneContract.daysRemaining < 0
+                        <div className={`text-[11px] font-bold ${activeZoneContract.daysRemaining < 0
                             ? 'text-rose-600'
                             : activeZoneContract.daysRemaining <= 30
-                            ? 'text-amber-600'
-                            : 'text-emerald-700'
-                        }`}>
+                              ? 'text-amber-600'
+                              : 'text-emerald-700'
+                          }`}>
                           {activeZoneContract.daysRemaining < 0
                             ? `Đã hết hạn ${Math.abs(activeZoneContract.daysRemaining)} ngày trước`
                             : `Còn ${activeZoneContract.daysRemaining} ngày hiệu lực`}
@@ -2382,9 +2421,9 @@ export const FarmsPage: React.FC = () => {
                   <div className="p-8 bg-white border border-dashed border-slate-300 rounded-2xl text-center space-y-3">
                     <FileText size={36} className="mx-auto text-slate-300" />
                     <div>
-                      <h4 className="font-bold text-slate-800 text-sm">Chưa có hợp đồng nào đang áp dụng cho Zone này</h4>
+                      <h4 className="font-bold text-slate-800 text-sm">Chưa có hợp đồng nào được ký thành công cho Zone này</h4>
                       <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                        Hợp đồng phân khu và thiết bị IoT được tạo tập trung duy nhất tại Cổng Dịch vụ & Hợp đồng (Owner Portal). Gửi yêu cầu để kỹ thuật viên khảo sát, gửi báo giá và tiến hành ký hợp đồng (cọc 30%).
+                        Hợp đồng phân khu chỉ hiển thị sau khi đã ký kết thành công và hoàn tất cọc 30% tại Cổng Dịch vụ & Hợp đồng (Owner Portal). Hãy vào Cổng Dịch vụ để kiểm tra báo giá và ký hợp đồng.
                       </p>
                     </div>
                     <Button
@@ -2510,6 +2549,31 @@ export const FarmsPage: React.FC = () => {
                   <div className="p-3 bg-white/80 rounded-xl border border-rose-200 text-[11px] text-rose-900">
                     💡 <strong>Khuyến nghị nghiệp vụ:</strong> Bộ phận kỹ thuật nông trại cần kiểm định chất lượng cảm biến/bộ điều khiển, bảo trì hoặc đề xuất phương án thay thế thiết bị mới trước khi ký phụ lục gia hạn hợp đồng với khách hàng.
                   </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const devNames = criticalDepreciationAlerts.map(d => d.deviceName || d.hardwareAddress).join(', ');
+                        navigate('/owner/support', {
+                          state: {
+                            createRequest: true,
+                            farmId: selectedFarm?.farmId || (selectedFarm as any)?.id,
+                            farmName: selectedFarm?.name,
+                            zoneId: selectedZone.zoneId || (selectedZone as any)?.id,
+                            zoneName: selectedZone.name,
+                            requestType: 'MAINTENANCE',
+                            title: `[Khẩn cấp] Yêu cầu thay mới / bảo trì thiết bị cận hạn tại ${selectedZone.name}`,
+                            description: `Phân khu ${selectedZone.name} có ${criticalDepreciationAlerts.length} thiết bị sắp hết hoặc đã hết vòng đời khấu hao: ${devNames}. Đề nghị bộ phận kỹ thuật khẩn trương kiểm tra và thay thế thiết bị mới.`,
+                            priority: 'CRITICAL'
+                          }
+                        });
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <Wrench size={14} />
+                      Yêu cầu thay thiết bị cận hạn (Chuyển sang Quản lý Bảo trì)
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -2530,6 +2594,36 @@ export const FarmsPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigate('/owner/support', {
+                        state: {
+                          createRequest: true,
+                          farmId: selectedFarm?.farmId || (selectedFarm as any)?.id,
+                          farmName: selectedFarm?.name,
+                          zoneId: selectedZone.zoneId || (selectedZone as any)?.id,
+                          zoneName: selectedZone.name,
+                          requestType: 'MAINTENANCE',
+                          title: `Yêu cầu bảo trì / thay thế thiết bị tại phân khu ${selectedZone.name}`,
+                          description: `Kính gửi phòng Kỹ thuật: Đề nghị kiểm tra và thực hiện bảo trì, thay thế thiết bị đo lường/điều khiển tại phân khu ${selectedZone.name}.`,
+                          priority: 'HIGH'
+                        }
+                      });
+                    }}
+                    className="bg-white border-amber-300 text-amber-800 hover:bg-amber-50 font-bold shadow-xs cursor-pointer"
+                  >
+                    <Wrench size={14} className="mr-1 text-amber-600" /> Yêu Cầu Thay / Bảo Trì Thiết Bị
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setZoneActiveTab('ESTIMATION')}
+                    className="bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-bold shadow-xs cursor-pointer"
+                  >
+                    <Layers size={14} className="mr-1 text-emerald-600" /> Dự Toán Mạng Tổ Ong
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => setShowCreateDepreciationModal(true)}
@@ -2592,13 +2686,37 @@ export const FarmsPage: React.FC = () => {
                     <p className="text-xs text-slate-500 max-w-md mx-auto">
                       Khai báo ngày lắp đặt, thời gian bảo hành và vòng đời để hệ thống tự động theo dõi tuổi thọ phần cứng.
                     </p>
-                    <Button
-                      size="sm"
-                      onClick={() => setShowCreateDepreciationModal(true)}
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                    >
-                      <Plus size={14} className="mr-1.5" /> Thêm Hồ Sơ Khấu Hao Thiết Bị
-                    </Button>
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          navigate('/owner/support', {
+                            state: {
+                              createRequest: true,
+                              farmId: selectedFarm?.farmId || (selectedFarm as any)?.id,
+                              farmName: selectedFarm?.name,
+                              zoneId: selectedZone.zoneId || (selectedZone as any)?.id,
+                              zoneName: selectedZone.name,
+                              requestType: 'MAINTENANCE',
+                              title: `Yêu cầu khảo sát / bảo trì thiết bị tại ${selectedZone.name}`,
+                              description: `Trang trại đề nghị bộ phận Kỹ thuật kiểm tra, bảo trì hoặc bổ sung thiết bị đo và điều khiển cho phân khu ${selectedZone.name}.`,
+                              priority: 'HIGH'
+                            }
+                          });
+                        }}
+                        className="bg-white border-amber-300 text-amber-800 hover:bg-amber-50 font-bold"
+                      >
+                        <Wrench size={14} className="mr-1.5 text-amber-600" /> Yêu Cầu Thay / Bảo Trì Thiết Bị
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setShowCreateDepreciationModal(true)}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                      >
+                        <Plus size={14} className="mr-1.5" /> Thêm Hồ Sơ Khấu Hao Thiết Bị
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
@@ -2615,6 +2733,7 @@ export const FarmsPage: React.FC = () => {
                           <th className="p-3 text-right">Đã Khấu Hao</th>
                           <th className="p-3 text-right">Giá Trị Còn Lại</th>
                           <th className="p-3 text-center">Trạng Thái</th>
+                          <th className="p-3 text-center">Thao Tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -2640,13 +2759,12 @@ export const FarmsPage: React.FC = () => {
                                 {d.depreciationLifetimeMonths} tháng
                               </td>
                               <td className="p-3 text-center">
-                                <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] ${
-                                  remMonths <= 0
+                                <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] ${remMonths <= 0
                                     ? 'bg-rose-100 text-rose-800'
                                     : remMonths <= 3
-                                    ? 'bg-amber-100 text-amber-900 font-black animate-pulse'
-                                    : 'bg-emerald-100 text-emerald-800'
-                                }`}>
+                                      ? 'bg-amber-100 text-amber-900 font-black animate-pulse'
+                                      : 'bg-emerald-100 text-emerald-800'
+                                  }`}>
                                   {remMonths} tháng
                                 </span>
                               </td>
@@ -2660,19 +2778,45 @@ export const FarmsPage: React.FC = () => {
                                 {(d.currentBookValueVnd || 0).toLocaleString()} đ
                               </td>
                               <td className="p-3 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  depStatus === 'FullyDepreciated' || remMonths <= 0
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${depStatus === 'FullyDepreciated' || remMonths <= 0
                                     ? 'bg-rose-100 text-rose-800 border border-rose-300'
                                     : depStatus === 'ExpiringSoon' || remMonths <= 3
-                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                }`}>
+                                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  }`}>
                                   {depStatus === 'FullyDepreciated' || remMonths <= 0
                                     ? 'ĐÃ HẾT KHẤU HAO'
                                     : depStatus === 'ExpiringSoon' || remMonths <= 3
-                                    ? 'SẮP HẾT KHẤU HAO'
-                                    : 'ĐANG HOẠT ĐỘNG'}
+                                      ? 'SẮP HẾT KHẤU HAO'
+                                      : 'ĐANG HOẠT ĐỘNG'}
                                 </span>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigate('/owner/support', {
+                                      state: {
+                                        createRequest: true,
+                                        farmId: selectedFarm?.farmId || (selectedFarm as any)?.id,
+                                        farmName: selectedFarm?.name,
+                                        zoneId: selectedZone.zoneId || (selectedZone as any)?.id,
+                                        zoneName: selectedZone.name,
+                                        requestType: 'MAINTENANCE',
+                                        deviceId: d.deviceId,
+                                        deviceName: d.deviceName || d.hardwareAddress,
+                                        title: `Yêu cầu thay thế / bảo trì thiết bị: ${d.deviceName || d.hardwareAddress}`,
+                                        description: `Đề nghị bộ phận Kỹ thuật kiểm tra và thay thế/bảo trì thiết bị ${d.deviceName || d.hardwareAddress} (${d.deviceType || 'IoT Node'}) tại phân khu ${selectedZone.name}. Thiết bị đã vận hành ${d.monthsElapsed || 0}/${d.depreciationLifetimeMonths} tháng, giá trị sổ sách còn lại: ${(d.currentBookValueVnd || 0).toLocaleString()} đ.`,
+                                        priority: remMonths <= 3 ? 'CRITICAL' : 'HIGH'
+                                      }
+                                    });
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
+                                  title="Gửi yêu cầu thay mới hoặc bảo trì thiết bị này sang Quản lý Yêu cầu Bảo trì"
+                                >
+                                  <Wrench size={13} className="text-amber-700" />
+                                  Yêu cầu thay thiết bị
+                                </button>
                               </td>
                             </tr>
                           );
@@ -2696,6 +2840,19 @@ export const FarmsPage: React.FC = () => {
                 nodes={nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id))}
                 title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
                 subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
+              />
+            </div>
+          )}
+
+          {/* TAB 5: HONEYCOMB IOT ESTIMATION */}
+          {zoneActiveTab === 'ESTIMATION' && (
+            <div className="pt-2 animate-in fade-in duration-200">
+              <HoneycombEstimator
+                areaM2={Number(selectedZone.areaM2) || 4500}
+                cropName={selectedZone.currentCrop || selectedZone.cropName || 'Cà chua (Solanum lycopersicum)'}
+                zoneName={selectedZone.name}
+                farmId={selectedFarm?.farmId}
+                zoneId={selectedZone.zoneId || (selectedZone as any).id}
               />
             </div>
           )}
@@ -3162,8 +3319,8 @@ export const FarmsPage: React.FC = () => {
                 type="button"
                 onClick={() => setInstallPriority('NORMAL')}
                 className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${installPriority === 'NORMAL'
-                    ? 'bg-slate-100 border-slate-400 text-slate-900'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-slate-100 border-slate-400 text-slate-900'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
               >
                 Bình thường
@@ -3172,8 +3329,8 @@ export const FarmsPage: React.FC = () => {
                 type="button"
                 onClick={() => setInstallPriority('HIGH')}
                 className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${installPriority === 'HIGH'
-                    ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-2xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-2xs'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
               >
                 ⚡ Ưu tiên cao
@@ -3182,8 +3339,8 @@ export const FarmsPage: React.FC = () => {
                 type="button"
                 onClick={() => setInstallPriority('CRITICAL')}
                 className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${installPriority === 'CRITICAL'
-                    ? 'bg-rose-100 border-rose-400 text-rose-900 shadow-2xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-rose-100 border-rose-400 text-rose-900 shadow-2xs'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
               >
                 🚨 Khẩn cấp

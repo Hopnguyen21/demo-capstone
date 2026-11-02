@@ -262,7 +262,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
               Hợp đồng Lắp đặt IoT #{request.serviceRequestId.toUpperCase()}
             </span>
             <span className="text-[11px] px-2.5 py-0.5 rounded bg-emerald-800/30 text-emerald-100 font-mono font-bold border border-emerald-300/30">
-              Khách hàng: {request.assignedOwnerName || 'Lê Văn An'}
+              Khách hàng: {request.assignedOwnerName || 'Chủ Trang Trại'}
             </span>
           </div>
           <p className="text-[11px] text-emerald-100 flex items-center gap-3">

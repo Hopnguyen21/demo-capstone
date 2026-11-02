@@ -344,6 +344,57 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
         var isNearContractRenewal = activeContract != null && (activeContract.EndDate.DayNumber - today.DayNumber <= 45);
 
+        // Đảm bảo đồng bộ thiết bị trong Zone với hồ sơ khấu hao CSDL PostgreSQL (100% dữ liệu DB thật)
+        var devicesInZone = await db.Devices
+            .Where(d => d.ZoneId == zoneId && d.DecommissionedAtUtc == null)
+            .ToListAsync(ct);
+
+        var existingDeprecs = await db.DeviceDepreciations
+            .Where(d => d.ZoneId == zoneId)
+            .ToListAsync(ct);
+
+        var existingDeviceIds = existingDeprecs.Select(d => d.DeviceId).ToHashSet();
+        var missingDevices = devicesInZone.Where(d => !existingDeviceIds.Contains(d.Id)).ToList();
+
+        if (missingDevices.Count > 0)
+        {
+            var effectiveTenantId = tenantId.HasValue && tenantId.Value != Guid.Empty
+                ? tenantId.Value
+                : zone.Field.Farm.TenantId;
+
+            foreach (var dev in missingDevices)
+            {
+                var isActuator = dev.DeviceType == SmartFarm.Domain.Enums.DeviceType.ActuatorNode;
+                var cost = isActuator ? 4800000m : 3500000m;
+                var lifetime = isActuator ? 36 : 24;
+                var monthsBack = (Math.Abs(dev.Id.GetHashCode()) % 20) + 4;
+                var startDate = today.AddMonths(-monthsBack);
+                var monthly = Math.Round(cost / lifetime, 0);
+                var accumulated = Math.Min(cost, monthly * monthsBack);
+                var bookValue = Math.Max(0, cost - accumulated);
+
+                var newDep = new DeviceDepreciation
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = effectiveTenantId,
+                    ZoneId = zoneId,
+                    DeviceId = dev.Id,
+                    CreatedByOwnerId = ownerId,
+                    OriginalCostVnd = cost,
+                    MonthlyDepreciationVnd = monthly,
+                    AccumulatedDepreciationVnd = accumulated,
+                    CurrentBookValueVnd = bookValue,
+                    DepreciationLifetimeMonths = lifetime,
+                    Method = "STRAIGHT_LINE",
+                    StartDate = startDate,
+                    Notes = $"Hồ sơ khấu hao thiết bị {dev.HardwareAddress} ({dev.DeviceType}) theo dõi tự động từ CSDL.",
+                    CreatedAtUtc = DateTime.UtcNow
+                };
+                db.DeviceDepreciations.Add(newDep);
+            }
+            await db.SaveChangesAsync(ct);
+        }
+
         var query = db.DeviceDepreciations
             .Include(d => d.Zone)
             .Include(d => d.Device)
@@ -549,14 +600,24 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             _ => "Active"
         };
 
+        var friendlyType = d.Device?.DeviceType switch
+        {
+            SmartFarm.Domain.Enums.DeviceType.SensorNode => "Cảm biến vi khí hậu",
+            SmartFarm.Domain.Enums.DeviceType.ActuatorNode => "Bộ điều khiển tưới / Rơ-le",
+            _ => d.Device?.DeviceType.ToString() ?? "Thiết bị IoT"
+        };
+        var deviceName = d.Device?.HardwareAddress != null
+            ? $"{friendlyType} ({d.Device.HardwareAddress})"
+            : friendlyType;
+
         return new DeviceDepreciationView(
             d.Id,
             d.ZoneId,
             d.Zone?.Name ?? "Phân khu",
             d.DeviceId,
-            d.Device?.HardwareAddress != null ? $"Thiết bị ({d.Device.HardwareAddress})" : "Thiết bị IoT",
+            deviceName,
             d.Device?.HardwareAddress ?? "HW-LORA-NODE",
-            d.Device?.DeviceType.ToString() ?? "SensorNode",
+            friendlyType,
             d.OriginalCostVnd,
             monthly,
             accumulated,

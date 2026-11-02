@@ -44,7 +44,7 @@ export const ServiceRequestsPage: React.FC = () => {
     title: '',
     description: '',
     priority: 'HIGH' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
-    assignedOwnerName: 'Lê Văn An (Owner Trang trại Đà Lạt)',
+    assignedOwnerName: 'Chủ Trang Trại (Owner)',
     assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
   });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -115,7 +115,7 @@ export const ServiceRequestsPage: React.FC = () => {
       title: '',
       description: '',
       priority: 'HIGH',
-      assignedOwnerName: 'Lê Văn An (Owner Trang trại Đà Lạt)',
+      assignedOwnerName: 'Chủ Trang Trại (Owner)',
       assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
     });
     setSuccessMsg(`Đã khởi tạo thành công Yêu cầu [${newRequest.title}] thay cho Owner!`);
