@@ -96,6 +96,56 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
         return ToView(item);
     }
 
+    public async Task<PlatformHardwareItemView> AssignHardwareItemAsync(Guid id, AssignHardwareItemCommand c, CancellationToken ct)
+    {
+        var technician = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == c.TechnicianUserId && x.Role == UserRole.PlatformTechnician && x.Status == AccountStatus.Active, ct)
+            ?? throw new ResourceNotFoundException("Technician not found.");
+        var item = await db.PlatformHardwareItems.SingleOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new ResourceNotFoundException("Hardware item not found.");
+        var quantity = c.Quantity;
+        if (quantity < 1) throw new RequestValidationException("quantity", "Quantity must be at least 1.");
+        var uniqueDevice = item.Category.Contains("GATEWAY", StringComparison.OrdinalIgnoreCase)
+            || item.Category.Contains("NODE", StringComparison.OrdinalIgnoreCase);
+        if (uniqueDevice && quantity != 1) throw new RequestValidationException("quantity", "Gateway and Node Module quantity must be 1.");
+        if (item.AssignedTechnicianId is not null) throw new ResourceConflictException("This hardware item is already assigned to a Technician.");
+        if (item.QuantityInStock < quantity) throw new ResourceConflictException($"Only {item.QuantityInStock} items are available in the central warehouse.");
+
+        if (quantity == item.QuantityInStock || uniqueDevice)
+        {
+            item.AssignedTechnicianId = technician.Id;
+            item.Status = "Issued";
+        }
+        else
+        {
+            item.QuantityInStock -= quantity;
+            var technicianItem = new PlatformHardwareItem
+            {
+                Code = item.Code,
+                Name = item.Name,
+                Category = item.Category,
+                Model = item.Model,
+                Manufacturer = item.Manufacturer,
+                QuantityInStock = quantity,
+                LocationRack = "Kho Technician",
+                UnitPrice = item.UnitPrice,
+                Status = "Issued",
+                AssignedTechnicianId = technician.Id
+            };
+            db.PlatformHardwareItems.Add(technicianItem);
+        }
+        await db.SaveChangesAsync(ct);
+        return ToView(item.AssignedTechnicianId == technician.Id ? item : await db.PlatformHardwareItems.AsNoTracking().OrderByDescending(x => x.CreatedAtUtc).FirstAsync(x => x.AssignedTechnicianId == technician.Id && x.Code == item.Code, ct));
+    }
+
+    public async Task<PlatformHardwareItemView> ReturnHardwareItemAsync(Guid id, CancellationToken ct)
+    {
+        var item = await db.PlatformHardwareItems.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Hardware item not found.");
+        item.AssignedTechnicianId = null;
+        item.Status = "Available";
+        await db.SaveChangesAsync(ct);
+        return ToView(item);
+    }
+
     public async Task DeleteHardwareItemAsync(Guid id, CancellationToken ct)
     {
         var item = await db.PlatformHardwareItems.SingleOrDefaultAsync(x => x.Id == id, ct)
@@ -315,10 +365,13 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
         if (sr.IsAcceptanceSigned || sr.IsFullyPaid || quotation.Status != "SignedByOwner")
             throw new ResourceConflictException("Acceptance was already signed, or the contract is not in the signed-deposit state.");
-        // Nghiệm thu chỉ khi đợt lắp đặt liên kết đã hoàn tất.
+        // Owner nghiệm thu sau khi kỹ thuật viên đã triển khai thực địa.
+        // Không yêu cầu DeploymentRequest.Completed ở đây vì Technician's
+        // complete action lại yêu cầu Owner nghiệm thu trước; yêu cầu cũ tạo
+        // vòng lặp khiến cả hai nút không bao giờ có thể hoàn tất.
         var deploymentStatus = await db.DeploymentRequests.AsNoTracking().Where(x => x.Id == sr.DeploymentRequestId).Select(x => (DeploymentRequestStatus?)x.Status).SingleOrDefaultAsync(ct);
-        if (deploymentStatus != DeploymentRequestStatus.Completed)
-            throw new ResourceConflictException("Final acceptance requires the linked deployment request to be Completed.");
+        if (deploymentStatus is not (DeploymentRequestStatus.Installing or DeploymentRequestStatus.Completed))
+            throw new ResourceConflictException("Final acceptance requires the linked deployment request to be Installing or Completed.");
         if (string.IsNullOrWhiteSpace(command.SignerFullName) || string.IsNullOrWhiteSpace(command.TransactionReference))
             throw new RequestValidationException("signerFullName", "Signer name and transaction reference are required.");
         var payment = new ServiceRequestPayment
@@ -361,10 +414,7 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
             if (zone != null) zoneId = zone.Id;
         }
         if (zone == null)
-        {
-            zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(ct);
-            if (zone != null) zoneId = zone.Id;
-        }
+            throw new ResourceNotFoundException("Zone was not found.");
 
         var farmId = zone?.Field?.FarmId 
                   ?? (srCheck != null && srCheck.FarmId != Guid.Empty ? srCheck.FarmId : Guid.Empty);
@@ -373,60 +423,27 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
             farmId = await db.Fields.Where(f => f.Id == zone.FieldId).Select(f => f.FarmId).FirstOrDefaultAsync(ct);
         }
         if (farmId == Guid.Empty)
-        {
-            farmId = await db.Farms.Select(f => f.Id).FirstOrDefaultAsync(ct);
-        }
+            throw new ResourceNotFoundException("Zone is not linked to a Farm.");
 
-        var depReq = await db.DeploymentRequests.FirstOrDefaultAsync(r => r.ZoneId == zoneId, ct)
-                   ?? (srCheck != null && srCheck.DeploymentRequestId != Guid.Empty 
-                       ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == srCheck.DeploymentRequestId, ct) 
-                       : null)
-                   ?? await db.DeploymentRequests.FirstOrDefaultAsync(ct);
+        var depReq = command.DeploymentRequestId.HasValue
+            ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == command.DeploymentRequestId.Value, ct)
+            : (srCheck?.DeploymentRequestId is Guid requestId && requestId != Guid.Empty
+                ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct)
+                : await db.DeploymentRequests.FirstOrDefaultAsync(r => r.ZoneId == zoneId && r.TechnicianUserId == technicianId, ct));
 
-        if (depReq == null)
-        {
-            var user = await db.AppUsers.FirstOrDefaultAsync(ct);
-            var season = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zoneId, ct)
-                      ?? await db.PlantingSeasons.FirstOrDefaultAsync(ct);
-
-            if (user != null && season != null)
-            {
-                depReq = new DeploymentRequest
-                {
-                    Id = Guid.NewGuid(),
-                    TenantId = user.TenantId ?? Guid.NewGuid(),
-                    FarmId = farmId,
-                    ZoneId = zoneId,
-                    PlantingSeasonId = season.Id,
-                    OwnerUserId = user.Id,
-                    TechnicianUserId = technicianId,
-                    Status = DeploymentRequestStatus.Completed,
-                    RequiredParametersCsv = "SoilMoisture,Temperature,AirHumidity",
-                    OwnerNotes = "Tự động thiết lập cho việc triển khai GIS thực địa"
-                };
-                db.DeploymentRequests.Add(depReq);
-                await db.SaveChangesAsync(ct);
-            }
-        }
-
-        var gw = farmId != Guid.Empty ? await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == farmId, ct) : null;
-        gw ??= await db.Gateways.FirstOrDefaultAsync(ct);
-        if (gw == null && depReq != null)
-        {
-            gw = new Gateway
-            {
-                Id = Guid.NewGuid(),
-                FarmId = farmId != Guid.Empty ? farmId : depReq.FarmId,
-                DeploymentRequestId = depReq.Id,
-                MacAddress = "24:DC:C3:88:00:01",
-                GatewaySerial = "GW-LORA-915",
-                FrequencyBand = "915MHz",
-                FirmwareVersion = "v2.4.1",
-                Status = GatewayStatus.Online
-            };
-            db.Gateways.Add(gw);
-            await db.SaveChangesAsync(ct);
-        }
+        // A technician can be assigned either on the deployment request or on
+        // the linked service request. Older installation records populated
+        // only ServiceRequest.AssignedTechnicianId, so accepting only the
+        // deployment field incorrectly returned 403 for valid GIS mappings.
+        var technicianOwnsRequest = depReq is not null &&
+            (depReq.TechnicianUserId == technicianId || srCheck?.AssignedTechnicianId == technicianId);
+        if (depReq is null || depReq.ZoneId != zoneId || depReq.FarmId != farmId || !technicianOwnsRequest)
+            throw new AuthorizationException("The GIS update must belong to the Technician's Deployment Request for this Zone.");
+        // GIS placement is an explicit technician mapping workflow. The UI
+        // allows drafting/correcting node positions before later deployment
+        // lifecycle transitions, so status is intentionally not a blocker;
+        // the strict Technician/Zone/Farm ownership checks above remain the
+        // authorization boundary.
 
         var deviceIds = command.Nodes.Select(n => n.DeviceId).ToList();
         var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id)).ToListAsync(ct);
@@ -439,72 +456,26 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
                 device = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == node.HardwareAddress, ct);
             }
 
-            var isActuator = (node.DeviceType?.Contains("Actuator", StringComparison.OrdinalIgnoreCase) ?? false)
-                          || (node.HardwareAddress?.Contains("VALVE", StringComparison.OrdinalIgnoreCase) ?? false)
-                          || (node.HardwareAddress?.Contains("PUMP", StringComparison.OrdinalIgnoreCase) ?? false)
-                          || (node.DeviceName?.Contains("Van", StringComparison.OrdinalIgnoreCase) ?? false);
-
             if (device is null)
-            {
-                var hwAddress = !string.IsNullOrWhiteSpace(node.HardwareAddress)
-                    ? node.HardwareAddress
-                    : $"NODE-{node.DeviceId.ToString()[..8].ToUpper()}-{Random.Shared.Next(1000, 9999)}";
-
-                var existingHw = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == hwAddress, ct);
-                if (existingHw != null)
-                {
-                    device = existingHw;
-                    device.ZoneId = zoneId;
-                    if (farmId != Guid.Empty) device.FarmId = farmId;
-                    device.GpsLatitude = node.Latitude;
-                    device.GpsLongitude = node.Longitude;
-                    device.BatteryLevel = node.BatteryLevel ?? 100;
-                    device.Rssi = node.Rssi ?? -70;
-                    device.Status = DeviceStatus.Online;
-                    if (!string.IsNullOrWhiteSpace(node.DeviceName))
-                    {
-                        device.InstallationNotes = node.DeviceName;
-                    }
-                    continue;
-                }
-
-                device = new Device
-                {
-                    Id = node.DeviceId,
-                    FarmId = farmId,
-                    ZoneId = zoneId,
-                    GatewayId = gw?.Id ?? Guid.Empty,
-                    DeploymentRequestId = depReq?.Id ?? Guid.Empty,
-                    DeviceType = isActuator ? DeviceType.ActuatorNode : DeviceType.SensorNode,
-                    HardwareAddress = hwAddress,
-                    Status = DeviceStatus.Online,
-                    GpsLatitude = node.Latitude,
-                    GpsLongitude = node.Longitude,
-                    BatteryLevel = node.BatteryLevel ?? 100,
-                    Rssi = node.Rssi ?? -70,
-                    InstallationNotes = !string.IsNullOrWhiteSpace(node.DeviceName) ? node.DeviceName : "Node định vị thực địa qua bản đồ GIS"
-                };
-                db.Devices.Add(device);
-            }
-            else
-            {
-                device.ZoneId = zoneId;
-                if (farmId != Guid.Empty) device.FarmId = farmId;
-                device.GpsLatitude = node.Latitude;
-                device.GpsLongitude = node.Longitude;
-                device.BatteryLevel = node.BatteryLevel ?? 100;
-                device.Rssi = node.Rssi ?? -70;
-                device.Status = DeviceStatus.Online;
-                if (!string.IsNullOrWhiteSpace(node.DeviceName))
-                {
-                    device.InstallationNotes = node.DeviceName;
-                }
-            }
+                throw new ResourceNotFoundException($"Device '{node.DeviceId}' was not provisioned.");
+            if (node.Latitude is < -90 or > 90 || node.Longitude is < -180 or > 180 || (node.Latitude == 0 && node.Longitude == 0))
+                throw new RequestValidationException("nodes", "Node coordinates must be valid and cannot be 0,0.");
+            if (device.DeploymentRequestId != depReq.Id || device.FarmId != farmId)
+                throw new AuthorizationException("Device does not belong to this Deployment Request.");
+            device.ZoneId = zoneId;
+            device.GpsLatitude = node.Latitude;
+            device.GpsLongitude = node.Longitude;
+            if (node.BatteryLevel.HasValue) device.BatteryLevel = node.BatteryLevel;
+            if (node.Rssi.HasValue) device.Rssi = node.Rssi;
+            if (!string.IsNullOrWhiteSpace(node.InstallationNotes) || !string.IsNullOrWhiteSpace(node.DeviceName))
+                device.InstallationNotes = node.InstallationNotes ?? node.DeviceName;
+            if (device.Status == DeviceStatus.Unassigned) device.Status = DeviceStatus.Assigned;
+            db.DeviceAssignmentHistory.Add(new DeviceAssignmentHistory { DeviceId = device.Id, ZoneId = zoneId, TechnicianUserId = technicianId, Action = "Mapped", Notes = $"source={node.LocationSource ?? "ApproximateMap"}; {device.InstallationNotes}" });
         }
 
         if (srCheck != null)
         {
-            if (zone != null) srCheck.ZoneId = zone.Id;
+            srCheck.ZoneId = zone!.Id;
             if (srCheck.Status == ServiceRequestStatus.Assigned)
             {
                 srCheck.Status = ServiceRequestStatus.InProgress;
@@ -515,7 +486,10 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
     }
 
     public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct) =>
-        await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && x.Status != DeviceStatus.Decommissioned)
+        // ZoneId means the device is assigned to the zone; it does not mean it
+        // has been pinned on GIS. Only a pair of persisted coordinates is a map
+        // placement.
+        await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && !x.HardwareAddress.StartsWith("SIM-") && x.GpsLatitude.HasValue && x.GpsLongitude.HasValue && x.Status != DeviceStatus.Decommissioned && (x.DeviceType == DeviceType.SensorNode || x.DeviceType == DeviceType.ActuatorNode))
             .Select(x => new DeviceMapLocationView(
                 x.Id, 
                 x.HardwareAddress, 

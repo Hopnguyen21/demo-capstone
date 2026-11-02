@@ -43,19 +43,28 @@ public sealed class TelemetryAlertService(
         if (device.Status is DeviceStatus.Unassigned or DeviceStatus.Decommissioned || device.DecommissionedAtUtc is not null)
             throw new ResourceConflictException("Device is not active in a Zone.");
 
+        // A valid real telemetry packet is the authoritative evidence that the
+        // physical Node is online. The old flow only updated the Gateway, which
+        // left GIS cards red even after the Node replied over LoRa.
+        var liveDevice = await db.Devices.SingleAsync(x => x.Id == device.Id, ct);
+        liveDevice.Status = DeviceStatus.Online;
+
         var season = await db.PlantingSeasons
             .Include(x => x.Zone)
             .Include(x => x.AppliedRequirements)
-            .SingleOrDefaultAsync(x => x.ZoneId == envelope.ZoneId && x.Status == PlantingSeasonStatus.InProgress, ct)
-            ?? throw new ResourceConflictException("Zone has no in-progress Planting Season.");
-        var zone = season.Zone;
-        var requirements = season.AppliedRequirements.ToDictionary(x => x.ParameterCode);
+            .SingleOrDefaultAsync(x => x.ZoneId == envelope.ZoneId && x.Status == PlantingSeasonStatus.InProgress, ct);
+        var zone = season?.Zone;
+        var requirements = season?.AppliedRequirements.ToDictionary(x => x.ParameterCode)
+            ?? new Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>();
         foreach (var reading in envelope.Readings)
         {
-            if (!requirements.TryGetValue(reading.ParameterCode, out var requirement))
-                throw new RequestValidationException("readings", $"{reading.ParameterCode} is not required by the current Growth Stage.");
-            if (!string.Equals(requirement.Unit, reading.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
-                throw new RequestValidationException("readings", $"Unit for {reading.ParameterCode} must be '{requirement.Unit}'.");
+            if (season is not null)
+            {
+                if (!requirements.TryGetValue(reading.ParameterCode, out var requirement))
+                    throw new RequestValidationException("readings", $"{reading.ParameterCode} is not required by the current Growth Stage.");
+                if (!string.Equals(requirement.Unit, reading.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
+                    throw new RequestValidationException("readings", $"Unit for {reading.ParameterCode} must be '{requirement.Unit}'.");
+            }
             ValidateRange(reading);
         }
 
@@ -91,18 +100,22 @@ public sealed class TelemetryAlertService(
         }
 
         var alertsCreated = 0;
+        if (season is not null)
+        {
+        var activeSeason = season;
+        var activeZone = zone!;
         foreach (var input in envelope.Readings)
         {
             var requirement = requirements[input.ParameterCode];
             var rules = await db.AlertRules
-                .Where(x => x.ZoneId == envelope.ZoneId && x.GrowthStageId == season.CurrentGrowthStageId &&
+                .Where(x => x.ZoneId == envelope.ZoneId && x.GrowthStageId == activeSeason.CurrentGrowthStageId &&
                             x.ParameterCode == input.ParameterCode && x.ArchivedAtUtc == null && x.IsActive)
                 .ToListAsync(ct);
             if (!rules.Any(x => x.Severity == AlertSeverity.Warning))
             {
                 var systemRule = new AlertRule
                 {
-                    ZoneId = envelope.ZoneId, GrowthStageId = season.CurrentGrowthStageId,
+                    ZoneId = envelope.ZoneId, GrowthStageId = activeSeason.CurrentGrowthStageId,
                     ParameterCode = input.ParameterCode, MinThreshold = requirement.MinValue,
                     MaxThreshold = requirement.MaxValue, Severity = AlertSeverity.Warning,
                     CooldownMinutes = 30, IsSystemGenerated = true
@@ -143,8 +156,8 @@ public sealed class TelemetryAlertService(
                 var alert = new Alert
                 {
                     TenantId = device.Farm.TenantId, FarmId = device.FarmId, ZoneId = envelope.ZoneId,
-                    DeviceId = device.Id, AlertRule = rule, PlantingSeasonId = season.Id,
-                    GrowthStageId = season.CurrentGrowthStageId, ParameterCode = input.ParameterCode,
+                    DeviceId = device.Id, AlertRule = rule, PlantingSeasonId = activeSeason.Id,
+                    GrowthStageId = activeSeason.CurrentGrowthStageId, ParameterCode = input.ParameterCode,
                     ObservedValue = input.Value, MinThreshold = rule.MinThreshold, MaxThreshold = rule.MaxThreshold,
                     Unit = input.Unit.Trim(), Severity = rule.Severity, Status = AlertStatus.Open,
                     Title = $"{input.ParameterCode} outside permitted range"
@@ -164,7 +177,7 @@ public sealed class TelemetryAlertService(
                     .Select(u => new { u.Id, u.Role })
                     .ToListAsync(ct);
 
-                var zoneName = zone.Name;
+                var zoneName = activeZone.Name;
                 var paramLabel = input.ParameterCode switch
                 {
                     EnvironmentalParameterCode.SoilMoisture => "Độ ẩm đất",
@@ -192,6 +205,7 @@ public sealed class TelemetryAlertService(
                     ), ct);
                 }
             }
+        }
         }
 
         await db.SaveChangesAsync(ct);
@@ -230,7 +244,7 @@ public sealed class TelemetryAlertService(
     {
         await EnsureZoneAccessAsync(userId, tenantId, zoneId, ct);
         var now = clock.GetUtcNow().UtcDateTime;
-        var devices = await db.Devices.AsNoTracking().Include(d => d.Sensors).Include(d => d.Actuators)
+        var devices = await db.Devices.AsNoTracking().Include(d => d.Sensors).Include(d => d.Actuators).Include(d => d.Gateway)
             .Where(d => d.ZoneId == zoneId && d.DecommissionedAtUtc == null)
             .OrderBy(d => d.DeviceType).ThenBy(d => d.CreatedAtUtc).ToListAsync(ct);
         var deviceIds = devices.Select(d => d.Id).ToList();
@@ -242,12 +256,34 @@ public sealed class TelemetryAlertService(
                 .Select(g => g.OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).First())
                 .ToListAsync(ct);
         var requirements = await OptionalRequirementsAsync(zoneId, ct);
+        var latestByDevice = latest
+            .GroupBy(r => r.DeviceId)
+            .ToDictionary(g => g.Key, g => g.Max(r => r.CapturedAtUtc));
         var views = devices.Select(d => new DeviceLatestTelemetryView(
-            d.Id, d.HardwareAddress, d.DeviceType, d.Status, d.BatteryLevel, d.Rssi,
+            d.Id, d.HardwareAddress, d.DeviceType, ResolveLiveStatus(d, latestByDevice, now), d.BatteryLevel, d.Rssi,
             d.Sensors.OrderBy(s => s.SensorType).Select(s => s.SensorType).ToList(),
             d.Actuators.Select(a => a.ActuatorType).ToList(),
             latest.Where(r => r.DeviceId == d.Id).Select(r => ToMetricView(r, requirements, now)).OrderBy(m => m.ParameterCode).ToList())).ToList();
         return new(zoneId, views);
+    }
+
+    private static DeviceStatus ResolveLiveStatus(Device device, IReadOnlyDictionary<Guid, DateTime> latestByDevice, DateTime now)
+    {
+        if (device.Status == DeviceStatus.Decommissioned)
+            return device.Status;
+
+        // The UI heartbeat follows the Gateway configuration. A packet is
+        // considered live for one complete configured cycle plus one sample
+        // cycle as grace, so a 30s/1-sample gateway is not shown offline at
+        // the exact boundary while the next poll is in flight.
+        var intervalSeconds = Math.Max(1, device.Gateway.TelemetryIntervalSec);
+        var samplesPerInterval = Math.Max(1, device.Gateway.SamplesPerInterval);
+        var freshness = TimeSpan.FromSeconds((intervalSeconds * samplesPerInterval) + intervalSeconds);
+
+        return latestByDevice.TryGetValue(device.Id, out var lastCapturedAt) &&
+               lastCapturedAt >= now - freshness
+            ? DeviceStatus.Online
+            : DeviceStatus.Offline;
     }
 
     private static LatestMetricView ToMetricView(TelemetryReading x, Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement> requirements, DateTime now)

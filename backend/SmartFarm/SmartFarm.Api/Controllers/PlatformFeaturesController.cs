@@ -87,6 +87,18 @@ public sealed class PlatformFeaturesController(
         return Ok(await adminService.UpdateHardwareItemAsync(id, command, ct));
     }
 
+    [HttpPost("api/v1/platform/hardware-items/{id:guid}/assign")]
+    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
+    public async Task<ActionResult<PlatformHardwareItemView>> AssignHardwareItem(Guid id, [FromBody] AssignHardwareItemCommand command, CancellationToken ct)
+        => Ok(await adminService.AssignHardwareItemAsync(id, command with { TechnicianUserId = User.IsInRole("PlatformTechnician") ? User.GetUserId() : command.TechnicianUserId }, ct));
+
+    [HttpPost("api/v1/platform/hardware-items/{id:guid}/return")]
+    [Authorize(Roles = "PlatformTechnician,PlatformAdmin")]
+    public async Task<ActionResult<PlatformHardwareItemView>> ReturnHardwareItem(Guid id, CancellationToken ct)
+    {
+        return Ok(await adminService.ReturnHardwareItemAsync(id, ct));
+    }
+
     [HttpDelete("api/v1/platform/hardware-items/{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
     public async Task<IActionResult> DeleteHardwareItem(Guid id, CancellationToken ct)

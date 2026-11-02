@@ -1726,7 +1726,7 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_user_id");
 
-                    b.Property<Guid>("PlantingSeasonId")
+                    b.Property<Guid?>("PlantingSeasonId")
                         .HasColumnType("uuid")
                         .HasColumnName("planting_season_id");
 
@@ -3200,11 +3200,27 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AntennaDirection")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("antenna_direction");
+
                     b.Property<string>("ClientCertificateFingerprint")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("client_certificate_fingerprint");
+
+                    b.Property<DateTime?>("ConfiguredAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("configured_at_utc");
+
+                    b.Property<string>("ConfiguredNodeIdsCsv")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("configured_node_ids_csv");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -3236,6 +3252,11 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("gateway_serial");
 
+                    b.Property<string>("InstallationLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("installation_location");
+
                     b.Property<DateTime?>("LastSeenAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at_utc");
@@ -3252,11 +3273,19 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("mqtt_client_id");
 
+                    b.Property<int>("SamplesPerInterval")
+                        .HasColumnType("integer")
+                        .HasColumnName("samples_per_interval");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
+
+                    b.Property<int>("TelemetryIntervalSec")
+                        .HasColumnType("integer")
+                        .HasColumnName("telemetry_interval_sec");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -5385,8 +5414,7 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
                         .WithMany()
                         .HasForeignKey("PlantingSeasonId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("SmartFarm.Domain.Entities.AppUser", "TechnicianUser")
                         .WithMany()

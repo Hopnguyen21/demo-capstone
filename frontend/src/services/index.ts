@@ -267,6 +267,14 @@ export const adminService = {
     const res = await apiClient.put(`/api/v1/platform/hardware-items/${id}`, data);
     return res.data;
   },
+  assignHardwareItem: async (id: string, technicianUserId: string, quantity = 1) => {
+    const res = await apiClient.post(`/api/v1/platform/hardware-items/${id}/assign`, { technicianUserId, quantity });
+    return res.data;
+  },
+  returnHardwareItem: async (id: string) => {
+    const res = await apiClient.post(`/api/v1/platform/hardware-items/${id}/return`);
+    return res.data;
+  },
   deleteHardwareItem: async (id: string) => {
     const res = await apiClient.delete(`/api/v1/platform/hardware-items/${id}`);
     return res.data;
@@ -795,6 +803,32 @@ export const deviceService = {
     const res = await apiClient.get(`/api/v1/gateways/${gatewayId}`);
     return res.data;
   },
+  getGatewayMqttStatus: async (gatewayId: string) => {
+    const res = await apiClient.get(`/api/v1/gateways/${gatewayId}/mqtt-status`);
+    return res.data;
+  },
+  simulateGatewayConnection: async (gatewayId: string) => {
+    const res = await apiClient.post(`/api/v1/gateways/${gatewayId}/simulate-connection`);
+    return res.data;
+  },
+  getGatewayFirmwareConfig: async (gatewayId: string) => {
+    const res = await apiClient.get(`/api/v1/gateways/${gatewayId}/firmware-config`);
+    return res.data;
+  },
+
+  configureGateway: async (gatewayId: string, body: { nodeIds: string[]; telemetryIntervalSec: number; samplesPerInterval: number; installationLocation?: string }) => {
+    const res = await apiClient.put(`/api/v1/gateways/${gatewayId}/configuration`, body);
+    return res.data;
+  },
+
+  provisionGateway: async (body: { deploymentRequestId: string; farmId: string; macAddress: string; gatewaySerial: string; frequencyBand: string; firmwareVersion: string; mqttClientId: string; clientCertificateFingerprint: string }) => {
+    const res = await apiClient.post('/api/v1/gateways', body);
+    return res.data;
+  },
+  provisionNodes: async (body: { deploymentRequestId: string; gatewayId: string; farmId: string; nodes: { hardwareAddress: string; deviceType: 'SensorNode' | 'ActuatorNode' }[] }) => {
+    const res = await apiClient.post('/api/v1/devices/provision', body);
+    return res.data;
+  },
 
   /** GET /api/v1/zones/{zoneId}/devices or /nodes */
   getNodes: async (zoneId?: string) => {
@@ -821,12 +855,18 @@ export const deviceService = {
         name: d.name || d.hardwareAddress || `Node ${String(d.deviceId || d.nodeId || '').slice(0, 8)}`,
         nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || 'NODE',
         batteryLevel: d.batteryLevel ?? undefined, // không bịa mức pin khi thiết bị không báo
-        status: (d.status === 'Online' || d.status === 'ONLINE') ? 'ONLINE' : (d.status === 'Offline' || d.status === 'OFFLINE' ? 'OFFLINE' : (d.status || 'ONLINE')),
+        status: (d.status === 'Online' || d.status === 'ONLINE') ? 'ONLINE' : (d.status === 'Offline' || d.status === 'OFFLINE' ? 'OFFLINE' : (d.status || 'UNKNOWN')),
         rssi: d.rssi ?? d.latestConnectionTest?.rssi ?? undefined,
       }));
     } catch {
       return [];
     }
+  },
+
+  getFarmDevices: async (farmId: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/devices`);
+    const rawList = res.data?.value ?? res.data ?? [];
+    return Array.isArray(rawList) ? rawList : [];
   },
 
   /** GET /api/v1/devices/{nodeId} or /nodes/{nodeId} */
@@ -846,11 +886,24 @@ export const deviceService = {
         id: d.deviceId || d.nodeId || d.id,
         name: d.name || d.hardwareAddress || `Node ${String(d.deviceId || d.nodeId || '').slice(0, 8)}`,
         nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || 'NODE',
-        batteryLevel: d.batteryLevel ?? 90,
+        batteryLevel: d.batteryLevel ?? undefined,
       };
     } catch {
       return null;
     }
+  },
+
+  configureSensors: async (deviceId: string, sensors: Array<{ sensorType: string; unit?: string; model?: string; interface?: string; samplingIntervalSec?: number }>) => {
+    const res = await apiClient.put(`/api/v1/devices/${deviceId}/sensors`, {
+      sensors: sensors.map(sensor => ({
+        sensorType: sensor.sensorType,
+        unit: sensor.unit || '',
+        model: sensor.model,
+        interface: sensor.interface,
+        samplingIntervalSec: sensor.samplingIntervalSec || 60,
+      })),
+    });
+    return res.data?.value ?? res.data;
   },
 
   /** GET /api/v1/zones/{zoneId}/sensors -> derived from zone devices */
@@ -925,6 +978,14 @@ export const deviceService = {
   /** POST /api/v1/platform/deployment-requests/{requestId}/survey */
   surveyDeploymentRequest: async (requestId: string, body: { isFeasible: boolean; siteConditions?: string; notes?: string }) => {
     const res = await apiClient.post(`/api/v1/platform/deployment-requests/${requestId}/survey`, body);
+    return res.data;
+  },
+  startDeploymentInstallation: async (requestId: string) => {
+    const res = await apiClient.post(`/api/v1/platform/deployment-requests/${requestId}/installation/start`);
+    return res.data;
+  },
+  confirmDeploymentRequest: async (requestId: string) => {
+    const res = await apiClient.post(`/api/v1/platform/deployment-requests/${requestId}/confirm`);
     return res.data;
   },
 
@@ -1615,6 +1676,7 @@ export const supportService = {
 
         return {
           serviceRequestId: id,
+          deploymentRequestId: sr.deploymentRequestId,
           tenantId: sr.tenantId,
           farmId: sr.farmId || farmObj?.farmId || zoneObj?.farmId,
           farmName: resolvedFarmName,
@@ -1659,7 +1721,7 @@ export const supportService = {
 
     // Lookup an available device for this farm / zone
     let deviceId = data.deviceId;
-    if (!deviceId) {
+    if (!deviceId && !data.skipDeviceLookup) {
       try {
         const devRes = await apiClient.get(`/api/v1/farms/${farmId}/devices`);
         const devList = devRes.data?.value ?? devRes.data ?? [];
@@ -1674,6 +1736,7 @@ export const supportService = {
       deviceId: deviceId || null,
       failureCode: data.failureCode || data.requestType || 'NEW_INSTALL',
       description: data.description || data.title || 'Yêu cầu lắp đặt thiết bị IoT từ Owner Portal',
+      ...(data.deploymentRequestId ? { deploymentRequestId: data.deploymentRequestId } : {}),
     });
     return res.data;
   },
@@ -1824,45 +1887,37 @@ export const supportService = {
   },
 
   /** PUT /api/v1/zones/{zoneId}/devices/bulk-locations */
-  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any, serviceRequestId?: string) => {
+  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any, serviceRequestId?: string, deploymentRequestId?: string) => {
     const isArray = Array.isArray(nodesOrCount);
     const nodes = isArray ? nodesOrCount : [];
     const zoneId = zoneIdOrRequestId;
     const reqId = serviceRequestId || (typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined);
 
-    const generateUUID = () => {
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    };
-
     const formattedNodes = nodes.map((n: any) => {
       let devId = n.deviceId || n.nodeId || n.id;
       const isGuid = typeof devId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(devId);
-      if (!isGuid) {
-        devId = generateUUID();
-      }
+      if (!isGuid) throw new Error(`Node ${String(devId || n.nodeCode || 'không xác định')} chưa có Device ID hợp lệ; không thể lưu GIS.`);
       const isActuator = (n.actuatorsCount && n.actuatorsCount > 0)
         || (n.nodeCode && (n.nodeCode.includes('VALVE') || n.nodeCode.includes('PUMP')))
         || (n.name && (n.name.includes('Van') || n.name.includes('Bơm')));
 
       return {
         deviceId: devId,
-        latitude: typeof n.latitude === 'number' ? n.latitude : (typeof n.lat === 'number' ? n.lat : 11.9404),
-        longitude: typeof n.longitude === 'number' ? n.longitude : (typeof n.lng === 'number' ? n.lng : 108.4583),
-        batteryLevel: n.batteryLevel ?? 100,
-        rssi: n.rssi ?? -70,
+        latitude: typeof n.latitude === 'number' ? n.latitude : (typeof n.lat === 'number' ? n.lat : NaN),
+        longitude: typeof n.longitude === 'number' ? n.longitude : (typeof n.lng === 'number' ? n.lng : NaN),
+        batteryLevel: n.batteryLevel ?? null,
+        rssi: n.rssi ?? null,
         hardwareAddress: n.serialNumber || n.nodeCode,
         deviceType: isActuator ? 'ActuatorNode' : 'SensorNode',
-        deviceName: n.name
+        deviceName: n.name,
+        locationSource: n.locationSource || 'ApproximateMap',
+        installationNotes: n.installationNotes
       };
     });
 
     const res = await apiClient.put(`/api/v1/zones/${zoneId}/devices/bulk-locations`, {
       serviceRequestId: reqId,
+      ...(deploymentRequestId ? { deploymentRequestId } : {}),
       nodes: formattedNodes
     });
     return res.data;

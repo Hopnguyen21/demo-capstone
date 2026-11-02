@@ -23,6 +23,7 @@ public sealed record UpdatePlatformSettingItem(string Key, string Value);
 public sealed record PlatformHardwareItemView(Guid Id, string Code, string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string Status, Guid? AssignedTechnicianId, DateTime CreatedAtUtc);
 public sealed record CreateHardwareItemCommand(string Code, string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string? Status);
 public sealed record UpdateHardwareItemCommand(string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string Status);
+public sealed record AssignHardwareItemCommand(Guid TechnicianUserId, int Quantity = 1);
 
 // ─── Service Request Quotation ────────────────────────────────────────────────
 public sealed record QuotationItemInput(string Code, string Name, string Category, string Unit, int Quantity, decimal UnitPrice, decimal VatPercent, string? Notes);
@@ -51,8 +52,8 @@ public sealed record SignAcceptanceFinalCommand(string SignerFullName, string Pa
 public sealed record ServiceRequestPaymentView(Guid Id, string PaymentStage, decimal Amount, string PaymentMethod, string? TransactionReference, string SignerFullName, string Status, DateTime PaidAtUtc);
 
 // ─── GIS Node Mapping ─────────────────────────────────────────────────────────
-public sealed record NodeLocationInput(Guid DeviceId, decimal Latitude, decimal Longitude, int? BatteryLevel, decimal? Rssi, string? HardwareAddress = null, string? DeviceType = null, string? DeviceName = null);
-public sealed record BulkUpdateNodeLocationsCommand(Guid? ServiceRequestId, IReadOnlyList<NodeLocationInput> Nodes);
+public sealed record NodeLocationInput(Guid DeviceId, decimal Latitude, decimal Longitude, int? BatteryLevel, decimal? Rssi, string? HardwareAddress = null, string? DeviceType = null, string? DeviceName = null, string? LocationSource = null, string? InstallationNotes = null);
+public sealed record BulkUpdateNodeLocationsCommand(Guid? ServiceRequestId, IReadOnlyList<NodeLocationInput> Nodes, Guid? DeploymentRequestId = null);
 public sealed record DeviceMapLocationView(Guid DeviceId, string HardwareAddress, string DeviceType, decimal? Latitude, decimal? Longitude, int? BatteryLevel, decimal? Rssi, string Status, string? DeviceName = null);
 
 // ─── Farm Wizard Setup ────────────────────────────────────────────────────────
@@ -102,6 +103,8 @@ public interface IPlatformAdminService
     Task<IReadOnlyList<PlatformHardwareItemView>> ListHardwareItemsAsync(CancellationToken ct);
     Task<PlatformHardwareItemView> CreateHardwareItemAsync(CreateHardwareItemCommand command, CancellationToken ct);
     Task<PlatformHardwareItemView> UpdateHardwareItemAsync(Guid id, UpdateHardwareItemCommand command, CancellationToken ct);
+    Task<PlatformHardwareItemView> AssignHardwareItemAsync(Guid id, AssignHardwareItemCommand command, CancellationToken ct);
+    Task<PlatformHardwareItemView> ReturnHardwareItemAsync(Guid id, CancellationToken ct);
     Task DeleteHardwareItemAsync(Guid id, CancellationToken ct);
 
     // System health report

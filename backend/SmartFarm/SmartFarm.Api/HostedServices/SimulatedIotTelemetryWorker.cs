@@ -125,6 +125,16 @@ public sealed class SimulatedIotTelemetryWorker(
             // Chỉ dùng gateway của đúng farm; không gán chéo thiết bị giữa các farm/tenant.
             var gateway = await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == farm.Id, ct);
 
+            // Simulation may generate telemetry for existing hardware, but it
+            // must never invent a Gateway/Node that was not provisioned by a
+            // technician. This previously created SIM-NODE-{zoneId} records
+            // and made empty GIS zones look as if they already had a node.
+            var allowAutoCreate = configuration.GetValue<bool>("SimulatedIot:AutoCreateDevices", false);
+            if (!allowAutoCreate && (device == null || gateway == null))
+            {
+                continue;
+            }
+
             // Nếu Zone chưa có device, kiểm tra xem farm có device sensor nào sẵn có để gán vào zone hoặc tạo mới
             if (device == null && gateway != null)
             {
