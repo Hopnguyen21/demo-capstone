@@ -40,7 +40,8 @@ internal sealed class TestApplicationFactory : WebApplicationFactory<Program>
                 ["Jwt:SigningKey"] = SigningKey,
                 ["Jwt:AccessTokenMinutes"] = "60",
                 ["Jwt:RefreshTokenDays"] = "30",
-                ["SimulatedIot:Enabled"] = "false"
+                ["SimulatedIot:Enabled"] = "false",
+                ["Mqtt:Enabled"] = "false"
             });
         });
         builder.ConfigureServices(services =>

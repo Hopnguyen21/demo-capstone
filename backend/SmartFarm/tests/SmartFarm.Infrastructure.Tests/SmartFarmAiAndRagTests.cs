@@ -264,7 +264,7 @@ public class GeminiEmbeddingProviderTests
     };
 
     private static GeminiEmbeddingProvider Make(FakeHandler h, int dims = 4, int retries = 2) =>
-        new(new HttpClient(h), Options.Create(new GeminiEmbeddingOptions { ApiKey = "k", Dimensions = dims, MaxRetries = retries, RetryBaseDelaySeconds = 0.01 }),
+        new(new HttpClient(h), Options.Create(new GeminiEmbeddingOptions { ApiKey = "k", Dimensions = dims, MaxRetries = retries, RetryBaseDelaySeconds = 0.01, PaceMilliseconds = 0 }),
             NullLogger<GeminiEmbeddingProvider>.Instance);
 
     [Fact]

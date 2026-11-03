@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { alertService } from '../../services';
 import { StatusBadge, Button, Modal } from '../../components/ui/BaseUI';
 import {
-  ShieldAlert, CheckCircle2, Bot, Plus, Settings, Trash2, Edit3,
+  ShieldAlert, CheckCircle2, Plus, Settings, Trash2, Edit3,
   Droplets, Thermometer, Wind, Sun, Zap, Activity, Cpu,
   X, ChevronDown, ChevronUp, Play, Pause, RefreshCw, Power, Info, Check,
   FlameKindling, Radio, Wifi
@@ -262,7 +262,6 @@ export const AlertsPage: React.FC = () => {
                 <div className="text-[11px] text-slate-500 pt-1">Khu vực: <strong className="text-slate-800">{a.zoneName}</strong> | Giá trị vượt ngưỡng: <strong className="text-rose-600">{a.triggeredValue}</strong> (Mục tiêu: {a.targetRange})</div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" variant="outline"><Bot size={14} className="mr-1" /> Hỏi AI</Button>
                 {a.status === 'OPEN' && (
                   <Button
                     size="sm"

@@ -33,6 +33,13 @@ $env:Jwt__SigningKey = "<at-least-32-random-characters>"
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 ```
 
+Trong Development có thể dùng User Secrets thay cho biến môi trường. `appsettings.json` và `appsettings.Development.json` để trống Gemini key và mật khẩu database:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:SmartFarmDb" "Host=localhost;Port=5432;Database=smartfarm;Username=postgres;Password=<password>" --project SmartFarm.Api
+dotnet user-secrets set "Gemini:ApiKeys:0" "<gemini-api-key>" --project SmartFarm.Api
+```
+
 Origin frontend mặc định ở Development là `http://localhost:5173` và `https://localhost:5173`. Có thể ghi đè theo môi trường:
 
 ```powershell

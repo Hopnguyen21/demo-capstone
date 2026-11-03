@@ -396,7 +396,6 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
                 <BookOpen size={13} className="text-emerald-400" />
                 <span>Trích đoạn tri thức VietGAP:</span>
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">pgvector Cosine</span>
             </div>
 
             {isLoadingContent ? (
@@ -431,9 +430,9 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
 
           <div className="pt-1.5 flex items-center justify-between border-t border-slate-800 text-[10px] text-slate-400">
             <span>
-              Trạng thái tài liệu: <strong className="text-emerald-400">Đã kiểm định & Áp dụng RAG</strong>
+              Trạng thái tài liệu: <strong className="text-emerald-400">Đã được quản trị viên duyệt</strong>
             </span>
-            {org && <span className="font-medium text-slate-300">Thẩm định: {org}</span>}
+            {org && <span className="font-medium text-slate-300">Đơn vị ban hành: {org}</span>}
           </div>
         </div>
       )}
@@ -464,7 +463,7 @@ const RagSourcesAccordion: React.FC<RagSourcesAccordionProps> = ({ sources }) =>
         </span>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono border border-emerald-300 font-bold">
-            RAG Match
+            Nguồn đã duyệt
           </span>
           {isOpen ? <ChevronUp size={14} className="text-emerald-700" /> : <ChevronDown size={14} className="text-emerald-700" />}
         </div>

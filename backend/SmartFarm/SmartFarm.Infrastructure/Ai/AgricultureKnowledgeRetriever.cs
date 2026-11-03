@@ -130,7 +130,9 @@ public sealed class AgricultureKnowledgeRetriever(
         var ids = candidates.Select(c => c.ChunkId).ToList();
         var topics = questionTopics.Count == 0
             ? new Dictionary<Guid, string>()
+            // Chọn cột trước khi tạo từ điển: nếu không EF nạp cả thực thể, kể cả cột embedding (kiểu text khi chưa cài pgvector thì đọc lỗi).
             : await db.AgricultureKnowledgeChunks.AsNoTracking().Where(c => ids.Contains(c.Id))
+                .Select(c => new { c.Id, c.Topic })
                 .ToDictionaryAsync(c => c.Id, c => c.Topic, ct);
 
         return candidates
@@ -459,7 +461,25 @@ public sealed class AgricultureKnowledgeRetriever(
         return hits == 0 ? 0f : Math.Min(0.9f, 0.35f + 0.55f * hits / terms.Count);
     }
 
-    private static float ComputeKeywordScore(string rawQuestion, string[] qWords, string content, string keywords)
+    private static readonly Regex AnySpace = new(@"s+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Điểm cộng khi các từ chính của câu hỏi đứng liền nhau đúng thứ tự trong đoạn (cụm "quản lý đất" trong đoạn viết về quản lý đất),
+    /// để đoạn đúng chủ đề xếp trên đoạn chỉ chứa rời từng từ "quản lý" và "đất".
+    /// </summary>
+    internal static float PhraseProximityBonus(string[] meaningfulWords, string contentNoMark)
+    {
+        if (meaningfulWords.Length < 2) return 0f;
+        var text = AnySpace.Replace(contentNoMark, " ");
+        var words = meaningfulWords.Select(w => RemoveDiacritics(w).ToLowerInvariant()).ToArray();
+        if (text.Contains(string.Join(' ', words), StringComparison.Ordinal)) return 0.25f;
+        var pairs = 0;
+        for (var i = 0; i + 1 < words.Length; i++)
+            if (text.Contains(words[i] + " " + words[i + 1], StringComparison.Ordinal)) pairs++;
+        return pairs == 0 ? 0f : 0.15f * pairs / (words.Length - 1);
+    }
+
+    internal static float ComputeKeywordScore(string rawQuestion, string[] qWords, string content, string keywords)
     {
         if (qWords.Length == 0) return 0f;
         var contentLower = (content ?? string.Empty).ToLowerInvariant();
@@ -504,7 +524,7 @@ public sealed class AgricultureKnowledgeRetriever(
             phraseBonus += 0.30f;
 
         if (hits == 0 && phraseBonus == 0) return 0f;
-        var baseScore = (hits / meaningfulWords.Length) * 0.70f + phraseBonus;
+        var baseScore = (hits / meaningfulWords.Length) * 0.70f + phraseBonus + (hits > 0 ? PhraseProximityBonus(meaningfulWords, contentNoMark) : 0f);
         return Math.Min(1.0f, Math.Max(0f, baseScore));
     }
 

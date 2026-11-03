@@ -55,13 +55,18 @@ public sealed record AiGatewaySummary(string GatewayLabel, string Status, DateTi
 public sealed record AiAlertContextItem(EnvironmentalParameterCode ParameterCode, decimal ObservedValue, decimal MinThreshold, decimal MaxThreshold, string Unit, string Severity, string Status, string Title, DateTime CreatedAtUtc);
 
 /// <summary>Lệnh thiết bị gần đây của Zone (để không đề xuất tưới trùng và biết lần chạy gần nhất).</summary>
+/// <summary>Tổng hợp một thông số trong một ngày (theo ngày của Farm): số đo, nhỏ nhất, trung bình, lớn nhất.</summary>
+public sealed record AiDailyParameterSummary(EnvironmentalParameterCode ParameterCode, string Unit, DateOnly Date, int Count, decimal Min, decimal Average, decimal Max);
+
 public sealed record AiCommandContextItem(string ActuatorType, string Action, int DurationSeconds, string Status, string TriggerSource, DateTime QueuedAtUtc);
 
 /// <summary>Quy tắc tự động đang bật của Zone.</summary>
 public sealed record AiAutoRuleContextItem(string Name, EnvironmentalParameterCode ParameterCode, string Operator, decimal Threshold, int ConditionMinutes, string Action, int DurationSeconds, int CooldownMinutes, bool RainDelay, decimal RainThresholdPercent);
 
 /// <summary>Công việc chưa hoàn tất của Zone (đến hạn trong 7 ngày hoặc đã quá hạn).</summary>
-public sealed record AiTaskContextItem(string Title, DateTime DueAtUtc, string Status);
+// Tên người được giao chỉ dùng để trả lời trực tiếp từ dữ liệu; không đưa vào nội dung gửi cho mô hình AI bên ngoài.
+public sealed record AiTaskContextItem(string Title, DateTime DueAtUtc, string Status, [property: JsonIgnore] IReadOnlyList<string>? Assignees = null);
+public sealed record AiZoneMemberItem(string FullName, bool CanControl);
 
 public sealed record AiStageOutlineItem(int Order, string Name, int DurationDays, bool IsCurrent);
 
@@ -105,6 +110,10 @@ public sealed record AiZoneContext(
     // Dữ liệu còn lại của đúng Zone này, gửi để AI dùng khi câu hỏi liên quan (không bao giờ gồm dữ liệu Zone/Field/Farm khác).
     IReadOnlyList<AiAlertContextItem>? ActiveAlerts = null,
     IReadOnlyList<AiCommandContextItem>? RecentCommands = null,
+    // Lệnh gần nhất khi 24 giờ qua không có lệnh nào (tìm trong 90 ngày); null = không có hoặc không cần.
+    [property: JsonIgnore] AiCommandContextItem? LastCommandOutsideWindow = null,
+    // Tổng hợp theo ngày cho câu hỏi so sánh/tổng hợp nhiều ngày; chỉ có khi người dùng hỏi.
+    [property: JsonIgnore] IReadOnlyList<AiDailyParameterSummary>? DailySummaries = null,
     IReadOnlyList<AiAutoRuleContextItem>? AutoRules = null,
     IReadOnlyList<AiTaskContextItem>? OpenTasks = null,
     AiSeasonContext? Season = null,
@@ -124,7 +133,10 @@ public sealed record AiZoneContext(
     string? SeasonCropName = null,
     bool SeasonCropMismatch = false,
     AiReferenceProfile? ReferenceProfile = null,
-    AiPastSeason? LastCompletedSeason = null);
+    AiPastSeason? LastCompletedSeason = null,
+    [property: JsonIgnore] IReadOnlyList<AiZoneMemberItem>? ZoneMembers = null,
+    // Lịch tưới của Zone trong vài ngày tới (khác UpcomingSchedules chỉ gồm 12 giờ tới cho việc tránh tưới trùng); chỉ nạp khi được hỏi.
+    [property: JsonIgnore] IReadOnlyList<AiUpcomingScheduleContextItem>? SchedulesAhead = null);
 
 
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);

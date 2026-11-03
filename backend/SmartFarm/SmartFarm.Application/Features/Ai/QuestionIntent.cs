@@ -18,6 +18,10 @@ public static class QuestionTopics
     public const string Tasks = "tasks";
     public const string Season = "season";
     public const string ZoneInfo = "zone_info";
+    public const string FarmInfo = "farm_info";
+    public const string ZoneMembers = "zone_members";
+    public const string UnsupportedData = "unsupported_data";
+    public const string PlantCount = "plant_count";
     public const string AutoRules = "auto_rules";
     public const string DeviceHealth = "device_health";
     public const string IrrigationOrControl = "irrigation_or_control";
@@ -28,7 +32,7 @@ public static class QuestionTopics
 
     public static readonly IReadOnlyList<string> All =
     [
-        SensorReadings, Devices, Gateways, Weather, Alerts, Commands, Schedules, Tasks, Season, ZoneInfo,
+        SensorReadings, Devices, Gateways, Weather, Alerts, Commands, Schedules, Tasks, Season, ZoneInfo, FarmInfo, ZoneMembers, UnsupportedData, PlantCount,
         AutoRules, DeviceHealth, IrrigationOrControl, AgronomyKnowledge, Harvest, SmallTalk, OutOfScope
     ];
 }
@@ -45,8 +49,14 @@ public sealed record QuestionIntent(
     /// <summary>Số thứ tự node được nhắc tới ("node cảm biến 1" → 1); null = tất cả node.</summary>
     int? DeviceNumber = null,
     /// <summary>Từ khóa/thuật ngữ nông học đồng nghĩa với câu hỏi (do AI phân loại sinh ra) để tìm tài liệu khi không có embedding.</summary>
-    IReadOnlyList<string>? SearchTerms = null)
+    IReadOnlyList<string>? SearchTerms = null,
+    /// <summary>Số ngày gần nhất (tính cả hôm nay) người dùng muốn so sánh hoặc tổng hợp theo ngày ("hôm qua" = 2, "tuần qua" = 7); 0 = không hỏi.</summary>
+    int HistoryDays = 0,
+    /// <summary>Số ngày tới người dùng muốn xem lịch tưới ("2 ngày tới" = 2, "ngày mai" = 2, "tuần tới" = 7); 0 = không nêu (xem tối đa <see cref="MaxAheadDays"/> ngày).</summary>
+    int AheadDays = 0)
 {
+    public const int MaxAheadDays = 7;
+    public const int MaxHistoryDays = 14;
     public const int MaxHistoryCount = 20;
     public const int DefaultHistoryCount = 5;
 

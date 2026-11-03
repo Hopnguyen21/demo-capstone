@@ -78,6 +78,14 @@ public static class VietGapMetadataExtractor
             titleIsStrong = true;
         }
 
+        // Dòng đầu chỉ là câu văn dài (không có dấu hiệu tên tài liệu) mà tên file có nghĩa (từ hai từ trở lên): dùng tên file làm
+        // gợi ý thay vì một câu cắt giữa đoạn.
+        if (titleLine is not null && !titleIsStrong && fromName is not null && fromName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2
+            && titleLine.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length > 9)
+        {
+            titleLine = null;
+        }
+
         DetectedMetadataField title;
         if (titleLine is not null)
             title = Field(titleIsStrong ? DocumentMetadataDetection.Detected : DocumentMetadataDetection.Uncertain, Truncate(titleLine, 300),
@@ -249,6 +257,11 @@ public static class VietGapMetadataExtractor
     private static readonly Regex WebChromeLine = new(
         @"\||^>>|^(?:thứ\s+\S+|chủ nhật)\s*-|tin đăng|lượt xem|\bxem:\s*\d|^bản in$|^tìm kiếm$|^chia sẻ$|^\d+\s*/\s*\d+$", Opts);
 
+    private static readonly HashSet<string> GenericHeadings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "loi noi dau", "muc luc", "muc dich", "gioi thieu", "loi gioi thieu", "noi dung", "tom tat", "tai lieu tham khao", "phu luc"
+    };
+
     private static (string? Line, bool Strong, int Index) FirstMeaningfulLine(string text)
     {
         string? firstCandidate = null;
@@ -269,6 +282,19 @@ public static class VietGapMetadataExtractor
             if (Regex.IsMatch(line, @"^[^:：]{1,40}[:：]\s*\S")) continue;
             // Mục đánh số ("1. Thời vụ:") là nội dung, không phải tiêu đề.
             if (Regex.IsMatch(line, @"^(?:\d{1,2}|[IVX]{1,4})[.)]\s")) continue;
+            // Tên chương mục chung (lời nói đầu, mục lục...) không phải tên tài liệu.
+            if (GenericHeadings.Contains(VietnameseText.Fold(line).Trim())) continue;
+            // Dòng bắt đầu bằng chữ thường là phần giữa câu bị xuống dòng, không phải tên tài liệu.
+            if (char.IsLower(line[0]) && !Regex.IsMatch(line, @"^(?:viet\s?gap|tcvn|qcvn)", Opts)) continue;
+            // Câu dài nhiều mệnh đề (lời nói đầu, mô tả dự án) bị xuống dòng cũng không phải tên tài liệu.
+            var wordCount = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            // Tên tài liệu in hoa ("QUY CHUẨN KỸ THUẬT CANH TÁC CÀ CHUA ...") không bị coi là câu văn dù dòng dài.
+            var startsInCaps = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(3).All(w => w.Length > 1 && w.Where(char.IsLetter).All(char.IsUpper));
+            if (!startsInCaps && (wordCount > 16 || (wordCount > 9 && line.Contains(','))))
+            {
+                if (firstCandidate is null) { firstCandidate = line; firstIndex = lineStart; }
+                continue;
+            }
             if (line.Length <= 200 && TitleKeywords.IsMatch(line))
             {
                 // Tiêu đề in từ trang web hay bị xuống dòng giữa chừng ("...SX cà" / "chua an toàn"): ghép dòng tiếp theo

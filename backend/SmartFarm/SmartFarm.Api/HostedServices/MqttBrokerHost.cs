@@ -27,6 +27,13 @@ public sealed class MqttBrokerHost(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Mqtt:Enabled=false: không mở cổng (dùng cho kiểm thử tự động, nơi nhiều host chạy song song và sẽ tranh cổng 1883 với nhau và với backend đang chạy).
+        if (!configuration.GetValue("Mqtt:Enabled", true))
+        {
+            logger.LogInformation("MQTT host disabled by configuration (Mqtt:Enabled=false).");
+            return;
+        }
+
         var port = configuration.GetValue<int>("Mqtt:Port", 1883);
         var listenAddress = configuration.GetValue<string>("Mqtt:ListenAddress") ?? "0.0.0.0";
         var options = new MqttServerOptionsBuilder()

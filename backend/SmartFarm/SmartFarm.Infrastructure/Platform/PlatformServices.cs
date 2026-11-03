@@ -401,29 +401,14 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 {
     public async Task BulkUpdateNodeLocationsAsync(Guid technicianId, Guid zoneId, BulkUpdateNodeLocationsCommand command, CancellationToken ct)
     {
+        // Phải có quyền với đúng Zone này (Owner cùng Tenant, Admin, hoặc Technician được giao Zone); không còn nhánh dự phòng lấy Zone/Farm/thiết bị bất kỳ.
+        var zone = await EnsureZoneAccessAsync(technicianId, zoneId, write: true, ct);
+        var farmId = zone.Field.FarmId;
         ServiceRequest? srCheck = null;
         if (command.ServiceRequestId.HasValue)
         {
-            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == command.ServiceRequestId.Value, ct);
+            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == command.ServiceRequestId.Value && x.ZoneId == zoneId && x.TenantId == zone.Field.Farm.TenantId, ct);
         }
-
-        var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
-        if (zone == null && srCheck != null && srCheck.ZoneId != Guid.Empty)
-        {
-            zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == srCheck.ZoneId, ct);
-            if (zone != null) zoneId = zone.Id;
-        }
-        if (zone == null)
-            throw new ResourceNotFoundException("Zone was not found.");
-
-        var farmId = zone?.Field?.FarmId 
-                  ?? (srCheck != null && srCheck.FarmId != Guid.Empty ? srCheck.FarmId : Guid.Empty);
-        if (farmId == Guid.Empty && zone != null)
-        {
-            farmId = await db.Fields.Where(f => f.Id == zone.FieldId).Select(f => f.FarmId).FirstOrDefaultAsync(ct);
-        }
-        if (farmId == Guid.Empty)
-            throw new ResourceNotFoundException("Zone is not linked to a Farm.");
 
         var depReq = command.DeploymentRequestId.HasValue
             ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == command.DeploymentRequestId.Value, ct)
@@ -435,10 +420,17 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         // the linked service request. Older installation records populated
         // only ServiceRequest.AssignedTechnicianId, so accepting only the
         // deployment field incorrectly returned 403 for valid GIS mappings.
-        var technicianOwnsRequest = depReq is not null &&
-            (depReq.TechnicianUserId == technicianId || srCheck?.AssignedTechnicianId == technicianId);
-        if (depReq is null || depReq.ZoneId != zoneId || depReq.FarmId != farmId || !technicianOwnsRequest)
-            throw new AuthorizationException("The GIS update must belong to the Technician's Deployment Request for this Zone.");
+        // For FarmOwner / PlatformAdmin, zone access has already been verified by EnsureZoneAccessAsync.
+        var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == technicianId, ct);
+        var isPlatformOrOwner = caller?.Role is UserRole.PlatformAdmin or UserRole.FarmOwner;
+
+        if (!isPlatformOrOwner)
+        {
+            var technicianOwnsRequest = depReq is not null &&
+                (depReq.TechnicianUserId == technicianId || srCheck?.AssignedTechnicianId == technicianId);
+            if (depReq is null || depReq.ZoneId != zoneId || depReq.FarmId != farmId || !technicianOwnsRequest)
+                throw new AuthorizationException("The GIS update must belong to the Technician's Deployment Request for this Zone.");
+        }
         // GIS placement is an explicit technician mapping workflow. The UI
         // allows drafting/correcting node positions before later deployment
         // lifecycle transitions, so status is intentionally not a blocker;
@@ -446,21 +438,21 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         // authorization boundary.
 
         var deviceIds = command.Nodes.Select(n => n.DeviceId).ToList();
-        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id)).ToListAsync(ct);
+        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id) && x.FarmId == farmId).ToListAsync(ct);
 
         foreach (var node in command.Nodes)
         {
             var device = devices.FirstOrDefault(d => d.Id == node.DeviceId);
             if (device == null && !string.IsNullOrWhiteSpace(node.HardwareAddress))
             {
-                device = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == node.HardwareAddress, ct);
+                device = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == node.HardwareAddress && d.FarmId == farmId, ct);
             }
 
             if (device is null)
                 throw new ResourceNotFoundException($"Device '{node.DeviceId}' was not provisioned.");
             if (node.Latitude is < -90 or > 90 || node.Longitude is < -180 or > 180 || (node.Latitude == 0 && node.Longitude == 0))
                 throw new RequestValidationException("nodes", "Node coordinates must be valid and cannot be 0,0.");
-            if (device.DeploymentRequestId != depReq.Id || device.FarmId != farmId)
+            if ((depReq is not null && device.DeploymentRequestId != depReq.Id) || device.FarmId != farmId)
                 throw new AuthorizationException("Device does not belong to this Deployment Request.");
             device.ZoneId = zoneId;
             device.GpsLatitude = node.Latitude;
@@ -475,7 +467,7 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 
         if (srCheck != null)
         {
-            srCheck.ZoneId = zone!.Id;
+            srCheck.ZoneId = zone.Id;
             if (srCheck.Status == ServiceRequestStatus.Assigned)
             {
                 srCheck.Status = ServiceRequestStatus.InProgress;
@@ -485,11 +477,34 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct) =>
+    /// <summary>Quyền với Zone: Admin tất cả; Owner/Farmer đúng Tenant (Farmer phải được giao Zone, chỉ đọc); Technician chỉ Zone mình được giao triển khai/yêu cầu dịch vụ.</summary>
+    private async Task<Zone> EnsureZoneAccessAsync(Guid userId, Guid zoneId, bool write, CancellationToken ct)
+    {
+        var caller = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId && x.Status == AccountStatus.Active, ct)
+            ?? throw new AuthorizationException();
+        var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsNoTracking().FirstOrDefaultAsync(z => z.Id == zoneId, ct)
+            ?? throw new ResourceNotFoundException("Zone was not found.");
+        var allowed = caller.Role switch
+        {
+            UserRole.PlatformAdmin => true,
+            UserRole.FarmOwner => caller.TenantId == zone.Field.Farm.TenantId,
+            UserRole.Farmer => !write && caller.TenantId == zone.Field.Farm.TenantId
+                && await db.UserZoneAccesses.AnyAsync(a => a.AppUserId == userId && a.ZoneId == zoneId, ct),
+            UserRole.PlatformTechnician => await db.DeploymentRequests.AnyAsync(r => r.ZoneId == zoneId && r.TechnicianUserId == userId, ct)
+                || await db.ServiceRequests.AnyAsync(r => r.ZoneId == zoneId && r.AssignedTechnicianId == userId, ct),
+            _ => false
+        };
+        if (!allowed) throw new ResourceNotFoundException("Zone was not found.");
+        return zone;
+    }
+
+    public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct)
+    {
+        await EnsureZoneAccessAsync(userId, zoneId, write: false, ct);
         // ZoneId means the device is assigned to the zone; it does not mean it
         // has been pinned on GIS. Only a pair of persisted coordinates is a map
         // placement.
-        await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && !x.HardwareAddress.StartsWith("SIM-") && x.GpsLatitude.HasValue && x.GpsLongitude.HasValue && x.Status != DeviceStatus.Decommissioned && (x.DeviceType == DeviceType.SensorNode || x.DeviceType == DeviceType.ActuatorNode))
+        return await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && !x.HardwareAddress.StartsWith("SIM-") && x.GpsLatitude.HasValue && x.GpsLongitude.HasValue && x.Status != DeviceStatus.Decommissioned && (x.DeviceType == DeviceType.SensorNode || x.DeviceType == DeviceType.ActuatorNode))
             .Select(x => new DeviceMapLocationView(
                 x.Id, 
                 x.HardwareAddress, 
@@ -502,6 +517,7 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
                 x.InstallationNotes ?? (x.DeviceType == DeviceType.ActuatorNode ? "Cụm Van/Bơm Điều khiển" : "Node Cảm biến Vi khí hậu")
             ))
             .ToListAsync(ct);
+    }
 }
 
 // ─── Farm Wizard Service ──────────────────────────────────────────────────────
@@ -614,7 +630,9 @@ public sealed class WeatherService(SmartFarmDbContext db, HttpClient httpClient,
 
     public async Task<FarmWeatherView> GetFarmWeatherAsync(Guid userId, Guid tenantId, Guid farmId, CancellationToken ct)
     {
-        var farm = await db.Farms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == farmId, ct)
+        var weatherCaller = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId && x.Status == AccountStatus.Active, ct)
+            ?? throw new AuthorizationException();
+        var farm = await db.Farms.AsNoTracking().SingleOrDefaultAsync(x => x.Id == farmId && (weatherCaller.Role == UserRole.PlatformAdmin || x.TenantId == weatherCaller.TenantId), ct)
             ?? throw new ResourceNotFoundException("Farm not found.");
         if (farm.Latitude is null || farm.Longitude is null)
             return new FarmWeatherView(null, null, null, null, "Tọa độ nông trại chưa được cấu hình.", [], DateTime.UtcNow);
@@ -810,7 +828,11 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
         }
 
         actuator ??= await db.DeviceActuators.Include(a => a.Device)
-            .FirstOrDefaultAsync(x => x.Device.ZoneId == zoneId, ct);
+            .FirstOrDefaultAsync(x => x.Device.ZoneId == zoneId && (
+                x.ActuatorType.Contains("pump") || x.ActuatorType.Contains("Pump") ||
+                x.ActuatorType.Contains("valve") || x.ActuatorType.Contains("Valve") ||
+                x.ActuatorType.Contains("water") || x.ActuatorType.Contains("Water") ||
+                x.ActuatorType.Contains("irrigation") || x.ActuatorType.Contains("Irrigation")), ct);
 
         if (actuator is null)
         {
@@ -823,10 +845,10 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
         var existing = await db.ControlSchedules.Where(x => x.ZoneId == zoneId && x.ActuatorId == actuatorId && x.Name.StartsWith("[AutoSync]")).ToListAsync(ct);
         db.ControlSchedules.RemoveRange(existing);
 
-        // Create default schedules (morning, noon, afternoon irrigation)
-        var defaultTimes = new[] { (7, 30, 20), (12, 0, 10), (16, 30, 15) };
+        // Lịch tưới lấy từ "Lịch tưới mẫu" của cây trong thư viện (Crop.CalendarIrrigationPlan); cây chưa có thì không tự bịa giờ tưới.
+        var sessions = CropIrrigationPlanReader.ReadDailySessions(crop.CalendarIrrigationPlan, crop.Name);
         var created = new List<ControlSchedule>();
-        foreach (var (h, m, dur) in defaultTimes)
+        foreach (var session in sessions)
         {
             var cs = new ControlSchedule
             {
@@ -834,14 +856,14 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
                 FarmId = zone.Field.FarmId,
                 ZoneId = zoneId,
                 ActuatorId = actuatorId,
-                Name = $"[AutoSync] {profile.Name} {h:D2}:{m:D2}",
-                // Cron 5 trường (phút giờ ngày tháng thứ); bộ chạy lịch không đọc dạng 6 trường có giây.
-                CronExpression = $"{m} {h} * * *",
-                DurationSeconds = dur * 60,
+                Name = $"[AutoSync] {crop.Name} {session.Title} {session.Hour:D2}:{session.Minute:D2}",
+                // Cron 5 trường (phút giờ ngày tháng thứ); bộ chạy lịch chỉ hỗ trợ chạy hằng ngày vào một giờ cố định.
+                CronExpression = $"{session.Minute} {session.Hour} * * *",
+                DurationSeconds = session.DurationSeconds,
                 EnableRainDelay = true,
                 RainThresholdPercent = 70,
                 IsActive = true,
-                NextRunAtUtc = NextDailyRunUtc(h, m, zone.Field.Farm.TimeZone)
+                NextRunAtUtc = NextDailyRunUtc(session.Hour, session.Minute, zone.Field.Farm.TimeZone)
             };
             created.Add(cs);
             db.ControlSchedules.Add(cs);
@@ -862,6 +884,58 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
     }
 }
 
+/// <summary>Đọc "Lịch tưới mẫu" (JSON) của cây trong thư viện thành các ca tưới hằng ngày hợp lệ.</summary>
+internal static class CropIrrigationPlanReader
+{
+    internal sealed record Session(string Title, int Hour, int Minute, int DurationSeconds);
+
+    /// <summary>Tối đa 30 phút mỗi lần (giới hạn phần cứng của hệ thống điều khiển).</summary>
+    internal const int MaxDurationSeconds = 1800;
+
+    internal static IReadOnlyList<Session> ReadDailySessions(string? planJson, string cropName)
+    {
+        if (string.IsNullOrWhiteSpace(planJson))
+            throw new ResourceConflictException($"Cây '{cropName}' chưa có Lịch tưới mẫu trong thư viện cây trồng. Hãy nhập lịch tưới cho cây trước khi đồng bộ.");
+        System.Text.Json.JsonElement root;
+        try { root = System.Text.Json.JsonDocument.Parse(planJson).RootElement; }
+        catch (System.Text.Json.JsonException) { throw new ResourceConflictException($"Lịch tưới mẫu của cây '{cropName}' không đọc được; hãy lưu lại lịch trong thư viện cây trồng."); }
+
+        string Text(System.Text.Json.JsonElement e, string name) => e.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            e.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) is { Value: var v } && v.ValueKind != System.Text.Json.JsonValueKind.Undefined
+            ? (v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? string.Empty : v.ToString())
+            : string.Empty;
+
+        // Bộ chạy lịch chỉ lặp hằng ngày; không biến lịch cách ngày/theo thứ thành lịch hằng ngày vì sẽ tưới thừa.
+        var repeat = Text(root, "repeatType");
+        if (repeat.Length > 0 && !string.Equals(repeat, "DAILY", StringComparison.OrdinalIgnoreCase))
+            throw new ResourceConflictException($"Lịch tưới mẫu của cây '{cropName}' lặp kiểu '{repeat}', còn hệ thống điều khiển hiện chỉ hỗ trợ lịch hằng ngày. Hãy đổi lịch mẫu sang lặp hằng ngày.");
+
+        var result = new List<Session>();
+        if (root.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            root.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, "sessions", StringComparison.OrdinalIgnoreCase)) is { Value: { ValueKind: System.Text.Json.JsonValueKind.Array } sessions })
+        {
+            foreach (var item in sessions.EnumerateArray())
+            {
+                if (string.Equals(Text(item, "enabled"), "false", StringComparison.OrdinalIgnoreCase)) continue;
+                var time = Text(item, "startTime").Split(':');
+                if (time.Length != 2 || !int.TryParse(time[0], out var hour) || !int.TryParse(time[1], out var minute) || hour is < 0 or > 23 || minute is < 0 or > 59)
+                    throw new ResourceConflictException($"Giờ bắt đầu của một ca tưới trong lịch mẫu của cây '{cropName}' không hợp lệ (cần dạng HH:mm).");
+                if (!double.TryParse(Text(item, "durationMinutes"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var minutes) || minutes <= 0)
+                    throw new ResourceConflictException($"Thời lượng tưới của một ca trong lịch mẫu của cây '{cropName}' không hợp lệ.");
+                var seconds = (int)Math.Round(minutes * 60);
+                if (seconds > MaxDurationSeconds)
+                    throw new ResourceConflictException($"Một ca tưới trong lịch mẫu của cây '{cropName}' dài {minutes:0.#} phút, vượt giới hạn 30 phút mỗi lần.");
+                var title = Text(item, "title");
+                if (string.IsNullOrWhiteSpace(title)) title = Text(item, "session") switch { "MORNING" => "Sáng", "NOON" => "Trưa", "AFTERNOON" => "Chiều", var other => other };
+                result.Add(new Session(title.Trim(), hour, minute, seconds));
+            }
+        }
+        if (result.Count == 0)
+            throw new ResourceConflictException($"Lịch tưới mẫu của cây '{cropName}' chưa có ca tưới nào được bật.");
+        return result;
+    }
+}
+
 // ─── Control Automation & Safety Service ─────────────────────────────────────
 public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAutomationService
 {
@@ -871,13 +945,17 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
         var effectiveTenantId = caller?.Role == UserRole.PlatformAdmin ? (caller.TenantId ?? tenantId) : tenantId;
 
         var actuatorsQuery = db.DeviceActuators.Include(a => a.Device).ThenInclude(d => d.Farm).AsQueryable();
+        // Luôn giới hạn trong Tenant của người gọi (kể cả khi chỉ định Zone), và Farmer chỉ dừng được Zone mình được quyền điều khiển.
+        if (caller is null) throw new AuthorizationException();
+        if (caller.Role != UserRole.PlatformAdmin)
+        {
+            actuatorsQuery = actuatorsQuery.Where(a => a.Device.Farm.TenantId == effectiveTenantId);
+            if (caller.Role == UserRole.Farmer)
+                actuatorsQuery = actuatorsQuery.Where(a => db.UserZoneAccesses.Any(z => z.AppUserId == userId && z.ZoneId == a.Device.ZoneId && z.CanControl));
+        }
         if (zoneId.HasValue)
         {
             actuatorsQuery = actuatorsQuery.Where(a => a.Device.ZoneId == zoneId.Value);
-        }
-        else if (caller?.Role != UserRole.PlatformAdmin)
-        {
-            actuatorsQuery = actuatorsQuery.Where(a => a.Device.Farm.TenantId == effectiveTenantId);
         }
 
         var actuators = await actuatorsQuery.ToListAsync(ct);
@@ -1019,6 +1097,19 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
     {
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).SingleOrDefaultAsync(z => z.Id == command.ZoneId, ct)
             ?? throw new ResourceNotFoundException("Zone not found.");
+
+        // Sửa ngưỡng ảnh hưởng trực tiếp tới tưới tự động: chỉ PlatformAdmin, Owner cùng Tenant, hoặc Farmer được quyền điều khiển Zone này.
+        var envCaller = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId && x.Status == AccountStatus.Active, ct)
+            ?? throw new AuthorizationException();
+        var envAllowed = envCaller.Role switch
+        {
+            UserRole.PlatformAdmin => true,
+            UserRole.FarmOwner => envCaller.TenantId == zone.Field.Farm.TenantId,
+            UserRole.Farmer => envCaller.TenantId == zone.Field.Farm.TenantId
+                && await db.UserZoneAccesses.AnyAsync(x => x.AppUserId == userId && x.ZoneId == zone.Id && x.CanControl, ct),
+            _ => false
+        };
+        if (!envAllowed) throw new ResourceNotFoundException("Zone not found.");
 
         var activeSeason = await db.PlantingSeasons.Include(s => s.AppliedRequirements)
             .FirstOrDefaultAsync(s => s.ZoneId == command.ZoneId && s.Status == PlantingSeasonStatus.InProgress, ct);

@@ -13,25 +13,14 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
     {
         await Role(owner, UserRole.FarmOwner, ct);
         
+        // Chỉ làm việc trong Tenant của Owner: Farm và Zone phải thuộc Tenant này. Trước đây các nhánh dự phòng có thể lấy Farm/Zone của Tenant khác.
         var targetFarm = await db.Farms.FirstOrDefaultAsync(x => x.Id == farm && x.TenantId == tenant && x.ArchivedAtUtc == null, ct)
             ?? await db.Farms.FirstOrDefaultAsync(x => x.TenantId == tenant && x.ArchivedAtUtc == null, ct)
-            ?? await db.Farms.FirstOrDefaultAsync(x => x.Id == farm, ct)
-            ?? await db.Farms.FirstOrDefaultAsync(ct);
+            ?? throw new ResourceNotFoundException("Farm was not found in the authenticated Tenant.");
+        farm = targetFarm.Id;
 
-        if (targetFarm != null)
-        {
-            farm = targetFarm.Id;
-            tenant = targetFarm.TenantId;
-        }
-
-        var zone = await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(x => x.Id == c.ZoneId, ct)
-            ?? await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(x => x.Field.FarmId == farm, ct)
-            ?? await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(ct);
-
-        if (zone != null && zone.Field != null)
-        {
-            farm = zone.Field.FarmId;
-        }
+        var zone = await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(x => x.Id == c.ZoneId && x.Field.FarmId == farm, ct)
+            ?? await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(x => x.Field.FarmId == farm, ct);
 
         if (zone == null)
         {
@@ -95,8 +84,7 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
             }
             else
             {
-                var season = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zoneId, ct)
-                          ?? await db.PlantingSeasons.FirstOrDefaultAsync(ct);
+                var season = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zoneId, ct);
                 var seasonId = season?.Id ?? Guid.Empty;
                 var newDep = new DeploymentRequest
                 {

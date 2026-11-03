@@ -44,7 +44,6 @@ import { FarmerZonesPage } from '../../pages/farmer/FarmerZonesPage';
 import { FarmerTasksPage } from '../../pages/farmer/FarmerTasksPage';
 import { FarmerInvitationsPage } from '../../pages/farmer/FarmerInvitationsPage';
 import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
-import { FarmerAIPage } from '../../pages/farmer/FarmerAIPage';
 
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
 import { RouteErrorBoundary } from '../../components/ui/RouteErrorBoundary';
@@ -161,7 +160,6 @@ export const router = createBrowserRouter([
       { path: '/farmer/tasks', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerTasksPage /></RequireRole> },
       { path: '/farmer/invitations', element: <RequireRole allowedRoles={['FARMER']}><FarmerInvitationsPage /></RequireRole> },
       { path: '/farmer/irrigation', element: <RequireRole allowedRoles={['FARMER', 'FARM_OWNER', 'PLATFORM_ADMIN']}><FarmerIrrigationPage /></RequireRole> },
-      { path: '/farmer/ai', element: <RequireRole allowedRoles={['FARMER']}><FarmerAIPage /></RequireRole> },
       { path: '*', element: <RoleBasedRedirect /> },
     ],
   },

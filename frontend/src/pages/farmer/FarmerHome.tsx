@@ -5,7 +5,7 @@ import { alertService, farmerService, telemetryService } from '../../services';
 import { Alert } from '../../types';
 import { Button } from '../../components/ui/BaseUI';
 import { dueLabel, DUE_TONE_CLASS as TONE } from '../../utils/dueLabel';
-import { Sprout, CheckSquare, ShieldAlert, Power, ClipboardList, Gauge, Bot, AlertTriangle } from 'lucide-react';
+import { Sprout, CheckSquare, ShieldAlert, Power, ClipboardList, Gauge, AlertTriangle } from 'lucide-react';
 
 // Trạng thái công việc của chính Farmer: chỉ những việc còn cần làm mới hiện ở trang chủ.
 const OPEN_TASK_STATUSES = new Set(['pending', 'accepted', 'inprogress', 'overdue', 'failed']);
@@ -73,12 +73,11 @@ export const FarmerHome: React.FC = () => {
       </div>
 
       {/* Lối tắt lớn, dễ bấm trên điện thoại */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {[
           { label: 'Công việc', icon: <ClipboardList size={20} />, to: '/farmer/tasks' },
           { label: 'Cảnh báo', icon: <ShieldAlert size={20} />, to: '/farmer/alerts' },
           { label: 'Vi khí hậu', icon: <Gauge size={20} />, to: '/farmer/monitoring' },
-          { label: 'Hỏi AI', icon: <Bot size={20} />, to: '/farmer/ai' },
         ].map(item => (
           <button key={item.to} onClick={() => navigate(item.to)} className="flex flex-col items-center gap-1 py-3 rounded-xl bg-white border border-slate-200 text-slate-700 hover:border-emerald-400 hover:text-emerald-700 text-[11px] font-semibold">
             {item.icon}{item.label}

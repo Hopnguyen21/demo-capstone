@@ -43,7 +43,7 @@ internal sealed class FakeQuestionIntentClassifier : IQuestionIntentClassifier
         Many(Intent([QuestionTopics.SensorReadings, QuestionTopics.IrrigationOrControl], [soil]),
             "Độ ẩm đất hiện tại thế nào, có cần tưới không?", "Độ ẩm đất thấp, có nên tưới ngay không?");
         Many(Intent([QuestionTopics.Weather]), "Thời tiết dự báo tiếp theo có thích hợp cho sự phát triển của cây không?");
-        Many(Intent([QuestionTopics.Schedules]), "Có lịch tưới tự động nào sắp chạy trong hôm nay không?", "lịch tưới sắp tới của zone");
+        Many(Intent([QuestionTopics.Schedules]), "Có lịch tưới tự động nào sắp chạy trong hôm nay không?", "lịch tưới sắp tới của zone", "lịch tưới trong 2 ngày tới", "lịch tưới ngày mai");
         Many(Intent([QuestionTopics.AgronomyKnowledge]),
             "Khi nào nên thu hoạch xà lách?", "Khi nào nên thu hoạch thanh long?", "Khi nào nên thu hoạch cà chua?",
             "Cách phòng trừ sâu bệnh hại cho cà chua là gì?", "nhiệt độ ảnh hưởng thế nào đến cây", "loại cây nào chịu hạn tốt",
@@ -65,6 +65,9 @@ internal sealed class FakeQuestionIntentClassifier : IQuestionIntentClassifier
         Many(Intent([QuestionTopics.Tasks]), "công việc sắp đến hạn", "có nhiệm vụ nào cần làm không");
         Many(Intent([QuestionTopics.Season]), "cây đang ở giai đoạn nào", "giai đoạn hiện tại của cây", "zone này đang trồng cây gì", "cây bao nhiêu ngày tuổi rồi");
         Many(Intent([QuestionTopics.ZoneInfo]), "diện tích zone là bao nhiêu", "thông tin zone này");
+        Many(Intent([QuestionTopics.FarmInfo]), "farm có mấy zone", "thông tin farm");
+        Many(Intent([QuestionTopics.UnsupportedData]), "doanh thu vụ này", "cho tôi xem camera", "hợp đồng của zone còn hạn không");
+        Many(Intent([QuestionTopics.ZoneMembers]), "ai được phân công zone này");
         Many(Intent([QuestionTopics.AutoRules]), "quy tắc tự động của zone");
         Many(Intent([QuestionTopics.DeviceHealth]), "pin các node còn bao nhiêu", "tín hiệu các node thế nào");
     }

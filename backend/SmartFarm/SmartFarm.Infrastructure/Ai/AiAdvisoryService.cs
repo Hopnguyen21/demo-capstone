@@ -29,8 +29,8 @@ public sealed class AiAdvisoryService(
 
     public async Task<AiZoneContext> GetContextAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
-        var (zone, _) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
-        return await BuildContextAsync(zone, includeHistory: false, historyCount: 0, cancellationToken);
+        var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: false, cancellationToken);
+        return await BuildContextAsync(zone, includeHistory: false, historyCount: 0, historyDays: 0, cancellationToken);
     }
 
     public Task<AiRecommendationView> AskAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, CancellationToken cancellationToken) =>
@@ -38,15 +38,12 @@ public sealed class AiAdvisoryService(
 
     public async Task<AiDecisionResult> DecideAsync(Guid ownerId, Guid tenantId, Guid zoneId, DecideRecommendationCommand command, CancellationToken cancellationToken)
     {
-        var (_, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: true, cancellationToken);
+        await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
         var recommendation = await db.AiRecommendations
             .Include(x => x.ConsultationRequest)
             .Include(x => x.Decisions)
             .SingleOrDefaultAsync(x => x.Id == command.RecommendationId && x.ZoneId == zoneId && x.TenantId == tenantId, cancellationToken)
             ?? throw new ResourceNotFoundException("AI recommendation was not found in this Zone.");
-
-        if (role == UserRole.Farmer && recommendation.ConsultationRequest.RequestedByUserId != ownerId)
-            throw new AuthorizationException("Farmer chỉ được quyết định khuyến nghị do chính mình yêu cầu.");
 
         if (recommendation.Decisions.Count > 0)
             throw new ResourceConflictException("This recommendation already has an Owner decision.");
@@ -116,17 +113,11 @@ public sealed class AiAdvisoryService(
 
     public async Task<AiHistoryView> GetHistoryAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
-        var (zone, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
+        await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
         var from = clock.GetUtcNow().UtcDateTime.AddDays(-30);
         var query = db.AiRecommendations.AsNoTracking()
             .Include(x => x.ConsultationRequest)
             .Where(x => x.TenantId == tenantId && x.ZoneId == zoneId && x.CreatedAtUtc >= from && x.ConsultationRequest.HiddenAtUtc == null);
-
-        // Nông dân chỉ thấy lịch sử câu hỏi do chính mình gửi, không lộ câu hỏi của chủ trại hoặc nông dân khác
-        if (role == UserRole.Farmer)
-        {
-            query = query.Where(x => x.ConsultationRequest.RequestedByUserId == ownerId);
-        }
 
         var rows = await query
             .OrderByDescending(x => x.CreatedAtUtc)
@@ -136,15 +127,9 @@ public sealed class AiAdvisoryService(
 
     public async Task HideHistoryAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
-        var (_, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
+        await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
         var now = clock.GetUtcNow().UtcDateTime;
         var query = db.AiConsultationRequests.Where(x => x.TenantId == tenantId && x.ZoneId == zoneId && x.HiddenAtUtc == null);
-
-        // Nông dân chỉ ẩn lịch sử của chính mình, không xóa lịch sử của người khác
-        if (role == UserRole.Farmer)
-        {
-            query = query.Where(x => x.RequestedByUserId == ownerId);
-        }
 
         var rows = await query.ToListAsync(cancellationToken);
         foreach (var row in rows) row.HiddenAtUtc = now;
@@ -155,7 +140,7 @@ public sealed class AiAdvisoryService(
     {
         var question = Required(command.Question, "question", 2000, 3);
         RejectPromptInjection(question);
-        var (zone, role) = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, requireControl: false, cancellationToken);
+        var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
         if (checkRateLimit) await EnsureRateLimitAsync(ownerId, zoneId, cancellationToken);
         if (command.ParentRecommendationId.HasValue && !await db.AiRecommendations.AnyAsync(x => x.Id == command.ParentRecommendationId && x.ZoneId == zoneId && x.TenantId == tenantId, cancellationToken))
             throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
@@ -163,13 +148,42 @@ public sealed class AiAdvisoryService(
         var now = clock.GetUtcNow().UtcDateTime;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         long classifyMs, contextMs, ragMs = 0, providerMs = 0;
-        var intent = await ClassifyIntentAsync(question, cancellationToken);
+        // Phân loại câu hỏi (gọi HTTP tới Gemini, không dùng DbContext) chạy song song với việc nạp ngữ cảnh Zone từ DB: tiết kiệm trọn
+        // thời gian nạp ngữ cảnh (~0,3–0,5 giây) ở mọi câu hỏi. Chỉ câu hỏi lịch sử/theo ngày mới cần nạp thêm sau khi biết ý định.
+        var classifyTask = ClassifyIntentAsync(question, cancellationToken);
+        var baseContext = await BuildContextAsync(zone, includeHistory: false, historyCount: 0, historyDays: 0, cancellationToken);
+        var intent = await classifyTask;
         classifyMs = stopwatch.ElapsedMilliseconds;
         // Hỏi thu hoạch (không chỉ hỏi số ngày của vụ) cần cả tài liệu thu hoạch đã duyệt, nên không để classifier bỏ sót chủ đề kiến thức.
         if (intent.Has(QuestionTopics.Harvest) && !intent.Has(QuestionTopics.Season) && !intent.Has(QuestionTopics.AgronomyKnowledge))
             intent = intent with { Topics = [.. intent.Topics, QuestionTopics.AgronomyKnowledge] };
-        var context = await BuildContextAsync(zone, includeHistory: intent.WantsHistory, historyCount: intent.HistoryCount, cancellationToken);
-        contextMs = stopwatch.ElapsedMilliseconds - classifyMs;
+        var needsHistoryData = intent.WantsHistory || intent.HistoryCount > 0 || intent.HistoryDays > 0;
+        var context = needsHistoryData
+            ? await BuildContextAsync(zone, includeHistory: intent.WantsHistory, historyCount: intent.HistoryCount, historyDays: intent.HistoryDays, cancellationToken)
+            : baseContext;
+        contextMs = needsHistoryData ? stopwatch.ElapsedMilliseconds - classifyMs : 0;
+        // Lịch tưới trong vài ngày tới: câu hỏi "lịch tưới 2 ngày tới" không được trả lời chỉ bằng cửa sổ 12 giờ dùng để tránh tưới trùng.
+        if (intent.Has(QuestionTopics.Schedules))
+        {
+            var horizonDays = intent.AheadDays > 0 ? Math.Min(intent.AheadDays, QuestionIntent.MaxAheadDays) : QuestionIntent.MaxAheadDays;
+            var ahead = await db.ControlSchedules.AsNoTracking()
+                .Where(x => x.ZoneId == zoneId && x.Actuator.Device.ZoneId == zoneId && x.IsActive && x.ArchivedAtUtc == null && x.NextRunAtUtc > now && x.NextRunAtUtc <= now.AddDays(horizonDays))
+                .OrderBy(x => x.NextRunAtUtc).Take(20)
+                .Select(x => new { x.Name, x.NextRunAtUtc, x.DurationSeconds })
+                .ToListAsync(cancellationToken);
+            context = context with
+            {
+                SchedulesAhead = ahead.Select(x => new AiUpcomingScheduleContextItem(
+                    x.Name, x.NextRunAtUtc, LocalTime(x.NextRunAtUtc, context.FarmTimeZone), x.DurationSeconds, (int)Math.Max(1, (x.NextRunAtUtc - now).TotalMinutes))).ToList()
+            };
+        }
+        // Người có quyền ở đúng Zone này (không phải toàn Farm); chỉ nạp khi được hỏi và không gửi cho mô hình.
+        if (intent.Has(QuestionTopics.ZoneMembers))
+            context = context with
+            {
+                ZoneMembers = await db.UserZoneAccesses.AsNoTracking().Where(a => a.ZoneId == zoneId)
+                    .OrderBy(a => a.AppUser.FullName).Select(a => new AiZoneMemberItem(a.AppUser.FullName, a.CanControl)).ToListAsync(cancellationToken)
+            };
         var request = new AiConsultationRequest
         {
             TenantId = tenantId,
@@ -354,7 +368,7 @@ public sealed class AiAdvisoryService(
                 {
                     recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
                         NoDocumentSummary(intent),
-                        WithZoneDataParts(intent, context, string.IsNullOrWhiteSpace(ragCrop)
+                        WithZoneDataParts(intent, context, question, string.IsNullOrWhiteSpace(ragCrop)
                             ? "Kho tri thức chưa có tài liệu áp dụng chung đã duyệt cho câu hỏi này, nên AI chưa tư vấn phần kỹ thuật. Hãy nêu rõ tên cây hoặc chọn vụ mùa cho khu vực." + NoDocumentHint
                             : $"Kho tri thức chưa có tài liệu đã duyệt cho {ragCrop} (hoặc tài liệu áp dụng chung) trả lời được phần kỹ thuật của câu hỏi này, nên AI chưa tư vấn nội dung đó." + NoDocumentHint),
                         ["Không có tài liệu VietGAP/kỹ thuật đã duyệt phù hợp"], now);
@@ -413,7 +427,7 @@ public sealed class AiAdvisoryService(
                 {
                     recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
                         NoDocumentSummary(intent),
-                        WithZoneDataParts(intent, context, "Kho tri thức chưa có đoạn tài liệu đã duyệt đủ liên quan đến phần kỹ thuật của câu hỏi này, nên AI chưa tư vấn nội dung đó thay vì tự suy đoán." + NoDocumentHint),
+                        WithZoneDataParts(intent, context, question, "Kho tri thức chưa có đoạn tài liệu đã duyệt đủ liên quan đến phần kỹ thuật của câu hỏi này, nên AI chưa tư vấn nội dung đó thay vì tự suy đoán." + NoDocumentHint),
                         ["Không có nguồn tài liệu đủ liên quan"], now);
                 }
 
@@ -567,7 +581,7 @@ public sealed class AiAdvisoryService(
         };
     }
 
-    private async Task<AiZoneContext> BuildContextAsync(Zone zone, bool includeHistory, int historyCount, CancellationToken cancellationToken)
+    private async Task<AiZoneContext> BuildContextAsync(Zone zone, bool includeHistory, int historyCount, int historyDays, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var inProgressSeason = await db.PlantingSeasons.AsNoTracking()
@@ -758,20 +772,57 @@ public sealed class AiAdvisoryService(
             .Select(c => new AiCommandContextItem(c.Actuator.ActuatorType, c.Action.ToString(), c.DurationSeconds,
                 c.Status.ToString(), c.TriggerSource.ToString(), c.QueuedAtUtc))
             .ToListAsync(cancellationToken);
+        // Không có lệnh nào trong 24 giờ qua: tìm lệnh gần nhất trong 90 ngày để trả lời "lần tưới gần nhất là khi nào".
+        AiCommandContextItem? lastCommandOutside = null;
+        if (recentCommands.Count == 0)
+        {
+            lastCommandOutside = await db.ActuatorCommands.AsNoTracking()
+                .Where(c => c.ZoneId == zone.Id && c.Device.ZoneId == zone.Id && c.QueuedAtUtc < now.AddHours(-24) && c.QueuedAtUtc >= now.AddDays(-90))
+                .OrderByDescending(c => c.QueuedAtUtc)
+                .Select(c => new AiCommandContextItem(c.Actuator.ActuatorType, c.Action.ToString(), c.DurationSeconds,
+                    c.Status.ToString(), c.TriggerSource.ToString(), c.QueuedAtUtc))
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        // Tổng hợp theo ngày (ngày của Farm) cho câu hỏi so sánh nhiều ngày; gom ở DB để không kéo hàng chục nghìn số đo về.
+        List<AiDailyParameterSummary>? dailySummaries = null;
+        if (historyDays > 0 && zoneDeviceIds.Count > 0)
+        {
+            var days = Math.Clamp(historyDays, 1, QuestionIntent.MaxHistoryDays);
+            var offset = farmTz.GetUtcOffset(now);
+            var firstLocalDay = farmToday.AddDays(-(days - 1));
+            var fromUtc = DateTime.SpecifyKind(firstLocalDay.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc) - offset;
+            var offsetHours = offset.TotalHours;
+            var grouped = await db.TelemetryReadings.AsNoTracking()
+                .Where(x => zoneDeviceIds.Contains(x.DeviceId) && x.CapturedAtUtc >= fromUtc && x.CapturedAtUtc <= now)
+                .GroupBy(x => new { x.ParameterCode, x.Unit, Day = x.CapturedAtUtc.AddHours(offsetHours).Date })
+                .Select(g => new { g.Key.ParameterCode, g.Key.Unit, g.Key.Day, Count = g.Count(), Min = g.Min(v => v.Value), Avg = g.Average(v => v.Value), Max = g.Max(v => v.Value) })
+                .ToListAsync(cancellationToken);
+            dailySummaries = grouped
+                .Select(g => new AiDailyParameterSummary(g.ParameterCode, g.Unit, DateOnly.FromDateTime(g.Day), g.Count, g.Min, Math.Round(g.Avg, 2), g.Max))
+                .OrderBy(x => x.ParameterCode).ThenByDescending(x => x.Date).ToList();
+        }
         var autoRules = await db.AutoControlRules.AsNoTracking()
             .Where(r => r.ZoneId == zone.Id && r.Actuator.Device.ZoneId == zone.Id && r.IsActive)
             .OrderBy(r => r.Priority).Take(10)
             .Select(r => new AiAutoRuleContextItem(r.Name, r.ParameterCode, r.Operator.ToString(), r.Threshold, r.ConditionDurationMinutes,
                 r.Action.ToString(), r.DurationSeconds, r.CooldownMinutes, r.EnableRainDelay, r.RainThresholdPercent))
             .ToListAsync(cancellationToken);
-        var openTasks = await db.FarmTasks.AsNoTracking()
+        var openTasks = (await db.FarmTasks.AsNoTracking()
             .Where(t => t.ZoneId == zone.Id &&
                         (t.Status == FarmTaskStatus.Pending || t.Status == FarmTaskStatus.Accepted ||
                          t.Status == FarmTaskStatus.InProgress || t.Status == FarmTaskStatus.Overdue) &&
                         t.DueAtUtc <= now.AddDays(7))
             .OrderBy(t => t.DueAtUtc).Take(5)
-            .Select(t => new AiTaskContextItem(t.Title, t.DueAtUtc, t.Status.ToString()))
-            .ToListAsync(cancellationToken);
+            .Select(t => new
+            {
+                t.Title, t.DueAtUtc, t.Status,
+                Assignees = t.Assignments
+                    .Where(a => a.Status != FarmTaskStatus.Cancelled && a.Status != FarmTaskStatus.Declined)
+                    .Select(a => a.Farmer.FullName).OrderBy(n => n).ToList()
+            })
+            .ToListAsync(cancellationToken))
+            .Select(t => new AiTaskContextItem(t.Title, t.DueAtUtc, t.Status.ToString(), t.Assignees))
+            .ToList();
         AiSeasonContext? seasonContext = null;
         AiSeasonFacts? seasonFacts = null;
         if (season is not null)
@@ -825,6 +876,8 @@ public sealed class AiAdvisoryService(
             ZoneDevices: zoneDeviceSummaries,
             ActiveAlerts: activeAlerts,
             RecentCommands: recentCommands,
+            LastCommandOutsideWindow: lastCommandOutside,
+            DailySummaries: dailySummaries,
             AutoRules: autoRules,
             OpenTasks: openTasks,
             Season: seasonContext,
@@ -864,10 +917,10 @@ public sealed class AiAdvisoryService(
             : "Chưa có tài liệu đã duyệt cho câu hỏi này";
 
     /// <summary>Ghép các phần dữ liệu Zone trả lời trực tiếp được vào câu trả lời, để câu hỏi nhiều ý không mất các phần còn lại khi phần kiến thức/tưới thiếu căn cứ.</summary>
-    private static string WithZoneDataParts(QuestionIntent intent, AiZoneContext context, string details)
+    private static string WithZoneDataParts(QuestionIntent intent, AiZoneContext context, string question, string details)
     {
     // Chưa có tài liệu làm căn cứ thì vẫn nêu dữ liệu có thật của hệ thống về thông số được hỏi: ngưỡng đã cấu hình cho giai đoạn hiện tại.
-        var thresholds = ConfiguredThresholdFacts(intent, context);
+        var thresholds = ConfiguredThresholdFacts(intent, context, question);
         if (thresholds is not null) details = $"{details}\n\n{thresholds}";
         var rest = intent with { Topics = intent.Topics.Where(t => t is not (QuestionTopics.AgronomyKnowledge or QuestionTopics.IrrigationOrControl)).ToList() };
         if (rest.Topics.Count == 0) return details;
@@ -875,7 +928,48 @@ public sealed class AiAdvisoryService(
         return answer is null ? details : $"{answer.Details}\n\n{details}";
     }
 
-    private static string? ConfiguredThresholdFacts(QuestionIntent intent, AiZoneContext context)
+    private static readonly Regex DegreeValue = new(@"(\d+(?:[.,]\d+)?)\s*(?:°\s*c\b|°|độ\b)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex PercentValue = new(@"(\d+(?:[.,]\d+)?)\s*%", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex PhValue = new(@"ph\D{0,15}?(\d+(?:[.,]\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex LuxValue = new(@"(\d+(?:[.,]\d+)?)\s*lux", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
+    /// <summary>
+    /// Giá trị giả định trong câu hỏi ("nếu nhiệt độ lên 40 độ", "độ ẩm đất xuống 30%", "pH xuống 5") so với ngưỡng đã cấu hình của giai đoạn hiện tại.
+    /// Chỉ là phép so sánh số với hồ sơ, không kết luận tác hại. Chỉ xử lý khi câu hỏi nêu đúng một thông số và có đơn vị đi kèm số
+    /// (tránh đọc nhầm "30 phút" hay "3 ngày" thành giá trị đo).
+    /// </summary>
+    internal static string? HypotheticalValueComparison(QuestionIntent intent, AiZoneContext context, string question)
+    {
+        if (intent.Parameters.Count != 1 || string.IsNullOrWhiteSpace(question)) return null;
+        var code = intent.Parameters[0];
+        var match = code switch
+        {
+            EnvironmentalParameterCode.Temperature => DegreeValue.Match(question),
+            EnvironmentalParameterCode.SoilMoisture or EnvironmentalParameterCode.AirHumidity => PercentValue.Match(question),
+            EnvironmentalParameterCode.Ph => PhValue.Match(question),
+            EnvironmentalParameterCode.LightIntensity => LuxValue.Match(question),
+            _ => null
+        };
+        if (match is not { Success: true } ||
+            !decimal.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)) return null;
+        var req = context.Requirements.FirstOrDefault(r => r.ParameterCode == code);
+        if (req is null) return null;
+        var unit = req.Unit;
+        var verdict = value > req.MaxValue ? $"CAO HƠN mức tối đa {Num(req.MaxValue)} {unit} (vượt {Num(value - req.MaxValue)} {unit})"
+            : value < req.MinValue ? $"THẤP HƠN mức tối thiểu {Num(req.MinValue)} {unit} (thiếu {Num(req.MinValue - value)} {unit})"
+            : $"nằm trong khoảng {Num(req.MinValue)}–{Num(req.MaxValue)} {unit}";
+        return $"So với ngưỡng của hồ sơ: giá trị giả định {Num(value)} {unit} {verdict} của {ParameterLabel(code).ToLowerInvariant()} ở giai đoạn hiện tại.";
+    }
+
+    private static string? ConfiguredThresholdFacts(QuestionIntent intent, AiZoneContext context, string question)
+    {
+        var comparison = HypotheticalValueComparison(intent, context, question);
+        var facts = ConfiguredThresholdList(intent, context);
+        if (comparison is null) return facts;
+        return facts is null ? comparison : $"{comparison}\n\n{facts}";
+    }
+
+    private static string? ConfiguredThresholdList(QuestionIntent intent, AiZoneContext context)
     {
         if (intent.Parameters.Count == 0) return null;
         var lines = context.Requirements.Where(r => intent.Parameters.Contains(r.ParameterCode)).OrderBy(r => r.ParameterCode)
@@ -973,9 +1067,11 @@ public sealed class AiAdvisoryService(
         var parts = new List<ZoneDataAnswer>();
         if (intent.Has(QuestionTopics.Gateways)) parts.Add(BuildGatewayAnswer(context));
         // Hỏi "N bản ghi gần nhất" của node: trả lịch sử từng node thay vì chỉ số đo mới nhất.
-        var historyAnswered = intent.HistoryCount > 0 && (intent.Has(QuestionTopics.SensorReadings) || intent.Has(QuestionTopics.Devices))
-            && intent.DeviceScope != QuestionIntent.ScopeActuators;
-        if (historyAnswered) parts.Add(BuildDeviceHistoryAnswer(intent, context));
+        var wantsSensors = intent.Has(QuestionTopics.SensorReadings) || intent.Has(QuestionTopics.Devices);
+        var dailyAnswered = intent.HistoryDays > 0 && wantsSensors && intent.DeviceScope != QuestionIntent.ScopeActuators;
+        var historyAnswered = dailyAnswered || (intent.HistoryCount > 0 && wantsSensors && intent.DeviceScope != QuestionIntent.ScopeActuators);
+        if (dailyAnswered) parts.Add(BuildDailySummaryAnswer(intent, context));
+        else if (historyAnswered) parts.Add(BuildDeviceHistoryAnswer(intent, context));
         else if (intent.Has(QuestionTopics.Devices)) parts.Add(BuildDeviceListAnswer(intent, context));
         if (intent.Has(QuestionTopics.SensorReadings) && !historyAnswered)
         {
@@ -988,9 +1084,10 @@ public sealed class AiAdvisoryService(
         var zoneTopics = new[]
         {
             QuestionTopics.Alerts, QuestionTopics.Commands, QuestionTopics.Schedules, QuestionTopics.Tasks, QuestionTopics.Season, QuestionTopics.Harvest,
-            QuestionTopics.ZoneInfo, QuestionTopics.AutoRules, QuestionTopics.DeviceHealth
+            QuestionTopics.ZoneInfo, QuestionTopics.AutoRules, QuestionTopics.DeviceHealth, QuestionTopics.ZoneMembers, QuestionTopics.PlantCount
         };
         if (zoneTopics.Any(intent.Has)) parts.Add(BuildZoneTopicsAnswer(intent, context));
+        if (intent.Has(QuestionTopics.FarmInfo) || intent.Has(QuestionTopics.UnsupportedData)) parts.Add(BuildFarmScopeAnswer(context, answeredSomething: parts.Count > 0));
         // Thời tiết không khả dụng được xử lý riêng ở bước kiểm tra dữ liệu bắt buộc để báo đúng lý do.
         if (intent.Has(QuestionTopics.Weather) && context.Weather.Available) parts.Add(BuildWeatherAnswer(context));
 
@@ -1009,7 +1106,7 @@ public sealed class AiAdvisoryService(
         try
         {
             var classified = await intentClassifier.ClassifyAsync(question, cancellationToken) ?? QuestionIntent.Unknown;
-            return classified.Topics.Count == 0 ? WithHypotheticalFallback(question, classified) : classified;
+            return WithPeriodFallbacks(question, classified.Topics.Count == 0 ? WithHypotheticalFallback(question, classified) : classified);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1018,8 +1115,20 @@ public sealed class AiAdvisoryService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Question intent classification failed; continuing without a pre-classified intent.");
-            return WithHypotheticalFallback(question, QuestionIntent.Unknown);
+            return WithSmallTalkFallback(question, WithHypotheticalFallback(question, QuestionIntent.Unknown));
         }
+    }
+
+    private static readonly Regex SmallTalkOnly = new(
+        @"^\s*(xin chao|chao|hello|hi|hey|cam on|thanks|thank you|ok|oke|duoc roi|tam biet|bye)\b[\s!.,]*((ban|ad|bot|nhe|a|nha|nhieu)[\s!.,]*){0,2}$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
+    /// <summary>Lời chào/cảm ơn thuần túy khi AI phân loại không khả dụng: trả lời mẫu, không tốn lượt gọi mô hình.</summary>
+    internal static QuestionIntent WithSmallTalkFallback(string question, QuestionIntent intent)
+    {
+        if (intent.Topics.Count > 0) return intent;
+        var folded = SmartFarm.Infrastructure.Ai.Knowledge.AgricultureKnowledgeRetriever.RemoveDiacritics(question.ToLowerInvariant());
+        return SmallTalkOnly.IsMatch(folded) ? intent with { Topics = [QuestionTopics.SmallTalk] } : intent;
     }
 
     // Câu giả định về hậu quả ("nếu ... thì sao", "có sao không") là câu hỏi kiến thức cần tài liệu. Khi AI phân loại không khả dụng
@@ -1027,6 +1136,59 @@ public sealed class AiAdvisoryService(
     private static readonly Regex HypotheticalConsequence = new(
         @"(neu.*thi.*(sao|the nao|ra sao))|(co sao khong)|(anh huong (gi|nhu the nao))|(phai lam sao)|(lam sao de)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex DaysBack = new(@"(\d{1,2})\s*ngay\s*(qua|gan day|gan nhat|truoc)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex DaysAhead = new(@"(\d{1,2})\s*ngay\s*(toi|nua|sap\s*toi|sap\s*den|tiep\s*theo)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex WeekAhead = new(@"tuan\s*(toi|sau|nay)|7\s*ngay\s*(toi|nua)|mot\s*tuan\s*(toi|nua)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex WhichVarietyAsk = new(@"thuoc\s+(loai|giong)|dang\s+trong\s+(cay|giong)?\s*(gi|nao)|trong\s+(cay|giong)\s+(gi|nao)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex PlantCountAsk = new(@"(bao\s*nhieu|so|so\s*luong|tong\s*so)\s*(cay|goc)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex PlantCapacityAsk = new(@"\b(co\s*the|duoc|toi\s*da|nen|khuyen\s*cao|phu\s*hop)\b|mat\s*do", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex WeekBack = new(@"tuan\s*(qua|truoc|nay)|7\s*ngay|mot\s*tuan", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex DaySummaryToday = new(@"hom\s*nay.*(trung\s*binh|cao\s*nhat|thap\s*nhat|tong\s*hop)|(trung\s*binh|cao\s*nhat|thap\s*nhat|tong\s*hop).*hom\s*nay", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex RecordWords = new(@"ban\s*ghi|lan\s*do|so\s*do\s*gan\s*nhat|moi\s*nhat", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex LastCommandAsk = new(@"(lan|luc|lich\s*su)\s*(tuoi|bat|tat|dieu\s*khien|chay)\b|tuoi\s*(lan\s*)?(gan\s*nhat|cuoi)|(gan\s*nhat|cuoi\s*cung).*(tuoi|bat|tat|lenh)|lenh\s*(gan\s*nhat|cuoi)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
+    /// <summary>
+    /// Bù chỗ AI phân loại hay bỏ sót, không đổi những gì AI đã hiểu đúng:
+    /// - hỏi theo khoảng ngày ("hôm qua", "3 ngày qua", "tuần qua") thì tổng hợp theo ngày thay vì liệt kê 5 số đo gần nhất;
+    /// - hỏi "lần tưới/bật gần nhất" thì thêm chủ đề lệnh điều khiển (lịch sử lệnh), không chỉ lịch sắp chạy.
+    /// </summary>
+    internal static QuestionIntent WithPeriodFallbacks(string question, QuestionIntent intent)
+    {
+        if (intent.Topics.Count == 0) return intent;
+        var plain = SmartFarm.Infrastructure.Ai.Knowledge.AgricultureKnowledgeRetriever.RemoveDiacritics(question.ToLowerInvariant());
+
+        if (intent.HistoryDays == 0 && (intent.Has(QuestionTopics.SensorReadings) || intent.Has(QuestionTopics.Devices)) && !RecordWords.IsMatch(plain))
+        {
+            var days = 0;
+            if (DaysBack.Match(plain) is { Success: true } m && int.TryParse(m.Groups[1].Value, out var n)) days = n;
+            else if (WeekBack.IsMatch(plain)) days = 7;
+            else if (plain.Contains("hom qua")) days = 2;
+            else if (DaySummaryToday.IsMatch(plain)) days = 1;
+            if (days > 0) intent = intent with { HistoryDays = Math.Clamp(days, 1, QuestionIntent.MaxHistoryDays), HistoryCount = 0 };
+        }
+
+        if (intent.Has(QuestionTopics.Schedules) && intent.AheadDays == 0)
+        {
+            var ahead = 0;
+            if (DaysAhead.Match(plain) is { Success: true } a && int.TryParse(a.Groups[1].Value, out var k)) ahead = k;
+            else if (plain.Contains("ngay mai")) ahead = 2;
+            else if (WeekAhead.IsMatch(plain)) ahead = QuestionIntent.MaxAheadDays;
+            if (ahead > 0) intent = intent with { AheadDays = Math.Clamp(ahead, 1, QuestionIntent.MaxAheadDays) };
+        }
+
+        // "Cà chua thuộc loại nào", "đang trồng giống gì": hỏi dữ liệu cây/giống của Zone, không phải kiến thức kỹ thuật cần tài liệu.
+        if (intent.Has(QuestionTopics.Season) && intent.Has(QuestionTopics.AgronomyKnowledge) && !intent.Has(QuestionTopics.IrrigationOrControl) && WhichVarietyAsk.IsMatch(plain))
+            intent = intent with { Topics = intent.Topics.Where(t => t != QuestionTopics.AgronomyKnowledge).ToList() };
+
+        // "Zone này trồng bao nhiêu cây": hệ thống không lưu số cây thực tế. Câu hỏi sức chứa ("trồng được/có thể trồng bao nhiêu cây") là câu kiến thức, để nguyên.
+        if (!intent.Has(QuestionTopics.PlantCount) && !intent.Has(QuestionTopics.AgronomyKnowledge) && PlantCountAsk.IsMatch(plain) && !PlantCapacityAsk.IsMatch(plain))
+            intent = intent with { Topics = [.. intent.Topics, QuestionTopics.PlantCount] };
+
+        if (!intent.Has(QuestionTopics.Commands) && !intent.Has(QuestionTopics.IrrigationOrControl) && LastCommandAsk.IsMatch(plain))
+            intent = intent with { Topics = [.. intent.Topics, QuestionTopics.Commands] };
+        return intent;
+    }
 
     internal static QuestionIntent WithHypotheticalFallback(string question, QuestionIntent intent)
     {
@@ -1066,6 +1228,44 @@ public sealed class AiAdvisoryService(
         _ => source
     };
 
+    /// <summary>Loại Zone hiển thị bằng tiếng Việt (giá trị lưu trong DB là tiếng Anh); loại lạ thì giữ nguyên.</summary>
+    internal static string ZoneTypeLabel(string type) => type.Trim().ToLowerInvariant() switch
+    {
+        "openfield" or "open_field" or "open field" => "ngoài trời",
+        "greenhouse" => "nhà kính/nhà màng",
+        "nethouse" or "net_house" => "nhà lưới",
+        "hydroponic" or "hydroponics" => "thủy canh",
+        "indoor" => "trong nhà",
+        _ => type
+    };
+
+    /// <summary>Trạng thái Zone, thiết bị, gateway và công việc bằng tiếng Việt; trạng thái lạ thì giữ nguyên.</summary>
+    internal static string StatusLabel(string status) => status switch
+    {
+        "Inactive" => "chưa hoạt động",
+        "Operating" => "đang vận hành",
+        "Archived" => "đã lưu trữ",
+        "Online" => "trực tuyến",
+        "Offline" => "ngoại tuyến",
+        "Unassigned" => "chưa gán",
+        "Assigned" => "đã gán",
+        "SensorsConfigured" => "đã cấu hình cảm biến",
+        "ActuatorsConfigured" => "đã cấu hình thiết bị chấp hành",
+        "MaintenanceRequired" => "cần bảo trì",
+        "Decommissioned" => "đã ngừng sử dụng",
+        "Provisioned" => "đã cấp phát",
+        "Pending" => "chờ nhận",
+        "Accepted" => "đã nhận",
+        "InProgress" => "đang thực hiện",
+        "CompletedPendingReview" => "chờ duyệt kết quả",
+        "Approved" => "đã duyệt",
+        "Failed" => "thất bại",
+        "Overdue" => "quá hạn",
+        "Cancelled" => "đã hủy",
+        "Declined" => "đã từ chối",
+        _ => status
+    };
+
     private static string SeverityLabel(string severity) => severity switch
     {
         "Critical" => "nghiêm trọng",
@@ -1074,13 +1274,24 @@ public sealed class AiAdvisoryService(
         _ => severity
     };
 
+    /// <summary>Trợ lý chỉ làm việc trong phạm vi Zone đang chọn: câu hỏi về cả Farm (số Zone, Zone khác) không trả dữ liệu Zone/Field khác.</summary>
+    private static ZoneDataAnswer BuildFarmScopeAnswer(AiZoneContext context, bool answeredSomething = false) =>
+        answeredSomething
+            // Đã trả lời được một phần của câu hỏi: chỉ nêu ngắn gọn phần còn lại nằm ngoài dữ liệu, không lặp lại cả danh sách phạm vi.
+            ? new(AiRecommendationStatus.Ready, "Thông tin của Zone",
+                "Phần còn lại của câu hỏi (thông tin ngoài Zone đang chọn, như Farm, Zone khác, tài chính, hợp đồng, kho vật tư) trợ lý AI chưa có dữ liệu; bạn xem ở các trang quản lý tương ứng.",
+                ["Trợ lý AI không truy cập dữ liệu ngoài Zone đang chọn."])
+            : new(AiRecommendationStatus.Ready, "Ngoài phạm vi Zone đang chọn",
+            $"Trợ lý AI chưa có dữ liệu này. Trợ lý chỉ trả lời về Zone đang chọn (“{context.ZoneName}”): số đo cảm biến, thiết bị, gateway, thời tiết, cảnh báo, lệnh điều khiển, lịch tưới, công việc, vụ mùa, người được phân quyền và kỹ thuật canh tác theo tài liệu đã duyệt. Các thông tin khác (tài chính, hợp đồng, kho vật tư, camera, tài khoản, Zone/Field khác) bạn xem ở các trang quản lý tương ứng.",
+            ["Trợ lý AI không truy cập dữ liệu ngoài Zone đang chọn."]);
+
     private static ZoneDataAnswer BuildZoneTopicsAnswer(QuestionIntent intent, AiZoneContext context)
     {
         var tz = context.FarmTimeZone;
         var sections = new List<string>();
 
         if (intent.Has(QuestionTopics.ZoneInfo))
-            sections.Add($"Zone “{context.ZoneName}”: diện tích {Num(context.ZoneAreaM2)} m²{(context.ZoneType is null ? string.Empty : $", loại {context.ZoneType}")}{(context.ZoneStatus is null ? string.Empty : $", trạng thái {context.ZoneStatus}")}.");
+            sections.Add($"Zone “{context.ZoneName}”: diện tích {Num(context.ZoneAreaM2)} m²{(string.IsNullOrWhiteSpace(context.ZoneType) ? string.Empty : $", loại {ZoneTypeLabel(context.ZoneType)}")}{(context.ZoneStatus is null ? string.Empty : $", trạng thái {StatusLabel(context.ZoneStatus)}")}.");
 
         if (intent.Has(QuestionTopics.Season) || intent.Has(QuestionTopics.Harvest))
             sections.Add(BuildSeasonAnswer(context, intent.Has(QuestionTopics.Harvest)));
@@ -1097,16 +1308,19 @@ public sealed class AiAdvisoryService(
         {
             var commands = context.RecentCommands ?? [];
             sections.Add(commands.Count == 0
-                ? "Không có lệnh điều khiển nào trong 24 giờ qua."
+                ? "Không có lệnh điều khiển nào trong 24 giờ qua." + (context.LastCommandOutsideWindow is { } last
+                    ? $" Lệnh gần nhất: {ActuatorLabel(last.ActuatorType)} {(last.Action == "TurnOn" ? "bật" : "tắt")} {last.DurationSeconds} giây — {CommandStatusLabel(last.Status)} ({TriggerLabel(last.TriggerSource)}), lúc {LocalTime(last.QueuedAtUtc, tz)}."
+                    : " Zone chưa có lệnh điều khiển nào trong 90 ngày qua.")
                 : "Lệnh điều khiển trong 24 giờ qua (mới nhất trước):\n" + string.Join("\n", commands.Take(6).Select(c => $"• {ActuatorLabel(c.ActuatorType)} {(c.Action == "TurnOn" ? "bật" : "tắt")} {c.DurationSeconds} giây — {CommandStatusLabel(c.Status)} ({TriggerLabel(c.TriggerSource)}), lúc {LocalTime(c.QueuedAtUtc, tz)}")));
         }
 
         if (intent.Has(QuestionTopics.Schedules))
         {
-            var schedules = context.UpcomingSchedules;
+            var schedules = context.SchedulesAhead ?? context.UpcomingSchedules;
+            var horizon = intent.AheadDays > 0 ? $"{Math.Min(intent.AheadDays, QuestionIntent.MaxAheadDays)} ngày tới" : $"{QuestionIntent.MaxAheadDays} ngày tới";
             sections.Add(schedules.Count == 0
-                ? "Zone chưa có lịch tưới nào sắp chạy."
-                : "Lịch sắp chạy:\n" + string.Join("\n", schedules.Take(6).Select(x => $"• {x.Name} — {x.NextRunTimeFormatted} (sau khoảng {x.MinutesUntilRun} phút), chạy {x.DurationSeconds} giây")));
+                ? $"Zone chưa có lịch tưới nào chạy trong {horizon}."
+                : $"Lịch tưới trong {horizon} ({schedules.Count}):\n" + string.Join("\n", schedules.Take(12).Select(x => $"• {x.Name} — {x.NextRunTimeFormatted} (sau khoảng {RelativeMinutes(x.MinutesUntilRun)}), chạy {x.DurationSeconds} giây")));
         }
 
         if (intent.Has(QuestionTopics.Tasks))
@@ -1114,7 +1328,22 @@ public sealed class AiAdvisoryService(
             var tasks = context.OpenTasks ?? [];
             sections.Add(tasks.Count == 0
                 ? "Zone không có công việc nào sắp đến hạn."
-                : "Công việc chưa hoàn tất (" + tasks.Count + "):\n" + string.Join("\n", tasks.Take(8).Select(t => $"• {t.Title} — hạn {LocalTime(t.DueAtUtc, tz)} ({t.Status})")));
+                : "Công việc chưa hoàn tất (" + tasks.Count + "):\n" + string.Join("\n", tasks.Take(8).Select(t => $"• {t.Title} — hạn {LocalTime(t.DueAtUtc, tz)} ({StatusLabel(t.Status)}){(t.Assignees is { Count: > 0 } who ? $"; giao cho: {string.Join(", ", who)}" : "; chưa giao cho ai")}")));
+        }
+
+        if (intent.Has(QuestionTopics.PlantCount))
+            sections.Add($"Hệ thống chưa lưu số lượng cây đang trồng của vụ này, nên tôi không có con số thực tế. Zone “{context.ZoneName}” có diện tích {Num(context.ZoneAreaM2)} m². Muốn ước tính số cây tối đa, hãy hỏi “số cây có thể trồng cho zone này”: AI sẽ tính theo mật độ trong tài liệu đã duyệt nếu có.");
+
+        if (intent.Has(QuestionTopics.ZoneMembers))
+        {
+            var members = context.ZoneMembers ?? [];
+            sections.Add(members.Count == 0
+                ? "Zone chưa phân quyền cho Farmer nào (chủ Farm có quyền với mọi Zone)."
+                : "Người được phân quyền ở Zone (" + members.Count + "):\n" + string.Join("\n", members.Select(m => $"• {m.FullName} — {(m.CanControl ? "xem và điều khiển" : "chỉ xem")}")));
+            // Người được giao việc nằm ở danh sách công việc: nêu cùng để trả lời đủ ý "ai được phân công".
+            if (!intent.Has(QuestionTopics.Tasks) && (context.OpenTasks ?? []).Count > 0)
+                sections.Add("Công việc đang mở và người được giao:\n" + string.Join("\n", context.OpenTasks!.Take(8).Select(t =>
+                    $"• {t.Title} — {(t.Assignees is { Count: > 0 } who ? string.Join(", ", who) : "chưa giao cho ai")}")));
         }
 
         if (intent.Has(QuestionTopics.AutoRules))
@@ -1148,7 +1377,7 @@ public sealed class AiAdvisoryService(
         {
             var seen = g.LastSeenAtUtc is { } t ? $"lần thấy gần nhất lúc {LocalTime(t, tz)}" : "chưa ghi nhận lần kết nối nào";
             var detail = string.Join(", ", new[] { string.IsNullOrWhiteSpace(g.FirmwareVersion) ? null : $"firmware {g.FirmwareVersion}", string.IsNullOrWhiteSpace(g.FrequencyBand) ? null : $"băng tần {g.FrequencyBand}" }.Where(x => x is not null));
-            return $"• {g.GatewayLabel} — trạng thái {g.Status}; {seen}{(detail.Length > 0 ? $"; {detail}" : string.Empty)}; phục vụ {g.NodesInZone} node của Zone.";
+            return $"• {g.GatewayLabel} — trạng thái {StatusLabel(g.Status)}; {seen}{(detail.Length > 0 ? $"; {detail}" : string.Empty)}; phục vụ {g.NodesInZone} node của Zone.";
         });
         var offline = gateways.Count(g => g.Status != "Online");
         var limitations = new List<string> { "Trạng thái là trạng thái ghi nhận trong hệ thống; chưa phải kết quả kiểm tra kết nối trực tiếp." };
@@ -1169,6 +1398,8 @@ public sealed class AiAdvisoryService(
             $" (lúc {LocalTime(d.LatestReadings.Max(r => r.CapturedAtUtc), tz)})";
     }
 
+    private static string RelativeMinutes(int minutes) => minutes < 120 ? $"{minutes} phút" : minutes < 2880 ? $"{minutes / 60} giờ" : $"{minutes / 1440} ngày";
+
     private static string LocalTime(DateTime utc, string timeZoneId)
     {
         try
@@ -1184,6 +1415,36 @@ public sealed class AiAdvisoryService(
 
     private static string Reading(AiTelemetryContextItem x, string timeZoneId) =>
         $"{ParameterLabel(x.ParameterCode)}: {x.Value.ToString("0.##", CultureInfo.InvariantCulture)} {x.Unit} (lúc {LocalTime(x.CapturedAtUtc, timeZoneId)})";
+
+    /// <summary>So sánh/tổng hợp theo ngày của Farm: nhỏ nhất, trung bình, lớn nhất mỗi ngày cho từng thông số của toàn Zone; hai ngày gần nhất được so sánh trực tiếp.</summary>
+    private static ZoneDataAnswer BuildDailySummaryAnswer(QuestionIntent intent, AiZoneContext context)
+    {
+        var summaries = (context.DailySummaries ?? []).Where(s => intent.Parameters.Count == 0 || intent.Parameters.Contains(s.ParameterCode)).ToList();
+        if (summaries.Count == 0)
+            return new ZoneDataAnswer(AiRecommendationStatus.InsufficientData, "Chưa có số đo để tổng hợp theo ngày",
+                $"Zone chưa có số đo nào trong {intent.HistoryDays} ngày gần nhất để tổng hợp hoặc so sánh.", ["Chưa có số đo trong khoảng ngày được hỏi."]);
+
+        var lines = new List<string>();
+        foreach (var g in summaries.GroupBy(s => s.ParameterCode).OrderBy(g => g.Key))
+        {
+            var days = g.OrderByDescending(s => s.Date).ToList();
+            var unit = days[0].Unit;
+            var perDay = string.Join("; ", days.Select(d => $"{d.Date:dd/MM}: TB {Num(d.Average)} ({Num(d.Min)}–{Num(d.Max)}, {d.Count} số đo)"));
+            var compare = string.Empty;
+            if (days.Count >= 2)
+            {
+                var diff = days[0].Average - days[1].Average;
+                compare = Math.Abs(diff) < 0.05m
+                    ? $" — trung bình ngày {days[0].Date:dd/MM} gần như bằng ngày {days[1].Date:dd/MM}"
+                    : $" — trung bình ngày {days[0].Date:dd/MM} {(diff > 0 ? "cao hơn" : "thấp hơn")} ngày {days[1].Date:dd/MM} {Num(Math.Abs(diff))} {unit}";
+            }
+            lines.Add($"• {ParameterLabel(g.Key)} ({unit}) — {perDay}{compare}");
+        }
+        var title = intent.HistoryDays <= 1 ? "Tổng hợp số đo trong ngày" : $"Tổng hợp số đo {intent.HistoryDays} ngày gần nhất";
+        return new ZoneDataAnswer(AiRecommendationStatus.Ready, title,
+            $"{title} của Zone (gộp mọi node, theo ngày của Farm; TB = trung bình, trong ngoặc là nhỏ nhất–lớn nhất):\n{string.Join("\n", lines)}",
+            ["Ngày hiện tại chưa đủ ngày nên chỉ tính đến thời điểm hỏi; ngày theo múi giờ hiện tại của Farm."]);
+    }
 
     private static ZoneDataAnswer BuildDeviceHistoryAnswer(QuestionIntent intent, AiZoneContext context)
     {
@@ -1212,7 +1473,7 @@ public sealed class AiAdvisoryService(
         foreach (var d in sensorDevices)
         {
             var rows = (d.RecentReadings ?? []).Where(r => Wanted(r.ParameterCode)).GroupBy(r => r.ParameterCode).OrderBy(g => g.Key).ToList();
-            if (rows.Count == 0) { blocks.Add($"{d.DeviceLabel} (trạng thái {d.Status}): chưa có số đo."); continue; }
+            if (rows.Count == 0) { blocks.Add($"{d.DeviceLabel} (trạng thái {StatusLabel(d.Status)}): chưa có số đo."); continue; }
             anyData = true;
             var lines = rows.Select(g =>
             {
@@ -1220,7 +1481,7 @@ public sealed class AiAdvisoryService(
                 var shown = string.Join("; ", items.Select(r => $"{Num(r.Value)} ({LocalTime(r.CapturedAtUtc, tz)})"));
                 return $"  • {ParameterLabel(g.Key)} ({items[0].Unit}): {shown}{(items.Count < n ? $" — chỉ có {items.Count} bản ghi" : string.Empty)}";
             });
-            blocks.Add($"{d.DeviceLabel} (trạng thái {d.Status}):\n{string.Join("\n", lines)}");
+            blocks.Add($"{d.DeviceLabel} (trạng thái {StatusLabel(d.Status)}):\n{string.Join("\n", lines)}");
         }
 
         var limitations = new List<string> { "Mỗi dòng liệt kê từ mới nhất đến cũ hơn; giờ theo múi giờ của Farm." };
@@ -1275,7 +1536,7 @@ public sealed class AiAdvisoryService(
         if (only is null)
         {
             if (sensorDevices.Count > 0)
-                parts.Add($"Zone có {sensorDevices.Count} thiết bị cảm biến ({string.Join(", ", sensorDevices.GroupBy(d => d.Status).Select(g => $"{g.Count()} {g.Key}"))}).");
+                parts.Add($"Zone có {sensorDevices.Count} thiết bị cảm biến ({string.Join(", ", sensorDevices.GroupBy(d => d.Status).Select(g => $"{g.Count()} {StatusLabel(g.Key)}"))}).");
             else
                 parts.Add("Zone chưa có thiết bị cảm biến nào được gán.");
         }
@@ -1331,6 +1592,16 @@ public sealed class AiAdvisoryService(
         }
     }
 
+    /// <summary>Tên loại node điều khiển theo kênh chấp hành, cùng cách gọi với màn hình quản lý thiết bị (DB chưa lưu mẫu thiết bị cho các node này).</summary>
+    internal static string? ControlNodeModelName(AiZoneDeviceSummary d)
+    {
+        if (d.SensorCount > 0 || d.ActuatorTypes.Count == 0) return null;
+        var valves = d.ActuatorTypes.Count(t => t is "IrrigationValve" or "Valve");
+        if (valves > 0 && valves == d.ActuatorTypes.Count) return $"Node Điều khiển Van Solenoid Tưới nhỏ giọt {valves} Cổng";
+        if (d.ActuatorTypes.All(t => t is "IrrigationPump" or "Pump" or "WaterPump")) return "Node Điều khiển Máy bơm tưới";
+        return null;
+    }
+
     private static ZoneDataAnswer BuildDeviceListAnswer(QuestionIntent intent, AiZoneContext context)
     {
         var tz = context.FarmTimeZone;
@@ -1354,7 +1625,7 @@ public sealed class AiAdvisoryService(
         var controlNodesWithoutChannels = (context.ZoneDevices ?? []).Where(d => d.DeviceType == "ActuatorNode" && d.ActuatorTypes.Count == 0).ToList();
         if (devices.Count == 0 && scope == QuestionIntent.ScopeActuators && controlNodesWithoutChannels.Count > 0)
             return new ZoneDataAnswer(AiRecommendationStatus.Ready, "Node điều khiển chưa cấu hình kênh chấp hành",
-                $"Zone có {controlNodesWithoutChannels.Count} node điều khiển ({string.Join(", ", controlNodesWithoutChannels.GroupBy(d => d.Status).Select(g => $"{g.Count()} {g.Key}"))}) nhưng chưa có kênh chấp hành nào (bơm, van...) được cấu hình trên node, nên chưa điều khiển được. Kỹ thuật viên cần khai báo kênh chấp hành cho node khi lắp đặt.",
+                $"Zone có {controlNodesWithoutChannels.Count} node điều khiển ({string.Join(", ", controlNodesWithoutChannels.GroupBy(d => d.Status).Select(g => $"{g.Count()} {StatusLabel(g.Key)}"))}) nhưng chưa có kênh chấp hành nào (bơm, van...) được cấu hình trên node, nên chưa điều khiển được. Kỹ thuật viên cần khai báo kênh chấp hành cho node khi lắp đặt.",
                 ["Node điều khiển chưa có kênh chấp hành được cấu hình."]);
         if (devices.Count == 0)
             return new ZoneDataAnswer(AiRecommendationStatus.Ready, $"Zone chưa có {label}",
@@ -1365,12 +1636,16 @@ public sealed class AiAdvisoryService(
             var sensors = d.SensorCount > 0 ? $"{d.SensorCount} cảm biến ({string.Join(", ", d.SensorTypes)})" : (d.ActuatorTypes.Count > 0 ? "node điều khiển" : d.DeviceType == "ActuatorNode" ? "node điều khiển (chưa cấu hình kênh chấp hành)" : "không có cảm biến");
             var actuators = d.ActuatorTypes.Count > 0 ? $"; thiết bị chấp hành: {GroupedActuators(d.ActuatorTypes)}" : string.Empty;
             // Hỏi thông tin/số đo: nêu giá trị từng thiết bị (chỉ số đo của đúng thiết bị đó); hỏi danh sách: chỉ nêu giờ số đo gần nhất.
-            var last = intent.WantsDeviceDetail
-                ? $"; số đo: {DeviceReadings(d, tz)}"
-                : d.LatestReadings.Count > 0
-                    ? $"; số đo gần nhất lúc {LocalTime(d.LatestReadings.Max(r => r.CapturedAtUtc), tz)}"
-                    : "; chưa có số đo";
-            return $"• {d.DeviceLabel} — trạng thái {d.Status}: {sensors}{actuators}{last}.";
+            // Node chỉ điều khiển (không có cảm biến) và không có số đo nào: không in "chưa có số đo" cho thiết bị vốn không đo.
+            var last = d.SensorCount == 0 && d.ActuatorTypes.Count > 0 && d.LatestReadings.Count == 0
+                ? string.Empty
+                : intent.WantsDeviceDetail
+                    ? $"; số đo: {DeviceReadings(d, tz)}"
+                    : d.LatestReadings.Count > 0
+                        ? $"; số đo gần nhất lúc {LocalTime(d.LatestReadings.Max(r => r.CapturedAtUtc), tz)}"
+                        : "; chưa có số đo";
+            var model = ControlNodeModelName(d);
+            return $"• {d.DeviceLabel}{(model is null ? string.Empty : $" ({model})")} — trạng thái {StatusLabel(d.Status)}: {sensors}{actuators}{last}.";
         });
         var totalSensors = devices.Sum(d => d.SensorCount);
         var totalActuators = devices.Sum(d => d.ActuatorTypes.Count);
@@ -1415,7 +1690,7 @@ public sealed class AiAdvisoryService(
         var rainNote = w.RainProbabilityNext6HoursMaxPercent is >= 60m ? " Xác suất mưa cao, cần lưu ý thoát nước và bệnh nấm." : string.Empty;
         return new ZoneDataAnswer(AiRecommendationStatus.Ready, "Đánh giá thời tiết theo ngưỡng giai đoạn hiện tại",
             $"{forecast}{measured} {verdict}{rainNote}",
-            ["Chỉ đánh giá theo ngưỡng nhiệt độ của hồ sơ sinh trưởng; các yếu tố khác (độ ẩm, gió, ánh sáng) chưa được đánh giá."]);
+            ["Chỉ đánh giá theo ngưỡng nhiệt độ của hồ sơ sinh trưởng; các yếu tố khác (độ ẩm, gió, ánh sáng) chưa được đánh giá.", "Dự báo chỉ gồm nhiệt độ và xác suất mưa trong vài giờ tới; chưa có dự báo nhiều ngày."]);
     }
 
     private static string ParameterLabel(EnvironmentalParameterCode parameterCode) => parameterCode switch
@@ -1451,17 +1726,26 @@ public sealed class AiAdvisoryService(
         ValidUntilUtc = now.AddMinutes(settings.RecommendationValidityMinutes)
     };
 
+    // Tên nhà cung cấp của các lượt không gọi Gemini để sinh câu trả lời (ProviderName do chính dịch vụ này đặt).
+    private static readonly string[] FreeProviderNames = ["Template", "None", "ZoneData", "Unavailable"];
+
     private async Task EnsureRateLimitAsync(Guid ownerId, Guid zoneId, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var from = now.AddMinutes(-settings.RateLimitWindowMinutes);
-        var recent = await db.AiConsultationRequests.AsNoTracking().Where(x => x.RequestedByUserId == ownerId && x.ZoneId == zoneId && x.CreatedAtUtc >= from).OrderBy(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
+        // Hạn mức tính theo lượt thật sự gọi AI. Câu trả lời lấy thẳng từ dữ liệu Zone, câu chào/ngoài phạm vi (mẫu có sẵn), câu bị từ chối vì
+        // thiếu tài liệu và lượt AI lỗi không tốn lượt gọi Gemini nên không trừ vào hạn mức; lượt đang xử lý (chưa có nhà cung cấp) vẫn được tính.
+        var recent = await db.AiConsultationRequests.AsNoTracking()
+            .Where(x => x.RequestedByUserId == ownerId && x.ZoneId == zoneId && x.CreatedAtUtc >= from
+                        && (x.ProviderName == null || !FreeProviderNames.Contains(x.ProviderName)))
+            .OrderBy(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
         if (recent.Count < settings.MaxRequestsPerWindow) return;
         var retryAt = recent[0].CreatedAtUtc.AddMinutes(settings.RateLimitWindowMinutes);
         throw new RateLimitExceededException("AI consultation rate limit exceeded for this Zone.", Math.Max(1, (int)Math.Ceiling((retryAt - now).TotalSeconds)));
     }
 
-    private async Task<(Zone Zone, UserRole Role)> EnsureZoneAccessAsync(Guid userId, Guid tenantId, Guid zoneId, bool requireControl, CancellationToken cancellationToken)
+    // Only the Farm Owner consults AI and decides on recommendations; an assigned Farmer may read the Zone context only.
+    private async Task<Zone> EnsureZoneAccessAsync(Guid userId, Guid tenantId, Guid zoneId, bool ownerOnly, CancellationToken cancellationToken)
     {
         var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)
             ?? throw new AuthorizationException();
@@ -1473,25 +1757,25 @@ public sealed class AiAdvisoryService(
         {
             // FarmOwner has full access to all zones in their tenant
         }
-        else if (user.Role == UserRole.Farmer)
+        else if (user.Role == UserRole.Farmer && !ownerOnly)
         {
             var access = await db.UserZoneAccesses.AsNoTracking()
                 .SingleOrDefaultAsync(x => x.AppUserId == userId && x.ZoneId == zoneId, cancellationToken);
             if (access is null)
                 throw new AuthorizationException("Farmer does not have access to this Zone.");
-            if (requireControl && !access.CanControl)
-                throw new AuthorizationException("Farmer does not have permission to control actuators in this Zone.");
         }
         else
         {
-            throw new AuthorizationException("Only Farm Owners and assigned Farmers can use AI advisory services.");
+            throw new AuthorizationException(ownerOnly
+                ? "Only Farm Owners can use AI advisory services."
+                : "Only Farm Owners and assigned Farmers can view the AI Zone context.");
         }
 
         var zone = await db.Zones.AsNoTracking().Include(x => x.Field).ThenInclude(x => x.Farm)
             .SingleOrDefaultAsync(x => x.Id == zoneId && x.Field.Farm.TenantId == tenantId, cancellationToken)
             ?? throw new ResourceNotFoundException("Zone was not found in the current Tenant.");
 
-        return (zone, user.Role);
+        return zone;
     }
 
     private async Task EnsureStageIsCurrentAsync(AiRecommendation recommendation, CancellationToken cancellationToken)

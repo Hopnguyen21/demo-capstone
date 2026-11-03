@@ -17,7 +17,7 @@ public sealed record ChunkPiece(string Content, int? PageNumber, string? Section
 public static class StructuredChunker
 {
     /// <summary>Tăng khi đổi cách chia; tài liệu có ChunkerVersion thấp hơn được worker nền chia lại.</summary>
-    public const int Version = 3;
+    public const int Version = 5;
 
     public const int MaxChars = 1800;
     public const int OverlapChars = 200;
@@ -96,7 +96,7 @@ public static class StructuredChunker
     private static List<Section> ReadSections(string text)
     {
         // PdfPig có thể trả chữ tiếng Việt dạng tổ hợp (NFD); chuẩn hóa để các mẫu nhận diện khớp.
-        var lines = text.Normalize(NormalizationForm.FormC).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var lines = RemoveTableFragmentRuns(RemoveRepeatedPageLines(text.Normalize(NormalizationForm.FormC).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')));
         var sections = new List<Section> { new() };
         int? page = null;
         var skippingToNextPage = false;
@@ -115,6 +115,7 @@ public static class StructuredChunker
             }
             if (line.Length == 0 || skippingToNextPage) continue;
             if (line.StartsWith("[OCR bằng AI", StringComparison.OrdinalIgnoreCase)) continue;
+            if (IsTableOfContentsLine(line)) continue;
             if (ArticleEnd.IsMatch(line)) { skippingToNextPage = true; continue; }
             if (IsWebChrome(line, i + 1 < lines.Length ? lines[i + 1].Trim() : string.Empty)) continue;
 
@@ -126,6 +127,75 @@ public static class StructuredChunker
         }
 
         return sections.Where(s => s.Lines.Count > 0).ToList();
+    }
+
+    /// <summary>
+    /// Dòng đầu/cuối trang lặp lại ở từ ba trang khác nhau trở lên (tên tài liệu in lại ở chân trang, kể cả khi lỗi mã hóa font như
+    /// "Höôùng DAÃN GAP CÔ BAÛN") là khung trang, không phải nội dung; bỏ đi để không chiếm chỗ trong đoạn và kết quả tìm kiếm.
+    /// Chỉ áp dụng cho dòng ngắn có từ hai từ trở lên và không phải đề mục; tài liệu không có nhãn trang thì giữ nguyên.
+    /// </summary>
+    internal static string[] RemoveRepeatedPageLines(string[] lines)
+    {
+        static string Key(string l) => Regex.Replace(l.Trim(), @"\s+", " ").ToLowerInvariant();
+        var pagesByLine = new Dictionary<string, HashSet<int>>();
+        int? page = null;
+        foreach (var raw in lines)
+        {
+            var m = PageMarker.Match(raw.Trim());
+            if (m.Success) { page = int.Parse(m.Groups[1].Value); continue; }
+            var key = Key(raw);
+            if (page is null || key.Length is < 8 or > 90 || !key.Any(char.IsLetter) || key.Split(' ').Length < 2 || Heading.IsMatch(raw.Trim())) continue;
+            if (!pagesByLine.TryGetValue(key, out var set)) pagesByLine[key] = set = [];
+            set.Add(page.Value);
+        }
+        var repeated = pagesByLine.Where(kv => kv.Value.Count >= 3).Select(kv => kv.Key).ToHashSet();
+        return repeated.Count == 0 ? lines : lines.Where(l => PageMarker.IsMatch(l.Trim()) || !repeated.Contains(Key(l))).ToArray();
+    }
+
+    /// <summary>
+    /// Bảng trong PDF thường được đọc ra mỗi ô/từ một dòng ("Đào", "Tuyên", "Số", "nông", "dân"...): chuỗi từ sáu dòng ngắn liên tiếp
+    /// trở lên là phần vỡ của bảng, không đọc được thành câu, chỉ làm nhiễu đoạn và kết quả tìm kiếm nên bị bỏ.
+    /// Dòng nhãn trang và đề mục luôn được giữ.
+    /// </summary>
+    internal static string[] RemoveTableFragmentRuns(string[] lines)
+    {
+        const int maxLineChars = 10, minRun = 6;
+        bool IsFragment(string l)
+        {
+            var t = l.Trim();
+            return t.Length > 0 && t.Length <= maxLineChars && !PageMarker.IsMatch(t) && !Heading.IsMatch(t);
+        }
+
+        var result = new List<string>(lines.Length);
+        var i = 0;
+        while (i < lines.Length)
+        {
+            if (!IsFragment(lines[i])) { result.Add(lines[i]); i++; continue; }
+            var j = i;
+            while (j < lines.Length && (IsFragment(lines[j]) || lines[j].Trim().Length == 0)) j++;
+            var run = lines.Skip(i).Take(j - i).Count(l => l.Trim().Length > 0);
+            if (run < minRun) result.AddRange(lines.Skip(i).Take(j - i));
+            i = j;
+        }
+        return result.ToArray();
+    }
+
+    // Dòng mục lục ("2. Quản lý đất ........ 13"): tên mục kèm đường chấm và số trang, không phải nội dung kỹ thuật.
+    private static readonly Regex TocLine = new(@"^.{2,}?(?:\.{5,}|…{3,})\s*\d{1,3}\s*$", RegexOptions.Compiled);
+
+    internal static bool IsTableOfContentsLine(string line) => TocLine.IsMatch(line.Trim());
+
+    private static readonly Regex DottedLeader = new(@"\.{5,}|…{3,}|_{4,}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Biểu mẫu/nhật ký để trống (đường chấm "........", bảng bị tách mỗi từ một dòng) không phải tri thức: đưa vào kho chỉ làm nhiễu tìm kiếm.
+    /// </summary>
+    internal static bool LooksLikeBlankForm(string content)
+    {
+        var leaders = DottedLeader.Matches(content);
+        if (leaders.Count >= 4 && leaders.Sum(m => m.Length) * 100 / Math.Max(1, content.Length) >= 15) return true;
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return lines.Length >= 12 && lines.Count(l => l.Trim().Length <= 5) * 100 / lines.Length >= 55;
     }
 
     // Dòng ngắn không kết thúc câu đứng trước một dòng viết hoa: tiêu đề tin ở sidebar chen vào giữa bài.
@@ -145,6 +215,7 @@ public static class StructuredChunker
     private static List<ChunkPiece> DropNonTechnical(List<ChunkPiece> pieces)
     {
         var kept = pieces.Where(p => p.SectionTitle is not null || p.Content.Length >= ShortChunkChars || AgronomyTerms.Matches(p.Content).Count >= MinAgronomyTerms).ToList();
+        kept = kept.Where(p => !LooksLikeBlankForm(p.Content)).ToList();
         return kept.Count > 0 ? kept : pieces;
     }
 

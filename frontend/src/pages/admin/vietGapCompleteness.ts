@@ -80,3 +80,17 @@ export function checkVietGapCompleteness(
   topics.split(',').map(t => t.trim()).filter(Boolean).forEach(t => { if (SECTION_BY_TOPIC[t]) required.add(SECTION_BY_TOPIC[t]); });
   return checks.map(c => (required.has(c.key) ? { ...c, isCritical: true } : c));
 }
+
+/**
+ * Phát hiện văn bản trích xuất bị lỗi font/OCR (ví dụ "sX chế", "tXi", "tr#ng", "tho" thay cho "sơ chế", "tươi", "trong", "theo"):
+ * chữ hoa X hoặc ký hiệu # $ ; nằm giữa các chữ thường trong một từ gần như không xuất hiện ở văn bản tiếng Việt bình thường.
+ * Chỉ để cảnh báo người duyệt; không tự sửa nội dung.
+ */
+export function detectTextCorruption(text: string): { suspicious: boolean; count: number; ratio: number; examples: string[] } {
+  const tokens = (text || '').split(/\s+/).filter(t => t.length >= 2);
+  if (tokens.length < 50) return { suspicious: false, count: 0, ratio: 0, examples: [] };
+  const isBad = (t: string) => /^[A-Za-zà-ỹ]X[a-zà-ỹ]*$/.test(t) || /[a-zà-ỹ]X[a-zà-ỹ]+/.test(t) || /[a-zà-ỹ][#$][a-zà-ỹ]/.test(t);
+  const bad = tokens.filter(isBad);
+  const ratio = bad.length / tokens.length;
+  return { suspicious: bad.length >= 8 && ratio >= 0.01, count: bad.length, ratio, examples: [...new Set(bad)].slice(0, 6) };
+}

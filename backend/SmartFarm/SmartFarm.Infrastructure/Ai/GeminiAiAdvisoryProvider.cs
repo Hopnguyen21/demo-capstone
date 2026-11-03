@@ -28,6 +28,9 @@ public sealed class GeminiOptions
 
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int TimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Tổng thời gian tối đa (giây) cho mọi lần thử model/khóa của một câu hỏi; hết thì báo AI không khả dụng thay vì bắt người dùng chờ hàng phút.</summary>
+    public int TotalBudgetSeconds { get; set; } = 45;
     public int MaxOutputTokens { get; set; } = 8192;
     public int? ThinkingBudget { get; set; } = 0;
     public int MaxQuestionLength { get; set; } = 1000;
@@ -86,9 +89,24 @@ public sealed partial class GeminiAiAdvisoryProvider(
 
         // Thử lần lượt: mỗi model × mỗi API key. Model ưu tiên được thử với mọi key trước khi hạ cấp sang model dự phòng.
         var attempts = candidateModels.SelectMany(m => apiKeys.Select((k, i) => (Model: m, Key: k, KeyIndex: i))).ToList();
+        // Google hay báo "high demand" (503) theo từng đợt ngắn: cả danh sách lỗi liên tiếp trong vài giây rồi hết. Nên duyệt danh sách
+        // thêm một vòng sau khi nghỉ ngắn, trừ khi đã có lần hết thời gian chờ (thử lại sẽ làm người dùng chờ quá lâu).
+        var attemptsPerRound = attempts.Count;
+        attempts = [.. attempts, .. attempts];
+        var sawTimeout = false;
+        var budget = System.Diagnostics.Stopwatch.StartNew();
 
         for (var attemptNo = 0; attemptNo < attempts.Count; attemptNo++)
         {
+            if (attemptNo == attemptsPerRound)
+            {
+                if (sawTimeout) break;
+                logger.LogInformation("[Gemini] All models/keys failed in round 1; retrying once after a short pause.");
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            }
+            var remainingSeconds = settings.TotalBudgetSeconds - budget.Elapsed.TotalSeconds;
+            if (attemptNo > 0 && remainingSeconds < 5)
+                throw new TimeoutException($"Gemini did not answer within the {settings.TotalBudgetSeconds}s budget.");
             var (model, apiKey, keyIndex) = attempts[attemptNo];
             var isLastAttempt = attemptNo == attempts.Count - 1;
             activeModel = model;
@@ -105,7 +123,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
             message.Headers.Add("x-goog-api-key", apiKey);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
+            timeout.CancelAfter(TimeSpan.FromSeconds(Math.Min(settings.TimeoutSeconds, Math.Max(5, remainingSeconds))));
 
             try
             {
@@ -133,6 +151,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                sawTimeout = true;
                 if (!isLastAttempt)
                 {
                     logger.LogWarning("[Gemini] Model {Model} (key #{KeyIndex}) timed out, trying next model/key...", model, keyIndex + 1);

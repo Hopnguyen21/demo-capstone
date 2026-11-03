@@ -117,6 +117,52 @@ public class DocumentVerificationTests
         prompt.Split("<file_document>").Length.Should().Be(2);
     }
 
+    private static string JsonWithScope(string scope, string[] crops, params string[] scopeQuotes) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            isAgricultural = true, documentKind = "loại", confidence = 0.9, reason = "lý do",
+            evidenceQuotes = new[] { "Đất trồng cần tơi xốp, giàu mùn, pH từ 6,0 đến 6,8." },
+            applicability = new { scope, crops, reason = "vì sao", evidenceQuotes = scopeQuotes }
+        });
+
+    [Fact]
+    public void Scope_suggestion_is_kept_only_with_a_real_quote_and_a_crop_that_is_in_the_file()
+    {
+        var specific = VietGapDocumentVerifier.Evaluate(
+            JsonWithScope("specific", ["Cà Chua Beefsteak (Tomato)"], "Quy trình kỹ thuật trồng cà chua nhà màng"), AgriText, "m", DateTime.UtcNow, false);
+        specific.ScopeKind.Should().Be(DocumentVerificationResult.ScopeSpecific);
+        specific.ScopeCrops.Should().Equal("Cà Chua Beefsteak (Tomato)");
+        specific.ScopeEvidence!.Single().Page.Should().Be(1);
+
+        var general = VietGapDocumentVerifier.Evaluate(
+            JsonWithScope("general", [], "Tưới nhỏ giọt mỗi sáng và bón phân hữu cơ hoai mục trước khi trồng."), AgriText, "m", DateTime.UtcNow, false);
+        general.ScopeKind.Should().Be(DocumentVerificationResult.ScopeGeneral);
+        general.ScopeCrops.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Scope_suggestion_is_dropped_when_the_quote_is_invented_or_the_crop_is_not_in_the_file()
+    {
+        var invented = VietGapDocumentVerifier.Evaluate(
+            JsonWithScope("general", [], "Câu này hoàn toàn không có trong tài liệu gốc đâu."), AgriText, "m", DateTime.UtcNow, false);
+        invented.ScopeKind.Should().Be(DocumentVerificationResult.ScopeUnknown);
+
+        var wrongCrop = VietGapDocumentVerifier.Evaluate(
+            JsonWithScope("specific", ["Dâu Tây Hana"], "Quy trình kỹ thuật trồng cà chua nhà màng"), AgriText, "m", DateTime.UtcNow, false);
+        wrongCrop.ScopeKind.Should().Be(DocumentVerificationResult.ScopeUnknown);
+        wrongCrop.ScopeCrops.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Scope_is_unknown_when_the_agricultural_verdict_itself_is_not_grounded()
+    {
+        var result = VietGapDocumentVerifier.Evaluate(
+            JsonWithScope("general", [], "Tưới nhỏ giọt mỗi sáng và bón phân hữu cơ hoai mục trước khi trồng.").Replace("0.9", "0.2"), AgriText, "m", DateTime.UtcNow, false);
+
+        result.Status.Should().Be(DocumentVerificationResult.Uncertain);
+        result.ScopeKind.Should().Be(DocumentVerificationResult.ScopeUnknown);
+    }
+
     [Fact]
     public void Long_documents_are_truncated_and_say_so()
     {

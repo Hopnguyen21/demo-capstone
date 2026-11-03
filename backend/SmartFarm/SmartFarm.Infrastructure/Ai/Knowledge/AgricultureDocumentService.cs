@@ -608,11 +608,19 @@ public sealed class AgricultureDocumentService(
             await tx.CommitAsync(ct);
             return await db.AgricultureKnowledgeChunks.CountAsync(c => c.DocumentId == documentId, ct);
         }
+        // Giữ vector của đoạn không đổi (cùng nội dung và mục) qua bảng tạm, để chia lại không tốn lượt gọi embedding. Làm bằng SQL vì cột embedding
+        // là kiểu vector hoặc text (máy chưa cài pgvector) và EF chỉ ghi/đọc được kiểu vector.
+        await db.Database.ExecuteSqlRawAsync(
+            "CREATE TEMP TABLE old_chunk_vectors ON COMMIT DROP AS SELECT content, section_title, embedding FROM agriculture_knowledge_chunks WHERE document_id = {0} AND embedding IS NOT NULL",
+            [documentId], ct);
         await db.AgricultureKnowledgeChunks.Where(c => c.DocumentId == documentId).ExecuteDeleteAsync(ct);
         var chunks = BuildChunks(documentId, doc.ContentText, doc.CropScope);
         db.AgricultureKnowledgeChunks.AddRange(chunks);
         doc.ChunkerVersion = StructuredChunker.Version;
         await db.SaveChangesAsync(ct);
+        await db.Database.ExecuteSqlRawAsync(
+            "UPDATE agriculture_knowledge_chunks n SET embedding = o.embedding, status = 'Completed' FROM old_chunk_vectors o WHERE n.document_id = {0} AND n.content = o.content AND n.section_title IS NOT DISTINCT FROM o.section_title",
+            [documentId], ct);
         await tx.CommitAsync(ct);
         db.ChangeTracker.Clear();
         return chunks.Count;
@@ -670,7 +678,9 @@ public sealed class AgricultureDocumentService(
             .FirstOrDefaultAsync(ct);
         if (doc is null) return false;
 
-        var result = await verifier.VerifyAsync(doc, ct);
+        // Danh mục cây giúp AI gọi đúng tên cây khi gợi ý phạm vi áp dụng.
+        var catalog = await db.Crops.AsNoTracking().OrderBy(c => c.Name).Select(c => c.Name).ToListAsync(ct);
+        var result = await verifier.VerifyAsync(doc, ct, catalog);
         StoreVerification(doc, result);
         await db.SaveChangesAsync(ct);
         return true;
@@ -739,12 +749,23 @@ public sealed class AgricultureDocumentService(
         return await EmbedChunksAsync(db.AgricultureKnowledgeChunks.Where(c => c.Document.ReviewStatus == AgricultureDocumentReviewStatus.Approved), ct);
     }
 
+    private static readonly System.Text.RegularExpressions.Regex ReferenceListTitle = new(
+        @"^\s*(?:\w{1,4}[.)]\s*)?(?:thư mục\s+)?tài liệu tham khảo", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>Đoạn không đáng một lượt gọi embedding: danh mục tài liệu tham khảo hoặc biểu mẫu trống.</summary>
+    internal static bool IsLowValueForEmbedding(AgricultureKnowledgeChunk c) =>
+        (c.SectionTitle is not null && ReferenceListTitle.IsMatch(c.SectionTitle)) ||
+        ReferenceListTitle.IsMatch(c.Content.TrimStart()) ||
+        StructuredChunker.LooksLikeBlankForm(c.Content);
+
     private async Task<int> EmbedChunksAsync(IQueryable<AgricultureKnowledgeChunk> source, CancellationToken ct, int maxChunks = 0)
     {
         if (!embedding.IsAvailable) return 0;
         var done = 0;
         var quotaStop = false;
         const int batch = 20;
+        var isVectorColumn = await db.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns WHERE table_name = 'agriculture_knowledge_chunks' AND column_name = 'embedding' AND udt_name = 'vector'").SingleAsync(ct) > 0;
 
         while (true)
         {
@@ -763,8 +784,25 @@ public sealed class AgricultureDocumentService(
                 {
                     // Ghép tiêu đề mục vào văn bản embedding để đoạn giữa mục vẫn mang ngữ cảnh của mục.
                     var embeddingText = string.IsNullOrWhiteSpace(c.SectionTitle) ? c.Content : $"{c.SectionTitle}\n{c.Content}";
-                    c.Embedding = new Vector(await embedding.GenerateDocumentEmbeddingAsync(embeddingText, ct));
-                    c.Status = KnowledgeChunkStatus.Completed;
+                    if (IsLowValueForEmbedding(c))
+                    {
+                        // Danh mục tài liệu tham khảo / biểu mẫu trống: không đáng một lượt gọi; vẫn tìm được theo từ khóa.
+                        c.Status = KnowledgeChunkStatus.Completed;
+                        continue;
+                    }
+                    // Cùng nội dung và mục đã có vector ở tài liệu khác (tài liệu trùng/gần trùng): dùng lại, không gọi embedding.
+                    var reused = await db.Database.ExecuteSqlRawAsync(
+                        "UPDATE agriculture_knowledge_chunks t SET embedding = s.embedding, status = 'Completed' FROM agriculture_knowledge_chunks s WHERE t.id = {0} AND s.id <> t.id AND s.embedding IS NOT NULL AND s.content = t.content AND s.section_title IS NOT DISTINCT FROM t.section_title",
+                        [c.Id], ct);
+                    if (reused > 0) { done++; continue; }
+                    var values = await embedding.GenerateDocumentEmbeddingAsync(embeddingText, ct);
+                    var literal = "[" + string.Join(",", values.Select(v => v.ToString("R", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+                    // Ghi bằng SQL: cột là vector (có pgvector) hoặc text (chưa cài pgvector); tìm kiếm trong bộ nhớ đọc được cả hai dạng.
+                    await db.Database.ExecuteSqlRawAsync(
+                        isVectorColumn
+                            ? "UPDATE agriculture_knowledge_chunks SET embedding = CAST({0} AS vector), status = 'Completed' WHERE id = {1}"
+                            : "UPDATE agriculture_knowledge_chunks SET embedding = {0}, status = 'Completed' WHERE id = {1}",
+                        [literal, c.Id], ct);
                     done++;
                 }
                 catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
@@ -779,7 +817,6 @@ public sealed class AgricultureDocumentService(
                     c.Status = KnowledgeChunkStatus.Failed;
                     logger.LogWarning(ex, "[RAG] Embed chunk {Id} failed.", c.Id);
                 }
-                await Task.Delay(50, ct);
             }
             await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();

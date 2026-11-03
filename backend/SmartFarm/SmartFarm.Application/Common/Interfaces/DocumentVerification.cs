@@ -17,8 +17,19 @@ public sealed record DocumentVerificationResult(
     string? DocumentKind,
     string Reason,
     IReadOnlyList<VerificationQuote> Evidence,
-    string Message)
+    string Message,
+    string? ScopeKind = null,
+    IReadOnlyList<string>? ScopeCrops = null,
+    IReadOnlyList<VerificationQuote>? ScopeEvidence = null,
+    string? ScopeReason = null,
+    /// <summary>Tên tài liệu AI gợi ý khi file không có dòng tiêu đề rõ; chỉ là gợi ý để người duyệt đối chiếu.</summary>
+    string? SuggestedTitle = null)
 {
+    /// <summary>Phạm vi áp dụng AI gợi ý: chỉ là gợi ý có trích dẫn, người duyệt vẫn là người quyết định.</summary>
+    public const string ScopeGeneral = "general";
+    public const string ScopeSpecific = "specific";
+    public const string ScopeUnknown = "unknown";
+
     public const string Pending = "Pending";
     public const string Agricultural = "Agricultural";
     public const string NotAgricultural = "NotAgricultural";

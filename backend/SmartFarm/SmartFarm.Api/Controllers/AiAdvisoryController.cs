@@ -16,7 +16,8 @@ public sealed class AiAdvisoryController(IAiAdvisoryService service) : Controlle
     public async Task<ActionResult<AiZoneContext>> Context(Guid zoneId, CancellationToken cancellationToken) =>
         Ok(await service.GetContextAsync(User.GetUserId(), User.GetTenantId(), zoneId, cancellationToken));
 
-    // API catalog #85
+    // API catalog #85. Only the Farm Owner consults AI; assigned Farmers read the Zone context only.
+    [Authorize(Roles = "FarmOwner")]
     [HttpPost("api/v1/zones/{zoneId:guid}/ai/ask")]
     public async Task<ActionResult<AiRecommendationView>> Ask(Guid zoneId, AskAiRequest request, CancellationToken cancellationToken)
     {
@@ -24,8 +25,8 @@ public sealed class AiAdvisoryController(IAiAdvisoryService service) : Controlle
         return Created($"/api/v1/zones/{zoneId}/ai/history", result);
     }
 
-    // API catalog #86. Accepted means the Owner/Authorized Farmer authorized an asynchronous control command, not that hardware ran.
-    [Authorize(Roles = "FarmOwner,Farmer")]
+    // API catalog #86. Accepted means the Owner authorized an asynchronous control command, not that hardware ran.
+    [Authorize(Roles = "FarmOwner")]
     [HttpPost("api/v1/zones/{zoneId:guid}/ai/apply-recommendation")]
     public async Task<ActionResult<AiDecisionResult>> Decide(Guid zoneId, [FromBody] DecideAiRecommendationRequest request, CancellationToken cancellationToken)
     {
@@ -38,11 +39,13 @@ public sealed class AiAdvisoryController(IAiAdvisoryService service) : Controlle
     }
 
     // API catalog #87
+    [Authorize(Roles = "FarmOwner")]
     [HttpGet("api/v1/zones/{zoneId:guid}/ai/history")]
     public async Task<ActionResult<AiHistoryView>> History(Guid zoneId, CancellationToken cancellationToken) =>
         Ok(await service.GetHistoryAsync(User.GetUserId(), User.GetTenantId(), zoneId, cancellationToken));
 
     // API catalog #88. This hides UI history and retains audit rows.
+    [Authorize(Roles = "FarmOwner")]
     [HttpDelete("api/v1/zones/{zoneId:guid}/ai/history")]
     public async Task<IActionResult> HideHistory(Guid zoneId, CancellationToken cancellationToken)
     {

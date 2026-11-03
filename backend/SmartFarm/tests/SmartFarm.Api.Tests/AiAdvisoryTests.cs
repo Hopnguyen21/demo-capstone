@@ -433,6 +433,34 @@ public sealed class AiAdvisoryTests
     }
 
     [Fact]
+    public async Task Hypothetical_value_is_compared_with_the_configured_threshold_even_without_documents()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "nếu độ ẩm đất giảm còn 3% thì sao";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.AgronomyKnowledge], [EnvironmentalParameterCode.SoilMoisture]));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Equal(AiRecommendationStatus.InsufficientData, answer.Status);
+        Assert.Contains("giá trị giả định 3", answer.Details);
+        Assert.Contains("THẤP HƠN mức tối thiểu", answer.Details);
+    }
+
+    [Fact]
+    public async Task A_duration_in_a_hypothetical_question_is_not_read_as_a_measurement()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "nếu tôi tưới 30 phút thì độ ẩm đất ra sao";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.AgronomyKnowledge], [EnvironmentalParameterCode.SoilMoisture]));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.DoesNotContain("giá trị giả định", answer.Details);
+    }
+
+    [Fact]
     public async Task Multi_intent_with_unavailable_weather_still_answers_the_other_part_and_names_the_gap()
     {
         using var factory = new TestApplicationFactory();
@@ -695,6 +723,45 @@ public sealed class AiAdvisoryTests
     }
 
     [Fact]
+    public async Task Day_comparison_question_summarises_each_day_and_compares_today_with_yesterday()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var device = await db.Devices.SingleAsync(d => d.ZoneId == fixture.ZoneId);
+            var template = await db.TelemetryReadings.FirstAsync(r => r.DeviceId == device.Id);
+            foreach (var value in new[] { 60m, 70m })
+                db.TelemetryReadings.Add(new TelemetryReading { TenantId = template.TenantId, FarmId = template.FarmId, ZoneId = fixture.ZoneId, DeviceId = device.Id, GatewayId = device.GatewayId, MessageId = $"ai-{Guid.NewGuid():N}", ParameterCode = template.ParameterCode, Value = value, Unit = template.Unit, CapturedAtUtc = DateTime.UtcNow.AddDays(-1), ReceivedAtUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        const string question = "so sánh độ ẩm đất hôm nay với hôm qua";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.SensorReadings], [EnvironmentalParameterCode.SoilMoisture], HistoryDays: 2));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Equal(AiRecommendationStatus.Ready, answer.Status);
+        Assert.Contains("Tổng hợp số đo 2 ngày gần nhất", answer.Details);
+        Assert.Contains("TB 65", answer.Details);
+        Assert.Contains("thấp hơn", answer.Details);
+    }
+
+    [Fact]
+    public async Task Day_question_the_classifier_read_as_a_record_count_is_still_answered_by_day()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "so sánh số đo hôm nay với hôm qua";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.SensorReadings], [], WantsHistory: true, HistoryCount: 5));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Contains("Tổng hợp số đo 2 ngày gần nhất", answer.Details);
+        Assert.DoesNotContain("5 bản ghi gần nhất", answer.Details);
+    }
+
+    [Fact]
     public async Task Sensor_overview_still_lists_readings_when_the_ai_comment_fails_or_is_unsure()
     {
         using var factory = new TestApplicationFactory();
@@ -711,6 +778,152 @@ public sealed class AiAdvisoryTests
         var unsure = await AskAsync(factory, fixture.ZoneId, "thông tin cảm biến hiện tại");
         Assert.Contains("Độ ẩm đất", unsure.Details);
         Assert.DoesNotContain("Nhận xét tổng thể", unsure.Details);
+    }
+
+    [Fact]
+    public async Task Schedule_question_with_a_multi_day_horizon_lists_schedules_beyond_twelve_hours()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).SingleAsync(z => z.Id == fixture.ZoneId);
+            db.ControlSchedules.AddRange(
+                new ControlSchedule { TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, ZoneId = zone.Id, ActuatorId = fixture.PumpId, Name = "Tưới sáng mai", CronExpression = "0 6 * * *", DurationSeconds = 300, NextRunAtUtc = DateTime.UtcNow.AddHours(30) },
+                new ControlSchedule { TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, ZoneId = zone.Id, ActuatorId = fixture.PumpId, Name = "Tưới sau 5 ngày", CronExpression = "0 6 * * *", DurationSeconds = 300, NextRunAtUtc = DateTime.UtcNow.AddDays(5) });
+            await db.SaveChangesAsync();
+        }
+
+        var answer = await AskAsync(factory, fixture.ZoneId, "lịch tưới trong 2 ngày tới");
+
+        Assert.Contains("Tưới sáng mai", answer.Details);
+        Assert.DoesNotContain("Tưới sau 5 ngày", answer.Details);
+        Assert.Contains("2 ngày tới", answer.Details);
+        Assert.DoesNotContain("chưa có lịch tưới nào sắp chạy", answer.Details);
+    }
+
+    [Fact]
+    public async Task Schedule_sync_uses_the_irrigation_plan_stored_with_the_crop()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        var cropId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            (await db.Crops.SingleAsync(c => c.Id == cropId)).CalendarIrrigationPlan =
+                """{"repeatType":"DAILY","sessions":[{"session":"MORNING","title":"Tưới sáng","startTime":"06:10","durationMinutes":7,"enabled":true},{"session":"NOON","title":"Tưới trưa","startTime":"12:00","durationMinutes":5,"enabled":false}]}""";
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+
+        var response = await client.PostAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/schedules/sync-from-crop", new { cropId, actuatorId = fixture.PumpId });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var verify = factory.Services.CreateScope();
+        var schedules = await verify.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ControlSchedules.AsNoTracking()
+            .Where(x => x.ZoneId == fixture.ZoneId && x.Name.StartsWith("[AutoSync]")).ToListAsync();
+        var only = Assert.Single(schedules);
+        Assert.Equal("10 6 * * *", only.CronExpression);
+        Assert.Equal(420, only.DurationSeconds);
+        Assert.Contains("06:10", only.Name);
+    }
+
+    [Fact]
+    public async Task Schedule_sync_refuses_a_crop_without_an_irrigation_plan_instead_of_inventing_times()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        var cropId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+
+        var response = await client.PostAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/schedules/sync-from-crop", new { cropId, actuatorId = fixture.PumpId });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var verify = factory.Services.CreateScope();
+        Assert.False(await verify.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ControlSchedules.AnyAsync(x => x.ZoneId == fixture.ZoneId));
+    }
+
+    [Fact]
+    public async Task Who_is_assigned_question_lists_zone_members_and_task_assignees_only_for_this_zone()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var zone = await db.Zones.Include(z => z.Field).ThenInclude(x => x.Farm).SingleAsync(z => z.Id == fixture.ZoneId);
+            var farmer = new AppUser { Email = "ai-members@example.com", NormalizedEmail = "AI-MEMBERS@EXAMPLE.COM", FullName = "Nguyễn Văn Thử", Role = UserRole.Farmer, Status = AccountStatus.Active, TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, PasswordHash = "x" };
+            var outsider = new AppUser { Email = "ai-outsider@example.com", NormalizedEmail = "AI-OUTSIDER@EXAMPLE.COM", FullName = "Người Ngoài Zone", Role = UserRole.Farmer, Status = AccountStatus.Active, TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, PasswordHash = "x" };
+            db.AppUsers.AddRange(farmer, outsider);
+            db.UserZoneAccesses.Add(new UserZoneAccess { AppUser = farmer, ZoneId = zone.Id, CanControl = true });
+            var task = new FarmTask { TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, ZoneId = zone.Id, Title = "Tỉa nhánh", DueAtUtc = DateTime.UtcNow.AddDays(1), CreatedByOwnerId = Guid.NewGuid(), Status = FarmTaskStatus.Pending };
+            task.Assignments.Add(new FarmTaskAssignment { Farmer = farmer, AssignedByOwnerId = task.CreatedByOwnerId, AssignedAtUtc = DateTime.UtcNow, Status = FarmTaskStatus.Pending });
+            db.FarmTasks.Add(task);
+            await db.SaveChangesAsync();
+        }
+
+        var answer = await AskAsync(factory, fixture.ZoneId, "ai được phân công zone này");
+
+        Assert.Contains("Nguyễn Văn Thử — xem và điều khiển", answer.Details);
+        Assert.Contains("Tỉa nhánh", answer.Details);
+        Assert.DoesNotContain("Người Ngoài Zone", answer.Details);
+        Assert.Equal(0, factory.AiProvider.Calls);
+    }
+
+    [Fact]
+    public async Task Zone_info_is_shown_in_vietnamese_and_notes_only_briefly_what_is_out_of_scope()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        const string question = "diện tích zone và chủ farm là ai";
+        factory.IntentClassifier.Understands(question, new QuestionIntent([QuestionTopics.ZoneInfo, QuestionTopics.UnsupportedData], []));
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Contains("diện tích", answer.Details);
+        Assert.DoesNotContain("Greenhouse", answer.Details);
+        Assert.DoesNotContain("OpenField", answer.Details);
+        Assert.DoesNotContain("Inactive", answer.Details);
+        Assert.DoesNotContain("Operating", answer.Details);
+        Assert.Contains("Phần còn lại của câu hỏi", answer.Details);
+        Assert.DoesNotContain("số đo cảm biến, thiết bị, gateway", answer.Details);
+    }
+
+    [Theory]
+    [InlineData("doanh thu vụ này")]
+    [InlineData("cho tôi xem camera")]
+    [InlineData("hợp đồng của zone còn hạn không")]
+    public async Task Data_the_assistant_does_not_have_is_declined_instead_of_answering_a_different_question(string question)
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Equal("Ngoài phạm vi Zone đang chọn", answer.Summary);
+        Assert.Contains("chưa có dữ liệu này", answer.Details);
+        Assert.DoesNotContain("diện tích", answer.Details);
+        Assert.Equal(0, factory.AiProvider.Calls);
+    }
+
+    [Theory]
+    [InlineData("farm có mấy zone")]
+    [InlineData("thông tin farm")]
+    public async Task Farm_question_stays_within_the_current_zone(string question)
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+
+        var answer = await AskAsync(factory, fixture.ZoneId, question);
+
+        Assert.Equal("Ngoài phạm vi Zone đang chọn", answer.Summary);
+        Assert.DoesNotMatch("có [0-9]+ Zone", answer.Details);
+        Assert.DoesNotContain("Field", answer.Details.Replace("Field khác", ""));
+        Assert.Equal(0, factory.AiProvider.Calls);
     }
 
     [Theory]
@@ -775,7 +988,7 @@ public sealed class AiAdvisoryTests
 
         var answer = await AskAsync(factory, fixture.ZoneId, "gateway đang thế nào");
 
-        Assert.Contains("Offline", answer.Details);
+        Assert.Contains("ngoại tuyến", answer.Details);
         Assert.Contains(answer.Limitations, l => l.Contains("không ở trạng thái Online"));
         Assert.DoesNotContain("AA:BB", answer.Details);
         Assert.DoesNotContain("ai-", answer.Details);
@@ -1016,6 +1229,32 @@ public sealed class AiAdvisoryTests
     }
 
     [Fact]
+    public async Task Assigned_farmer_reads_context_but_only_owner_consults_ai()
+    {
+        using var factory = new TestApplicationFactory();
+        var seed = await factory.SeedAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var farm = await db.Farms.SingleAsync(x => x.Id == seed.FarmAId);
+            var farmer = await db.AppUsers.SingleAsync(x => x.Id == seed.UnassignedFarmerId);
+            farmer.TenantId = farm.TenantId;
+            farmer.FarmId = farm.Id;
+            db.UserZoneAccesses.Add(new UserZoneAccess { AppUserId = farmer.Id, ZoneId = seed.ZoneAId, CanControl = true });
+            await db.SaveChangesAsync();
+        }
+        using var client = factory.CreateClient();
+        await Login(client, "farmer@example.com");
+
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/v1/zones/{seed.ZoneAId}/ai/context")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/ai/ask", new { question = "Có nên tưới không?" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/ai/apply-recommendation", new { recommendationId = Guid.NewGuid(), decision = "Accepted" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/v1/zones/{seed.ZoneAId}/ai/history")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync($"/api/v1/zones/{seed.ZoneAId}/ai/history")).StatusCode);
+        Assert.Equal(0, factory.AiProvider.Calls);
+    }
+
+    [Fact]
     public async Task Rejection_is_audited_and_never_creates_control_command()
     {
         using var factory = new TestApplicationFactory();
@@ -1139,6 +1378,22 @@ public sealed class AiAdvisoryTests
         Assert.NotNull(result.FollowUpRecommendation);
         Assert.Equal(recommendation.RecommendationId, (await GetConsultation(factory, result.FollowUpRecommendation!.ConsultationRequestId)).ParentRecommendationId);
         Assert.Empty(factory.ControlTransport.Published);
+    }
+
+    [Fact]
+    public async Task Answers_that_do_not_call_the_ai_do_not_use_up_the_consultation_quota()
+    {
+        using var factory = new TestApplicationFactory();
+        var seed = await factory.SeedAsync();
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+        factory.IntentClassifier.Understands("chào bạn", new QuestionIntent([QuestionTopics.SmallTalk], []));
+        // 15 lượt chào hỏi (câu trả lời mẫu, không gọi AI) vượt xa hạn mức 10 nhưng không bị chặn.
+        for (var i = 0; i < 15; i++)
+        {
+            var greeted = await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/ai/ask", new { question = "chào bạn" });
+            Assert.Equal(HttpStatusCode.Created, greeted.StatusCode);
+        }
     }
 
     [Fact]

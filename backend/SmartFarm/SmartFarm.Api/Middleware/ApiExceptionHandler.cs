@@ -16,7 +16,7 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsSer
         {
             RequestValidationException => (StatusCodes.Status400BadRequest, "Validation failed"),
             AuthenticationException => (StatusCodes.Status401Unauthorized, "Authentication failed"),
-            AuthorizationException => (StatusCodes.Status403Forbidden, "Access forbidden"),
+            AuthorizationException or UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Access forbidden"),
             ResourceNotFoundException => (StatusCodes.Status404NotFound, "Resource not found"),
             ResourceConflictException => (StatusCodes.Status409Conflict, "Resource conflict"),
             RateLimitExceededException => (StatusCodes.Status429TooManyRequests, "Rate limit exceeded"),

@@ -22,7 +22,7 @@ public sealed class VietGapDocumentVerifier(
     IOptions<GeminiOptions> geminiOptions,
     ILogger<VietGapDocumentVerifier> logger)
 {
-    public const string PromptVersion = "agri-check-v1";
+    public const string PromptVersion = "agri-check-v3";
     private const int MaxFileChars = 30_000;
     private const int MinQuoteLength = 12;
     private const double MinConfidence = 0.5;
@@ -45,19 +45,32 @@ public sealed class VietGapDocumentVerifier(
         - "documentKind": mô tả ngắn tài liệu thuộc loại gì (ví dụ "quy trình trồng cà chua", "tin tức hành chính").
         - "confidence" từ 0 đến 1, "reason" giải thích ngắn.
 
+        Ngoài ra hãy cho biết tài liệu ÁP DỤNG CHO AI/CÂY NÀO, chỉ dựa vào nội dung tài liệu:
+        - "applicability.scope" = "general" nếu tài liệu là nguyên tắc/quy trình chung cho rau, cây trồng hoặc nhiều cây (cây chỉ xuất hiện làm ví dụ không làm tài liệu thành riêng cho cây đó);
+          "specific" nếu tài liệu viết riêng cho một hoặc vài cây cụ thể; "unknown" nếu không đủ căn cứ.
+        - "applicability.crops": tên cây khi scope = "specific" (nếu cây có trong danh mục hệ thống bên dưới thì ghi đúng tên trong danh mục), còn lại để [].
+        - "applicability.evidenceQuotes": 1-2 câu CHÉP NGUYÊN VĂN chứng minh phạm vi; "applicability.reason": giải thích ngắn.
+
+        - "suggestedTitle": tên ngắn gọn (tối đa 120 ký tự) đúng với tên thật của tài liệu nếu file nêu rõ (kể cả ở chân trang hoặc lời nói đầu);
+          không có tên rõ ràng thì để chuỗi rỗng, không tự đặt tên mới.
+
         Trả về đúng JSON:
         {"isAgricultural": true|false|null, "documentKind": string, "confidence": number,
-         "reason": string, "evidenceQuotes": [string]}
+         "reason": string, "evidenceQuotes": [string], "suggestedTitle": string,
+         "applicability": {"scope": "general"|"specific"|"unknown", "crops": [string], "reason": string, "evidenceQuotes": [string]}}
         """;
 
-    public async Task<DocumentVerificationResult> VerifyAsync(AgricultureDocument document, CancellationToken ct)
+    public async Task<DocumentVerificationResult> VerifyAsync(AgricultureDocument document, CancellationToken ct, IReadOnlyList<string>? catalogCrops = null)
     {
         var fileText = StructuredChunker.CleanedText(document.ContentText);
         if (fileText.Length < 50) fileText = document.ContentText;
         var (prompt, truncated) = BuildPrompt(fileText);
         try
         {
-            var (json, model) = await GeminiJsonClient.SendAsync(httpClient, geminiOptions.Value, Instructions, prompt, 4096, TimeSpan.FromSeconds(120), ct);
+            var catalog = catalogCrops is { Count: > 0 }
+                ? $"\n\nDanh mục cây của hệ thống: {string.Join("; ", catalogCrops.Take(60))}."
+                : string.Empty;
+            var (json, model) = await GeminiJsonClient.SendAsync(httpClient, geminiOptions.Value, Instructions + catalog, prompt, 4096, TimeSpan.FromSeconds(120), ct);
             return Evaluate(json, fileText, model, DateTime.UtcNow, truncated);
         }
         catch (Exception ex) when (ex is GeminiUnavailableException or JsonException)
@@ -111,6 +124,10 @@ public sealed class VietGapDocumentVerifier(
         }
 
         var grounded = evidence.Count > 0 && confidence >= MinConfidence;
+        var (scopeKind, scopeCrops, scopeEvidence, scopeReason) = EvaluateScope(root, normalizedFile, foldedFile, pages, grounded);
+        // Gợi ý tên chỉ giữ khi các từ chính của tên có thật trong file (AI không được tự đặt tên).
+        var suggested = Truncate(Read(root, "suggestedTitle").Trim(), 120);
+        if (!grounded || suggested.Length < 5 || !TitleWordsInFile(suggested, foldedFile)) suggested = string.Empty;
         var status = verdict switch
         {
             true when grounded => DocumentVerificationResult.Agricultural,
@@ -129,7 +146,79 @@ public sealed class VietGapDocumentVerifier(
         if (truncated) message += " (AI chỉ xem phần đầu của tài liệu.)";
 
         return new DocumentVerificationResult(status, nowUtc, model, PromptVersion, confidence, string.IsNullOrWhiteSpace(kind) ? null : kind,
-            reason, evidence, message);
+            reason, evidence, message, scopeKind, scopeCrops, scopeEvidence, scopeReason, suggested.Length == 0 ? null : suggested);
+    }
+
+    /// <summary>
+    /// Phạm vi áp dụng chỉ được giữ khi có ít nhất một câu trích nguyên văn có thật trong file và nhận định chủ đề đủ tin cậy;
+    /// tên cây AI nêu phải có thật trong file. Còn lại là "unknown" để người duyệt tự quyết.
+    /// </summary>
+    private static (string Kind, IReadOnlyList<string> Crops, IReadOnlyList<VerificationQuote> Evidence, string? Reason) EvaluateScope(
+        JsonElement root, string normalizedFile, string foldedFile, List<(int Index, int Page)> pages, bool grounded)
+    {
+        var unknown = (DocumentVerificationResult.ScopeUnknown, (IReadOnlyList<string>)[], (IReadOnlyList<VerificationQuote>)[], (string?)null);
+        if (!grounded || !root.TryGetProperty("applicability", out var a) || a.ValueKind != JsonValueKind.Object) return unknown;
+
+        var kind = Read(a, "scope").Trim().ToLowerInvariant();
+        if (kind is not (DocumentVerificationResult.ScopeGeneral or DocumentVerificationResult.ScopeSpecific)) return unknown;
+
+        var evidence = new List<VerificationQuote>();
+        if (a.TryGetProperty("evidenceQuotes", out var quotes) && quotes.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var q in quotes.EnumerateArray().Take(3))
+            {
+                if (q.ValueKind != JsonValueKind.String) continue;
+                var (position, quote) = Locate(normalizedFile, foldedFile, Normalize(q.GetString() ?? string.Empty));
+                if (position < 0) continue;
+                int? page = null;
+                foreach (var p in pages) { if (p.Index <= position) page = p.Page; else break; }
+                evidence.Add(new VerificationQuote(Truncate(quote, 400), page));
+            }
+        }
+        if (evidence.Count == 0) return unknown;
+
+        var crops = new List<string>();
+        if (kind == DocumentVerificationResult.ScopeSpecific && a.TryGetProperty("crops", out var cs) && cs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in cs.EnumerateArray().Take(8))
+            {
+                if (c.ValueKind != JsonValueKind.String) continue;
+                var name = (c.GetString() ?? string.Empty).Trim();
+                if (name.Length < 2) continue;
+                // Tên danh mục dạng "Cà Chua Beefsteak (Tomato)": so phần trước dấu ngoặc, không dấu, với văn bản.
+                if (CropMentioned(name, foldedFile)) crops.Add(name);
+            }
+            // Nói "cụ thể" mà không cây nào có thật trong file thì không tin phần này.
+            if (crops.Count == 0) return unknown;
+        }
+        return (kind, crops, evidence, Truncate(Read(a, "reason"), 400));
+    }
+
+    /// <summary>
+    /// Cây có thật trong file không. Tên danh mục thường kèm giống ("Cà Chua Beefsteak (Tomato)") nên so cả tên lẫn các tiền tố
+    /// từ hai từ trở lên ("cà chua"), không dấu; tên một từ phải dài từ 3 ký tự.
+    /// </summary>
+    internal static bool CropMentioned(string cropName, string foldedFile)
+    {
+        var words = VietnameseText.Fold(cropName.Split('(')[0].Trim()).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return false;
+        var minWords = words.Length >= 2 ? 2 : 1;
+        for (var take = words.Length; take >= minWords; take--)
+        {
+            var phrase = string.Join(' ', words.Take(take));
+            if (phrase.Length >= 3 && foldedFile.Contains(phrase, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Phần lớn các từ có nghĩa của tên gợi ý phải xuất hiện trong file (không dấu); tên AI tự đặt thì bị bỏ.</summary>
+    internal static bool TitleWordsInFile(string title, string foldedFile)
+    {
+        var words = VietnameseText.Fold(title).Split([' ', ',', '(', ')', '-', '–', '"', '“', '”'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 3).Distinct().ToList();
+        if (words.Count == 0) return false;
+        var found = words.Count(w => foldedFile.Contains(w, StringComparison.Ordinal));
+        return found * 100 / words.Count >= 80;
     }
 
     /// <summary>Vị trí và đoạn gốc trong văn bản: khớp nguyên văn trước, rồi khớp khi bỏ dấu (trả đúng đoạn chữ của văn bản).</summary>
