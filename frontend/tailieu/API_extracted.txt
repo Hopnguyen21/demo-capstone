@@ -1,0 +1,3143 @@
+
+ 
+ 
+SmartFarm
+AI & IoT-Powered Smart Agriculture
+ĐẶC TẢ TOÀN BỘ RESTful API
+103 Endpoints | 4 Core Flows | Chuẩn 5 phần công nghiệp
+★ = Endpoint mới bổ sung
+I. ĐỊNH VỊ NỀN TẢNG & KIẾN TRÚC CÔNG NGHỆ (SMARTFARM PLATFORM)
+🏛️ ĐỊNH VỊ CỐT LÕI: MULTI-TENANT SMART AGRICULTURE SAAS PLATFORM
+SmartFarm là Nền tảng Nông nghiệp Thông minh đa người thuê (Cloud SaaS) toàn diện, phục vụ đồng thời nhiều Hợp tác xã / Doanh nghiệp nông nghiệp trên một hạ tầng đám mây duy nhất. Nền tảng kết hợp mạng lưới viễn thám thực địa LoRa cự ly xa, tự động hóa điều khiển tưới tiêu vi khí hậu thích ứng theo thời kỳ sinh trưởng của cây trồng và Trợ lý AI Nông học VietGAP/GlobalGAP.
+ 
+1. Phân cấp 4 Cấp Actor trên Platform
+Actor Role
+Cấp Quyền
+Phạm Vi Quản Trị & Nhiệm Vụ Trên Nền Tảng
+Platform Admin
+Platform-wide
+Quản trị toàn bộ nền tảng, duyệt tài khoản Tenant, thiết lập thư viện giống cây & quy trình sinh trưởng VietGAP mẫu (crops, growth_profiles), giám sát tài nguyên máy chủ và bảo mật toàn sàn.
+Platform Technician
+Platform Staff
+Đội ngũ kỹ sư hiện trường; cấp phát (provisioning) thiết bị, rà quét dải sóng LoRa 433MHz, nạp Whitelist MAC vào Gateway ESP32, chẩn đoán lỗi phần cứng và xử lý thay thế 1-đổi-1 (Hot-swap).
+Farm Owner (Tenant)
+Tenant Root
+Khách hàng thuê nền tảng; sở hữu và quản trị một hoặc nhiều Trang trại (Farm), phân lô đất (Field), nhà màng (Zone), kích hoạt vụ mùa, tinh chỉnh ngưỡng vi khí hậu, thiết lập luật tưới và duyệt áp dụng khuyến nghị AI.
+Farmer / Farm Worker
+Tenant Member
+Nhân công trực tiếp ngoài đồng thuộc Tenant; xem số liệu cảm biến Zone được phân công, nhận thông báo đẩy cảnh báo khẩn cấp và kích hoạt lệnh tưới thủ công khi được phân quyền.
+ 
+2. Mô hình Phân cấp Tài nguyên & Cơ chế Crop-aware
+• Phân cấp tổ chức chuẩn GIS: SmartFarm Platform ➔ Tenant (Farm Owner) ➔ Farms (1 hoặc nhiều Trang trại) ➔ Fields (Lô đất) ➔ Zones (Nhà màng) ➔ Crop & Growth Stages ➔ IoT Hardware (Gateways, Sensor Nodes, Actuators).
+• Cơ chế thích ứng theo cây trồng (Crop-aware Monitoring & Control): Hệ thống quản lý dữ liệu 4 tầng độc lập chuẩn CSDL Data.txt: crops ➔ crop_varieties ➔ growth_profiles ➔ growth_stages ➔ environmental_requirements. Khi cây chuyển thời kỳ sinh trưởng (ví dụ: Cây non ➔ Ra hoa ➔ Nuôi trái), hệ thống tự động cập nhật dải ngưỡng vi khí hậu tối ưu mà không cần nhập thủ công.
+ 
+3. Bảng Ma trận Công nghệ Toàn diện (Technology Stack Matrix)
+Phân Hệ / Tầng
+Công Nghệ Lựa Chọn
+Đặc Tả Kỹ Thuật & Vai Trò Trong Dự Án
+Backend Services
+C# (.NET 8 Web API / ASP.NET Core)
+Kiến trúc Clean Architecture 4 tầng, EF Core, Background Service Workers, RESTful JSON API chuẩn ISO 8601 & RFC 7807 (Problem Details).
+Frontend Web Portal
+React 19 + Vite + TypeScript
+Single Page Application (Vite 8), bản đồ số phân vùng Leaflet/React-Leaflet, biểu đồ viễn thám Recharts/Chart.js 4, Radix UI và Lucide Icons. Cung cấp đầy đủ Dashboard, phân vùng GIS, điều khiển tưới, quản lý nhân sự, cấu hình thiết bị và Trợ lý AI cho Platform Admin, KTV và Farm Owner.
+Mobile App Thực Địa
+Flutter (Cross-platform iOS / Android)
+App di động phục vụ tác nghiệp hiện trường: quét mã QR tem thiết bị để cấp phát (Provisioning), xem cảnh báo khẩn cấp đẩy qua Firebase FCM, bật/tắt van tưới bằng tay và tra cứu task công việc ngoài đồng.
+Database Hệ thống
+PostgreSQL 16 + PostGIS
+Quản trị quan hệ RBAC, phân quyền Tenant Isolation, quản lý hồ sơ cây trồng 4 tầng và lưu trữ ranh giới đa giác vùng canh tác Polygon.
+Database Viễn thám
+TimescaleDB (Hypertable)
+Lưu trữ tối ưu hàng triệu bản ghi cảm biến chu kỳ 60s, hỗ trợ nén dữ liệu 90% và tăng tốc độ truy vấn biểu đồ lịch sử vi khí hậu.
+IoT Message Broker
+EMQX Broker / MQTT v5.0 (TLS 1.3)
+Hạ tầng nhắn tin IoT chuyên dụng chịu tải cao, giao tiếp với LoRa Gateway qua kênh mã hóa SSL/TLS an toàn.
+Kênh Thời gian thực
+SignalR Hub (.NET 8) & Firebase FCM
+Bắn số liệu Dashboard trực tiếp qua WebSocket độ trễ dưới 500ms và đẩy chuông báo động khẩn cấp tới điện thoại nông dân.
+AI Trí tuệ nhân tạo
+Google Gemini 1.5 Flash + RAG (pgvector)
+Trợ lý phân tích vi khí hậu thời gian thực, chẩn đoán bệnh qua hình ảnh lá và tư vấn canh tác đạt tiêu chuẩn VietGAP.
+Mạng truyền thông IoT
+LoRa P2P 433MHz / SX1278 & ESP32-WROOM
+Truyền thông không dây tầm xa (500m - 2km) xuyên tán cây rậm rạp, tiêu thụ năng lượng cực thấp và chống nhiễu sóng vượt trội.
+ 
+II. TỔNG QUAN CÁC NHÓM API (102 ENDPOINTS)
+ 
+Nhóm
+Số EP
+Mô tả chức năng
+CF liên quan
+🔐 Auth
+5
+Đăng nhập, đăng xuất, refresh token, quên/reset mật khẩu
+CF1
+👤 User
+7
+Quản lý tài khoản người dùng, phân quyền nông dân
+CF1
+🏢 Tenant
+3
+Đăng ký & quản lý tổ chức (Multi-tenant)
+CF1
+🌾 Farm
+7
+Tạo, đọc, cập nhật, xoá trang trại
+CF1
+🗺️ Field
+5
+Quản lý phân khu lô đất canh tác
+CF1
+📐 Zone
+5
+Quản lý khu vực nhà màng / luống trồng
+CF1
+🌱 Crop & Variety
+4
+Quản lý loại cây (crops) và giống cụ thể (crop_varieties)
+CF1
+📈 Growth Profile
+4
+Hồ sơ sinh trưởng, giai đoạn (stages), ngưỡng môi trường (environmental_requirements)
+CF1
+🌾 Planting Season
+5
+Quản lý vụ mùa, liên kết zone, chuyển giai đoạn, đóng vụ
+CF1
+⚠️ Alert Rules
+4
+Cấu hình ngưỡng cảnh báo vi khí hậu
+CF1-CF2
+🕐 Schedule
+4
+Lập lịch tưới định kỳ Cron
+CF1-CF3
+📡 Gateway
+4
+Đăng ký & quản lý Gateway ESP32 LoRa
+CF1
+🔌 Device
+11
+Quản lý Node cảm biến & chấp hành
+CF1
+📊 Telemetry
+3
+Truy vấn dữ liệu cảm biến thời gian thực
+CF2
+🔔 Alert
+4
+Xem & xử lý cảnh báo vi phạm môi trường
+CF2
+⚙️ AutoRule
+4
+Rule Engine tự động hoá tưới tiêu
+CF1-CF3
+🕹️ Control
+4
+Điều khiển chấp hành, nhật ký tưới
+CF3
+🤖 AI
+7
+Trợ lý Nông học RAG Gemini 1.5 Flash
+CF4
+📈 Report
+4
+Báo cáo tổng quan, nước, điện, vụ mùa
+All
+🛠️ Support
+8
+Hot-swap, kho vật tư, công việc, dòng tiền
+Support
+ 
+ 
+II. BẢNG INDEX ĐẦY ĐỦ 102 ENDPOINTS
+★ = Endpoint mới bổ sung | Version 4.0 — Chuẩn hóa 100% theo DB Schema
+ 
+#
+Method
+Endpoint
+Nhóm
+Actor
+1
+POST
+/api/v1/auth/login
+Auth
+FarmOwner / Technician
+2
+POST
+/api/v1/auth/logout ★
+Auth
+All roles
+3
+POST
+/api/v1/auth/refresh ★
+Auth
+All roles
+4
+POST
+/api/v1/auth/forgot-password ★
+Auth
+All roles
+5
+POST
+/api/v1/auth/reset-password ★
+Auth
+All roles
+6
+GET
+/api/v1/users ★
+User
+FarmOwner
+7
+GET
+/api/v1/users/{userId} ★
+User
+FarmOwner
+8
+PUT
+/api/v1/users/{userId} ★
+User
+FarmOwner
+9
+DELETE
+/api/v1/users/{userId} ★
+User
+FarmOwner
+10
+POST
+/api/v1/users/invite
+User
+FarmOwner
+11
+GET
+/api/v1/users/me ★
+User
+All roles
+12
+PUT
+/api/v1/users/me/password ★
+User
+All roles
+13
+POST
+/api/v1/tenants/register
+Tenant
+PlatformAdmin
+14
+GET
+/api/v1/tenants/me ★
+Tenant
+FarmOwner
+15
+PUT
+/api/v1/tenants/me ★
+Tenant
+FarmOwner
+16
+GET
+/api/v1/farms ★
+Farm
+FarmOwner
+17
+POST
+/api/v1/farms
+Farm
+FarmOwner
+18
+GET
+/api/v1/farms/{farmId} ★
+Farm
+FarmOwner
+19
+PUT
+/api/v1/farms/{farmId} ★
+Farm
+FarmOwner
+20
+DELETE
+/api/v1/farms/{farmId} ★
+Farm
+FarmOwner
+21
+GET
+/api/v1/farms/{farmId}/structure
+Farm
+FarmOwner
+22
+POST
+/api/v1/farms/{farmId}/submit
+Farm
+FarmOwner
+23
+GET
+/api/v1/farms/{farmId}/fields ★
+Field
+FarmOwner
+24
+POST
+/api/v1/farms/{farmId}/fields
+Field
+FarmOwner
+25
+GET
+/api/v1/fields/{fieldId} ★
+Field
+FarmOwner
+26
+PUT
+/api/v1/fields/{fieldId} ★
+Field
+FarmOwner
+27
+DELETE
+/api/v1/fields/{fieldId} ★
+Field
+FarmOwner
+28
+GET
+/api/v1/fields/{fieldId}/zones ★
+Zone
+FarmOwner
+29
+POST
+/api/v1/fields/{fieldId}/zones
+Zone
+FarmOwner
+30
+GET
+/api/v1/zones/{zoneId} ★
+Zone
+FarmOwner
+31
+PUT
+/api/v1/zones/{zoneId} ★
+Zone
+FarmOwner
+32
+DELETE
+/api/v1/zones/{zoneId} ★
+Zone
+FarmOwner
+33
+GET
+/api/v1/crops ★
+Crop
+All roles
+34
+POST
+/api/v1/crops ★
+Crop
+FarmOwner / Admin
+35
+GET
+/api/v1/crops/{cropId}/varieties ★
+CropVariety
+All roles
+36
+POST
+/api/v1/crops/{cropId}/varieties ★
+CropVariety
+FarmOwner / Admin
+37
+GET
+/api/v1/crops/{cropId}/growth-profiles ★
+GrowthProfile
+All roles
+38
+POST
+/api/v1/growth-profiles ★
+GrowthProfile
+FarmOwner / Admin
+39
+GET
+/api/v1/growth-profiles/{profileId}/stages ★
+GrowthStage
+All roles
+40
+PUT
+/api/v1/growth-stages/{stageId}/requirements ★
+EnvRequirement
+FarmOwner / Admin
+41
+GET
+/api/v1/zones/{zoneId}/planting-seasons ★
+Season
+FarmOwner / Farmer
+42
+POST
+/api/v1/zones/{zoneId}/planting-seasons
+Season
+FarmOwner
+43
+GET
+/api/v1/zones/{zoneId}/planting-seasons/{seasonId} ★
+Season
+FarmOwner / Farmer
+44
+PUT
+/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/stage ★
+Season
+FarmOwner
+45
+PUT
+/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/close ★
+Season
+FarmOwner
+46
+GET
+/api/v1/zones/{zoneId}/alert-rules ★
+AlertRule
+FarmOwner
+47
+POST
+/api/v1/zones/{zoneId}/alert-rules ★
+AlertRule
+FarmOwner
+48
+PUT
+/api/v1/zones/{zoneId}/alert-rules/{ruleId} ★
+AlertRule
+FarmOwner
+49
+DELETE
+/api/v1/zones/{zoneId}/alert-rules/{ruleId} ★
+AlertRule
+FarmOwner
+50
+GET
+/api/v1/zones/{zoneId}/schedules ★
+Schedule
+FarmOwner
+51
+POST
+/api/v1/zones/{zoneId}/schedules ★
+Schedule
+FarmOwner
+52
+PUT
+/api/v1/zones/{zoneId}/schedules/{scheduleId} ★
+Schedule
+FarmOwner
+53
+DELETE
+/api/v1/zones/{zoneId}/schedules/{scheduleId} ★
+Schedule
+FarmOwner
+54
+GET
+/api/v1/farms/{farmId}/gateways ★
+Gateway
+FarmOwner
+55
+POST
+/api/v1/gateways
+Gateway
+PlatformTechnician
+56
+GET
+/api/v1/gateways/{gatewayId} ★
+Gateway
+FarmOwner / Technician
+57
+PUT
+/api/v1/gateways/{gatewayId}/firmware ★
+Gateway
+PlatformTechnician
+58
+GET
+/api/v1/farms/{farmId}/devices ★
+Device
+FarmOwner / Technician
+59
+GET
+/api/v1/zones/{zoneId}/devices ★
+Device
+FarmOwner
+60
+GET
+/api/v1/devices/{deviceId} ★
+Device
+FarmOwner / Technician
+61
+POST
+/api/v1/devices/provision
+Device
+PlatformTechnician
+62
+PUT
+/api/v1/devices/{deviceId}/sensors
+Device
+PlatformTechnician
+63
+PUT
+/api/v1/devices/{deviceId}/actuators
+Device
+PlatformTechnician
+64
+POST
+/api/v1/zones/{zoneId}/devices/{deviceId}/assign
+Device
+PlatformTechnician
+65
+POST
+/api/v1/zones/{zoneId}/devices/{deviceId}/unassign ★
+Device
+PlatformTechnician
+66
+GET
+/api/v1/devices/{deviceId}/ping
+Device
+PlatformTechnician
+67
+POST
+/api/v1/devices/{deviceId}/diagnose
+Device
+PlatformTechnician
+68
+DELETE
+/api/v1/devices/{deviceId} ★
+Device
+PlatformTechnician
+69
+GET
+/api/v1/zones/{zoneId}/telemetry/latest ★
+Telemetry
+FarmOwner / Farmer
+70
+GET
+/api/v1/zones/{zoneId}/telemetry/history ★
+Telemetry
+FarmOwner / Farmer
+71
+GET
+/api/v1/zones/{zoneId}/telemetry/stats ★
+Telemetry
+FarmOwner
+72
+GET
+/api/v1/farms/{farmId}/alerts ★
+Alert
+FarmOwner / Farmer
+73
+GET
+/api/v1/zones/{zoneId}/alerts ★
+Alert
+FarmOwner / Farmer
+74
+GET
+/api/v1/alerts/{alertId}
+Alert
+FarmOwner / Farmer
+75
+PUT
+/api/v1/alerts/{alertId}/acknowledge
+Alert
+FarmOwner / Farmer
+76
+POST
+/api/v1/zones/{zoneId}/rules
+AutoRule
+FarmOwner
+77
+GET
+/api/v1/zones/{zoneId}/rules ★
+AutoRule
+FarmOwner
+78
+PUT
+/api/v1/zones/{zoneId}/rules/{ruleId} ★
+AutoRule
+FarmOwner
+79
+DELETE
+/api/v1/zones/{zoneId}/rules/{ruleId} ★
+AutoRule
+FarmOwner
+80
+POST
+/api/v1/zones/{zoneId}/actuators/{actuatorId}/command
+Control
+FarmOwner
+81
+GET
+/api/v1/zones/{zoneId}/actuators/{actuatorId}/status ★
+Control
+FarmOwner
+82
+DELETE
+/api/v1/zones/{zoneId}/commands/{commandId} ★
+Control
+FarmOwner
+83
+GET
+/api/v1/zones/{zoneId}/actuators/history
+Control
+FarmOwner
+84
+GET
+/api/v1/zones/{zoneId}/ai/context
+AI
+FarmOwner
+85
+POST
+/api/v1/zones/{zoneId}/ai/ask
+AI
+FarmOwner
+86
+POST
+/api/v1/zones/{zoneId}/ai/apply-recommendation
+AI
+FarmOwner
+87
+GET
+/api/v1/zones/{zoneId}/ai/history ★
+AI
+FarmOwner
+88
+DELETE
+/api/v1/zones/{zoneId}/ai/history ★
+AI
+FarmOwner
+89
+GET
+/api/v1/ai/knowledge-base ★
+AI
+PlatformAdmin
+90
+POST
+/api/v1/ai/knowledge-base ★
+AI
+PlatformAdmin
+91
+GET
+/api/v1/farms/{farmId}/report/overview ★
+Report
+FarmOwner
+92
+GET
+/api/v1/zones/{zoneId}/report/season-summary ★
+Report
+FarmOwner
+93
+GET
+/api/v1/farms/{farmId}/report/water-usage ★
+Report
+FarmOwner
+94
+GET
+/api/v1/farms/{farmId}/report/electricity ★
+Report
+FarmOwner
+95
+POST
+/api/v1/zones/{zoneId}/devices/{oldDeviceId}/hot-swap
+Support
+PlatformTechnician
+96
+GET
+/api/v1/farms/{farmId}/inventory ★
+Support
+FarmOwner / Farmer
+97
+POST
+/api/v1/farms/{farmId}/inventory ★
+Support
+FarmOwner
+98
+POST
+/api/v1/farms/{farmId}/inventory/issues
+Support
+FarmOwner / Farmer
+99
+GET
+/api/v1/farms/{farmId}/tasks ★
+Support
+FarmOwner / Farmer
+100
+POST
+/api/v1/farms/{farmId}/tasks ★
+Support
+FarmOwner
+101
+PUT
+/api/v1/farms/{farmId}/tasks/{taskId} ★
+Support
+FarmOwner / Farmer
+102
+GET
+/api/v1/farms/{farmId}/cash-flow-report
+Support
+FarmOwner
+103
+GET
+/api/v1/farms/{farmId}/weather/forecast ★
+Weather
+FarmOwner / Farmer
+
+ 
+III. ĐẶC TẢ CHI TIẾT THEO NHÓM
+🔐  NHÓM 1: AUTH — XÁC THỰC & PHIÊN LÀM VIỆC
+Quản lý danh tính người dùng, JWT Token, phiên đăng nhập và khôi phục mật khẩu.
+  #1     POST   /api/v1/auth/login
+Xác thực người dùng, cấp JWT Access Token (1h) và Refresh Token (30 ngày), đồng thời cập nhật FCM Token cho push notification.
+1. Input
+{
+  "email": "owner@smartfarm.vn",
+  "password": "Password123!",
+  "fcmToken": "fcm_token_chuỗi... (tùy chọn)"
+}
+2. Output
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "d7a8e9f2-...",
+  "expiresIn": 3600,
+  "tokenType": "Bearer",
+  "user": { "id": "u-101", "role": "FarmOwner", "tenantId": "tenant-dalat-505" }
+}
+3. Validate
+• email: Bắt buộc, chuẩn RFC 5322.
+• password: Bắt buộc, 6–100 ký tự.
+4. Business Rule
+• BR-AUTH-01: Tài khoản phải có status = Active.
+• BR-AUTH-02: BCrypt/Argon2 hash. Sai > 5 lần → Khóa 15 phút.
+• BR-AUTH-03: JWT Claims bắt buộc chứa sub, role, tenantId.
+5. Exception
+• 401 Unauthorized: Sai email / mật khẩu.
+• 403 Forbidden: Tài khoản bị khóa.
+ 
+  #2     POST   /api/v1/auth/logout  ★ MỚI
+Vô hiệu hóa Refresh Token hiện tại, xóa FCM Token khỏi server để ngừng nhận push notification.
+1. Input
+// Header: Authorization: Bearer {accessToken}
+// Body (tùy chọn):
+{
+  "refreshToken": "d7a8e9f2-...",
+  "revokeAllDevices": false
+}
+2. Output
+{
+  "message": "Đăng xuất thành công.",
+  "revokedAt": "2026-09-20T15:00:00Z"
+}
+3. Validate
+• accessToken hợp lệ trong Header.
+4. Business Rule
+• BR-LOGOUT-01: Thêm Access Token vào Blacklist Redis (TTL = thời gian còn lại).
+• BR-LOGOUT-02: Xoá bản ghi Refresh Token trong DB.
+• BR-LOGOUT-03: Nếu revokeAllDevices = true → Thu hồi tất cả phiên trên mọi thiết bị.
+5. Exception
+• 401 Unauthorized: Token không hợp lệ.
+ 
+  #3     POST   /api/v1/auth/refresh  ★ MỚI
+Cấp Access Token mới bằng Refresh Token còn hiệu lực mà không cần đăng nhập lại.
+1. Input
+{
+  "refreshToken": "d7a8e9f2-1b3c-4e5a-9f8d-7c6b5a4e3d2c"
+}
+2. Output
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs... (mới)",
+  "expiresIn": 3600
+}
+3. Validate
+• refreshToken: Bắt buộc, UUID hợp lệ.
+4. Business Rule
+• BR-REFRESH-01: Refresh Token phải chưa hết hạn và chưa bị thu hồi.
+• BR-REFRESH-02: Rotate Refresh Token — cấp token mới, vô hiệu token cũ (One-time use).
+5. Exception
+• 401 Unauthorized: Refresh Token hết hạn hoặc đã bị thu hồi.
+ 
+  #4     POST   /api/v1/auth/forgot-password  ★ MỚI
+Gửi email chứa OTP 6 số hoặc link đặt lại mật khẩu đến địa chỉ email đã đăng ký.
+1. Input
+{
+  "email": "owner@smartfarm.vn"
+}
+2. Output
+{
+  "message": "Email đặt lại mật khẩu đã được gửi.",
+  "expiresInMinutes": 15
+}
+3. Validate
+• email: Bắt buộc, đúng định dạng.
+4. Business Rule
+• BR-OTP-01: OTP 6 chữ số ngẫu nhiên, TTL 15 phút.
+• BR-OTP-02: Luôn trả về 200 OK dù email không tồn tại (chống liệt kê user - Security).
+5. Exception
+• 429 Too Many Requests: Quá 3 lần/giờ từ cùng IP.
+ 
+  #5     POST   /api/v1/auth/reset-password  ★ MỚI
+Đặt lại mật khẩu mới bằng OTP hoặc reset token nhận từ email.
+1. Input
+{
+  "email": "owner@smartfarm.vn",
+  "otp": "482931",
+  "newPassword": "NewSecure@2026",
+  "confirmPassword": "NewSecure@2026"
+}
+2. Output
+{
+  "message": "Mật khẩu đã được đặt lại thành công.",
+  "requireLogin": true
+}
+3. Validate
+• otp: 6 chữ số, chưa hết hạn.
+• newPassword = confirmPassword, tối thiểu 8 ký tự, có chữ hoa + số + ký tự đặc biệt.
+4. Business Rule
+• BR-RESET-01: Vô hiệu hóa OTP sau khi dùng (One-time).
+• BR-RESET-02: Thu hồi tất cả Refresh Token hiện có để buộc đăng nhập lại trên mọi thiết bị.
+5. Exception
+• 400 Bad Request: OTP sai hoặc mật khẩu không khớp.
+• 410 Gone: OTP đã hết hạn.
+ 
+👤  NHÓM 2: USER — QUẢN LÝ NGƯỜI DÙNG
+Quản lý danh sách nhân sự trong Tenant, phân quyền vai trò và thông tin cá nhân.
+  #6     GET   /api/v1/users  ★ MỚI
+Lấy danh sách tất cả người dùng thuộc Tenant hiện tại với bộ lọc theo role, trạng thái và phân trang.
+1. Input
+// Query:
+?role=Farmer&status=Active&page=1&pageSize=20
+2. Output
+{
+  "total": 5,
+  "page": 1,
+  "pageSize": 20,
+  "users": [
+{ "userId": "u-102", "fullName": "Trần Văn Nông", "role": "Farmer", "status": "Active" }
+  ]
+}
+3. Validate
+• role: [FarmOwner, Farmer, FarmWorker] (tùy chọn lọc).
+• pageSize: 1–100.
+4. Business Rule
+• BR-01: Chỉ trả về user trong cùng tenantId từ JWT.
+• BR-USER-LIST-01: FarmOwner thấy tất cả. Farmer chỉ thấy chính mình.
+5. Exception
+• 403 Forbidden: Tài khoản Worker không được xem danh sách.
+ 
+  #7     GET   /api/v1/users/{userId}  ★ MỚI
+Xem chi tiết thông tin một người dùng cụ thể trong Tenant.
+1. Input
+// Path: userId = "u-102"
+2. Output
+{
+  "userId": "u-102",
+  "fullName": "Trần Văn Nông",
+  "email": "farmer1@dalat-farm.vn",
+  "role": "Farmer",
+  "assignedFarms": ["f-202"],
+  "lastLoginAt": "2026-09-20T08:00:00Z"
+}
+3. Validate
+• userId: UUID hợp lệ trong cùng Tenant.
+4. Business Rule
+• BR-01: Không đọc chéo Tenant.
+• Farmer chỉ được xem thông tin của chính mình.
+5. Exception
+• 404 Not Found: Không tìm thấy userId.
+ 
+  #8     PUT   /api/v1/users/{userId}  ★ MỚI
+Cập nhật thông tin người dùng: tên, số điện thoại, vai trò, Farm được phân công.
+1. Input
+{
+  "fullName": "Trần Văn Nông (Updated)",
+  "phone": "0987654321",
+  "role": "FarmWorker",
+  "assignedFarmIds": ["f-202", "f-305"]
+}
+2. Output
+{
+  "userId": "u-102",
+  "updatedAt": "2026-09-20T09:00:00Z",
+  "message": "Cập nhật người dùng thành công."
+}
+3. Validate
+• role: Chỉ FarmOwner mới được thay đổi.
+• assignedFarmIds: Phải thuộc Tenant.
+4. Business Rule
+• BR-USER-01: Chỉ FarmOwner được thay đổi role của người khác.
+• BR-USER-04: Không được hạ cấp FarmOwner cuối cùng trong Tenant.
+5. Exception
+• 403 Forbidden: Không đủ quyền.
+• 409 Conflict: Cố hạ quyền FarmOwner duy nhất.
+ 
+  #9     DELETE   /api/v1/users/{userId}  ★ MỚI
+Vô hiệu hóa tài khoản nhân sự (Soft Delete — status = Disabled, giữ lịch sử hoạt động).
+1. Input
+// Path: userId = "u-102"
+// Soft delete, giữ lịch sử nhật ký
+2. Output
+{
+  "message": "Tài khoản đã bị vô hiệu hóa.",
+  "disabledAt": "2026-09-20T10:00:00Z"
+}
+3. Validate
+• userId: Không được xóa chính mình.
+• Không được xóa FarmOwner cuối cùng.
+4. Business Rule
+• BR-USER-05: Soft Delete — Set status = Disabled, không xóa vật lý.
+• BR-USER-06: Thu hồi tất cả Refresh Token của user bị vô hiệu hóa ngay lập tức.
+5. Exception
+• 403 Forbidden: Cố xóa FarmOwner duy nhất.
+• 404 Not Found: Không tìm thấy user.
+ 
+  #10     POST   /api/v1/users/invite
+Farm Owner tạo tài khoản hoặc gửi lời mời tham gia quản lý trang trại cho nhân công.
+1. Input
+{
+  "email": "farmer1@dalat-farm.vn",
+  "fullName": "Trần Văn Nông",
+  "role": "Farmer",
+  "assignedFarmIds": ["f-202"]
+}
+2. Output
+{
+  "userId": "u-102",
+  "status": "Invited",
+  "tempPassword": "AutoGenerated#2026"
+}
+3. Validate
+• email: Chưa thuộc Tenant này.
+• role: Chỉ nhận "Farmer" hoặc "FarmWorker".
+4. Business Rule
+• BR-USER-01: Chỉ FarmOwner được mời nhân công.
+• BR-USER-02: Nhân công kế thừa tenantId từ JWT.
+• BR-USER-03: Mật khẩu tạm thời hash an toàn, gửi email kích hoạt.
+5. Exception
+• 409 Conflict: Email nhân sự đã tồn tại trong tổ chức.
+ 
+  #11     GET   /api/v1/users/me  ★ MỚI
+Lấy thông tin hồ sơ cá nhân của người dùng đang đăng nhập.
+1. Input
+// Header: Authorization: Bearer {accessToken}
+2. Output
+{
+  "userId": "u-101",
+  "email": "owner@smartfarm.vn",
+  "fullName": "Nguyễn Văn Chủ",
+  "role": "FarmOwner",
+  "tenantId": "tenant-dalat-505",
+  "assignedFarms": ["f-202"]
+}
+3. Validate
+• Chỉ cần Access Token hợp lệ.
+4. Business Rule
+• BR-01: tenantId lấy từ JWT, không cho phép giả mạo.
+5. Exception
+• 401 Unauthorized: Token hết hạn.
+ 
+  #12     PUT   /api/v1/users/me/password  ★ MỚI
+Người dùng tự đổi mật khẩu của mình (yêu cầu mật khẩu hiện tại).
+1. Input
+{
+  "currentPassword": "OldPassword123!",
+  "newPassword": "NewSecure@2026",
+  "confirmPassword": "NewSecure@2026"
+}
+2. Output
+{
+  "message": "Mật khẩu đã được thay đổi thành công.",
+  "requireRelogin": true
+}
+3. Validate
+• currentPassword: Phải khớp với mật khẩu hiện tại.
+• newPassword: Tối thiểu 8 ký tự, có chữ hoa + số + ký tự đặc biệt.
+4. Business Rule
+• BR-PWD-01: Xác thực currentPassword trước khi cho phép thay đổi.
+• BR-PWD-02: Thu hồi tất cả Refresh Token cũ trên mọi thiết bị.
+5. Exception
+• 400 Bad Request: currentPassword sai.
+ 
+🏢  NHÓM 3: TENANT — TỔ CHỨC MULTI-TENANT
+Đăng ký và quản lý thông tin tổ chức (Tenant) trên nền tảng SmartFarm.
+  #13     POST   /api/v1/tenants/register
+Đăng ký không gian Tenant mới, tạo tài khoản admin FarmOwner đầu tiên trong một Transaction DB duy nhất.
+1. Input
+{
+  "companyName": "Công ty Nông nghiệp CNC Đà Lạt",
+  "subdomain": "dalat-farm",
+  "taxCode": "5801456789",
+  "adminEmail": "admin@dalat-farm.vn",
+  "adminFullName": "Nguyễn Văn Chủ",
+  "adminPhone": "0901234567"
+}
+2. Output
+{
+  "tenantId": "tenant-dalat-505",
+  "subdomain": "dalat-farm",
+  "adminUserId": "u-101",
+  "status": "Active"
+}
+3. Validate
+• subdomain: 3–30 ký tự [a-z0-9-], duy nhất toàn hệ thống.
+• adminPhone: 10 số Việt Nam (03/05/07/08/09...).
+4. Business Rule
+• BR-TENANT-01: subdomain Global Unique.
+• BR-TENANT-02: DB Transaction tạo Tenant + Admin đồng thời.
+• BR-TENANT-03: Unlimited Scaling — không giới hạn Farm hay thiết bị.
+5. Exception
+• 409 Conflict: Subdomain hoặc Email đã đăng ký.
+ 
+  #14     GET   /api/v1/tenants/me  ★ MỚI
+Xem thông tin tổ chức Tenant của FarmOwner đang đăng nhập (subdomain, tên công ty, số liệu tổng hợp).
+1. Input
+// Header: Authorization: Bearer {accessToken}
+2. Output
+{
+  "tenantId": "tenant-dalat-505",
+  "companyName": "Công ty Nông nghiệp CNC Đà Lạt",
+  "subdomain": "dalat-farm",
+  "status": "Active",
+  "stats": { "totalFarms": 3, "totalZones": 12, "totalDevices": 48, "activeUsers": 5 }
+}
+3. Validate
+• Chỉ FarmOwner mới xem được Tenant của mình.
+4. Business Rule
+• BR-01: tenantId lấy từ JWT.
+• stats tổng hợp từ PostgreSQL để hiển thị trên Dashboard.
+5. Exception
+• 403 Forbidden: Tài khoản Farmer không xem được Tenant.
+ 
+  #15     PUT   /api/v1/tenants/me  ★ MỚI
+Cập nhật thông tin tổ chức: tên công ty, địa chỉ, logo URL.
+1. Input
+{
+  "companyName": "Công ty Nông nghiệp CNC Đà Lạt (Updated)",
+  "address": "Thôn Đa Quý, Xuân Thọ, TP. Đà Lạt",
+  "logoUrl": "https://cdn.smartfarm.vn/logos/dalat.png"
+}
+2. Output
+{
+  "tenantId": "tenant-dalat-505",
+  "updatedAt": "2026-09-20T10:00:00Z"
+}
+3. Validate
+• Chỉ FarmOwner mới cập nhật Tenant.
+• subdomain KHÔNG được phép thay đổi sau khi đăng ký.
+4. Business Rule
+• BR-TENANT-04: subdomain bất biến sau khi khởi tạo để tránh xung đột DNS/MQTT routing.
+5. Exception
+• 403 Forbidden: Chỉ FarmOwner được phép cập nhật Tenant.
+ 
+
+ 
+🌾  NHÓM 4-6: FARM / FIELD / ZONE — PHÂN CẤP ĐỊA LÝ
+Quản lý đầy đủ CRUD cho cây cấu trúc Farm → Field → Zone.
+  #16     GET   /api/v1/farms  ★ MỚI
+Lấy danh sách tất cả trang trại thuộc Tenant hiện tại kèm thống kê tổng hợp nhanh.
+1. Input
+// Query: ?status=Active&page=1&pageSize=20
+2. Output
+{
+  "total": 3,
+  "farms": [
+{ "farmId": "f-202", "name": "Trang trại CNC Đà Lạt", "status": "Operating", "totalZones": 4, "devicesOnline": 12 }
+  ]
+}
+3. Validate
+• status: [Active, Operating, Archived] (tùy chọn).
+4. Business Rule
+• BR-01: Chỉ trả về farm trong tenantId từ JWT.
+5. Exception
+• 401 Unauthorized: Token hết hạn.
+ 
+  #17     POST   /api/v1/farms
+Khởi tạo trang trại mới với tọa độ GPS và diện tích tổng thể.
+1. Input
+{
+  "name": "Trang trại Cà chua CNC Đà Lạt",
+  "lat": 11.954625, "lng": 108.444747,
+  "totalAreaM2": 15000.5,
+  "timezone": "Asia/Ho_Chi_Minh"
+}
+2. Output
+{
+  "farmId": "f-202", "tenantId": "tenant-dalat-505",
+  "status": "Active", "createdAt": "2026-09-20T08:30:00Z"
+}
+3. Validate
+• lat: -90 đến 90. lng: -180 đến 180.
+• totalAreaM2: > 0, tối đa 1,000,000 m².
+4. Business Rule
+• BR-01: tenantId gán tự động từ JWT.
+• BR-FARM-01: Tên không trùng trong Tenant.
+• BR-FARM-02: Unlimited — không giới hạn số trang trại.
+5. Exception
+• 409 Conflict: Trùng tên trang trại.
+ 
+  #18     GET   /api/v1/farms/{farmId}  ★ MỚI
+Xem chi tiết một trang trại: thông tin, trạng thái, số liệu thiết bị online.
+1. Input
+// Path: farmId = "f-202"
+2. Output
+{
+  "farmId": "f-202", "name": "Trang trại CNC Đà Lạt",
+  "status": "Operating", "totalAreaM2": 15000.5,
+  "fields": 2, "zones": 4, "devicesTotal": 16, "devicesOnline": 15
+}
+3. Validate
+• farmId: UUID hợp lệ, thuộc Tenant.
+4. Business Rule
+• BR-01: Cô lập Tenant.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #19     PUT   /api/v1/farms/{farmId}  ★ MỚI
+Cập nhật thông tin cơ bản của trang trại: tên, vị trí, diện tích.
+1. Input
+{
+  "name": "Trang trại CNC Đà Lạt V2",
+  "locationText": "Thôn Đa Quý, Xuân Thọ, TP. Đà Lạt",
+  "totalAreaM2": 18000.0
+}
+2. Output
+{
+  "farmId": "f-202", "updatedAt": "2026-09-20T11:00:00Z"
+}
+3. Validate
+• Chỉ FarmOwner của Tenant mới được cập nhật.
+4. Business Rule
+• BR-FARM-03: Nếu totalAreaM2 mới nhỏ hơn tổng diện tích Field hiện có → Từ chối.
+5. Exception
+• 400 Bad Request: Diện tích mới nhỏ hơn tổng Field.
+ 
+  #20     DELETE   /api/v1/farms/{farmId}  ★ MỚI
+Xóa mềm trang trại (Archive). Chỉ thực hiện được khi không còn Zone nào đang vận hành (Operating).
+1. Input
+// Path: farmId = "f-202"
+// Soft delete — status = Archived
+2. Output
+{
+  "message": "Trang trại đã được lưu trữ (Archived).",
+  "archivedAt": "2026-09-20T12:00:00Z"
+}
+3. Validate
+• Farm không được có Zone nào đang status = Operating.
+4. Business Rule
+• BR-FARM-04: Soft Delete — không xóa dữ liệu lịch sử canh tác và cảm biến.
+• BR-FARM-05: Gửi thông báo FCM cho tất cả Farmer trong Farm.
+5. Exception
+• 409 Conflict: Farm vẫn còn Zone đang Operating.
+ 
+  #21     GET   /api/v1/farms/{farmId}/structure
+Truy vấn cây cấu trúc phân cấp đầy đủ Farm → Fields → Zones → Devices.
+1. Input
+// Query: includeCrops=true&includeDeviceStatus=true
+2. Output
+{
+  "farmId": "f-202",
+  "isReadyForIoT": true,
+  "fields": [{ "fieldId": "fld-101", "zones": [{ "zoneId": "z-303", "status": "Operating", "devicesOnline": 2 }] }]
+}
+3. Validate
+• includeCrops: Thêm thông tin giống cây và vụ mùa.
+• includeDeviceStatus: Kèm trạng thái Online/Offline.
+4. Business Rule
+• BR-REVIEW-01: Single Query JSON Aggregation PostgreSQL.
+• BR-REVIEW-02: isReadyForIoT = true nếu có ≥ 1 Field và ≥ 1 Zone hợp lệ.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #22     POST   /api/v1/farms/{farmId}/submit
+Khóa cấu trúc logic, chuyển Farm sang trạng thái chờ Kỹ thuật viên tích hợp IoT.
+1. Input
+{
+  "confirmed": true,
+  "notes": "Sẵn sàng lắp Gateway và Sensor"
+}
+2. Output
+{
+  "farmId": "f-202", "status": "StructureLocked",
+  "workflowState": "AwaitingIoTProvisioning"
+}
+3. Validate
+• confirmed: Bắt buộc true.
+4. Business Rule
+• BR-SUBMIT-01: Farm phải có ≥ 1 Field và ≥ 1 Zone có vụ mùa InProgress.
+• BR-SUBMIT-03: Sinh sự kiện FARM_STRUCTURE_READY.
+5. Exception
+• 400 Bad Request: Chưa đủ điều kiện.
+ 
+  #23     GET   /api/v1/farms/{farmId}/fields  ★ MỚI
+Lấy danh sách phân khu đất (Field) thuộc trang trại.
+1. Input
+// Path: farmId = "f-202"
+// Query: ?page=1&pageSize=20
+2. Output
+{
+  "total": 2,
+  "fields": [
+{ "fieldId": "fld-101", "name": "Lô Đất Đỏ Phía Bắc", "areaM2": 5000, "availableAreaM2": 3500, "zonesCount": 3 }
+  ]
+}
+3. Validate
+• farmId: Thuộc Tenant hiện tại.
+4. Business Rule
+• BR-FLD-01: Kiểm tra quyền sở hữu farmId.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #24     POST   /api/v1/farms/{farmId}/fields
+Tạo phân khu đất mới trong trang trại.
+1. Input
+{
+  "name": "Lô Đất Đỏ Phía Bắc",
+  "areaM2": 5000,
+  "soilType": "Đất đỏ Bazan",
+  "lat": 11.9547, "lng": 108.4448
+}
+2. Output
+{
+  "fieldId": "fld-101", "farmId": "f-202",
+  "areaM2": 5000, "availableAreaM2": 5000
+}
+3. Validate
+• areaM2: > 0.
+• Tổng areaM2 của Field không vượt totalAreaM2 Farm.
+4. Business Rule
+• BR-FLD-02: Tổng diện tích Field ≤ totalAreaM2 Farm cha.
+• BR-FLD-03: Khởi tạo availableAreaM2 = areaM2.
+5. Exception
+• 400 Bad Request: Diện tích vượt giới hạn trang trại.
+ 
+  #25     GET   /api/v1/fields/{fieldId}  ★ MỚI
+Xem chi tiết phân khu đất: diện tích, loại đất, danh sách Zone trực thuộc.
+1. Input
+// Path: fieldId = "fld-101"
+2. Output
+{
+  "fieldId": "fld-101", "farmId": "f-202",
+  "name": "Lô Đất Đỏ Phía Bắc",
+  "areaM2": 5000, "availableAreaM2": 3500,
+  "zones": [{ "zoneId": "z-303", "name": "Nhà màng A1", "status": "Operating" }]
+}
+3. Validate
+• fieldId: UUID hợp lệ trong Tenant.
+4. Business Rule
+• BR-01: Cô lập Tenant.
+5. Exception
+• 404 Not Found: Không tìm thấy Field.
+ 
+  #26     PUT   /api/v1/fields/{fieldId}  ★ MỚI
+Cập nhật thông tin phân khu đất: tên, loại đất.
+1. Input
+{
+  "name": "Lô Đất Đỏ Phía Bắc (Cập nhật)",
+  "soilType": "Đất phù sa pha cát"
+}
+2. Output
+{
+  "fieldId": "fld-101", "updatedAt": "2026-09-20T14:00:00Z"
+}
+3. Validate
+• Không cho phép thay đổi diện tích nếu đã có Zone phân bổ.
+4. Business Rule
+• BR-FLD-04: Chỉ Farm Owner mới cập nhật được.
+5. Exception
+• 403 Forbidden: Không đủ quyền.
+ 
+  #27     DELETE   /api/v1/fields/{fieldId}  ★ MỚI
+Xóa mềm phân khu đất. Chỉ thực hiện khi không còn Zone nào đang Operating.
+1. Input
+// Soft delete — không xóa dữ liệu lịch sử
+2. Output
+{
+  "message": "Lô đất đã được lưu trữ.", "archivedAt": "2026-09-20T15:00:00Z"
+}
+3. Validate
+• Field không còn Zone nào status = Operating.
+4. Business Rule
+• BR-FLD-05: Soft delete, khôi phục availableAreaM2 về Farm.
+5. Exception
+• 409 Conflict: Vẫn còn Zone đang hoạt động.
+ 
+  #28     GET   /api/v1/fields/{fieldId}/zones  ★ MỚI
+Lấy danh sách khu vực nhà màng / luống trồng thuộc phân khu đất.
+1. Input
+// Path: fieldId = "fld-101"
+// Query: ?status=Operating
+2. Output
+{
+  "total": 3,
+  "zones": [
+{ "zoneId": "z-303", "name": "Nhà màng A1", "status": "Operating", "activeSeason": "Vụ Thu Đông 2026" }
+  ]
+}
+3. Validate
+• fieldId: UUID hợp lệ trong Tenant.
+4. Business Rule
+• BR-02: Phân cấp địa lý bắt buộc.
+5. Exception
+• 404 Not Found: Không tìm thấy Field.
+ 
+  #29     POST   /api/v1/fields/{fieldId}/zones
+Tạo khu vực canh tác (Zone) với ranh giới Polygon GeoJSON.
+1. Input
+{
+  "name": "Nhà màng A1 - Cà chua Beef",
+  "areaM2": 500,
+  "polygonGeoJson": { "type": "Polygon", "coordinates": [[...]] },
+  "zoneType": "Greenhouse"
+}
+2. Output
+{
+  "zoneId": "z-303", "fieldId": "fld-101",
+  "status": "Inactive", "createdAt": "2026-09-20T09:30:00Z"
+}
+3. Validate
+• polygonGeoJson: GeoJSON Polygon khép kín.
+• areaM2: ≤ availableAreaM2 của Field.
+4. Business Rule
+• BR-02: Xác minh sở hữu fieldId với Tenant.
+• BR-ZONE-01: Zone mới mặc định Inactive.
+• BR-ZONE-02: Trừ dần availableAreaM2 của Field.
+5. Exception
+• 400 Bad Request: GeoJSON không hợp lệ.
+ 
+  #30     GET   /api/v1/zones/{zoneId}  ★ MỚI
+Xem chi tiết một Zone: thông tin, trạng thái, giống cây, vụ mùa hiện tại, thiết bị.
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "zoneId": "z-303", "name": "Nhà màng A1",
+  "status": "Operating", "areaM2": 500,
+  "activeCrop": { "name": "Cà chua Beef F1", "growthDay": 18, "stage": "Seedling" },
+  "activeSeason": "Vụ Thu Đông 2026",
+  "devicesOnline": 2
+}
+3. Validate
+• zoneId: UUID hợp lệ trong Tenant.
+4. Business Rule
+• BR-01: Cô lập Tenant.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #31     PUT   /api/v1/zones/{zoneId}  ★ MỚI
+Cập nhật tên, ghi chú của Zone. Không được thay đổi diện tích khi Zone đang Operating.
+1. Input
+{
+  "name": "Nhà màng A1 - Cà chua Beef (Updated)",
+  "notes": "Đã nâng cấp hệ thống tưới nhỏ giọt"
+}
+2. Output
+{
+  "zoneId": "z-303", "updatedAt": "2026-09-20T15:00:00Z"
+}
+3. Validate
+• Không cập nhật areaM2 khi Zone status = Operating.
+4. Business Rule
+• BR-ZONE-03: Chỉ FarmOwner mới cập nhật Zone.
+5. Exception
+• 409 Conflict: Cố thay đổi diện tích khi Zone đang hoạt động.
+ 
+  #32     DELETE   /api/v1/zones/{zoneId}  ★ MỚI
+Xóa mềm Zone. Chỉ thực hiện khi không có vụ mùa InProgress và không có thiết bị đang Assigned.
+1. Input
+// Soft delete
+2. Output
+{
+  "message": "Zone đã được lưu trữ.", "archivedAt": "2026-09-20T16:00:00Z"
+}
+3. Validate
+• Zone không có vụ mùa InProgress.
+• Zone không có thiết bị nào Assigned.
+4. Business Rule
+• BR-ZONE-04: Soft delete, hoàn trả diện tích về Field.
+5. Exception
+• 409 Conflict: Zone vẫn còn vụ mùa đang tiến hành.
+ 
+
+ 
+🌱  NHÓM 7: CROP & VARIETY — LOẠI CÂY & GIỐNG CÂY TRỒNG (BẢNG crops & crop_varieties)
+Phân tầng danh mục cây trồng cấp hệ thống và giống cây mở rộng của từng trang trại.
+  #33     GET   /api/v1/crops  ★ MỚI
+Lấy danh sách tất cả loại cây trồng trong hệ thống (Cà chua, Dưa lưới, Dâu tây...). Hỗ trợ tìm kiếm theo tên hoặc lọc theo cây hệ thống/do người dùng tạo.
+1. Input
+// Query: ?search=cà+chua&isSystemDefined=true&page=1&pageSize=20
+2. Output
+{
+  "total": 1,
+  "crops": [
+{ "cropId": "c-001", "name": "Cà chua", "scientificName": "Solanum lycopersicum", "isSystemDefined": true, "description": "Cây rau ăn quả họ Cà" }
+  ]
+}
+3. Validate
+• Tất cả các role đều có quyền đọc (All roles).
+4. Business Rule
+• DB Table: crops. Cây hệ thống (is_system_defined = true) do PlatformAdmin khởi tạo sẵn.
+5. Exception
+• 200 OK (trả mảng rỗng nếu không tìm thấy).
+ 
+  #34     POST   /api/v1/crops  ★ MỚI
+Khai báo loại cây trồng mới vào danh mục hệ thống hoặc riêng cho trang trại.
+1. Input
+{
+  "name": "Dưa lưới hoàng kim",
+  "scientificName": "Cucumis melo",
+  "description": "Dưa lưới quả vàng ruột cam VietGAP"
+}
+2. Output
+{
+  "cropId": "c-002",
+  "name": "Dưa lưới hoàng kim",
+  "isSystemDefined": false,
+  "createdAt": "2026-09-21T08:00:00Z"
+}
+3. Validate
+• name: Bắt buộc, duy nhất toàn hệ thống (UNIQUE).
+• scientificName: Chuẩn danh pháp khoa học hai phần.
+4. Business Rule
+• BR-CROP-01: Tên loại cây là duy nhất. Khi FarmOwner tạo, is_system_defined = false, lưu created_by.
+5. Exception
+• 409 Conflict: Loại cây đã tồn tại trong danh mục.
+ 
+  #35     GET   /api/v1/crops/{cropId}/varieties  ★ MỚI
+Lấy danh sách giống cây cụ thể của một loại cây (ví dụ Cà chua có giống Beef F1, Cherry đỏ, Chocolate...).
+1. Input
+// Path: cropId = "c-001"
+2. Output
+{
+  "cropId": "c-001",
+  "cropName": "Cà chua",
+  "varieties": [
+{ "varietyId": "var-101", "name": "Beef Hà Lan F1", "description": "Trọng lượng 250-350g, chịu nhiệt", "isSystemDefined": true },
+{ "varietyId": "var-102", "name": "Cherry Đỏ Đài Loan", "description": "Quả chùm ngọt cao", "isSystemDefined": true }
+  ]
+}
+3. Validate
+• cropId: UUID hợp lệ của loại cây.
+4. Business Rule
+• DB Table: crop_varieties (khóa ngoại crop_id). Phân biệt giống chuẩn hệ thống và giống tự tạo.
+5. Exception
+• 404 Not Found: cropId không tồn tại.
+ 
+  #36     POST   /api/v1/crops/{cropId}/varieties  ★ MỚI
+Tạo thêm một giống cây mới cho loại cây tương ứng.
+1. Input
+{
+  "name": "Beef Rijk Zwaan 789",
+  "description": "Giống chịu nấm héo xanh F1"
+}
+2. Output
+{
+  "varietyId": "var-103",
+  "cropId": "c-001",
+  "name": "Beef Rijk Zwaan 789",
+  "isSystemDefined": false,
+  "createdAt": "2026-09-21T08:30:00Z"
+}
+3. Validate
+• name: Bắt buộc, không trùng lặp trong cùng crop_id (UNIQUE crop_id + name).
+4. Business Rule
+• BR-CROP-02: Cho phép FarmOwner tự thêm giống mới phục vụ trang trại mình nếu hệ thống chưa có.
+5. Exception
+• 409 Conflict: Giống đã tồn tại cho loại cây này.
+ 
+
+ 
+📈  NHÓM 8: GROWTH PROFILE & STAGES — HỒ SƠ SINH TRƯỞNG & NGƯỠNG VI KHÍ HẬU (BẢNG growth_profiles, growth_stages, environmental_requirements)
+Định nghĩa từng giai đoạn phát triển và bộ chỉ số tối ưu (Nhiệt độ, Độ ẩm, Lux, EC, pH).
+  #37     GET   /api/v1/crops/{cropId}/growth-profiles  ★ MỚI
+Lấy danh sách các hồ sơ sinh trưởng (Growth Profiles) của loại cây / giống cây.
+1. Input
+// Path: cropId = "c-001"
+// Query: ?varietyId=var-101
+2. Output
+{
+  "total": 1,
+  "profiles": [
+{ "growthProfileId": "gp-501", "name": "Quy trình chuẩn VietGAP Cà chua Beef", "isDefault": true, "isSystemDefined": true, "stagesCount": 4 }
+  ]
+}
+3. Validate
+• cropId: UUID hợp lệ.
+4. Business Rule
+• DB Table: growth_profiles. Cho phép cấu hình nhiều profile (VietGAP, GlobalGAP, Mùa mưa, Mùa khô).
+5. Exception
+• 404 Not Found: cropId không tồn tại.
+ 
+  #38     POST   /api/v1/growth-profiles  ★ MỚI
+Tạo một hồ sơ sinh trưởng mới cho loại cây hoặc giống cụ thể.
+1. Input
+{
+  "cropId": "c-001",
+  "varietyId": "var-101",
+  "name": "Hồ sơ Canh tác Thủy canh Nhà Màng 2026",
+  "description": "Tối ưu nồng độ dinh dưỡng và kiểm soát ẩm độ",
+  "isDefault": false
+}
+2. Output
+{
+  "growthProfileId": "gp-502",
+  "name": "Hồ sơ Canh tác Thủy canh Nhà Màng 2026",
+  "createdAt": "2026-09-21T09:00:00Z"
+}
+3. Validate
+• cropId: Bắt buộc.
+• varietyId: Tùy chọn (nếu null là áp dụng chung cho loài).
+• name: Bắt buộc.
+4. Business Rule
+• BR-PROF-01: Nếu đặt isDefault = true, tự động hạ cờ isDefault của profile cũ cùng crop/variety.
+5. Exception
+• 400 Bad Request: Dữ liệu không hợp lệ.
+ 
+  #39     GET   /api/v1/growth-profiles/{profileId}/stages  ★ MỚI
+Lấy danh sách tất cả các giai đoạn sinh trưởng kèm bộ thông số môi trường (environmental_requirements) chi tiết của từng giai đoạn.
+1. Input
+// Path: profileId = "gp-501"
+2. Output
+{
+  "growthProfileId": "gp-501",
+  "profileName": "Quy trình chuẩn VietGAP Cà chua Beef",
+  "stages": [
+{
+      "growthStageId": "gs-1",
+      "name": "Cây non (Seedling)",
+      "stageOrder": 1,
+      "durationDays": 20,
+      "requirements": [
+    { "parameterCode": "TEMPERATURE", "minValue": 20.0, "maxValue": 28.0, "targetValue": 24.0, "unit": "°C" },
+    { "parameterCode": "SOIL_MOISTURE", "minValue": 65.0, "maxValue": 80.0, "targetValue": 72.0, "unit": "%" },
+    { "parameterCode": "AIR_HUMIDITY", "minValue": 60.0, "maxValue": 75.0, "targetValue": 70.0, "unit": "%" },
+    { "parameterCode": "EC", "minValue": 1.2, "maxValue": 1.8, "targetValue": 1.5, "unit": "mS/cm" }
+  ]
+},
+{
+      "growthStageId": "gs-2",
+      "name": "Phát triển thân lá (Vegetative)",
+      "stageOrder": 2,
+      "durationDays": 30,
+      "requirements": [...]
+}
+  ]
+}
+3. Validate
+• profileId: UUID hợp lệ trong DB.
+4. Business Rule
+• DB Tables: growth_stages JOIN environmental_requirements. Cung cấp dữ liệu gốc cho Rule Evaluator và AI RAG.
+5. Exception
+• 404 Not Found: profileId không tồn tại.
+ 
+  #40     PUT   /api/v1/growth-stages/{stageId}/requirements  ★ MỚI
+Cập nhật hoặc tùy biến dải ngưỡng vi khí hậu tối ưu cho một giai đoạn sinh trưởng.
+1. Input
+{
+  "requirements": [
+{ "parameterCode": "TEMPERATURE", "minValue": 21.0, "maxValue": 29.0, "targetValue": 25.0, "unit": "°C" },
+{ "parameterCode": "SOIL_MOISTURE", "minValue": 60.0, "maxValue": 78.0, "targetValue": 70.0, "unit": "%" }
+  ]
+}
+2. Output
+{
+  "growthStageId": "gs-1",
+  "updatedCount": 2,
+  "updatedAt": "2026-09-21T09:30:00Z"
+}
+3. Validate
+• minValue <= targetValue <= maxValue đối với tất cả parameter_code.
+• parameterCode: [TEMPERATURE, SOIL_MOISTURE, AIR_HUMIDITY, LIGHT_INTENSITY, PH, EC].
+4. Business Rule
+• BR-PROF-02: Không sửa trực tiếp profile hệ thống (is_system_defined = true). Hệ thống tự clone thành bản ghi của Tenant trước khi lưu.
+5. Exception
+• 400 Bad Request: minValue > maxValue.
+ 
+
+ 
+🌾  NHÓM 9: PLANTING SEASON — QUẢN LÝ VỤ MÙA TRONG ZONE (BẢNG planting_seasons)
+Chu kỳ vòng đời mùa vụ: Tạo vụ mới, gắn giống & hồ sơ sinh trưởng, chuyển giai đoạn, đóng mùa vụ.
+  #41     GET   /api/v1/zones/{zoneId}/planting-seasons  ★ MỚI
+Lấy danh sách tất cả các vụ mùa canh tác của Zone (bao gồm vụ đang diễn ra PLANNED, IN_PROGRESS và lịch sử COMPLETED/CANCELLED).
+1. Input
+// Path: zoneId = "z-303"
+// Query: ?status=IN_PROGRESS
+2. Output
+{
+  "total": 2,
+  "seasons": [
+{
+      "plantingSeasonId": "ps-404",
+      "name": "Vụ Thu Đông 2026",
+      "cropName": "Cà chua",
+      "varietyName": "Beef Hà Lan F1",
+      "startDate": "2026-09-20",
+      "currentStage": { "growthStageId": "gs-1", "name": "Cây non (Seedling)", "stageOrder": 1 },
+      "status": "IN_PROGRESS"
+}
+  ]
+}
+3. Validate
+• zoneId: UUID hợp lệ thuộc Tenant.
+4. Business Rule
+• DB Table: planting_seasons. Join với crops, crop_varieties, growth_stages.
+5. Exception
+• 404 Not Found: zoneId không tồn tại.
+ 
+  #42     POST   /api/v1/zones/{zoneId}/planting-seasons
+Kích hoạt vụ mùa mới cho Zone, liên kết đầy đủ crop_id, variety_id và growth_profile_id chuẩn theo DB schema.
+1. Input
+{
+  "name": "Vụ Thu Đông 2026",
+  "cropId": "c-001",
+  "varietyId": "var-101",
+  "growthProfileId": "gp-501",
+  "startDate": "2026-09-20",
+  "expectedEndDate": "2026-12-25"
+}
+2. Output
+{
+  "plantingSeasonId": "ps-404",
+  "zoneId": "z-303",
+  "currentGrowthStageId": "gs-1",
+  "status": "IN_PROGRESS",
+  "createdAt": "2026-09-20T08:00:00Z"
+}
+3. Validate
+• expectedEndDate > startDate ít nhất 20 ngày.
+• cropId, growthProfileId: Bắt buộc tồn tại trong DB.
+4. Business Rule
+• BR-SEASON-01: Tại một thời điểm, một Zone chỉ có duy nhất 1 vụ mùa có status = IN_PROGRESS.
+• BR-SEASON-02: Tự động gán current_growth_stage_id là giai đoạn có stage_order = 1 của profile.
+5. Exception
+• 409 Conflict: Zone hiện tại đã có một vụ mùa đang hoạt động (IN_PROGRESS).
+ 
+  #43     GET   /api/v1/zones/{zoneId}/planting-seasons/{seasonId}  ★ MỚI
+Xem chi tiết thông tin vụ mùa: số ngày tuổi sinh trưởng thực tế, giai đoạn hiện tại, sản lượng dự kiến và thống kê tài nguyên đã tiêu thụ.
+1. Input
+// Path: zoneId = "z-303", seasonId = "ps-404"
+2. Output
+{
+  "plantingSeasonId": "ps-404",
+  "name": "Vụ Thu Đông 2026",
+  "crop": { "id": "c-001", "name": "Cà chua" },
+  "variety": { "id": "var-101", "name": "Beef Hà Lan F1" },
+  "profile": { "id": "gp-501", "name": "Quy trình chuẩn VietGAP" },
+  "currentStage": { "id": "gs-1", "name": "Cây non (Seedling)", "durationDays": 20, "currentDayInStage": 5 },
+  "startDate": "2026-09-20",
+  "status": "IN_PROGRESS",
+  "stats": { "totalIrrigationRuns": 18, "totalWaterLiters": 4500, "totalElectricityKWh": 42.5 }
+}
+3. Validate
+• seasonId phải thuộc zoneId và Tenant của người dùng.
+4. Business Rule
+• Cung cấp dữ liệu trực quan cho màn hình theo dõi sinh trưởng trên Mobile App & Web Dashboard.
+5. Exception
+• 404 Not Found: Không tìm thấy seasonId.
+ 
+  #44     PUT   /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/stage  ★ MỚI
+Chuyển giai đoạn sinh trưởng của vụ mùa sang giai đoạn kế tiếp (hoặc giai đoạn chỉ định). Tự động cập nhật bộ ngưỡng alert_rules tương ứng.
+1. Input
+{
+  "targetGrowthStageId": "gs-2",
+  "notes": "Cây đã phát triển chồi nhánh đạt chuẩn, chuyển sang giai đoạn phát triển thân lá"
+}
+2. Output
+{
+  "plantingSeasonId": "ps-404",
+  "previousStageId": "gs-1",
+  "currentGrowthStageId": "gs-2",
+  "updatedAt": "2026-10-10T08:00:00Z",
+  "alertRulesSynchronized": 4
+}
+3. Validate
+• targetGrowthStageId: Phải thuộc growth_profile_id của vụ mùa đó.
+4. Business Rule
+• BR-SEASON-03: Khi chuyển giai đoạn, hệ thống tự động đồng bộ lại alert_rules.growth_stage_id để áp dụng bộ ngưỡng vi khí hậu mới cho Rule Evaluator Engine.
+• Đồng thời lưu lịch sử biến động vào SEASON_STAGE_TRANSITIONS.
+5. Exception
+• 400 Bad Request: Giai đoạn không thuộc profile của mùa vụ.
+ 
+  #45     PUT   /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/close  ★ MỚI
+Đóng vụ mùa canh tác (hoàn tất thu hoạch hoặc hủy vụ), cập nhật actual_end_date và ghi nhận sản lượng.
+1. Input
+{
+  "actualEndDate": "2026-12-22",
+  "actualYieldKg": 2850.5,
+  "notes": "Năng suất đạt 95% kỳ vọng, hoàn thành thu hoạch sớm 3 ngày"
+}
+2. Output
+{
+  "plantingSeasonId": "ps-404",
+  "status": "COMPLETED",
+  "closedAt": "2026-12-22T17:00:00Z",
+  "actualYieldKg": 2850.5
+}
+3. Validate
+• Vụ mùa phải đang có status = IN_PROGRESS.
+• actualEndDate: Không được sớm hơn startDate.
+4. Business Rule
+• BR-SEASON-04: Đổi status = COMPLETED, giải phóng Zone để sẵn sàng tạo vụ mùa tiếp theo.
+• Ghi nhận sản lượng thu hoạch vào báo cáo tài chính và dòng tiền.
+5. Exception
+• 409 Conflict: Vụ mùa đã đóng trước đó.
+ 
+
+ 
+⚠️  NHÓM 10-11: ALERT RULES & SCHEDULE — CẤU HÌNH TƯỚI & CẢNH BÁO
+Quản lý bộ ngưỡng cảnh báo vi khí hậu và lịch tưới định kỳ Cronjob.
+  #46     GET   /api/v1/zones/{zoneId}/alert-rules  ★ MỚI
+Lấy danh sách toàn bộ quy tắc cảnh báo đang áp dụng cho Zone.
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "total": 3,
+  "rules": [
+{ "ruleId": "r-01", "metric": "soil_moisture", "minThreshold": 50, "maxThreshold": 80, "severity": "WARNING", "isActive": true },
+{ "ruleId": "r-02", "metric": "temperature", "maxThreshold": 35, "severity": "CRITICAL", "isActive": true }
+  ]
+}
+3. Validate
+• Tất cả FarmOwner và Farmer xem được.
+4. Business Rule
+• BR-01: Cô lập Tenant.
+• BR-ALERT-01: Rule được liên kết với growth_stage_id → khi chuyển giai đoạn, ngưỡng tự động thay đổi.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #47     POST   /api/v1/zones/{zoneId}/alert-rules  ★ MỚI
+Tạo quy tắc cảnh báo mới cho một chỉ số vi khí hậu trong Zone.
+1. Input
+{
+  "metric": "soil_moisture",
+  "minThreshold": 50.0,
+  "maxThreshold": 80.0,
+  "severity": "WARNING",
+  "cooldownMinutes": 30
+}
+2. Output
+{
+  "ruleId": "r-03", "metric": "soil_moisture",
+  "severity": "WARNING", "isActive": true
+}
+3. Validate
+• metric: [soil_moisture, temperature, humidity, light, pH, EC].
+• severity: [INFO, WARNING, CRITICAL].
+4. Business Rule
+• BR-ALERT-RULE-01: Không tạo 2 quy tắc cùng metric và severity trong 1 Zone.
+• BR-EVAL-02: Anti-flap — vi phạm ≥ 2 chu kỳ đo mới kích hoạt.
+5. Exception
+• 409 Conflict: Đã có quy tắc cho metric này.
+ 
+  #48     PUT   /api/v1/zones/{zoneId}/alert-rules/{ruleId}  ★ MỚI
+Cập nhật ngưỡng, mức độ nghiêm trọng hoặc bật/tắt một quy tắc cảnh báo.
+1. Input
+{
+  "minThreshold": 45.0,
+  "maxThreshold": 82.0,
+  "severity": "CRITICAL",
+  "isActive": false
+}
+2. Output
+{
+  "ruleId": "r-01", "updatedAt": "2026-09-20T14:00:00Z"
+}
+3. Validate
+• ruleId thuộc zoneId trong Tenant.
+• Chỉ FarmOwner cập nhật.
+4. Business Rule
+• Thay đổi ngưỡng có hiệu lực ngay lập tức với Rule Evaluator Engine.
+5. Exception
+• 404 Not Found: Không tìm thấy ruleId.
+ 
+  #49     DELETE   /api/v1/zones/{zoneId}/alert-rules/{ruleId}  ★ MỚI
+Xóa vĩnh viễn một quy tắc cảnh báo. Chú ý: các Alert đã phát ra từ rule này vẫn được giữ lại.
+1. Input
+// Path: zoneId="z-303", ruleId="r-01"
+2. Output
+{
+  "message": "Quy tắc cảnh báo đã bị xóa.",
+  "deletedAt": "2026-09-20T15:00:00Z"
+}
+3. Validate
+• ruleId thuộc zoneId trong Tenant.
+• Chỉ FarmOwner được xóa.
+4. Business Rule
+• Lịch sử Alert đã phát ra giữ nguyên (Append-Only).
+5. Exception
+• 404 Not Found: Không tìm thấy ruleId.
+ 
+  #50     GET   /api/v1/zones/{zoneId}/schedules  ★ MỚI
+Lấy danh sách lịch tưới định kỳ của Zone (bao gồm lịch đang hoạt động và đã dừng).
+1. Input
+// Query: ?status=Active
+2. Output
+{
+  "total": 2,
+  "schedules": [
+{ "scheduleId": "sch-001", "name": "Tưới sáng", "cronExpression": "0 6 * * *", "durationMinutes": 20, "isActive": true, "rainDelay": true }
+  ]
+}
+3. Validate
+• Tất cả FarmOwner và Farmer (có quyền) xem được.
+4. Business Rule
+• BR-SCH-01: Hiển thị lịch kèm thời gian chạy kế tiếp (nextRunAt).
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #51     POST   /api/v1/zones/{zoneId}/schedules  ★ MỚI
+Tạo lịch tưới tự động định kỳ bằng biểu thức Quartz Cron kèm điều kiện hoãn khi mưa.
+1. Input
+{
+  "name": "Tưới sáng hàng ngày",
+  "actuatorId": "act-relay-01",
+  "cronExpression": "0 6 * * *",
+  "durationMinutes": 20,
+  "enableRainDelay": true,
+  "rainThresholdPercent": 70
+}
+2. Output
+{
+  "scheduleId": "sch-001",
+  "nextRunAt": "2026-09-21T06:00:00+07:00",
+  "isActive": true
+}
+3. Validate
+• cronExpression: Cú pháp Quartz Cron hợp lệ.
+• durationMinutes: 1–30 (BR-SAFE-01).
+4. Business Rule
+• BR-SCH-02: Kiểm tra xung đột lịch với lịch khác trong cùng Zone.
+• BR-WEATHER-01: enableRainDelay = true → Tự động hoãn khi mưa ≥ rainThresholdPercent.
+5. Exception
+• 409 Conflict: Lịch mới chồng chéo với lịch hiện có.
+ 
+  #52     PUT   /api/v1/zones/{zoneId}/schedules/{scheduleId}  ★ MỚI
+Cập nhật lịch tưới: thay đổi giờ, thời lượng, bật/tắt hoặc điều chỉnh điều kiện hoãn mưa.
+1. Input
+{
+  "cronExpression": "0 7 * * *",
+  "durationMinutes": 15,
+  "isActive": false,
+  "enableRainDelay": true
+}
+2. Output
+{
+  "scheduleId": "sch-001",
+  "nextRunAt": "2026-09-22T07:00:00+07:00",
+  "updatedAt": "2026-09-20T16:00:00Z"
+}
+3. Validate
+• scheduleId thuộc zoneId trong Tenant.
+4. Business Rule
+• Thay đổi có hiệu lực từ lần chạy kế tiếp.
+5. Exception
+• 404 Not Found: Không tìm thấy scheduleId.
+ 
+  #53     DELETE   /api/v1/zones/{zoneId}/schedules/{scheduleId}  ★ MỚI
+Xóa lịch tưới. Lệnh đang chạy hiện tại (nếu có) sẽ hoàn thành bình thường.
+1. Input
+// Path: zoneId="z-303", scheduleId="sch-001"
+2. Output
+{
+  "message": "Lịch tưới đã bị xóa.",
+  "deletedAt": "2026-09-20T17:00:00Z"
+}
+3. Validate
+• scheduleId thuộc zoneId trong Tenant.
+4. Business Rule
+• Lịch sử tưới tiêu từ lịch này được giữ lại trong ACTUATOR_LOGS.
+5. Exception
+• 404 Not Found: Không tìm thấy scheduleId.
+ 
+
+ 
+📡  NHÓM 10-11: GATEWAY & DEVICE — PHẦN CỨNG IOT
+Đăng ký, cấu hình và quản lý Gateway ESP32 LoRa và các Node cảm biến / chấp hành.
+  #54     GET   /api/v1/farms/{farmId}/gateways  ★ MỚI
+Lấy danh sách Gateway đang hoạt động trong trang trại kèm trạng thái kết nối MQTT.
+1. Input
+// Path: farmId = "f-202"
+2. Output
+{
+  "total": 2,
+  "gateways": [
+{ "gatewayId": "gw-001", "serial": "GW-ESP32-001", "macAddress": "94:B9:7E:11:22:33", "status": "Online", "connectedNodes": 6 }
+  ]
+}
+3. Validate
+• farmId thuộc Tenant hiện tại.
+4. Business Rule
+• Trạng thái Online/Offline lấy từ MQTT Last-Will.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #55     POST   /api/v1/gateways
+Đăng ký Gateway ESP32 LoRa-MQTT vào Farm (thực hiện bởi Platform Technician sau khi quét QR).
+1. Input
+{
+  "macAddress": "94:B9:7E:11:22:33",
+  "gatewaySerial": "GW-ESP32-LORA-001",
+  "farmId": "f-202",
+  "frequencyBand": "433MHz",
+  "firmwareVersion": "v1.4.2"
+}
+2. Output
+{
+  "gatewayId": "gw-001", "status": "Provisioned",
+  "mqttClientId": "gw_dalat_001",
+  "mqttTopicPrefix": "smartfarm/tenant-dalat-505/gw-001"
+}
+3. Validate
+• macAddress: Chuẩn XX:XX:XX:XX:XX:XX.
+• gatewaySerial: Duy nhất toàn hệ thống.
+4. Business Rule
+• BR-GW-01: Chỉ PlatformTechnician/PlatformAdmin đăng ký phần cứng.
+• BR-GW-03: Tự động tạo tài khoản xác thực MQTT SSL cho Gateway.
+5. Exception
+• 409 Conflict: MAC đã đăng ký ở Farm khác.
+ 
+  #56     GET   /api/v1/gateways/{gatewayId}  ★ MỚI
+Xem chi tiết Gateway: firmware, RSSI trung bình, danh sách Node đang kết nối.
+1. Input
+// Path: gatewayId = "gw-001"
+2. Output
+{
+  "gatewayId": "gw-001", "farmId": "f-202",
+  "status": "Online",
+  "firmwareVersion": "v1.4.2",
+  "connectedNodes": [
+{ "nodeAddress": "LORA-NODE-SN-01", "rssi": -68, "lastSeenAt": "2026-09-20T15:00:00Z" }
+  ],
+  "mqttUptime": "15h 23m"
+}
+3. Validate
+• gatewayId thuộc farmId trong Tenant.
+4. Business Rule
+• lastSeenAt lấy từ MQTT telemetry gần nhất.
+5. Exception
+• 404 Not Found: Không tìm thấy Gateway.
+ 
+  #57     PUT   /api/v1/gateways/{gatewayId}/firmware  ★ MỚI
+Khởi tạo quá trình OTA (Over-the-Air) nâng cấp firmware cho Gateway ESP32.
+1. Input
+{
+  "targetVersion": "v1.5.0",
+  "firmwareUrl": "https://cdn.smartfarm.vn/fw/gw-v1.5.0.bin",
+  "scheduledAt": "2026-09-21T02:00:00Z"
+}
+2. Output
+{
+  "otaJobId": "ota-gw-007",
+  "status": "Scheduled",
+  "estimatedDurationMinutes": 5
+}
+3. Validate
+• targetVersion: Phải cao hơn firmware hiện tại.
+• scheduledAt: Nên đặt giờ thấp điểm để tránh gián đoạn.
+4. Business Rule
+• BR-OTA-01: Chỉ PlatformTechnician khởi tạo OTA.
+• BR-OTA-02: Gateway phát sóng lệnh OTA qua MQTT Downlink.
+5. Exception
+• 409 Conflict: Đã có tiến trình OTA đang chạy.
+ 
+  #58     GET   /api/v1/farms/{farmId}/devices  ★ MỚI
+Lấy danh sách tất cả Node thiết bị trong Farm (cả đã gán và chưa gán Zone).
+1. Input
+// Query: ?status=Online&type=SensorNode&page=1
+2. Output
+{
+  "total": 16,
+  "devices": [
+{ "deviceId": "dev-sn-01", "type": "SensorNode", "status": "Online", "assignedZone": "z-303", "batteryVoltage": 3.92 }
+  ]
+}
+3. Validate
+• type: [SensorNode, ActuatorNode].
+• status: [Online, Offline, Unassigned].
+4. Business Rule
+• BR-01: Cô lập Tenant.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #59     GET   /api/v1/zones/{zoneId}/devices  ★ MỚI
+Lấy danh sách thiết bị đã gán vào Zone kèm trạng thái kết nối thời gian thực.
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "total": 2,
+  "devices": [
+{ "deviceId": "dev-sn-01", "type": "SensorNode", "status": "Online", "rssi": -68, "batteryVoltage": 3.92 },
+{ "deviceId": "dev-act-01", "type": "ActuatorNode", "status": "Online", "relayStates": { "1": "OFF", "2": "OFF" } }
+  ]
+}
+3. Validate
+• zoneId thuộc Tenant hiện tại.
+4. Business Rule
+• relayStates cập nhật realtime từ MQTT feedback.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #60     GET   /api/v1/devices/{deviceId}  ★ MỚI
+Xem chi tiết đầy đủ một Node: phần cứng, cảm biến, relay, lần ping gần nhất.
+1. Input
+// Path: deviceId = "dev-sn-01"
+2. Output
+{
+  "deviceId": "dev-sn-01", "type": "SensorNode",
+  "hardwareAddress": "LORA-NODE-SN-01",
+  "status": "Online", "rssi": -68, "snr": 9.2, "batteryVoltage": 3.92,
+  "sensors": [{ "type": "SoilMoisture", "pin": "A0", "lastValue": 65.2 }],
+  "lastPingAt": "2026-09-20T15:00:00Z"
+}
+3. Validate
+• deviceId thuộc Tenant hiện tại.
+4. Business Rule
+• Tổng hợp từ DB + MQTT telemetry gần nhất.
+5. Exception
+• 404 Not Found: Không tìm thấy Device.
+ 
+  #61     POST   /api/v1/devices/provision
+Nhập hàng loạt Node vào kho thiết bị Farm (1–50 nodes/request).
+1. Input
+{
+  "gatewayId": "gw-001", "farmId": "f-202",
+  "nodes": [
+{ "hardwareAddress": "LORA-NODE-SN-01", "deviceType": "SensorNode" },
+{ "hardwareAddress": "LORA-NODE-ACT-01", "deviceType": "ActuatorNode" }
+  ]
+}
+2. Output
+{
+  "totalProvisioned": 2,
+  "devices": [
+{ "deviceId": "dev-sn-01", "status": "Unassigned" }
+  ]
+}
+3. Validate
+• nodes: 1–50 items/request.
+• hardwareAddress: Chuẩn LoRa Node EUI.
+4. Business Rule
+• BR-DEV-01: Tất cả thiết bị mới → Unassigned.
+• BR-DEV-02: Cấp AES-128 Pre-shared Key cho từng Node.
+5. Exception
+• 409 Conflict: hardwareAddress đã tồn tại.
+ 
+  #62     PUT   /api/v1/devices/{deviceId}/sensors
+Khai báo chi tiết cảm biến được gắn vào Sensor Node (loại, chân GPIO, dải đo).
+1. Input
+{
+  "sensors": [
+{ "sensorType": "SoilMoisture", "pin": "A0", "unit": "%", "minValue": 0, "maxValue": 100 },
+{ "sensorType": "AirTemperatureHumid", "model": "SHT30", "interface": "I2C", "samplingIntervalSec": 60 }
+  ]
+}
+2. Output
+{
+  "deviceId": "dev-sn-01", "configuredSensorsCount": 2, "status": "SensorsConfigured"
+}
+3. Validate
+• sensorType: [SoilMoisture, AirTemperature, AirHumid, Light, pH, EC].
+• samplingIntervalSec: 10–3600 giây.
+4. Business Rule
+• BR-CFG-01: deviceType = SensorNode.
+• BR-CFG-02: Chân GPIO không trùng lặp.
+5. Exception
+• 400 Bad Request: Trùng chân GPIO.
+ 
+  #63     PUT   /api/v1/devices/{deviceId}/actuators
+Khai báo kênh Relay và thông số bộ chấp hành (Van, Bơm, Quạt).
+1. Input
+{
+  "actuators": [
+{ "actuatorType": "WaterPump", "relayChannel": 1, "ratedPowerWatt": 750, "maxDurationMinutes": 30 }
+  ]
+}
+2. Output
+{
+  "deviceId": "dev-act-01", "configuredActuatorsCount": 2, "interlockConfigured": true
+}
+3. Validate
+• relayChannel: 1–8.
+• maxDurationMinutes: 1–30 (BR-SAFE-01).
+4. Business Rule
+• BR-CFG-02: Kiểm tra xung đột Relay Channel.
+• BR-SAFE-01: Bắt buộc cấu hình maxDurationMinutes.
+5. Exception
+• 400 Bad Request: Relay Channel trùng nhau.
+ 
+  #64     POST   /api/v1/zones/{zoneId}/devices/{deviceId}/assign
+Gán Node vào Zone, tự động đồng bộ MAC vào Whitelist Gateway.
+1. Input
+{
+  "installationNotes": "Cắm góc Tây Bắc luống 1, sâu 15cm",
+  "gpsLat": 11.9542, "gpsLng": 108.4442
+}
+2. Output
+{
+  "zoneId": "z-303", "deviceId": "dev-sn-01",
+  "status": "Assigned", "mqttWhitelistDispatched": true
+}
+3. Validate
+• deviceId phải đang Unassigned.
+4. Business Rule
+• BR-03: Node phải Unassigned.
+• BR-04: Chỉ PlatformTechnician.
+• BR-06: MQTT Downlink nạp MAC vào EEPROM Gateway.
+5. Exception
+• 409 Conflict: Device đã Assigned (MSG-DEVICE-ALREADY-ASSIGNED).
+ 
+  #65     POST   /api/v1/zones/{zoneId}/devices/{deviceId}/unassign  ★ MỚI
+Gỡ thiết bị khỏi Zone, thu hồi MAC khỏi Whitelist Gateway, chuyển về trạng thái Unassigned.
+1. Input
+{
+  "reason": "Thiết bị cần hiệu chuẩn lại tại xưởng",
+  "replacementDeviceId": null
+}
+2. Output
+{
+  "deviceId": "dev-sn-01", "status": "Unassigned",
+  "whitelistRevoked": true
+}
+3. Validate
+• Chỉ PlatformTechnician thực hiện.
+• Nếu Zone đang Operating phải xác nhận rõ ràng.
+4. Business Rule
+• BR-UNASSIGN-01: MQTT Downlink thu hồi MAC khỏi EEPROM Gateway ngay lập tức.
+• BR-UNASSIGN-02: Ghi nhật ký DEVICE_UNASSIGN_LOGS.
+5. Exception
+• 409 Conflict: Zone đang có lệnh điều khiển đang chạy.
+ 
+  #66     GET   /api/v1/devices/{deviceId}/ping
+Kiểm tra chất lượng kết nối LoRa và đường truyền MQTT thời gian thực của thiết bị.
+1. Input
+// Query: timeoutSeconds=5
+2. Output
+{
+  "deviceId": "dev-sn-01", "status": "Connected",
+  "rssi": -68, "snr": 9.2, "batteryVoltage": 3.95,
+  "roundTripLatencyMs": 85
+}
+3. Validate
+• Thiết bị phải đã được Assigned vào Zone.
+4. Business Rule
+• BR-PING-01: MQTT Ping → Gateway → LoRa → Node → ACK.
+• BR-PING-02: Đạt chuẩn nếu RSSI > -110 dBm và SNR > -5 dB.
+5. Exception
+• 504 Gateway Timeout: Không nhận ACK trong 5 giây.
+ 
+  #67     POST   /api/v1/devices/{deviceId}/diagnose
+Chẩn đoán sự cố: đổi kênh LoRa, tăng công suất phát, reboot Node qua sóng.
+1. Input
+{
+  "action": "REBOOT_AND_CHANGE_CHANNEL",
+  "newFrequencyChannel": 433.175,
+  "increaseTxPowerDbm": 20
+}
+2. Output
+{
+  "deviceId": "dev-sn-01", "commandStatus": "Executed",
+  "diagnosticReport": "Node rebooted via LoRa broadcast."
+}
+3. Validate
+• action: [REBOOT_NODE, CHANGE_CHANNEL, CALIBRATE_SENSOR, FACTORY_RESET].
+4. Business Rule
+• BR-DIAG-01: Đẩy qua High-Priority MQTT Queue.
+• BR-DIAG-02: Ghi DEVICE_MAINTENANCE_LOGS.
+5. Exception
+• 503 Service Unavailable: Gateway mất nguồn.
+ 
+  #68     DELETE   /api/v1/devices/{deviceId}  ★ MỚI
+Thanh lý (decommission) thiết bị hỏng vĩnh viễn khỏi hệ thống. Chỉ thực hiện khi status = Unassigned.
+1. Input
+// Soft delete — giữ lịch sử telemetry
+2. Output
+{
+  "message": "Thiết bị đã được thanh lý.", "decommissionedAt": "2026-09-20T18:00:00Z"
+}
+3. Validate
+• deviceId phải đang Unassigned.
+• Chỉ PlatformTechnician/PlatformAdmin.
+4. Business Rule
+• BR-DEV-03: Soft delete — ẩn thiết bị khỏi danh sách hoạt động nhưng giữ lịch sử telemetry để phân tích.
+5. Exception
+• 409 Conflict: Device đang Assigned vào Zone.
+ 
+
+ 
+📊  NHÓM 12-13: TELEMETRY & ALERTS — DỮ LIỆU CẢM BIẾN & CẢNH BÁO
+Truy vấn dữ liệu vi khí hậu thời gian thực và lịch sử, quản lý cảnh báo.
+  #69     GET   /api/v1/zones/{zoneId}/telemetry/latest  ★ MỚI
+Lấy giá trị đo gần nhất của tất cả cảm biến trong Zone — dùng cho Dashboard realtime.
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "zoneId": "z-303", "capturedAt": "2026-09-20T15:00:00Z",
+  "metrics": {
+    "soil_moisture": { "value": 65.2, "unit": "%", "status": "Normal" },
+    "temperature": { "value": 26.4, "unit": "°C", "status": "Normal" },
+    "humidity": { "value": 71.5, "unit": "%", "status": "Normal" },
+    "battery": { "value": 3.92, "unit": "V", "status": "Good" }
+  }
+}
+3. Validate
+• Tất cả role trong Farm được đọc.
+4. Business Rule
+• Lấy từ Redis Cache (cập nhật theo mỗi gói MQTT mới).
+• Kèm cờ status [Normal/Warning/Critical] tính từ Alert Rules.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #70     GET   /api/v1/zones/{zoneId}/telemetry/history  ★ MỚI
+Lấy lịch sử chuỗi thời gian cảm biến với bộ lọc thời gian và phân trang từ TimescaleDB.
+1. Input
+// Query: ?metric=soil_moisture&from=2026-09-14T00:00:00Z&to=2026-09-21T00:00:00Z&interval=1h
+2. Output
+{
+  "zoneId": "z-303", "metric": "soil_moisture",
+  "interval": "1h", "totalPoints": 168,
+  "data": [
+{ "timestamp": "2026-09-14T06:00:00Z", "avg": 63.2, "min": 55.1, "max": 72.4 }
+  ]
+}
+3. Validate
+• from/to: Khoảng thời gian hợp lệ (from < to).
+• interval: [1m, 5m, 15m, 1h, 1d].
+• Tối đa 90 ngày / request.
+4. Business Rule
+• BR-DB-01: Query từ TimescaleDB với time_bucket() tối ưu hiệu năng.
+• Dữ liệu được aggregate (avg/min/max) theo interval.
+5. Exception
+• 400 Bad Request: Khoảng thời gian không hợp lệ.
+ 
+  #71     GET   /api/v1/zones/{zoneId}/telemetry/stats  ★ MỚI
+Lấy thống kê tổng hợp vi khí hậu: trung bình 7 ngày, min/max tuần, xu hướng.
+1. Input
+// Query: ?days=7
+2. Output
+{
+  "zoneId": "z-303", "period": "7 days",
+  "stats": {
+    "soil_moisture": { "avg": 64.5, "min": 48.2, "max": 81.3, "trend": "stable" },
+    "temperature": { "avg": 25.8, "min": 19.5, "max": 33.2, "trend": "increasing" }
+  },
+  "alertsCount": 3
+}
+3. Validate
+• days: 1–90.
+4. Business Rule
+• BR-STATS-01: Dùng Continuous Aggregate của TimescaleDB để tốc độ query < 200ms.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #72     GET   /api/v1/farms/{farmId}/alerts  ★ MỚI
+Lấy tất cả cảnh báo của toàn trang trại (tất cả Zone) với bộ lọc.
+1. Input
+// Query: ?status=Open&severity=CRITICAL&page=1&pageSize=20
+2. Output
+{
+  "total": 7,
+  "alerts": [
+{ "alertId": "alt-9981", "zoneId": "z-303", "zoneName": "Nhà màng A1", "severity": "WARNING", "metric": "soil_moisture", "isResolved": false, "createdAt": "2026-09-20T14:01:05Z" }
+  ]
+}
+3. Validate
+• status: [Open, Resolved, All].
+• severity: [INFO, WARNING, CRITICAL].
+4. Business Rule
+• BR-01: Cô lập Tenant.
+• Farmer chỉ thấy cảnh báo của Zone mình phụ trách.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #73     GET   /api/v1/zones/{zoneId}/alerts  ★ MỚI
+Lấy tất cả cảnh báo của một Zone cụ thể — thường dùng khi mở màn hình Zone Dashboard.
+1. Input
+// Query: ?status=Open&limit=10
+2. Output
+{
+  "total": 2,
+  "alerts": [
+{ "alertId": "alt-9981", "severity": "WARNING", "title": "Độ ẩm đất dưới ngưỡng!", "isResolved": false }
+  ]
+}
+3. Validate
+• zoneId thuộc Tenant hiện tại.
+4. Business Rule
+• Kết quả sắp xếp theo thời gian mới nhất.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #74     GET   /api/v1/alerts/{alertId}
+Mở chi tiết cảnh báo từ thông báo push trên điện thoại, auto-mark isRead = true.
+1. Input
+GET /api/v1/alerts/alt-9981
+Authorization: Bearer eyJhbGci...
+2. Output
+{
+  "alertId": "alt-9981", "zoneId": "z-303",
+  "severity": "WARNING",
+  "title": "Cảnh báo: Độ ẩm đất dưới ngưỡng an toàn!",
+  "currentTelemetry": { "soilMoisture": 42.5, "optimalRange": "55.0 - 75.0%" },
+  "suggestedAction": "Bật van tưới Nhà màng A1 trong 15 phút",
+  "isResolved": false
+}
+3. Validate
+• Người dùng có quyền đọc cảnh báo của trang trại.
+4. Business Rule
+• BR-ALERT-03: Auto-set isRead = true khi mở màn hình.
+5. Exception
+• 404 Not Found: Cảnh báo không tồn tại hoặc thuộc Tenant khác.
+ 
+  #75     PUT   /api/v1/alerts/{alertId}/acknowledge
+Xác nhận đã xử lý sự cố, đóng cảnh báo và ghi nhận hành động can thiệp.
+1. Input
+{
+  "actionTaken": "Đã bật máy bơm tưới nhỏ giọt Nhà màng A1",
+  "notes": "Độ ẩm đã tăng lại 58%"
+}
+2. Output
+{
+  "alertId": "alt-9981", "status": "Resolved",
+  "resolvedAt": "2026-09-20T14:15:00Z",
+  "responseTimeMinutes": 14
+}
+3. Validate
+• alertId đang ở trạng thái Unresolved.
+4. Business Rule
+• BR-ALERT-04: Ghi Response Time = resolvedAt - createdAt.
+• BR-ALERT-05: Tắt chuông báo động trên Dashboard realtime.
+5. Exception
+• 400 Bad Request: Cảnh báo đã được xử lý trước đó.
+ 
+
+ 
+⚙️  NHÓM 16: AUTO-RULES — RULE ENGINE TỰ ĐỘNG
+Cấu hình, đọc, cập nhật và xóa các bộ quy tắc tự động hóa (If-This-Then-That).
+  #76     POST   /api/v1/zones/{zoneId}/rules
+Tạo quy tắc tự động hóa: khi điều kiện đất đạt ngưỡng → kích hoạt chấp hành.
+1. Input
+{
+  "rules": [{
+    "ruleName": "Tự động tưới khi đất khô",
+    "condition": { "metric": "soil_moisture", "operator": "LESS_THAN", "threshold": 45, "durationMinutes": 5 },
+    "action": { "targetDeviceId": "dev-act-01", "command": "TURN_ON", "durationMinutes": 15 },
+    "priority": 1, "cooldownMinutes": 60
+  }]
+}
+2. Output
+{
+  "totalRulesSaved": 1, "syncedToGateway": true, "status": "Active"
+}
+3. Validate
+• metric thuộc danh sách cảm biến đã khai báo trong Zone.
+• targetDeviceId: Actuator Node cùng Zone.
+4. Business Rule
+• BR-RULE-01: Kiểm tra xung đột Interlock.
+• BR-07: Compile Rule Engine và đẩy bản sao xuống Gateway xử lý Offline.
+5. Exception
+• 409 Conflict: Xung đột với lịch tưới hiện có.
+ 
+  #77     GET   /api/v1/zones/{zoneId}/rules  ★ MỚI
+Lấy danh sách tất cả quy tắc tự động hóa của Zone.
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "total": 2,
+  "rules": [
+{ "ruleId": "rule-001", "ruleName": "Tự động tưới khi đất khô", "isActive": true, "lastTriggeredAt": "2026-09-20T10:30:00Z" },
+{ "ruleId": "rule-002", "ruleName": "Tắt quạt khi độ ẩm OK", "isActive": false }
+  ]
+}
+3. Validate
+• Tất cả FarmOwner và Farmer (có quyền) xem được.
+4. Business Rule
+• lastTriggeredAt lấy từ ACTUATOR_LOGS.
+5. Exception
+• 404 Not Found: Không tìm thấy Zone.
+ 
+  #78     PUT   /api/v1/zones/{zoneId}/rules/{ruleId}  ★ MỚI
+Cập nhật ngưỡng điều kiện, hành động hoặc bật/tắt một quy tắc tự động hóa.
+1. Input
+{
+  "condition": { "threshold": 42 },
+  "action": { "durationMinutes": 20 },
+  "isActive": true,
+  "cooldownMinutes": 90
+}
+2. Output
+{
+  "ruleId": "rule-001", "updatedAt": "2026-09-20T16:00:00Z",
+  "syncedToGateway": true
+}
+3. Validate
+• ruleId thuộc zoneId trong Tenant.
+4. Business Rule
+• Thay đổi được đẩy xuống Gateway ngay lập tức.
+• Đồng bộ lại Rule Engine Offline.
+5. Exception
+• 404 Not Found: Không tìm thấy Rule.
+ 
+  #79     DELETE   /api/v1/zones/{zoneId}/rules/{ruleId}  ★ MỚI
+Xóa vĩnh viễn quy tắc tự động hóa. Lịch sử kích hoạt vẫn được giữ lại.
+1. Input
+// Path: zoneId="z-303", ruleId="rule-001"
+2. Output
+{
+  "message": "Quy tắc đã bị xóa và đồng bộ xuống Gateway.",
+  "gatewaySync": true
+}
+3. Validate
+• Chỉ FarmOwner xóa được.
+• Không thể xóa rule đang trong quá trình thực thi.
+4. Business Rule
+• BR-RULE-02: MQTT Downlink đồng bộ xóa rule khỏi bộ nhớ Gateway.
+5. Exception
+• 409 Conflict: Rule đang kích hoạt một lệnh chấp hành.
+ 
+
+ 
+🕹️  NHÓM 17: CONTROL — ĐIỀU KHIỂN CHẤP HÀNH
+Gửi lệnh điều khiển On/Off, kiểm tra trạng thái, hủy lệnh và tra cứu lịch sử tưới.
+  #80     POST   /api/v1/zones/{zoneId}/actuators/{actuatorId}/command
+Gửi lệnh điều khiển phần cứng (TURN_ON/TURN_OFF) với thẩm định 3 lớp an toàn.
+1. Input
+{
+  "command": "TURN_ON",
+  "durationSeconds": 900,
+  "overrideActiveSchedules": true,
+  "notes": "Tưới bổ sung sau cảnh báo đất khô"
+}
+2. Output
+{
+  "commandId": "cmd-8821", "status": "Accepted",
+  "queuedAt": "2026-09-20T14:10:00Z"
+}
+3. Validate
+• durationSeconds: 1–1800 (tối đa 30 phút — BR-SAFE-01).
+• Chỉ FarmOwner hoặc Farmer được cấp can_control = true.
+4. Business Rule
+• BR-SAFE-01: Tối đa 30 phút.
+• BR-INTERLOCK-01: Chống chạy đồng thời ≥ 2 bơm lớn.
+• BR-WEATHER-01: Hoãn nếu mưa ≥ 70%.
+• BR-PREEMPTION-01: Lệnh tay ưu tiên tối cao.
+5. Exception
+• 400 (MSG-IRR-INTERLOCK): Bị khóa Interlock.
+• 400 (MSG-IRR-WEATHER): Hoãn do trời sắp mưa.
+ 
+  #81     GET   /api/v1/zones/{zoneId}/actuators/{actuatorId}/status  ★ MỚI
+Xem trạng thái hiện tại của một chấp hành: ON/OFF, countdown, lệnh đang chạy.
+1. Input
+// Path: zoneId="z-303", actuatorId="act-relay-01"
+2. Output
+{
+  "actuatorId": "act-relay-01",
+  "type": "WaterPump",
+  "currentState": "RUNNING",
+  "progress": {
+    "commandId": "cmd-8821",
+    "startedAt": "2026-09-20T14:10:02Z",
+    "durationSec": 900,
+    "remainingSec": 745
+  },
+  "operatingCurrentAmps": 3.42
+}
+3. Validate
+• Tất cả FarmOwner và Farmer xem được.
+4. Business Rule
+• Trạng thái cập nhật từ MQTT Feedback ACK gần nhất.
+• Kèm thông tin cảm biến dòng ACS712.
+5. Exception
+• 404 Not Found: Không tìm thấy actuatorId.
+ 
+  #82     DELETE   /api/v1/zones/{zoneId}/commands/{commandId}  ★ MỚI
+Hủy lệnh đang trong hàng chờ (PENDING) hoặc phát lệnh TURN_OFF khẩn cấp nếu đang chạy.
+1. Input
+// Path: zoneId="z-303", commandId="cmd-8821"
+{
+  "reason": "Phát hiện ống nước rò rỉ — dừng khẩn cấp"
+}
+2. Output
+{
+  "commandId": "cmd-8821",
+  "cancelStatus": "CANCELLED",
+  "emergencyStopSent": true
+}
+3. Validate
+• Chỉ FarmOwner hoặc Farmer có can_control = true.
+• Không thể hủy lệnh đã COMPLETED.
+4. Business Rule
+• BR-CANCEL-01: Nếu lệnh đang RUNNING → Phát MQTT Downlink TURN_OFF khẩn cấp.
+• BR-CANCEL-02: Cập nhật ACTUATOR_COMMAND_LOGS thành CANCELLED.
+5. Exception
+• 409 Conflict: Lệnh đã hoàn thành, không thể hủy.
+ 
+  #83     GET   /api/v1/zones/{zoneId}/actuators/history
+Tra cứu nhật ký điều khiển tưới tiêu — phục vụ hạch toán điện nước và VietGAP.
+1. Input
+// Query: from="2026-09-17T00:00:00Z"&to="2026-09-20T23:59:59Z"&limit=20
+2. Output
+{
+  "totalLogs": 45, "totalWaterUsedLiters": 3450.0,
+  "logs": [{
+    "logId": "log-9012", "actuatorName": "Máy bơm A1",
+    "triggeredBy": "u-101", "triggerSource": "ManualOverride",
+    "durationMinutes": 15, "waterVolumeLiters": 375.0, "status": "COMPLETED_NORMAL"
+  }]
+}
+3. Validate
+• from ≤ to.
+• Tối đa 90 ngày / request.
+4. Business Rule
+• BR-HIST-01: Tổng hợp phục vụ hạch toán VietGAP.
+• triggerSource: [ManualOverride, Schedule, AutoRule, AI_APPROVED].
+5. Exception
+• 401 Unauthorized: Chưa đăng nhập.
+ 
+
+ 
+🤖  NHÓM 18: AI AGRONOMIST — TRỢ LÝ NÔNG HỌC RAG
+Tư vấn nông học bằng AI kết hợp RAG, pgvector VietGAP và Google Gemini 1.5 Flash.
+  #84     GET   /api/v1/zones/{zoneId}/ai/context
+Nạp bối cảnh Zone khi mở Trợ lý AI: giống cây, ngày tuổi, telemetry gần nhất, gợi ý câu hỏi nhanh.
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "zoneId": "z-303", "cropName": "Cà chua Beef F1",
+  "seasonStage": "Seedling (Ngày tuổi: 18)",
+  "quickPrompts": [
+"Dự báo nhu cầu nước 24h tới?",
+"Lá vàng chóp là bệnh gì?"
+  ],
+  "aiStatus": "ONLINE_READY"
+}
+3. Validate
+• Chỉ FarmOwner được dùng AI.
+4. Business Rule
+• BR-AI-AUTH: FarmOwner only.
+• BR-AI-RATE-LIMIT: 60 req/phút bảo vệ hệ thống (không phân biệt gói cước).
+5. Exception
+• 403 Forbidden: Farmer không được truy cập AI.
+ 
+  #85     POST   /api/v1/zones/{zoneId}/ai/ask
+Đặt câu hỏi tiếng Việt tự nhiên, kèm ảnh bệnh lá tùy chọn — chống Prompt Injection.
+1. Input
+{
+  "question": "Lá cà chua vàng chóp, đất ẩm ướt là bệnh gì?",
+  "attachedImageUrl": "https://storage.smartfarm.vn/uploads/leaf-12.jpg",
+  "include7DaysTelemetry": true
+}
+2. Output
+{
+  "requestId": "req-ai-7712", "status": "PROCESSING",
+  "message": "Đang truy vấn kho tri thức VietGAP..."
+}
+3. Validate
+• question: 5–500 ký tự.
+• Chặn Prompt Injection (không chứa "Ignore previous instructions").
+4. Business Rule
+• BR-SEC-PROMPT: Lọc từ khóa độc hại.
+• BR-LOG-REQ: Lưu câu hỏi vào AI_ADVISORY_LOGS.
+• BR-ANTI-HALLUCINATION: pgvector Cosine ≥ 0.70.
+5. Exception
+• 400 Bad Request: Câu hỏi quá ngắn hoặc chứa Prompt Injection.
+ 
+  #86     POST   /api/v1/zones/{zoneId}/ai/apply-recommendation
+Farm Owner bấm "Áp dụng ngay" để chuyển khuyến nghị AI thành lịch tưới thực tế.
+1. Input
+{
+  "recommendationId": "rec-gemini-883",
+  "applyDecision": "CONFIRMED",
+  "notes": "Đồng ý hoãn tưới 36h theo AI"
+}
+2. Output
+{
+  "scheduleId": "sch-ai-applied-990",
+  "status": "ScheduleApplied",
+  "appliedAction": "PAUSE_IRRIGATION_UNTIL_2026-09-22T02:00:00Z",
+  "auditTrailSource": "AI_RECOMMENDATION_APPROVED_BY_OWNER"
+}
+3. Validate
+• Chỉ FarmOwner bấm Áp dụng.
+4. Business Rule
+• BR-08: AI không tự bật/tắt bơm — chỉ FarmOwner bấm duyệt.
+• BR-AUDIT-AI: Ghi Source = AI_APPROVED vào bảng kiểm toán.
+5. Exception
+• 409 Conflict: Xung đột với lịch bảo trì phần cứng.
+ 
+  #87     GET   /api/v1/zones/{zoneId}/ai/history  ★ MỚI
+Xem lịch sử cuộc hội thoại với Trợ lý AI trong Zone — tối đa 30 ngày gần nhất.
+1. Input
+// Query: ?limit=20&page=1
+2. Output
+{
+  "total": 45,
+  "conversations": [
+{ "requestId": "req-ai-7712", "question": "Lá vàng chóp...", "answeredAt": "2026-09-20T14:05:00Z", "wasApplied": true }
+  ]
+}
+3. Validate
+• Chỉ FarmOwner xem lịch sử AI của Zone mình.
+4. Business Rule
+• BR-AI-LOG-01: Dữ liệu lưu tối đa 90 ngày trong AI_ADVISORY_LOGS.
+5. Exception
+• 403 Forbidden: Farmer không xem được lịch sử AI.
+ 
+  #88     DELETE   /api/v1/zones/{zoneId}/ai/history  ★ MỚI
+Xóa toàn bộ lịch sử cuộc hội thoại AI của Zone (chỉ xóa giao diện, giữ audit log).
+1. Input
+// Path: zoneId = "z-303"
+2. Output
+{
+  "message": "Lịch sử hội thoại đã được xóa.",
+  "deletedCount": 45
+}
+3. Validate
+• Chỉ FarmOwner xóa được.
+4. Business Rule
+• BR-AI-LOG-02: Soft delete — ẩn khỏi giao diện nhưng giữ bản ghi audit trong AI_ADVISORY_LOGS.
+5. Exception
+• 403 Forbidden: Chỉ FarmOwner.
+ 
+  #89     GET   /api/v1/ai/knowledge-base  ★ MỚI
+Xem danh sách tài liệu VietGAP đã được nạp vào kho tri thức pgvector của hệ thống.
+1. Input
+// Query: ?category=Tomato&page=1
+2. Output
+{
+  "total": 24,
+  "documents": [
+{ "docId": "vgap-001", "title": "VietGAP Tomato Technical Standard V2", "category": "Tomato", "chunksCount": 142, "uploadedAt": "2026-01-15" }
+  ]
+}
+3. Validate
+• Chỉ PlatformAdmin xem được.
+4. Business Rule
+• chunksCount: Số đoạn văn đã được embedding vào pgvector.
+5. Exception
+• 403 Forbidden: Chỉ PlatformAdmin.
+ 
+  #90     POST   /api/v1/ai/knowledge-base  ★ MỚI
+Upload tài liệu VietGAP mới, tự động chunking và embedding vào pgvector.
+1. Input
+{
+  "title": "VietGAP Strawberry V3",
+  "category": "Strawberry",
+  "fileUrl": "https://cdn.smartfarm.vn/docs/vietgap-strawberry-v3.pdf",
+  "language": "vi"
+}
+2. Output
+{
+  "jobId": "embed-job-055",
+  "status": "Processing",
+  "estimatedMinutes": 3
+}
+3. Validate
+• fileUrl: PDF hoặc DOCX hợp lệ.
+• Chỉ PlatformAdmin upload.
+4. Business Rule
+• BR-KB-01: Tự động chunking 512 tokens, overlap 128 tokens.
+• BR-KB-02: Text-embedding-004 tạo vector 768 chiều, lưu vào pgvector.
+5. Exception
+• 400 Bad Request: File không hỗ trợ hoặc quá 50MB.
+ 
+
+ 
+📈  NHÓM 19: REPORT — BÁO CÁO & PHÂN TÍCH
+Báo cáo tổng hợp năng suất, tiêu thụ điện nước và hiệu quả canh tác theo vụ mùa.
+  #91     GET   /api/v1/farms/{farmId}/report/overview  ★ MỚI
+Báo cáo tổng quan trang trại: số Zone hoạt động, cảnh báo tuần, tưới tiêu tháng.
+1. Input
+// Query: ?period=month
+2. Output
+{
+  "farmId": "f-202", "period": "month",
+  "activeZones": 4, "totalAlerts": 12, "resolvedAlerts": 11,
+  "totalIrrigations": 87, "totalWaterUsedLiters": 32750.0,
+  "avgSoilMoisturePercent": 63.2
+}
+3. Validate
+• period: [week, month, season].
+• Chỉ FarmOwner xem.
+4. Business Rule
+• Tổng hợp từ ACTUATOR_LOGS + ALERTS theo period.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #92     GET   /api/v1/zones/{zoneId}/report/season-summary  ★ MỚI
+Báo cáo tổng kết vụ mùa: năng suất, điện nước tiêu thụ, cảnh báo, so sánh vụ trước.
+1. Input
+// Query: ?seasonId=ps-404
+2. Output
+{
+  "seasonId": "ps-404", "cropName": "Cà chua Beef F1",
+  "growthDays": 95, "actualYieldKg": 2850.5,
+  "comparison": { "yieldDiffPercent": 12.5, "waterSavedPercent": 8.2 },
+  "totalAlerts": 5, "totalIrrigations": 67
+}
+3. Validate
+• seasonId thuộc zoneId trong Tenant.
+4. Business Rule
+• BR-REPORT-01: So sánh với vụ mùa gần nhất trước đó cùng Zone.
+5. Exception
+• 404 Not Found: Không tìm thấy Season.
+ 
+  #93     GET   /api/v1/farms/{farmId}/report/water-usage  ★ MỚI
+Báo cáo tiêu thụ nước tưới phân tích theo Zone, theo tháng — phục vụ hóa đơn tiêu thụ.
+1. Input
+// Query: ?from=2026-09-01&to=2026-09-30
+2. Output
+{
+  "totalWaterUsedLiters": 98500.0,
+  "byZone": [
+{ "zoneId": "z-303", "zoneName": "Nhà màng A1", "waterUsedLiters": 32750.0, "irrigationsCount": 87 }
+  ],
+  "dailyBreakdown": [{ "date": "2026-09-20", "liters": 3450.0 }]
+}
+3. Validate
+• from/to: Khoảng thời gian hợp lệ (tối đa 90 ngày).
+4. Business Rule
+• Tính từ ACTUATOR_LOGS × flowRate thiết bị.
+5. Exception
+• 400 Bad Request: Khoảng thời gian vượt 90 ngày.
+ 
+  #94     GET   /api/v1/farms/{farmId}/report/electricity  ★ MỚI
+Báo cáo tiêu thụ điện năng ước tính từ thời gian chạy bơm × công suất định mức.
+1. Input
+// Query: ?from=2026-09-01&to=2026-09-30
+2. Output
+{
+  "totalKwh": 126.5,
+  "estimatedCostVND": 327000,
+  "byActuator": [
+{ "actuatorName": "Máy bơm A1 (750W)", "totalRunMinutes": 2175, "kwh": 27.2 }
+  ]
+}
+3. Validate
+• Công thức: kWh = ratedPowerWatt × totalRunMinutes / 60000.
+4. Business Rule
+• BR-ELEC-01: Giá điện áp dụng: 2,587 VND/kWh (theo giá điện sản xuất nông nghiệp 2026).
+5. Exception
+• 400 Bad Request: Khoảng thời gian vượt 90 ngày.
+ 
+
+ 
+🛠️  NHÓM 20: SUPPORT FLOWS — VẬT TƯ, CÔNG VIỆC, DÒNG TIỀN
+Quản lý kho vật tư, phân công công việc thực địa và hạch toán dòng tiền vụ mùa.
+  #95     POST   /api/v1/zones/{zoneId}/devices/{oldDeviceId}/hot-swap
+Thay thế nóng thiết bị hỏng 1-đổi-1 — dữ liệu vụ mùa tự động chuyển giao.
+1. Input
+{
+  "newDeviceId": "mac-E5:F6:G7:H8"
+}
+2. Output
+{
+  "message": "Thay thế nóng thành công.",
+  "oldDeviceStatus": "error", "newDeviceStatus": "active"
+}
+3. Validate
+• newDeviceId phải hợp lệ và đang Unassigned.
+4. Business Rule
+• BR-07 (Kế thừa): Chuyển zone_id → thiết bị mới, thu hồi thiết bị cũ.
+• MQTT Downlink cập nhật Whitelist MAC Gateway ngay lập tức.
+5. Exception
+• 409 Conflict: Thiết bị mới đang dùng ở Zone khác.
+ 
+  #96     GET   /api/v1/farms/{farmId}/inventory  ★ MỚI
+Xem danh sách kho vật tư hiện có của trang trại (phân bón, hạt giống, thuốc BVTV).
+1. Input
+// Query: ?lowStock=true&category=Fertilizer
+2. Output
+{
+  "total": 12,
+  "materials": [
+{ "materialId": "mat-npk-01", "name": "Phân NPK 20-20-15", "unit": "kg", "currentStock": 14.5, "minimumStock": 10.0, "isLowStock": false }
+  ]
+}
+3. Validate
+• lowStock=true: Lọc chỉ vật tư dưới mức Minimum.
+4. Business Rule
+• BR-INV-01: Hiển thị cảnh báo isLowStock nếu currentStock < minimumStock.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #97     POST   /api/v1/farms/{farmId}/inventory  ★ MỚI
+Thêm vật tư mới vào kho hoặc nhập thêm số lượng vào vật tư đã có.
+1. Input
+{
+  "materialName": "Phân NPK 20-20-15",
+  "category": "Fertilizer",
+  "unit": "kg",
+  "initialStock": 50.0,
+  "minimumStock": 10.0,
+  "unitPrice": 25000
+}
+2. Output
+{
+  "materialId": "mat-npk-01",
+  "currentStock": 50.0, "createdAt": "2026-09-20T08:00:00Z"
+}
+3. Validate
+• Chỉ FarmOwner thêm vật tư mới.
+• unit: [kg, liter, cái, gói].
+4. Business Rule
+• BR-INV-02: Không tạo vật tư trùng tên trong cùng Farm.
+5. Exception
+• 409 Conflict: Tên vật tư đã tồn tại.
+ 
+  #98     POST   /api/v1/farms/{farmId}/inventory/issues
+Ghi nhận xuất kho vật tư (bón phân, phun thuốc) vào Zone canh tác.
+1. Input
+{
+  "materialId": "mat-npk-01",
+  "zoneId": "z-303",
+  "quantityUsed": 5.5,
+  "notes": "Bón thúc giai đoạn ra hoa"
+}
+2. Output
+{
+  "transactionId": "txn-555", "remainingStock": 14.5
+}
+3. Validate
+• quantityUsed > 0.
+• materialId thuộc Farm.
+4. Business Rule
+• Nếu remainingStock sau khi trừ âm → Báo lỗi.
+• Nếu tồn kho < minimumStock → Sinh cảnh báo MSG-BOM-01.
+5. Exception
+• 400 Bad Request: Số lượng xuất vượt tồn kho.
+ 
+  #99     GET   /api/v1/farms/{farmId}/tasks  ★ MỚI
+Lấy danh sách công việc thực địa cần làm trong trang trại (phân công cho Farmer).
+1. Input
+// Query: ?status=Pending&assignedTo=u-102
+2. Output
+{
+  "total": 5,
+  "tasks": [
+{ "taskId": "task-001", "title": "Kiểm tra độ ẩm luống A1", "assignedTo": "Trần Văn Nông", "dueDate": "2026-09-21", "status": "Pending", "priority": "High" }
+  ]
+}
+3. Validate
+• status: [Pending, InProgress, Done, Cancelled].
+4. Business Rule
+• Farmer chỉ thấy task được phân công cho mình.
+5. Exception
+• 404 Not Found: Không tìm thấy Farm.
+ 
+  #100     POST   /api/v1/farms/{farmId}/tasks  ★ MỚI
+Tạo công việc thực địa mới, gán cho Farmer và thiết lập deadline.
+1. Input
+{
+  "title": "Kiểm tra độ ẩm luống A1",
+  "description": "Đo thủ công và so sánh với cảm biến",
+  "assignedToUserId": "u-102",
+  "zoneId": "z-303",
+  "dueDate": "2026-09-21T08:00:00Z",
+  "priority": "High"
+}
+2. Output
+{
+  "taskId": "task-001", "status": "Pending",
+  "notificationSent": true
+}
+3. Validate
+• dueDate: Phải trong tương lai.
+• assignedToUserId: Phải thuộc cùng Tenant và Farm.
+4. Business Rule
+• BR-TASK-01: Gửi FCM Push Notification cho Farmer được phân công.
+5. Exception
+• 400 Bad Request: dueDate trong quá khứ.
+ 
+  #101     PUT   /api/v1/farms/{farmId}/tasks/{taskId}  ★ MỚI
+Cập nhật trạng thái, ghi chú hoặc reassign công việc thực địa.
+1. Input
+{
+  "status": "Done",
+  "completionNotes": "Đã kiểm tra, độ ẩm thực tế khớp cảm biến ±2%",
+  "completedAt": "2026-09-21T09:30:00Z"
+}
+2. Output
+{
+  "taskId": "task-001", "status": "Done",
+  "updatedAt": "2026-09-21T09:30:00Z"
+}
+3. Validate
+• Farmer chỉ cập nhật task được giao cho mình.
+• FarmOwner cập nhật bất kỳ task nào.
+4. Business Rule
+• BR-TASK-02: Khi Done → Gửi thông báo FCM cho FarmOwner xem xét.
+5. Exception
+• 403 Forbidden: Cố cập nhật task không được giao.
+ 
+  #102     GET   /api/v1/farms/{farmId}/cash-flow-report
+Hạch toán dòng tiền vụ mùa: doanh thu, chi phí điện/nước/vật tư/nhân công, lợi nhuận ròng.
+1. Input
+// Query: ?plantingSeasonId=ps-404
+2. Output
+{
+  "seasonId": "ps-404", "currency": "VND",
+  "totalRevenue": 50000000,
+  "totalExpenses": { "electricity": 327000, "water": 200000, "materials": 15000000, "labor": 10000000 },
+  "netProfit": 24473000,
+  "roi": "95.7%"
+}
+3. Validate
+• plantingSeasonId: Tùy chọn, xem 1 vụ cụ thể.
+• Chỉ FarmOwner xem báo cáo tài chính.
+4. Business Rule
+• BR-10: Lợi nhuận = Doanh thu − (Điện + Nước + Vật tư + Nhân công). Chỉ dành cho FarmOwner.
+5. Exception
+• 403 Forbidden: Farmer không xem được dòng tiền.
+ 
+  #103     GET   /api/v1/farms/{farmId}/weather/forecast  ★ MỚI
+Lấy dữ liệu thời tiết hiện tại và dự báo 24h / 7 ngày tại tọa độ GPS trang trại (tích hợp trạm viễn thám thực địa và OpenWeather API).
+1. Input
+// Path: farmId = "f-202"
+// Query: ?includeHourly=true&includeDaily=true
+2. Output
+{
+  "farmId": "f-202",
+  "location": "Phường 7, TP. Đà Lạt, Lâm Đồng",
+  "coordinates": { "lat": 11.9754, "lng": 108.4382 },
+  "current": {
+    "temp": 24.5,
+    "humidity": 68,
+    "condition": "PartlyCloudy",
+    "description": "Trời có mây, nắng nhẹ",
+    "isRaining": false,
+    "uvIndex": 5.2,
+    "source": "FIELD_SENSORS_OVERLAY"
+  },
+  "forecast2Hours": {
+    "rainProbabilityPercent": 25,
+    "expectedRainfallMm": 0.0,
+    "rainDelayTriggered": false
+  },
+  "forecast24Hours": [
+{ "time": "14:00", "temp": 26.0, "rainProb": 15 },
+{ "time": "17:00", "temp": 22.5, "rainProb": 65 },
+{ "time": "20:00", "temp": 19.0, "rainProb": 75 }
+  ]
+}
+3. Validate
+• farmId: Bắt buộc, thuộc Tenant đang đăng nhập.
+• Toạ độ GPS lấy từ Farm Polygon Center.
+4. Business Rule
+• BR-WEATHER-01: Nếu xác suất mưa 2 giờ tới ≥ 70% → rainDelayTriggered = true, tự động kích hoạt hoãn lịch tưới hoặc cảnh báo Interlock.
+• Fallback cơ chế: Nếu OpenWeather timeout, tự động trả về số liệu trạm vi sinh thời gian thực gần nhất của Farm.
+5. Exception
+• 404 Not Found: Không tìm thấy farmId.
+• 503 Service Unavailable: Lỗi kết nối dịch vụ thời tiết vệ tinh bên thứ ba.
+ 
+
+ 
+IV. TÓM TẮT TOÀN BỘ BUSINESS RULES HỆ THỐNG (103 Endpoints)
+Bảng tổng hợp tất cả quy tắc kinh doanh cốt lõi được áp dụng xuyên suốt 103 API Endpoint, phân loại theo nhóm nghiệp vụ. Ký hiệu: BR = Business Rule. CF = Core Flow.
+ 
+Mã BR
+Tên Quy Tắc
+Áp dụng
+Mô tả
+BR-AUTH-01
+Xác thực mật khẩu
+CF1 / Auth
+Hash BCrypt/Argon2. Sai mật khẩu > 5 lần → Khóa tài khoản 15 phút. Log thất bại.
+BR-AUTH-02
+JWT Claims bắt buộc
+CF1 / Auth
+Access Token (1h) & Refresh Token (30 ngày). Claims: sub, role, tenantId, iat, exp.
+BR-AUTH-03
+Rotate Refresh Token
+CF1 / Auth
+Mỗi lần refresh → Vô hiệu token cũ, cấp token mới (One-time use). Lưu blacklist Redis.
+BR-OTP-01/02
+Quên mật khẩu OTP
+CF1 / Auth
+OTP 6 số TTL 15 phút. Luôn trả 200 OK dù email không tồn tại (chống liệt kê user).
+BR-RESET-01
+Reset mật khẩu
+CF1 / Auth
+OTP dùng 1 lần. Sau khi đặt lại → Thu hồi tất cả Refresh Token trên mọi thiết bị.
+BR-01
+Tenant Isolation
+Tất cả
+tenantId luôn lấy từ JWT, cấm đọc/ghi chéo Tenant trong bất kỳ query nào.
+BR-USER-01
+Phân quyền User
+CF1 / User
+Chỉ FarmOwner mời nhân công & thay đổi role. Farmer chỉ xem thông tin của chính mình.
+BR-USER-04/05
+Bảo vệ FarmOwner cuối
+CF1 / User
+Không được xóa hoặc hạ quyền FarmOwner cuối cùng trong Tenant.
+BR-USER-06
+Revoke khi Disable
+CF1 / User
+Vô hiệu hóa user → Thu hồi ngay tất cả Refresh Token đang hoạt động.
+BR-TENANT-01
+Subdomain Global Unique
+CF1 / Tenant
+subdomain phải duy nhất toàn hệ thống. Kiểm tra trước khi ghi DB.
+BR-TENANT-02
+DB Transaction đồng thời
+CF1 / Tenant
+Tạo Tenant + Admin FarmOwner trong một DB Transaction ACID.
+BR-TENANT-04
+Subdomain bất biến
+CF1 / Tenant
+Sau khi đăng ký, subdomain không được phép thay đổi (xung đột DNS/MQTT routing).
+BR-02
+Phân cấp địa lý
+CF1
+Farm → Field → Zone. Mỗi cấp phải thuộc cấp cha trong cùng Tenant.
+BR-FARM-03
+Diện tích Farm
+CF1
+Không được giảm totalAreaM2 Farm xuống dưới tổng diện tích Field hiện có.
+BR-FARM-04
+Soft Delete Farm
+CF1
+Archive Farm: không xóa lịch sử. Báo FCM cho tất cả Farmer trong Farm.
+BR-ZONE-01/02
+Zone lifecycle
+CF1
+Zone mới mặc định Inactive. Gán Zone → trừ availableAreaM2 Field tương ứng.
+BR-ZONE-04
+Soft Delete Zone
+CF1
+Xóa Zone → Hoàn trả diện tích về Field. Chỉ khi không có vụ mùa InProgress.
+BR-CROP-01
+Tên cây trồng duy nhất
+CF1 / Crop
+Bảng crops: name UNIQUE toàn hệ thống. FarmOwner tạo mới → is_system_defined = false.
+BR-CROP-02
+Tên giống duy nhất theo loài
+CF1 / Crop
+Bảng crop_varieties: UNIQUE(crop_id, name). FarmOwner tự thêm giống cho trang trại.
+BR-PROF-01
+isDefault độc quyền
+CF1 / Profile
+Chỉ 1 profile được is_default = true mỗi (crop_id, variety_id). Tự động hạ cờ profile cũ.
+BR-PROF-02
+Bảo vệ profile hệ thống
+CF1 / Profile
+Không sửa trực tiếp profile is_system_defined = true. Clone thành bản Tenant-owned trước.
+BR-SEASON-01
+1 vụ/Zone
+CF1
+Tại mọi thời điểm, mỗi Zone chỉ có tối đa 1 planting_season có status = IN_PROGRESS.
+BR-SEASON-02
+Auto gán giai đoạn đầu
+CF1
+Tạo vụ mùa → tự gán current_growth_stage_id = giai đoạn stage_order = 1 của profile.
+BR-SEASON-03
+Đồng bộ Alert Rules khi chuyển giai đoạn
+CF1-CF2
+Chuyển giai đoạn → Cập nhật alert_rules.growth_stage_id cho Zone, kích hoạt ngưỡng mới.
+BR-SEASON-04
+Đóng vụ giải phóng Zone
+CF1
+Đóng vụ mùa (COMPLETED) → Zone sẵn sàng tạo vụ mới. Lưu sản lượng thu hoạch.
+BR-ALERT-01
+Alert liên kết giai đoạn
+CF2
+alert_rules.growth_stage_id: Ngưỡng tự động cập nhật khi Zone chuyển giai đoạn sinh trưởng.
+BR-EVAL-02
+Anti-flap cảnh báo
+CF2
+Vi phạm ngưỡng phải xảy ra ≥ 2 chu kỳ đo liên tiếp mới phát sinh cảnh báo.
+BR-AUDIT-01
+Append-Only Alert log
+CF2
+Nhật ký cảnh báo không được sửa hoặc xóa — chỉ ghi thêm (chuẩn VietGAP).
+BR-SCH-01/02
+Lịch tưới Cron
+CF1-CF3
+Lịch tưới dùng Quartz Cron. Kiểm tra xung đột giờ. nextRunAt tính tự động.
+BR-03 & BR-04
+Gán thiết bị
+CF1
+Chỉ gán thiết bị Unassigned. Chỉ PlatformTechnician thực hiện. Audit log bắt buộc.
+BR-06
+LoRa Whitelist
+CF1
+Khi gán/gỡ thiết bị → MQTT Downlink cập nhật danh sách MAC trắng vào EEPROM Gateway.
+BR-OTA-01/02
+OTA Firmware
+CF1
+Chỉ PlatformTechnician OTA. Phát lệnh qua MQTT Downlink. Rollback tự động nếu thất bại.
+BR-DEV-01/02/03
+Quản lý thiết bị
+CF1
+Node mới: Unassigned. Cấp AES-128 Key. Soft Delete giữ lịch sử telemetry.
+BR-HW-01/02
+Power Saving IoT
+CF2
+Node ngủ sâu sau mỗi lần đo. Cảnh báo pin khi Voltage < 3.3V.
+BR-DB-01
+TimescaleDB Query
+CF2
+Dữ liệu chuỗi thời gian dùng time_bucket() Continuous Aggregate. Tối ưu < 200ms.
+BR-PING-02
+LoRa Quality
+CF1
+Đạt chuẩn kết nối: RSSI > -110 dBm và SNR > -5 dB.
+BR-07
+Offline Failsafe
+CF3
+Rule Engine compile → Đẩy bản sao xuống Gateway xử lý ngay cả khi mất Internet.
+BR-SAFE-01
+Failsafe bơm
+CF3
+Hardware Timer bắt buộc. Tối đa 30 phút/lần. Tự ngắt kể cả khi mất kết nối.
+BR-INTERLOCK-01
+Interlock
+CF3
+Cấm kích hoạt ≥ 2 bơm lớn (≥ 500W) đồng thời trong cùng Farm.
+BR-WEATHER-01
+Rain Delay
+CF3
+Hoãn lịch tưới nếu dự báo mưa ≥ 70% (Weather Forecast API).
+BR-PREEMPTION-01
+Manual Priority
+CF3
+Lệnh tay (Priority = 1) ưu tiên tối cao, ghi đè lịch tự động.
+BR-CANCEL-01/02
+Hủy lệnh khẩn
+CF3
+Lệnh đang chạy → Phát MQTT TURN_OFF khẩn. Lệnh pending → Xóa khỏi queue.
+BR-AI-AUTH
+Giới hạn AI
+CF4
+Chỉ FarmOwner sử dụng AI. Farmer bị từ chối 403.
+BR-AI-RATE-LIMIT
+Rate Limit AI
+CF4
+60 request/phút/Tenant — không phân biệt gói cước để bảo vệ chi phí Gemini API.
+BR-ANTI-HALLUCINATION
+pgvector ngưỡng 0.70
+CF4
+Chỉ dùng context có Cosine Similarity ≥ 0.70. Bên dưới ngưỡng → Không tổng hợp.
+BR-08
+AI chỉ đề xuất
+CF4
+AI không tự kích hoạt chấp hành. FarmOwner bấm "Áp dụng" thì mới thực thi (Audit Source = AI_APPROVED).
+BR-SEC-PROMPT
+Anti Prompt Injection
+CF4
+Lọc từ khóa tấn công: "Ignore previous instructions", code injection. Reject 400.
+BR-REPORT-01
+So sánh vụ mùa
+All
+Báo cáo vụ mùa tự động so sánh với vụ gần nhất trước đó cùng Zone.
+BR-ELEC-01
+Giá điện nông nghiệp
+All
+Giá điện áp dụng: 2,587 VND/kWh (giá điện sản xuất nông nghiệp VN 2026).
+BR-INV-01/02
+Quản lý kho vật tư
+Support
+Cảnh báo tồn kho thấp. Không trùng tên vật tư trong Farm. Trừ tồn khi xuất.
+BR-TASK-01/02
+Công việc thực địa
+Support
+FCM notification khi giao task. FCM notification cho FarmOwner khi Farmer Done.
+ 
+ 
+SmartFarm Capstone Project — Đặc tả đầy đủ 103 RESTful Endpoints | Tháng 9/2026 | Version 4.0 — Chuẩn hóa DB Schema + Business Rules hoàn thiện
+

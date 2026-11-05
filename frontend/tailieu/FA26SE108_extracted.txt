@@ -1,0 +1,215 @@
+
+ 
+ 
+CAPSTONE PROJECT REGISTER 
+ 
+Class:            Duration time:  from 09/2026 To 03/2027
+(*) Profession: Software Engineer                   Specialty: SE                           
+(*) Kinds of person make registers:               Lecturer                Students  
+ 
+1. Register information for supervisor (if have) 
+No.
+Full name
+Phone
+E-Mail 
+Title 
+  Supervisor 
+Đặng Ngọc Minh Đức
+
+ducdnm2@fe.edu.vn
+Giảng viên 
+2. Register information for students (if have) 
+No.
+Full name 
+Student code 
+Phone 
+E-mail 
+Role in Group 
+1
+
+
+
+
+ 
+2
+
+
+
+
+ 
+3
+
+
+
+
+ 
+4
+
+
+
+
+ 
+5
+
+
+
+
+
+ 
+3. Register content of Capstone Project 
+(*) 3.1. Capstone Project name: 
+3.1.1. English: SmartFarm: AI-powered Smart Agriculture Management Platform
+3.1.2. Vietnamese: SmartFarm: Nền tảng Quản lý Nông nghiệp Thông minh tích hợp AI
+ (*) 3.2. Main proposal content (including result and product)   
+a) Context:
+Agriculture is increasingly adopting digital technologies to improve productivity, optimize resource utilization, and support sustainable farming practices. Internet of Things (IoT) technologies such as LoRa enable long-range, low-power environmental monitoring, allowing farmers to collect real-time data from geographically distributed agricultural fields.
+However, existing agricultural monitoring solutions mainly focus on sensor data collection and visualization, while lacking comprehensive farm management capabilities, mobile accessibility, intelligent decision support, and integrated device management.
+To address these challenges, this project proposes SmartFarm, an AI-powered Smart Agriculture Management Platform that integrates LoRa-based IoT sensing, farm management, mobile applications, and AI-assisted advisory services into a unified software platform. The system enables farmers and agricultural technicians to monitor environmental conditions, manage farming operations, receive intelligent recommendations, and make data-driven decisions for improving agricultural productivity and sustainability.
+
+b) Proposed Solutions:
+SmartFarm is designed as an integrated software platform for digital agriculture management.
+ The platform collects environmental data from distributed LoRa sensor nodes deployed across agricultural fields and transmits the data through LoRa gateways to a centralized cloud platform. The system provides comprehensive management of farms, cultivation zones, IoT devices, environmental conditions, irrigation activities, and operational alerts through Web and Mobile applications.
+To improve decision-making, the platform integrates an AI Assistant capable of answering agricultural questions, explaining sensor measurements, summarizing environmental conditions, and recommending irrigation actions based on real-time sensor data, historical records, weather forecasts, and agricultural knowledge.
+The proposed architecture consists of a Web Management Portal, a Flutter Mobile Application, an ASP.NET Core backend, a LoRa-enabled IoT infrastructure, and an AI Service connected through RESTful APIs, enabling scalability, maintainability, and future system expansion.
+
+c) Functional Requirements:
+User & Security
+-User authentication
+-Role-Based Access Control (RBAC)
+-User profile management
+-Multi-farm authorization
+Farm Management
+-Farm management
+-Field management
+-Crop management
+-Irrigation zone management
+-Planting season management
+Device Management
+-LoRa node management
+-Gateway management
+-Sensor management
+-Device configuration
+-OTA firmware update
+-Device health monitoring
+Environmental Monitoring
+-Real-time sensor monitoring
+-Weather data integration
+-Historical environmental data
+-GIS-based node visualization
+-Interactive charts and reports
+Smart Irrigation
+-Manual irrigation control
+-Automatic irrigation scheduling
+-Irrigation history
+-Water consumption monitoring
+Alert Management
+-Threshold configuration
+-Real-time notifications
+-Alert acknowledgement
+-Alert history
+AI-assisted Services
+-AI-powered semantic search
+-AI agricultural assistant
+-Sensor data explanation
+-Irrigation recommendations
+-Environmental trend summarization
+Dashboard & Reporting
+-Farm dashboard
+-Device dashboard
+-Environmental dashboard
+-Irrigation statistics
+-Resource consumption reports
+-Excel/PDF export
+Administration
+-User management
+-Device management
+-Audit logging
+-Backup & Restore
+
+d) Non-Functional Requirements:
+-Responsive Web Application
+-Cross-platform Mobile Application
+-RESTful API Architecture
+-Secure Authentication (JWT)
+-Modular Software Architecture
+-LoRa-based IoT Communication
+-MQTT Messaging
+-PostgreSQL Database
+-Docker Deployment
+-AI Service Integration
+-High Availability
+-Audit Logging
+
+e) Theory & Practical:
+-Software Engineering
+-Object-Oriented Analysis and Design
+-Enterprise Information Systems
+-Software Architecture
+-Database Design
+-Internet of Things (IoT)
+-LoRa Communication
+-RESTful API Design
+-Mobile Computing
+-Human-Computer Interaction
+-Information Retrieval
+-Large Language Model (LLM) Integration
+-Software Testing
+
+f) Products (Expected Deliverables):
+-SmartFarm Web Management Portal 
+-SmartFarm Mobile Application
+-Farm Management Module
+-Device Management Module
+-Environmental Monitoring Module
+-Smart Irrigation Module
+-AI Assistant Module
+-Dashboard & Reporting Module
+-RESTful API Services
+-Docker Deployment Package
+-Software Documentation
+
+g) Proposed Tasks:
+Work Package 1 – Requirements Analysis & System Design
+-Requirement elicitation and stakeholder analysis
+-Business process modelling
+-Software architecture design
+-Database design
+-UI/UX design
+-REST API specification
+Work Package 2 – IoT Platform & Farm Management
+-LoRa integration
+-Device management
+-Farm management
+-Environmental monitoring
+-Alert management
+Work Package 3 – Mobile Application & AI Integration
+-Flutter mobile application
+-AI Assistant
+-Semantic search
+-Agricultural recommendation services
+-Weather data integration
+Work Package 4 – Dashboard & Analytics
+-Dashboard development
+-Environmental analytics
+-Resource consumption statistics
+-Data visualization
+-Report generation
+Work Package 5 – Testing & Deployment
+-System integration
+-Functional testing
+-Performance testing
+-Docker deployment
+-User documentation
+4. Other comments (propose all relative things if have): 
+............................................................................................................................................................
+............................................................................................................................................................
+............................................................................................................................................................
+            
+Supervisor (If have) 
+ (Sign and full name)
+ 
+HCM, date 19/08/2026 
+On behalf of Registers  
+(Sign and full name) 
+
+ 
