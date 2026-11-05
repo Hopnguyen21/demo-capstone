@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, Download, Droplets, Zap, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
+import { FileText, Download, Droplets, Zap, CheckCircle2, AlertTriangle, Info, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../../components/ui/BaseUI';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area } from 'recharts';
 import { useAuth } from '../../app/providers/AuthContext';
@@ -46,6 +46,8 @@ export const ReportsPage: React.FC = () => {
   const { selectedFarmId } = useAuth();
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [excelSuccessMsg, setExcelSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overview, setOverview] = useState<FarmOverviewReport | null>(null);
@@ -106,6 +108,27 @@ export const ReportsPage: React.FC = () => {
       setIsExporting(false);
       window.print();
     }, 600);
+
+  };
+
+  const handleExportExcel = async () => {
+    if (!selectedFarmId || isExportingExcel) return;
+    try {
+      setIsExportingExcel(true);
+      setError(null);
+      const toUtc = new Date();
+      const fromUtc = new Date(toUtc.getTime() - RANGE_DAYS[timeRange] * 24 * 3600 * 1000);
+      const range = { fromUtc: fromUtc.toISOString(), toUtc: toUtc.toISOString() };
+      const { blob, fileName } = await reportService.exportExcel(selectedFarmId, range);
+      reportService.downloadBlob(blob, fileName);
+      setExcelSuccessMsg(`Đã tải xuống file báo cáo: ${fileName}`);
+      setTimeout(() => setExcelSuccessMsg(null), 5000);
+    } catch (err) {
+      setError(`Không thể xuất file Excel: ${extractApiError(err)}`);
+    } finally {
+      setIsExportingExcel(false);
+    }
+
   };
 
   return (
@@ -137,6 +160,14 @@ export const ReportsPage: React.FC = () => {
               </button>
             ))}
           </div>
+          <Button
+            onClick={handleExportExcel}
+            disabled={isExportingExcel || loading || !selectedFarmId}
+            className="bg-[#107c41] hover:bg-[#0b5c30] text-white flex items-center gap-2 shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FileSpreadsheet size={15} />
+            <span>{isExportingExcel ? 'Đang xuất Excel...' : 'Xuất Excel'}</span>
+          </Button>
           <Button onClick={handleExportPdf} className="bg-[#119653] hover:bg-[#0e8046] text-white flex items-center gap-2">
             <Download size={15} />
             <span>{isExporting ? 'Đang xuất PDF...' : 'Xuất Báo Cáo PDF'}</span>
@@ -149,6 +180,12 @@ export const ReportsPage: React.FC = () => {
       )}
       {error && (
         <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-sm text-rose-700">Không tải được báo cáo: {error}</div>
+      )}
+      {excelSuccessMsg && (
+        <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50 text-sm text-emerald-800 flex items-center gap-2 shadow-xs">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+          <span>{excelSuccessMsg}</span>
+        </div>
       )}
       {loading && <div className="text-xs text-slate-500">Đang tải báo cáo…</div>}
 

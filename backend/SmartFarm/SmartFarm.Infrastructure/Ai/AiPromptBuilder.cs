@@ -1,3 +1,6 @@
+using SmartFarm.Domain.Enums;
+using SmartFarm.Infrastructure.Ai.Location;
+using SmartFarm.Application.Common.Interfaces;
 using System.Globalization;
 using System.Text;
 using SmartFarm.Application.Features.Ai;
@@ -72,6 +75,13 @@ public static class AiPromptBuilder
     38. CHÀO HỎI / TRÒ CHUYỆN NGẮN: chỉ chào và nêu phạm vi hỗ trợ (số đo, thiết bị, thời tiết, vụ mùa, tiêu chuẩn VietGAP). Không nhận xét tình trạng thiết bị, số đo hay cây ("hoạt động bình thường", "ổn định"...) vì câu hỏi không yêu cầu và không có căn cứ kiểm tra.
     39. CÂU HỎI GIẢ ĐỊNH ("nếu ... thì sao", "giả sử ..."): trước hết so giá trị giả định với ngưỡng trong <requirements> (cao hơn tối đa, thấp hơn tối thiểu hay nằm trong khoảng) và chỉ nêu hệ quả khi có trong <agriculture_knowledge>; không có thì nói rõ chưa có tài liệu về hệ quả. summary và details PHẢI cùng một kết luận: giá trị giả định thấp hơn mức tối thiểu của độ ẩm đất thì không được viết "không cần tưới". Không bao giờ tạo đề xuất điều khiển thiết bị từ câu giả định; chỉ trả lời, và nhắc rằng đây là tình huống giả định chứ không phải số đo thật.
     40. SỐ CÂY CÓ THỂ TRỒNG ("trồng được bao nhiêu cây"): chỉ tính khi tài liệu trong <knowledge> nêu mật độ hoặc khoảng cách trồng của đúng cây đó. Khi đó nêu rõ phép tính (diện tích Zone × mật độ, hoặc diện tích ÷ (khoảng cách hàng × khoảng cách cây)), ghi nguồn tài liệu, và nói đây là ước tính trên diện tích thô, chưa trừ lối đi, luống, mép Zone nên số thực tế thấp hơn. Tài liệu không nêu mật độ/khoảng cách thì nói rõ không có căn cứ để tính, không tự đặt mật độ.
+    ═══ I. VỊ TRÍ KHU VỰC & BẢO VỆ DỮ LIỆU RIÊNG TƯ ═══
+    41. BẢO VỆ VỊ TRÍ VÀ DỮ LIỆU KHÁCH HÀNG: <zone_context> chỉ chứa nhãn khu vực tổng quát (general_region) khi có; tuyệt đối không chứa địa chỉ đầy đủ, số nhà, ngõ ngách, tọa độ GPS chính xác, thông tin liên hệ hay dữ liệu hợp đồng khách hàng.
+    42. NGUYÊN TẮC BỐI CẢNH KHU VỰC VÀ NGƯỠNG CANH TÁC:
+        - general_region (nếu có trong <zone>) chỉ cung cấp bối cảnh khí hậu/thời tiết địa phương khi câu hỏi đề cập đến thời tiết, khí hậu hoặc tính mùa vụ khu vực.
+        - TUYỆT ĐỐI KHÔNG tự suy đoán, bịa đặt hay điều chỉnh ngưỡng nhiệt độ, độ ẩm, pH, EC hoặc quy trình canh tác chỉ dựa trên tên vùng miền.
+        - Mọi ngưỡng tư vấn bắt buộc phải truy xuất từ <requirements> của Growth Profile hoặc <agriculture_knowledge> từ tài liệu VietGAP đã duyệt.
+        - Nếu câu hỏi hỏi về kỹ thuật canh tác hoặc ngưỡng đặc thù vùng miền mà tài liệu đã duyệt và hồ sơ sinh trưởng KHÔNG có dữ liệu: BẮT BUỘC phải nêu rõ trong câu trả lời và limitations là "chưa có tài liệu quy chuẩn cho vùng này", tuyệt đối không tự tạo số liệu.
     """;
 
     public static readonly object ResponseSchema = new
@@ -109,17 +119,288 @@ public static class AiPromptBuilder
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;");
 
+    private static readonly System.Text.RegularExpressions.Regex RegionalContextKeywords = new(
+        @"(?i)\b(thời tiết|thoi tiet|mưa|mua|nắng|nang|nhiệt độ ngoài|khí hậu|khi hau|vùng|vung|miền|mien|địa phương|dia phuong|khu vực|tỉnh|huyện|đà lạt|lâm đồng|thời vụ|mùa vụ|thoi vu|mua vu|dự báo|du bao|gió|ẩm độ ngoài)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex PureKnowledgePattern = new(
+        @"(?i)\b(bệnh|sau benh|sâu hại|thuốc|phan bon|phân bón|vietgap|tiêu chuẩn|quy trình|kỹ thuật|thu hoach theo chuan|cách trị|hướng dẫn trồng|tác nhân)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex OperationalKeywordPattern = new(
+        @"(?i)\b(bơm|quạt|van|đèn|tưới|lệnh|công việc|nhiệm vụ|task|cảnh báo|alert|gateway|thiết bị|node|sensor|lịch|chạy|bật|tắt)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex SoilKeywords = new(
+        @"(?i)\b(đất|thổ nhưỡng|cải tạo đất|độ chua|ph|làm đất|dinh dưỡng đất|độ ph|chua đất)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex NumberPattern = new(
+        @"\b\d+(?:[.,]\d+)?\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex NegationPattern = new(
+        @"(?i)\b(không|chưa|không được|tránh|cấm|tuyệt đối không|ngừng)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex UnitPattern = new(
+        @"(?i)\b(°c|c|%|ph|ec|ms/cm|ds/m|ppm|mg/l|kg/ha|tấn/ha|kg|g|tấn|cây/m2|cây/sào|cây/ha|ngày|giờ|phút)\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public static bool NeedsRegionalContext(string? question) =>
+        !string.IsNullOrWhiteSpace(question) && RegionalContextKeywords.IsMatch(question);
+
+    public static bool IsPureKnowledgeQuestion(string? question)
+    {
+        if (string.IsNullOrWhiteSpace(question)) return false;
+        return PureKnowledgePattern.IsMatch(question) && !OperationalKeywordPattern.IsMatch(question);
+    }
+
+    public static bool IsSoilQuestion(string? question) =>
+        !string.IsNullOrWhiteSpace(question) && SoilKeywords.IsMatch(question);
+
     private static string N(decimal v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+
+    public static List<string> ExtractNumbers(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var list = new List<string>();
+        foreach (System.Text.RegularExpressions.Match m in NumberPattern.Matches(text))
+        {
+            list.Add(m.Value.Replace(',', '.'));
+        }
+        return list;
+    }
+
+    public static bool HasNegation(string text) =>
+        !string.IsNullOrWhiteSpace(text) && NegationPattern.IsMatch(text);
+
+    public static HashSet<string> ExtractUnits(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Text.RegularExpressions.Match m in UnitPattern.Matches(text))
+        {
+            set.Add(m.Value.ToLowerInvariant());
+        }
+        return set;
+    }
+
+    public static bool ArePassagesDuplicates(KnowledgePassageView a, KnowledgePassageView b)
+    {
+        if (a == null || b == null) return false;
+        if (string.IsNullOrWhiteSpace(a.Content) || string.IsNullOrWhiteSpace(b.Content)) return false;
+
+        // 1. Nếu từ hai tài liệu khác nhau:
+        if (a.DocumentId != b.DocumentId)
+        {
+            var normA = NormalizeForComparison(a.Content);
+            var normB = NormalizeForComparison(b.Content);
+            if (normA != normB) return false;
+
+            // Nếu nội dung chữ giống hệt nhưng metadata phiên bản khác nhau (vd 2024 vs 2020), giữ cả hai
+            if (!string.IsNullOrWhiteSpace(a.Version) && !string.IsNullOrWhiteSpace(b.Version) &&
+                !string.Equals(a.Version, b.Version, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        // 2. Nếu từ cùng một tài liệu:
+        var textA = NormalizeForComparison(a.Content);
+        var textB = NormalizeForComparison(b.Content);
+        if (textA == textB) return true;
+
+        // Khác biệt về con số / ngưỡng kỹ thuật: BẢO TOÀN CẢ HAI
+        var numbersA = ExtractNumbers(a.Content);
+        var numbersB = ExtractNumbers(b.Content);
+        if (!numbersA.SequenceEqual(numbersB))
+        {
+            return false;
+        }
+
+        // Khác biệt về từ phủ định: BẢO TOÀN CẢ HAI
+        if (HasNegation(a.Content) != HasNegation(b.Content))
+        {
+            return false;
+        }
+
+        // Khác biệt về đơn vị: BẢO TOÀN CẢ HAI
+        if (!ExtractUnits(a.Content).SetEquals(ExtractUnits(b.Content)))
+        {
+            return false;
+        }
+
+        // Đoạn bao hàm hoàn toàn đoạn kia trong cùng một tài liệu (do sliding window chunking)
+        if (textA.Contains(textB) || textB.Contains(textA))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool ArePassagesDuplicates(string textA, string textB)
+    {
+        if (string.IsNullOrWhiteSpace(textA) || string.IsNullOrWhiteSpace(textB)) return false;
+        var normA = NormalizeForComparison(textA);
+        var normB = NormalizeForComparison(textB);
+        if (normA == normB) return true;
+
+        var numbersA = ExtractNumbers(textA);
+        var numbersB = ExtractNumbers(textB);
+        if (!numbersA.SequenceEqual(numbersB)) return false;
+
+        if (HasNegation(textA) != HasNegation(textB)) return false;
+        if (!ExtractUnits(textA).SetEquals(ExtractUnits(textB))) return false;
+
+        if (normA.Length > 30 && normB.Length > 30 && (normA.Contains(normB) || normB.Contains(normA)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static IReadOnlyList<KnowledgePassageView> DeduplicatePassages(IReadOnlyList<KnowledgePassageView> passages)
+    {
+        if (passages.Count <= 1) return passages;
+        var result = new List<KnowledgePassageView>();
+        foreach (var p in passages)
+        {
+            if (string.IsNullOrWhiteSpace(p.Content)) continue;
+            var existingIdx = result.FindIndex(existing => ArePassagesDuplicates(existing, p));
+            if (existingIdx == -1)
+            {
+                result.Add(p);
+            }
+            else
+            {
+                // Giữ bản có metadata phong phú hơn
+                var existing = result[existingIdx];
+                if (ScorePassageMetadata(p) > ScorePassageMetadata(existing))
+                {
+                    result[existingIdx] = p;
+                }
+            }
+        }
+        return result;
+    }
+
+    private static int ScorePassageMetadata(KnowledgePassageView p)
+    {
+        var score = 0;
+        if (p.PageNumber.HasValue) score += 3;
+        if (!string.IsNullOrWhiteSpace(p.SectionTitle)) score += 3;
+        if (!string.IsNullOrWhiteSpace(p.Version)) score += 2;
+        if (!string.IsNullOrWhiteSpace(p.AuthorOrganization)) score += 1;
+        score += Math.Min(p.Content.Length / 50, 5);
+        return score;
+    }
+
+    private static string NormalizeForComparison(string s)
+    {
+        var chars = s.ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || char.IsWhiteSpace(c))
+            .ToArray();
+        return string.Join(" ", new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
 
     public static string Build(AiProviderRequest r)
     {
         var c = r.Context;
+        var intent = r.Intent;
+        var hasIntent = intent is not null && intent.Topics.Count > 0;
+        var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(r.Question);
+        var isSoil = IsSoilQuestion(sanitizedQuestion);
+
+        var isPureKnowledge = (hasIntent && (intent!.Has(QuestionTopics.AgronomyKnowledge) || intent.Has(QuestionTopics.Harvest))
+            && !intent.Has(QuestionTopics.IrrigationOrControl)
+            && !intent.Has(QuestionTopics.SensorReadings)
+            && !intent.Has(QuestionTopics.Devices))
+            || IsPureKnowledgeQuestion(sanitizedQuestion)
+            || isSoil;
+
+        var isSoilOrAgronomy = hasIntent && (intent!.Has(QuestionTopics.AgronomyKnowledge) || intent.Has(QuestionTopics.Harvest))
+            && !intent.Has(QuestionTopics.SensorReadings)
+            && !intent.Has(QuestionTopics.IrrigationOrControl)
+            && !intent.Has(QuestionTopics.Devices)
+            && !intent.Has(QuestionTopics.Schedules)
+            && !intent.Has(QuestionTopics.Alerts)
+            && !intent.Has(QuestionTopics.Commands);
+
+        var isWeatherOnly = hasIntent && intent!.Has(QuestionTopics.Weather)
+            && !intent.Has(QuestionTopics.SensorReadings)
+            && !intent.Has(QuestionTopics.IrrigationOrControl)
+            && !intent.Has(QuestionTopics.Devices)
+            && !intent.Has(QuestionTopics.Schedules)
+            && !intent.Has(QuestionTopics.Alerts)
+            && !intent.Has(QuestionTopics.Commands);
+
+        var needsTelemetry = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? (intent!.Has(QuestionTopics.SensorReadings) || intent.Has(QuestionTopics.IrrigationOrControl) || intent.Has(QuestionTopics.DeviceHealth))
+            : true);
+
+        var needsTelemetryHistory = needsTelemetry && (hasIntent
+            ? (intent!.WantsHistory || intent.HistoryCount > 0 || intent.HistoryDays > 0)
+            : !isPureKnowledge);
+
+        var needsZoneDevices = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? (intent!.Has(QuestionTopics.Devices) || intent.Has(QuestionTopics.DeviceHealth) || (intent.Has(QuestionTopics.SensorReadings) && (intent.WantsDeviceDetail || intent.DeviceNumber.HasValue)))
+            : true);
+
+        var needsGateways = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? intent!.Has(QuestionTopics.Gateways)
+            : true);
+
+        var needsAlerts = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? (intent!.Has(QuestionTopics.Alerts) || intent.Has(QuestionTopics.IrrigationOrControl))
+            : true);
+
+        var needsCommands = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? (intent!.Has(QuestionTopics.Commands) || intent.Has(QuestionTopics.IrrigationOrControl))
+            : true);
+
+        var needsAutoRules = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? intent!.Has(QuestionTopics.AutoRules)
+            : true);
+
+        var needsTasks = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? intent!.Has(QuestionTopics.Tasks)
+            : true);
+
+        var needsActuators = !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && (hasIntent
+            ? (intent!.Has(QuestionTopics.IrrigationOrControl) || (intent.Has(QuestionTopics.Devices) && intent.DeviceScope != QuestionIntent.ScopeSensors))
+            : true);
+
+        var needsSchedules = !isSoilOrAgronomy && !isPureKnowledge && !isWeatherOnly && (hasIntent
+            ? (intent!.Has(QuestionTopics.Schedules) || intent.Has(QuestionTopics.IrrigationOrControl))
+            : true);
+
+        var needsWeather = !isSoil && !isPureKnowledge && (hasIntent
+            ? (intent!.Has(QuestionTopics.Weather) || intent.Has(QuestionTopics.IrrigationOrControl) || NeedsRegionalContext(sanitizedQuestion))
+            : NeedsRegionalContext(sanitizedQuestion));
+
         var sb = new StringBuilder();
         sb.AppendLine("<consultation_request>");
-        sb.AppendLine($"  <question>{Escape(r.Question)}</question>");
-        // Gửi dữ liệu canh tác và vận hành của đúng Zone đang được hỏi.
+        sb.AppendLine($"  <question>{Escape(sanitizedQuestion)}</question>");
         sb.AppendLine("  <zone_context>");
-        sb.AppendLine($"    <zone name=\"{Escape(c.ZoneName)}\" area_m2=\"{N(c.ZoneAreaM2)}\" timezone=\"{Escape(c.FarmTimeZone)}\" />");
+        var includeRegion = !string.IsNullOrWhiteSpace(c.GeneralRegion) && NeedsRegionalContext(sanitizedQuestion);
+        var regionAttr = includeRegion ? $" general_region=\"{Escape(c.GeneralRegion)}\"" : string.Empty;
+        var levelAttr = includeRegion && !string.IsNullOrWhiteSpace(c.LocationLevel) ? $" location_level=\"{Escape(c.LocationLevel)}\"" : string.Empty;
+
+        if (isPureKnowledge || isSoilOrAgronomy || isSoil)
+        {
+            // Không gửi tên Zone cụ thể khi hỏi kiến thức nông học/đất để bảo vệ dữ liệu khách hàng
+            sb.AppendLine($"    <zone type=\"{Escape(c.ZoneType)}\" area_m2=\"{N(c.ZoneAreaM2)}\" timezone=\"{Escape(c.FarmTimeZone)}\"{regionAttr}{levelAttr} />");
+        }
+        else
+        {
+            sb.AppendLine($"    <zone name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(c.ZoneName))}\" area_m2=\"{N(c.ZoneAreaM2)}\" timezone=\"{Escape(c.FarmTimeZone)}\"{regionAttr}{levelAttr} />");
+        }
+
         sb.AppendLine($"    <crop name=\"{Escape(c.CropName)}\" variety=\"{Escape(c.VarietyName)}\" stage=\"{Escape(c.GrowthStageName)}\" season_age_days=\"{c.SeasonAgeDays}\" />");
         if (c.SeasonCropMismatch)
             sb.AppendLine($"    <season_crop_mismatch zone_crop=\"{Escape(c.CropName)}\" season_crop=\"{Escape(c.SeasonCropName)}\" note=\"vụ đang chạy khác cây của Zone; không có giai đoạn, tuổi vụ hay ngưỡng của vụ này\" />");
@@ -129,24 +410,60 @@ public static class AiPromptBuilder
             sb.AppendLine($"    <knowledge_crop name=\"{Escape(c.KnowledgeCrop)}\" source=\"{Escape(c.KnowledgeCropSource)}\" note=\"cây dùng để tra tài liệu; không đổi dữ liệu và ngưỡng của Zone\" />");
         if (c.ReferenceProfile is { } rp)
             sb.AppendLine($"    <reference_profile name=\"{Escape(rp.Name)}\" stages=\"{rp.StageCount}\" total_planned_days=\"{rp.TotalPlannedDays}\" note=\"kế hoạch tham chiếu, không phải tuổi hay ngày chín thực tế\" />");
-        if (c.SeasonFacts is { } f)
-            sb.AppendLine($"    <season_facts name=\"{Escape(f.SeasonName)}\" start=\"{f.StartDate:yyyy-MM-dd}\" elapsed_days=\"{f.ElapsedDays}\" expected_end=\"{f.ExpectedEndDate:yyyy-MM-dd}\" days_to_expected_end=\"{f.DaysToExpectedEnd}\" profile=\"{Escape(f.ProfileName)}\" current_stage=\"{Escape(f.CurrentStageName)}\" current_stage_planned_days=\"{f.CurrentStagePlannedDays}\" profile_total_planned_days=\"{f.ProfileTotalPlannedDays}\" harvest_date=\"không có dữ liệu\" profile_origin=\"{(f.ProfileIsFarmOwned ? "tùy chỉnh của trang trại" : "hệ thống")}\" />");
-        if (c.LastCompletedSeason is { } past)
-            sb.AppendLine($"    <last_completed_season name=\"{Escape(past.Name)}\" crop=\"{Escape(past.CropName)}\" start=\"{past.StartDate:yyyy-MM-dd}\" actual_end=\"{past.ActualEndDate:yyyy-MM-dd}\" yield_kg=\"{past.ActualYieldKg}\" note=\"lịch sử, không phải cây hay giai đoạn hiện tại\" />");
-
-        sb.AppendLine("    <requirements>");
-        foreach (var x in c.Requirements)
-            sb.AppendLine($"      <req parameter=\"{x.ParameterCode}\" min=\"{N(x.MinValue)}\" max=\"{N(x.MaxValue)}\" target=\"{N(x.TargetValue)}\" unit=\"{Escape(x.Unit)}\" />");
-        sb.AppendLine("    </requirements>");
-
-        if (c.ZoneDevices is { } devices)
+        
+        if (!isSoil && !isWeatherOnly && c.SeasonFacts is { } f && (!hasIntent || intent!.Has(QuestionTopics.Season)))
+            sb.AppendLine($"    <season_facts name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(f.SeasonName))}\" start=\"{f.StartDate:yyyy-MM-dd}\" elapsed_days=\"{f.ElapsedDays}\" expected_end=\"{f.ExpectedEndDate:yyyy-MM-dd}\" days_to_expected_end=\"{f.DaysToExpectedEnd}\" profile=\"{Escape(f.ProfileName)}\" current_stage=\"{Escape(f.CurrentStageName)}\" current_stage_planned_days=\"{f.CurrentStagePlannedDays}\" profile_total_planned_days=\"{f.ProfileTotalPlannedDays}\" harvest_date=\"không có dữ liệu\" profile_origin=\"{(f.ProfileIsFarmOwned ? "tùy chỉnh của trang trại" : "hệ thống")}\" />");
+        
+        if (!isSoil && !isPureKnowledge && !isSoilOrAgronomy && !isWeatherOnly && c.LastCompletedSeason is not null && (!hasIntent || intent!.Has(QuestionTopics.Season)))
         {
+            var past = c.LastCompletedSeason;
+            sb.AppendLine($"    <last_completed_season name=\"{Escape(past.Name)}\" crop=\"{Escape(past.CropName)}\" start=\"{past.StartDate:yyyy-MM-dd}\" actual_end=\"{past.ActualEndDate:yyyy-MM-dd}\" yield_kg=\"{past.ActualYieldKg}\" note=\"lịch sử, không phải cây hay giai đoạn hiện tại\" />");
+        }
+
+        // Lọc Requirements theo intent và câu hỏi
+        List<AiRequirementContextItem> reqs;
+        if (isSoil)
+        {
+            // Câu hỏi về đất: CHỈ gửi ngưỡng pH và độ ẩm đất (nếu được hỏi), không gửi nhiệt độ/ẩm không khí
+            reqs = c.Requirements.Where(x => x.ParameterCode == EnvironmentalParameterCode.Ph ||
+                (x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && sanitizedQuestion.Contains("ẩm", StringComparison.OrdinalIgnoreCase))).ToList();
+        }
+        else if (hasIntent && intent?.Parameters is { Count: > 0 } pList && !intent.Has(QuestionTopics.IrrigationOrControl))
+        {
+            reqs = c.Requirements.Where(x => pList.Contains(x.ParameterCode)).ToList();
+        }
+        else if (isWeatherOnly)
+        {
+            reqs = [];
+        }
+        else
+        {
+            reqs = c.Requirements.ToList();
+        }
+
+        if (reqs.Count > 0)
+        {
+            sb.AppendLine("    <requirements>");
+            foreach (var x in reqs)
+                sb.AppendLine($"      <req parameter=\"{x.ParameterCode}\" min=\"{N(x.MinValue)}\" max=\"{N(x.MaxValue)}\" target=\"{N(x.TargetValue)}\" unit=\"{Escape(x.Unit)}\" />");
+            sb.AppendLine("    </requirements>");
+        }
+
+        if (needsZoneDevices && c.ZoneDevices is not null)
+        {
+            var devices = c.ZoneDevices;
             var totalSensors = devices.Sum(device => device.SensorCount);
             sb.AppendLine($"    <zone_devices total_devices=\"{devices.Count}\" total_configured_sensors=\"{totalSensors}\">");
             foreach (var device in devices)
             {
-                sb.AppendLine($"      <device name=\"{Escape(device.DeviceLabel)}\" type=\"{Escape(device.DeviceType)}\" status=\"{Escape(device.Status)}\" sensor_count=\"{device.SensorCount}\" sensor_types=\"{Escape(string.Join(", ", device.SensorTypes))}\">");
-                foreach (var reading in device.LatestReadings)
+                var label = (hasIntent && (intent!.WantsDeviceDetail || intent.DeviceNumber.HasValue))
+                    ? device.DeviceLabel
+                    : (device.DeviceType.Contains("Actuator") ? "Node chấp hành" : "Node cảm biến");
+                sb.AppendLine($"      <device name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(label))}\" type=\"{Escape(device.DeviceType)}\" status=\"{Escape(device.Status)}\" sensor_count=\"{device.SensorCount}\" sensor_types=\"{Escape(string.Join(", ", device.SensorTypes))}\">");
+                var deviceReadings = (hasIntent && intent?.Parameters is { Count: > 0 } filterParams && !intent.Has(QuestionTopics.IrrigationOrControl))
+                    ? device.LatestReadings.Where(r => filterParams.Contains(r.ParameterCode)).ToList()
+                    : device.LatestReadings;
+                foreach (var reading in deviceReadings)
                     sb.AppendLine($"        <latest_reading parameter=\"{reading.ParameterCode}\" value=\"{N(reading.Value)}\" unit=\"{Escape(reading.Unit)}\" captured_utc=\"{reading.CapturedAtUtc:O}\" is_fresh=\"{reading.IsFresh.ToString().ToLowerInvariant()}\" />");
                 if (device.BatteryLevel is not null || device.Rssi is not null)
                     sb.AppendLine($"        <health battery_percent=\"{device.BatteryLevel}\" rssi_dbm=\"{(device.Rssi.HasValue ? N(device.Rssi.Value) : string.Empty)}\" />");
@@ -157,64 +474,82 @@ public static class AiPromptBuilder
             sb.AppendLine("    </zone_devices>");
         }
 
-        if (c.ZoneType is not null || c.ZoneStatus is not null)
+        if (!isSoil && !isPureKnowledge && (c.ZoneType is not null || c.ZoneStatus is not null) && (!hasIntent || intent!.Has(QuestionTopics.ZoneInfo)))
             sb.AppendLine($"    <zone_profile type=\"{Escape(c.ZoneType)}\" status=\"{Escape(c.ZoneStatus)}\" />");
 
-        if (c.Season is { } season)
+        if (!isSoil && !isWeatherOnly && c.Season is { } season && (!hasIntent || intent!.Has(QuestionTopics.Season)))
         {
-            sb.AppendLine($"    <season name=\"{Escape(season.Name)}\" start=\"{season.StartDate:yyyy-MM-dd}\" expected_end=\"{season.ExpectedEndDate:yyyy-MM-dd}\" profile=\"{Escape(season.ProfileName)}\">");
+            sb.AppendLine($"    <season name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(season.Name))}\" start=\"{season.StartDate:yyyy-MM-dd}\" expected_end=\"{season.ExpectedEndDate:yyyy-MM-dd}\" profile=\"{Escape(season.ProfileName)}\">");
             foreach (var stage in season.Stages)
                 sb.AppendLine($"      <stage order=\"{stage.Order}\" name=\"{Escape(stage.Name)}\" duration_days=\"{stage.DurationDays}\" current=\"{stage.IsCurrent.ToString().ToLowerInvariant()}\" />");
             sb.AppendLine("    </season>");
         }
 
-        if (c.Gateways is { Count: > 0 } gateways)
+        if (needsGateways && c.Gateways is not null && c.Gateways.Count > 0)
         {
+            var gateways = c.Gateways;
             sb.AppendLine("    <gateways>");
             foreach (var g in gateways)
-                sb.AppendLine($"      <gateway name=\"{Escape(g.GatewayLabel)}\" status=\"{Escape(g.Status)}\" last_seen_utc=\"{(g.LastSeenAtUtc.HasValue ? g.LastSeenAtUtc.Value.ToString("O") : string.Empty)}\" firmware=\"{Escape(g.FirmwareVersion)}\" band=\"{Escape(g.FrequencyBand)}\" nodes_in_zone=\"{g.NodesInZone}\" />");
+                sb.AppendLine($"      <gateway name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(g.GatewayLabel))}\" status=\"{Escape(g.Status)}\" last_seen_utc=\"{(g.LastSeenAtUtc.HasValue ? g.LastSeenAtUtc.Value.ToString("O") : string.Empty)}\" firmware=\"{Escape(g.FirmwareVersion)}\" band=\"{Escape(g.FrequencyBand)}\" nodes_in_zone=\"{g.NodesInZone}\" />");
             sb.AppendLine("    </gateways>");
         }
 
-        if (c.ActiveAlerts is { Count: > 0 } alerts)
+        if (needsAlerts && c.ActiveAlerts is not null && c.ActiveAlerts.Count > 0)
         {
+            var alerts = c.ActiveAlerts;
             sb.AppendLine("    <active_alerts>");
             foreach (var a in alerts)
-                sb.AppendLine($"      <alert parameter=\"{a.ParameterCode}\" observed=\"{N(a.ObservedValue)}\" min=\"{N(a.MinThreshold)}\" max=\"{N(a.MaxThreshold)}\" unit=\"{Escape(a.Unit)}\" severity=\"{Escape(a.Severity)}\" status=\"{Escape(a.Status)}\" title=\"{Escape(a.Title)}\" created_utc=\"{a.CreatedAtUtc:O}\" />");
+                sb.AppendLine($"      <alert parameter=\"{a.ParameterCode}\" observed=\"{N(a.ObservedValue)}\" min=\"{N(a.MinThreshold)}\" max=\"{N(a.MaxThreshold)}\" unit=\"{Escape(a.Unit)}\" severity=\"{Escape(a.Severity)}\" status=\"{Escape(a.Status)}\" title=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(a.Title))}\" created_utc=\"{a.CreatedAtUtc:O}\" />");
             sb.AppendLine("    </active_alerts>");
         }
 
-        if (c.RecentCommands is { Count: > 0 } commands)
+        if (needsCommands && c.RecentCommands is not null && c.RecentCommands.Count > 0)
         {
+            var commands = c.RecentCommands;
             sb.AppendLine("    <recent_commands description=\"Lệnh thiết bị trong 24 giờ qua, mới nhất trước\">");
             foreach (var cmd in commands)
                 sb.AppendLine($"      <command actuator=\"{Escape(cmd.ActuatorType)}\" action=\"{Escape(cmd.Action)}\" duration_seconds=\"{cmd.DurationSeconds}\" status=\"{Escape(cmd.Status)}\" source=\"{Escape(cmd.TriggerSource)}\" queued_utc=\"{cmd.QueuedAtUtc:O}\" />");
             sb.AppendLine("    </recent_commands>");
         }
 
-        if (c.AutoRules is { Count: > 0 } rules)
+        if (needsAutoRules && c.AutoRules is not null && c.AutoRules.Count > 0)
         {
+            var rules = c.AutoRules;
             sb.AppendLine("    <auto_rules>");
             foreach (var rule in rules)
-                sb.AppendLine($"      <rule name=\"{Escape(rule.Name)}\" parameter=\"{rule.ParameterCode}\" operator=\"{Escape(rule.Operator)}\" threshold=\"{N(rule.Threshold)}\" condition_minutes=\"{rule.ConditionMinutes}\" action=\"{Escape(rule.Action)}\" duration_seconds=\"{rule.DurationSeconds}\" cooldown_minutes=\"{rule.CooldownMinutes}\" rain_delay=\"{rule.RainDelay.ToString().ToLowerInvariant()}\" rain_threshold_percent=\"{N(rule.RainThresholdPercent)}\" />");
+                sb.AppendLine($"      <rule name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(rule.Name))}\" parameter=\"{rule.ParameterCode}\" operator=\"{Escape(rule.Operator)}\" threshold=\"{N(rule.Threshold)}\" condition_minutes=\"{rule.ConditionMinutes}\" action=\"{Escape(rule.Action)}\" duration_seconds=\"{rule.DurationSeconds}\" cooldown_minutes=\"{rule.CooldownMinutes}\" rain_delay=\"{rule.RainDelay.ToString().ToLowerInvariant()}\" rain_threshold_percent=\"{N(rule.RainThresholdPercent)}\" />");
             sb.AppendLine("    </auto_rules>");
         }
 
-        if (c.OpenTasks is { Count: > 0 } tasks)
+        if (needsTasks && c.OpenTasks is not null && c.OpenTasks.Count > 0)
         {
+            var tasks = c.OpenTasks;
             sb.AppendLine("    <open_tasks>");
             foreach (var t in tasks)
-                sb.AppendLine($"      <task title=\"{Escape(t.Title)}\" due_utc=\"{t.DueAtUtc:O}\" status=\"{Escape(t.Status)}\" />");
+                sb.AppendLine($"      <task title=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(t.Title))}\" due_utc=\"{t.DueAtUtc:O}\" status=\"{Escape(t.Status)}\" />");
             sb.AppendLine("    </open_tasks>");
         }
 
-        sb.AppendLine("    <telemetry>");
-        foreach (var x in c.Telemetry)
-            sb.AppendLine($"      <reading parameter=\"{x.ParameterCode}\" value=\"{N(x.Value)}\" unit=\"{Escape(x.Unit)}\" captured_utc=\"{x.CapturedAtUtc:O}\" is_fresh=\"{x.IsFresh.ToString().ToLowerInvariant()}\" />");
-        sb.AppendLine("    </telemetry>");
-
-        if (c.TelemetryHistory is { Count: > 0 } history)
+        if (needsTelemetry)
         {
+            // Chỉ đưa số đo mới (IsFresh == true) vào trả lời trạng thái hiện tại/đề xuất hành động
+            var freshTelemetry = c.Telemetry.Where(x => x.IsFresh).ToList();
+            var telemetryReadings = (hasIntent && intent?.Parameters is { Count: > 0 } filterParams && !intent.Has(QuestionTopics.IrrigationOrControl))
+                ? freshTelemetry.Where(x => filterParams.Contains(x.ParameterCode)).ToList()
+                : (isSoil ? freshTelemetry.Where(x => x.ParameterCode == EnvironmentalParameterCode.Ph || (x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && sanitizedQuestion.Contains("ẩm", StringComparison.OrdinalIgnoreCase))).ToList() : freshTelemetry);
+
+            if (telemetryReadings.Count > 0)
+            {
+                sb.AppendLine("    <telemetry>");
+                foreach (var x in telemetryReadings)
+                    sb.AppendLine($"      <reading parameter=\"{x.ParameterCode}\" value=\"{N(x.Value)}\" unit=\"{Escape(x.Unit)}\" captured_utc=\"{x.CapturedAtUtc:O}\" is_fresh=\"true\" />");
+                sb.AppendLine("    </telemetry>");
+            }
+        }
+
+        if (needsTelemetryHistory && c.TelemetryHistory is not null && c.TelemetryHistory.Count > 0)
+        {
+            var history = c.TelemetryHistory;
             TimeZoneInfo farmTz;
             try { farmTz = TimeZoneInfo.FindSystemTimeZoneById(c.FarmTimeZone); }
             catch { farmTz = TimeZoneInfo.Utc; }
@@ -229,7 +564,10 @@ public static class AiPromptBuilder
                 var utcTime = DateTime.SpecifyKind(g.Key, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture);
                 var localTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(g.Key, DateTimeKind.Utc), farmTz).ToString("dd/MM HH:mm:ss", CultureInfo.InvariantCulture);
                 sb.AppendLine($"      <snapshot captured_utc=\"{utcTime}\" local_time=\"{localTime}\">");
-                foreach (var x in g.OrderBy(x => x.ParameterCode))
+                var metricGroup = (hasIntent && intent?.Parameters is { Count: > 0 } filterParams && !intent.Has(QuestionTopics.IrrigationOrControl))
+                    ? g.Where(x => filterParams.Contains(x.ParameterCode)).OrderBy(x => x.ParameterCode)
+                    : g.OrderBy(x => x.ParameterCode);
+                foreach (var x in metricGroup)
                 {
                     sb.AppendLine($"        <metric parameter=\"{x.ParameterCode}\" value=\"{N(x.Value)}\" unit=\"{Escape(x.Unit)}\" />");
                 }
@@ -238,38 +576,50 @@ public static class AiPromptBuilder
             sb.AppendLine("    </telemetry_history>");
         }
 
-        sb.AppendLine("    <actuators>");
-        foreach (var x in c.Actuators)
-            sb.AppendLine($"      <actuator id=\"{x.ActuatorId}\" type=\"{Escape(x.ActuatorType)}\" max_duration_seconds=\"{x.MaxDurationSeconds}\" online=\"{x.IsOnline.ToString().ToLowerInvariant()}\" />");
-        sb.AppendLine("    </actuators>");
+        if (needsActuators && c.Actuators is not null && c.Actuators.Count > 0)
+        {
+            sb.AppendLine("    <actuators>");
+            foreach (var x in c.Actuators)
+                sb.AppendLine($"      <actuator id=\"{x.ActuatorId}\" type=\"{Escape(x.ActuatorType)}\" max_duration_seconds=\"{x.MaxDurationSeconds}\" online=\"{x.IsOnline.ToString().ToLowerInvariant()}\" />");
+            sb.AppendLine("    </actuators>");
+        }
 
-        sb.AppendLine("    <upcoming_schedules>");
-        foreach (var x in c.UpcomingSchedules)
-            sb.AppendLine($"      <schedule name=\"{Escape(x.Name)}\" next_run_local=\"{Escape(x.NextRunTimeFormatted)}\" in_minutes=\"{x.MinutesUntilRun}\" duration_seconds=\"{x.DurationSeconds}\" />");
-        sb.AppendLine("    </upcoming_schedules>");
+        if (needsSchedules && c.UpcomingSchedules is not null && c.UpcomingSchedules.Count > 0)
+        {
+            sb.AppendLine("    <upcoming_schedules>");
+            foreach (var x in c.UpcomingSchedules)
+                sb.AppendLine($"      <schedule name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(x.Name))}\" next_run_local=\"{Escape(x.NextRunTimeFormatted)}\" in_minutes=\"{x.MinutesUntilRun}\" duration_seconds=\"{x.DurationSeconds}\" />");
+            sb.AppendLine("    </upcoming_schedules>");
+        }
 
-        var tempStr = c.Weather.TemperatureCelsius.HasValue ? N((decimal)c.Weather.TemperatureCelsius.Value) : "";
-        var rainProbStr = c.Weather.RainProbabilityNext6HoursMaxPercent.HasValue ? N((decimal)c.Weather.RainProbabilityNext6HoursMaxPercent.Value) : "";
-        sb.AppendLine($"    <weather available=\"{c.Weather.Available.ToString().ToLowerInvariant()}\" temperature_c=\"{tempStr}\" rain_probability_6h_percent=\"{rainProbStr}\" summary=\"{Escape(c.Weather.Summary)}\" />");
+        if (needsWeather)
+        {
+            var tempStr = c.Weather.TemperatureCelsius.HasValue ? N((decimal)c.Weather.TemperatureCelsius.Value) : "";
+            var rainProbStr = c.Weather.RainProbabilityNext6HoursMaxPercent.HasValue ? N((decimal)c.Weather.RainProbabilityNext6HoursMaxPercent.Value) : "";
+            sb.AppendLine($"    <weather available=\"{c.Weather.Available.ToString().ToLowerInvariant()}\" temperature_c=\"{tempStr}\" rain_probability_6h_percent=\"{rainProbStr}\" summary=\"{Escape(c.Weather.Summary)}\" />");
+        }
 
         sb.AppendLine("  </zone_context>");
 
-        if (r.KnowledgePassages is { Count: > 0 } passages)
+        if (r.KnowledgePassages is not null && r.KnowledgePassages.Count > 0)
         {
-            sb.AppendLine("  <agriculture_knowledge>");
-            var i = 1;
-            foreach (var p in passages)
+            var passages = DeduplicatePassages(r.KnowledgePassages);
+            if (passages.Count > 0)
             {
-                var simStr = p.SimilarityScore.ToString("F2", CultureInfo.InvariantCulture);
-                // Trang và mục giúp AI chọn đúng đoạn; tên tài liệu vẫn không gửi — server gắn nguồn theo citedPassages.
-                var page = p.PageNumber is { } n ? $" page=\"{n}\"" : string.Empty;
-                var section = string.IsNullOrWhiteSpace(p.SectionTitle) ? string.Empty : $" section=\"{Escape(p.SectionTitle)}\"";
-                var version = string.IsNullOrWhiteSpace(p.Version) ? "" : $" version=\"{Escape(p.Version)}\"";
-                sb.AppendLine($"    <passage index=\"{i++}\" author=\"{Escape(p.AuthorOrganization)}\" category=\"{Escape(p.Category)}\"{version}{page}{section} similarity=\"{simStr}\">");
-                sb.AppendLine($"      {Escape(p.Content)}");
-                sb.AppendLine("    </passage>");
+                sb.AppendLine("  <agriculture_knowledge>");
+                var i = 1;
+                foreach (var p in passages)
+                {
+                    var simStr = p.SimilarityScore.ToString("F2", CultureInfo.InvariantCulture);
+                    var page = p.PageNumber is { } n ? $" page=\"{n}\"" : string.Empty;
+                    var section = string.IsNullOrWhiteSpace(p.SectionTitle) ? string.Empty : $" section=\"{Escape(p.SectionTitle)}\"";
+                    var version = string.IsNullOrWhiteSpace(p.Version) ? "" : $" version=\"{Escape(p.Version)}\"";
+                    sb.AppendLine($"    <passage index=\"{i++}\" author=\"{Escape(p.AuthorOrganization)}\" category=\"{Escape(p.Category)}\"{version}{page}{section} similarity=\"{simStr}\">");
+                    sb.AppendLine($"      {Escape(p.Content)}");
+                    sb.AppendLine("    </passage>");
+                }
+                sb.AppendLine("  </agriculture_knowledge>");
             }
-            sb.AppendLine("  </agriculture_knowledge>");
         }
         sb.AppendLine("</consultation_request>");
         return sb.ToString();

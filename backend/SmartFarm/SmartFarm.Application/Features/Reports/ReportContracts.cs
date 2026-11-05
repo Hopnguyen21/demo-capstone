@@ -14,6 +14,8 @@ public sealed record TaskReport(Guid FarmId, DateTime FromUtc, DateTime ToUtc, i
 public sealed record MaintenanceReportItem(Guid ServiceRequestId, Guid ZoneId, Guid? OriginalDeviceId, Guid? CurrentDeviceId, ServiceRequestStatus Status, ServiceResolutionAction? ResolutionAction, decimal ElapsedHours, int TestCount, bool? LatestTestSucceeded, int ReplacementCount);
 public sealed record MaintenanceReport(Guid FarmId, DateTime FromUtc, DateTime ToUtc, int Total, int Open, int Closed, decimal AverageClosedHours, IReadOnlyList<MaintenanceReportItem> Requests, IReadOnlyList<ReportFormula> Formulas);
 
+public sealed record ReportExportResult(byte[] Content, string ContentType, string FileName);
+
 public interface IReportService
 {
     Task<FarmOverviewReport> OverviewAsync(Guid ownerId, Guid tenantId, Guid farmId, CancellationToken ct);
@@ -23,4 +25,13 @@ public interface IReportService
     Task<InventoryReport> InventoryAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
     Task<TaskReport> TasksAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
     Task<MaintenanceReport> MaintenanceAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
+
+    Task<ReportExportResult> ExportResourceReportExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
+    Task<ReportExportResult> ExportOverviewExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, CancellationToken ct);
+    Task<ReportExportResult> ExportSeasonSummaryExcelAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken ct);
+    Task<ReportExportResult> ExportWaterExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
+    Task<ReportExportResult> ExportElectricityExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
+    Task<ReportExportResult> ExportInventoryExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
+    Task<ReportExportResult> ExportTasksExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
+    Task<ReportExportResult> ExportMaintenanceExcelAsync(Guid ownerId, Guid tenantId, Guid farmId, DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
 }

@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polygon, useMapEvents, useMap }
 import L from 'leaflet';
 import { MapPin, Layers, RefreshCw, Square, Trash2, Crosshair, Maximize2, Minimize2, Move, Search, Compass, Loader2, Plus, Edit3, Clipboard, FileText, Check, AlertCircle, X, List, Info, AlertTriangle } from 'lucide-react';
 import { Button, Modal } from '../ui/BaseUI';
+import { gisProxyService } from '../../services';
 
 // Custom Map Pins
 const createCenterPinIcon = () =>
@@ -449,55 +450,26 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
       return { name: best.name, dist: bestDist };
     };
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
-        {
-          headers: {
-            'Accept-Language': 'vi',
-            'User-Agent': 'SmartFarmApp/1.0 (demo)',
-          },
-        }
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data && data.display_name) {
-        const addr = data.address || {};
-        const parts: string[] = [];
-        const street = addr.road || addr.pedestrian || addr.footway || addr.path || addr.neighbourhood;
-        if (street) parts.push(street);
-        const ward = addr.suburb || addr.quarter || addr.hamlet;
-        if (ward) parts.push(ward);
-        const district = addr.city_district || addr.district || addr.county;
-        if (district) parts.push(district);
-        const city = addr.city || addr.town || addr.village || addr.municipality;
-        if (city) parts.push(city);
-        const province = addr.state || addr.region;
-        if (province) parts.push(province);
-
-        if (parts.length >= 2) {
-          cb(parts.join(', '));
-        } else {
-          // Fallback: use first 3 parts of display_name
-          const fallback = data.display_name.split(',').slice(0, 3).map((s: string) => s.trim()).join(', ');
-          cb(fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-        }
-      } else {
-        // No result — use nearest preset name + coords
-        const { name } = nearestPreset();
-        cb(`Gần ${name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-      }
-    } catch (err) {
-      console.warn('Reverse geocoding failed:', err);
-      // Fallback: nearest preset + coordinates
-      const { name, dist } = nearestPreset();
-      if (dist < 50000) {
-        cb(`Gần ${name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-      } else {
-        cb(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-      }
-    } finally {
-      setIsReverseGeocoding(false);
+    try {
+      // Gọi Backend Proxy (bảo vệ quyền riêng tư & vị trí client, không gọi trực tiếp nhà cung cấp bên thứ ba)
+      const proxyRes = await gisProxyService.reverseGeocode(lat, lng);
+      if (proxyRes && proxyRes.displayName) {
+        cb(proxyRes.displayName);
+        return;
+      }
+      const { name } = nearestPreset();
+      cb(`Gần ${name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+    } catch (err) {
+      console.warn('Reverse geocoding proxy failed:', err);
+      // Fallback an toàn không tiết lộ IP/vị trí: dùng preset hoặc tọa độ
+      const { name, dist } = nearestPreset();
+      if (dist < 50000) {
+        cb(`Gần ${name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+      } else {
+        cb(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      }
+    } finally {
+      setIsReverseGeocoding(false);
     }
   }, [level]); // level is stable within a component instance
 
@@ -741,31 +713,31 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
       return;
     }
 
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=vn&limit=1`;
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (data && data.length > 0) {
-        const lat = parseFloat(data[0].lat);
-        const lon = parseFloat(data[0].lon);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          const newCoords: [number, number] = [parseFloat(lat.toFixed(6)), parseFloat(lon.toFixed(6))];
-          onCenterChange(newCoords);
-          setMapCenter(newCoords);
-          setSearchStatus(`Đã định vị thành công địa chỉ: "${data[0].display_name.split(',')[0]}"!`);
-          setTimeout(() => setSearchStatus(null), 4000);
-        } else {
-          setSearchStatus('Không tìm thấy tọa độ cho địa chỉ này.');
-        }
-      } else {
-        setSearchStatus('Không tìm thấy vị trí. Thử từ khóa ngắn hơn (vd: Đà Lạt, Củ Chi).');
-      }
-    } catch (err) {
-      console.warn('Address geocoding failed', err);
-      setSearchStatus('Lỗi tìm kiếm. Hãy thử chọn các vùng nông nghiệp gợi ý.');
-    } finally {
-      setIsSearching(false);
+    try {
+      // Tìm kiếm qua Backend Proxy (chặn rò rỉ dữ liệu tìm kiếm client tới dịch vụ ngoài)
+      const results = await gisProxyService.searchLocation(q);
+
+      if (results && results.length > 0) {
+        const first = results[0];
+        const lat = Number(first.latitude);
+        const lon = Number(first.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          const newCoords: [number, number] = [parseFloat(lat.toFixed(6)), parseFloat(lon.toFixed(6))];
+          onCenterChange(newCoords);
+          setMapCenter(newCoords);
+          setSearchStatus(`Đã định vị thành công địa chỉ: "${first.displayName.split(',')[0]}"!`);
+          setTimeout(() => setSearchStatus(null), 4000);
+        } else {
+          setSearchStatus('Không tìm thấy tọa độ cho địa chỉ này.');
+        }
+      } else {
+        setSearchStatus('Không tìm thấy vị trí. Thử từ khóa ngắn hơn (vd: Đà Lạt, Củ Chi).');
+      }
+    } catch (err) {
+      console.warn('Backend geocoding search failed', err);
+      setSearchStatus('Lỗi tìm kiếm. Hãy thử chọn các vùng nông nghiệp gợi ý.');
+    } finally {
+      setIsSearching(false);
     }
   };
 

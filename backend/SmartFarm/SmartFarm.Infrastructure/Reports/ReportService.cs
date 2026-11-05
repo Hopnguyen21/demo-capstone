@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Features.Reports;
 using SmartFarm.Domain.Entities;
@@ -7,7 +9,7 @@ using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Reports;
 
-public sealed class ReportService(SmartFarmDbContext db, TimeProvider clock) : IReportService
+public sealed class ReportService(SmartFarmDbContext db, TimeProvider clock, ILogger<ReportService> logger) : IReportService
 {
     private static readonly ReportFormula WaterFormula = new("waterLiters", "sum(acknowledged TurnOn durationSeconds / 60 * actuator flowRateLitersPerMinute)", "actuator_commands + device_actuators");
     private static readonly ReportFormula ElectricityFormula = new("electricityKWh", "sum(acknowledged TurnOn durationSeconds / 3600 * actuator ratedPowerWatt / 1000)", "actuator_commands + device_actuators");
@@ -75,6 +77,117 @@ public sealed class ReportService(SmartFarmDbContext db, TimeProvider clock) : I
         await OwnerFarm(owner, tenant, farmId, ct); var (from, to) = Range(fromArg, toArg); var now = clock.GetUtcNow().UtcDateTime; var requests = await db.ServiceRequests.AsNoTracking().Include(x => x.Replacements).Where(x => x.TenantId == tenant && x.FarmId == farmId && x.CreatedAtUtc >= from && x.CreatedAtUtc <= to).ToListAsync(ct); var ids = requests.SelectMany(x => new[] { x.CurrentDeviceId, x.DeviceId }).Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList(); var tests = await db.DeviceConnectionTests.AsNoTracking().Where(x => ids.Contains(x.DeviceId)).ToListAsync(ct);
         var rows = requests.Select(x => { var device = x.CurrentDeviceId ?? x.DeviceId; var dt = device.HasValue ? tests.Where(t => t.DeviceId == device).OrderByDescending(t => t.ObservedAtUtc).ToList() : []; return new MaintenanceReportItem(x.Id, x.ZoneId, x.DeviceId, x.CurrentDeviceId ?? x.DeviceId, x.Status, x.ResolutionAction, decimal.Round((decimal)((x.ClosedAtUtc ?? now) - x.CreatedAtUtc).TotalHours, 2), dt.Count, dt.FirstOrDefault()?.Succeeded, x.Replacements.Count); }).ToList(); var closed = requests.Where(x => x.ClosedAtUtc.HasValue).ToList();
         return new(farmId, from, to, rows.Count, rows.Count(x => x.Status != ServiceRequestStatus.Closed), rows.Count(x => x.Status == ServiceRequestStatus.Closed), closed.Count == 0 ? 0 : decimal.Round((decimal)closed.Average(x => (x.ClosedAtUtc!.Value - x.CreatedAtUtc).TotalHours), 2), rows, [new("serviceElapsedHours", "(closedAtUtc ?? generatedAtUtc) - createdAtUtc", "service_requests"), new("replacementCount", "count(oldDeviceId -> newDeviceId links)", "device_replacements")]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EXCEL EXPORTS
+    // ─────────────────────────────────────────────────────────────────────────────
+    public async Task<ReportExportResult> ExportResourceReportExcelAsync(Guid owner, Guid tenant, Guid farmId, DateTime? fromArg, DateTime? toArg, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var (from, to) = Range(fromArg, toArg);
+        var overview = await OverviewAsync(owner, tenant, farmId, ct);
+        var water = await WaterAsync(owner, tenant, farmId, from, to, ct);
+        var electricity = await ElectricityAsync(owner, tenant, farmId, from, to, ct);
+        var tasks = await TasksAsync(owner, tenant, farmId, from, to, ct);
+
+        var bytes = ReportExcelExporter.BuildResourceReport(farm.Name, overview, water, electricity, tasks, from, to);
+        var fileName = ReportExcelExporter.GenerateFileName("TaiNguyen_VanHanh", farm.Name, from, to);
+        sw.Stop();
+        logger.LogInformation("Exported Excel ResourceReport for FarmId {FarmId} (TimeRange: {FromUtc:o}..{ToUtc:o}, Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, from, to, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportOverviewExcelAsync(Guid owner, Guid tenant, Guid farmId, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var overview = await OverviewAsync(owner, tenant, farmId, ct);
+        var bytes = ReportExcelExporter.BuildOverviewReport(farm.Name, overview);
+        var fileName = ReportExcelExporter.GenerateFileName("TongQuan", farm.Name, null, null);
+        sw.Stop();
+        logger.LogInformation("Exported Excel Overview for FarmId {FarmId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportSeasonSummaryExcelAsync(Guid owner, Guid tenant, Guid zoneId, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        await Owner(owner, tenant, ct);
+        var zone = await db.Zones.AsNoTracking().Include(x => x.Field).SingleOrDefaultAsync(x => x.Id == zoneId && x.Field.Farm.TenantId == tenant && x.ArchivedAtUtc == null, ct)
+            ?? throw new ResourceNotFoundException("Zone was not found in the authenticated Tenant.");
+        var report = await SeasonSummaryAsync(owner, tenant, zoneId, ct);
+        var bytes = ReportExcelExporter.BuildSeasonSummaryReport(zone.Name, report);
+        var fileName = ReportExcelExporter.GenerateFileName("TongKet_VuMua", zone.Name, null, null);
+        sw.Stop();
+        logger.LogInformation("Exported Excel SeasonSummary for ZoneId {ZoneId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", zoneId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportWaterExcelAsync(Guid owner, Guid tenant, Guid farmId, DateTime? fromArg, DateTime? toArg, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var (from, to) = Range(fromArg, toArg);
+        var report = await WaterAsync(owner, tenant, farmId, from, to, ct);
+        var bytes = ReportExcelExporter.BuildWaterReport(farm.Name, report);
+        var fileName = ReportExcelExporter.GenerateFileName("TieuThuNuoc", farm.Name, from, to);
+        sw.Stop();
+        logger.LogInformation("Exported Excel Water for FarmId {FarmId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportElectricityExcelAsync(Guid owner, Guid tenant, Guid farmId, DateTime? fromArg, DateTime? toArg, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var (from, to) = Range(fromArg, toArg);
+        var report = await ElectricityAsync(owner, tenant, farmId, from, to, ct);
+        var bytes = ReportExcelExporter.BuildElectricityReport(farm.Name, report);
+        var fileName = ReportExcelExporter.GenerateFileName("DienNang", farm.Name, from, to);
+        sw.Stop();
+        logger.LogInformation("Exported Excel Electricity for FarmId {FarmId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportInventoryExcelAsync(Guid owner, Guid tenant, Guid farmId, DateTime? fromArg, DateTime? toArg, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var (from, to) = Range(fromArg, toArg);
+        var report = await InventoryAsync(owner, tenant, farmId, from, to, ct);
+        var bytes = ReportExcelExporter.BuildInventoryReport(farm.Name, report);
+        var fileName = ReportExcelExporter.GenerateFileName("TonKhoVatTu", farm.Name, from, to);
+        sw.Stop();
+        logger.LogInformation("Exported Excel Inventory for FarmId {FarmId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportTasksExcelAsync(Guid owner, Guid tenant, Guid farmId, DateTime? fromArg, DateTime? toArg, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var (from, to) = Range(fromArg, toArg);
+        var report = await TasksAsync(owner, tenant, farmId, from, to, ct);
+        var bytes = ReportExcelExporter.BuildTasksReport(farm.Name, report);
+        var fileName = ReportExcelExporter.GenerateFileName("CongViec", farm.Name, from, to);
+        sw.Stop();
+        logger.LogInformation("Exported Excel Tasks for FarmId {FarmId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
+    }
+
+    public async Task<ReportExportResult> ExportMaintenanceExcelAsync(Guid owner, Guid tenant, Guid farmId, DateTime? fromArg, DateTime? toArg, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var farm = await OwnerFarm(owner, tenant, farmId, ct);
+        var (from, to) = Range(fromArg, toArg);
+        var report = await MaintenanceAsync(owner, tenant, farmId, from, to, ct);
+        var bytes = ReportExcelExporter.BuildMaintenanceReport(farm.Name, report);
+        var fileName = ReportExcelExporter.GenerateFileName("BaoTriThietBi", farm.Name, from, to);
+        sw.Stop();
+        logger.LogInformation("Exported Excel Maintenance for FarmId {FarmId} (Duration: {ElapsedMs}ms, Size: {SizeBytes} bytes)", farmId, sw.ElapsedMilliseconds, bytes.Length);
+        return new(bytes, ReportExcelExporter.ContentType, fileName);
     }
 
     private async Task<List<ActuatorCommand>> Commands(Guid farm, DateTime from, DateTime to, CancellationToken ct) => await db.ActuatorCommands.AsNoTracking().Include(x => x.Actuator).Where(x => x.FarmId == farm && x.Action == ActuatorCommandAction.TurnOn && x.Status == ActuatorCommandStatus.Acknowledged && x.AcknowledgedAtUtc >= from && x.AcknowledgedAtUtc <= to).ToListAsync(ct);

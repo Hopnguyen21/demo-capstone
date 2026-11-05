@@ -11,6 +11,7 @@ using SmartFarm.Application.Features.Control;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Persistence;
+using SmartFarm.Infrastructure.Ai.Location;
 
 namespace SmartFarm.Infrastructure.Ai;
 
@@ -138,19 +139,20 @@ public sealed class AiAdvisoryService(
 
     private async Task<AiRecommendationView> AskInternalAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, bool checkRateLimit, CancellationToken cancellationToken)
     {
-        var question = Required(command.Question, "question", 2000, 3);
-        RejectPromptInjection(question);
-        var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
-        if (checkRateLimit) await EnsureRateLimitAsync(ownerId, zoneId, cancellationToken);
-        if (command.ParentRecommendationId.HasValue && !await db.AiRecommendations.AnyAsync(x => x.Id == command.ParentRecommendationId && x.ZoneId == zoneId && x.TenantId == tenantId, cancellationToken))
-            throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
-
-        var now = clock.GetUtcNow().UtcDateTime;
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        long classifyMs, contextMs, ragMs = 0, providerMs = 0;
-        // Phân loại câu hỏi (gọi HTTP tới Gemini, không dùng DbContext) chạy song song với việc nạp ngữ cảnh Zone từ DB: tiết kiệm trọn
-        // thời gian nạp ngữ cảnh (~0,3–0,5 giây) ở mọi câu hỏi. Chỉ câu hỏi lịch sử/theo ngày mới cần nạp thêm sau khi biết ý định.
-        var classifyTask = ClassifyIntentAsync(question, cancellationToken);
+        var question = Required(command.Question, "question", 2000, 3);
+        RejectPromptInjection(question);
+        var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
+        var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
+        if (checkRateLimit) await EnsureRateLimitAsync(ownerId, zoneId, cancellationToken);
+        if (command.ParentRecommendationId.HasValue && !await db.AiRecommendations.AnyAsync(x => x.Id == command.ParentRecommendationId && x.ZoneId == zoneId && x.TenantId == tenantId, cancellationToken))
+            throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        long classifyMs, contextMs, ragMs = 0, providerMs = 0;
+        // Phân loại câu hỏi (gọi HTTP tới Gemini, không dùng DbContext) chạy song song với việc nạp ngữ cảnh Zone từ DB: tiết kiệm trọn
+        // thời gian nạp ngữ cảnh (~0,3–0,5 giây) ở mọi câu hỏi. Chỉ câu hỏi lịch sử/theo ngày mới cần nạp thêm sau khi biết ý định.
+        var classifyTask = ClassifyIntentAsync(sanitizedQuestion, cancellationToken);
         var baseContext = await BuildContextAsync(zone, includeHistory: false, historyCount: 0, historyDays: 0, cancellationToken);
         var intent = await classifyTask;
         classifyMs = stopwatch.ElapsedMilliseconds;
@@ -337,8 +339,8 @@ public sealed class AiAdvisoryService(
                     var ragStart = stopwatch.ElapsedMilliseconds;
                     try
                     {
-                        passages = await knowledgeRetriever.RetrievePassagesAsync(
-                            question,
+                        passages = await knowledgeRetriever.RetrievePassagesAsync(
+                            sanitizedQuestion,
                             cropName: ragCrop,
                             category: null,      // Không lọc theo danh mục để tối đa tài liệu
                             tenantId: tenantId,
@@ -391,8 +393,18 @@ public sealed class AiAdvisoryService(
                     goto Persist;
                 }
 
-                var providerRequest = new AiProviderRequest(question, providerContext, passages);
+                var providerRequest = new AiProviderRequest(sanitizedQuestion, providerContext, passages, intent);
                 var promptText = AiPromptBuilder.Build(providerRequest);
+                logger.LogInformation(
+                    "[AI Advisory Dispatch] Gửi yêu cầu tư vấn AI: Cây trồng={Crop}, Giai đoạn={Stage}, Vùng={Region}, Có thời tiết={HasWeather}, Cảm biến={TelemetryCount}, Thiết bị={ActuatorCount}, Đoạn RAG={RagCount}, Thuần kiến thức={IsPureKnowledge}",
+                    providerContext.CropName ?? ragCrop ?? "None",
+                    providerContext.GrowthStageName ?? "None",
+                    providerContext.GeneralRegion ?? "None",
+                    providerContext.Weather?.Available ?? false,
+                    providerContext.Telemetry.Count,
+                    providerContext.Actuators.Count,
+                    passages?.Count ?? 0,
+                    AiPromptBuilder.IsPureKnowledgeQuestion(sanitizedQuestion));
                 var providerStart = stopwatch.ElapsedMilliseconds;
                 var result = await provider.GenerateAsync(
                     providerRequest,
@@ -435,8 +447,9 @@ public sealed class AiAdvisoryService(
                 request.ContextSnapshotJson = JsonSerializer.Serialize(new 
                 { 
                     Question = question,
+                    Prompt = promptText,
                     Context = providerContext,
-                    Passages = passages?.Select(p => new { p.ChunkId, p.DocumentId, p.DocumentTitle, p.Category, p.SimilarityScore }).ToList(),
+                    Passages = passages?.Select(p => new { p.ChunkId, p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content }).ToList(),
                     Sources = sources.Select(s => s.Title).ToList() 
                 });
                 request.ProviderName = Optional(result.ProviderName, 100) ?? "Unknown";
@@ -444,7 +457,7 @@ public sealed class AiAdvisoryService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "AI advisory provider execution failed: {Message}", ex.Message);
+                logger.LogError(ex, "AI advisory provider execution failed with {ExceptionType}.", ex.GetType().Name);
                 recommendation = CreateLimited(request, context, AiRecommendationStatus.ProviderUnavailable,
                     "Trợ lý AI tạm thời không khả dụng",
                     "Hệ thống chưa nhận được phản hồi từ dịch vụ AI (có thể do hết hạn mức sử dụng hoặc quá tải). Chưa có khuyến nghị nào được tạo. Vui lòng thử lại sau ít phút.",
@@ -628,7 +641,7 @@ public sealed class AiAdvisoryService(
 
         var telemetry = latestReadings.Select(reading =>
         {
-            var isFresh = reading.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes) && reading.CapturedAtUtc <= now;
+            var isFresh = TelemetryFreshnessValidator.IsFresh(reading.CapturedAtUtc, now, settings.TelemetryFreshnessMinutes);
             return new AiTelemetryContextItem(reading.ParameterCode, reading.Value, reading.Unit, reading.CapturedAtUtc, isFresh);
         }).ToList();
 
@@ -653,6 +666,7 @@ public sealed class AiAdvisoryService(
             .Where(x => x.Device.ZoneId == zone.Id && x.Device.DecommissionedAtUtc == null && x.Device.Status != DeviceStatus.Decommissioned)
             .Select(x => new AiActuatorContextItem(x.Id, x.ActuatorType, Math.Min(1800, x.MaxDurationMinutes * 60), x.Device.Status == DeviceStatus.Online))
             .ToListAsync(cancellationToken);
+        var effectiveLoc = await EffectiveLocationResolver.ResolveAsync(db, zone.Field.FarmId, zone.Id, cancellationToken);
         AiWeatherResult weather;
         try { weather = await weatherProvider.GetAsync(zone.Field.FarmId, zone.Id, cancellationToken); }
         catch (Exception ex) when (ex is not OperationCanceledException) { weather = new(false, null, null, null, null, SafeProviderFailure(ex)); }
@@ -740,7 +754,7 @@ public sealed class AiAdvisoryService(
                         r.Value,
                         r.Unit,
                         r.CapturedAtUtc,
-                        r.CapturedAtUtc >= now.AddMinutes(-settings.TelemetryFreshnessMinutes)))
+                        TelemetryFreshnessValidator.IsFresh(r.CapturedAtUtc, now, settings.TelemetryFreshnessMinutes)))
                     .ToList(),
                 d.Actuators.Select(a => a.ActuatorType).OrderBy(x => x).ToList(),
                 d.BatteryLevel,
@@ -891,7 +905,9 @@ public sealed class AiAdvisoryService(
             SeasonCropName: seasonCropMismatch ? inProgressSeason!.Crop?.Name : null,
             SeasonCropMismatch: seasonCropMismatch,
             ReferenceProfile: referenceProfile,
-            LastCompletedSeason: lastDone);
+            LastCompletedSeason: lastDone,
+            LocationLevel: effectiveLoc?.SourceLevel,
+            GeneralRegion: effectiveLoc?.GeneralRegion);
     }
 
     /// <summary>
@@ -1101,12 +1117,13 @@ public sealed class AiAdvisoryService(
             parts.Any(p => p.WantsOverallComment));
     }
 
-    private async Task<QuestionIntent> ClassifyIntentAsync(string question, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var classified = await intentClassifier.ClassifyAsync(question, cancellationToken) ?? QuestionIntent.Unknown;
-            return WithPeriodFallbacks(question, classified.Topics.Count == 0 ? WithHypotheticalFallback(question, classified) : classified);
+    private async Task<QuestionIntent> ClassifyIntentAsync(string question, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
+            var classified = await intentClassifier.ClassifyAsync(sanitizedQuestion, cancellationToken) ?? QuestionIntent.Unknown;
+            return WithPeriodFallbacks(sanitizedQuestion, classified.Topics.Count == 0 ? WithHypotheticalFallback(sanitizedQuestion, classified) : classified);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1575,7 +1592,7 @@ public sealed class AiAdvisoryService(
             };
             using var commentTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             commentTimeout.CancelAfter(OverallCommentTimeout);
-            var result = await provider.GenerateAsync(new AiProviderRequest(commentQuestion, commentContext, null), commentTimeout.Token);
+            var result = await provider.GenerateAsync(new AiProviderRequest(commentQuestion, commentContext, null, new QuestionIntent([QuestionTopics.SensorReadings], [])), commentTimeout.Token);
             var text = (result.Summary ?? string.Empty).Trim();
             if (result.Confidence < settings.MinimumConfidence || text.Length is 0 or > 300 || text.Contains('<') || text.Contains('\n'))
                 return null;
@@ -2047,6 +2064,6 @@ public sealed class AiAdvisoryService(
         x.Status, x.IsActionable, x.ValidUntilUtc, x.ProposedActuatorId,
         x.ProposedAction, x.ProposedDurationSeconds, x.CreatedAtUtc,
         ParseSources(x.SourcesJson, x.ConsultationRequest?.ContextSnapshotJson),
-        null); // Không rò rỉ prompt XML nội bộ và system instruction cho client
+        x.ConsultationRequest?.ContextSnapshotJson); // Gửi log dữ liệu ngữ cảnh đã làm sạch lên client để kiểm tra minh bạch
     private static AiDecisionView ToView(AiRecommendationDecision x) => new(x.Id, x.RecommendationId, x.DecisionType, x.Reason, x.CreatedAtUtc, x.ActuatorCommandId, x.FollowUpConsultationId);
 }

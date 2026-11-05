@@ -148,6 +148,7 @@ public static class DependencyInjection
         services.AddScoped<IPlatformAdminService, PlatformAdminService>();
         services.AddScoped<IQuotationService, QuotationService>();
         services.AddScoped<IGisService, GisService>();
+        services.AddScoped<IGeocodingService, NominatimGeocodingService>();
         services.AddScoped<IFarmWizardService, FarmWizardService>();
         services.AddScoped<IWeatherService, WeatherService>();
         services.AddScoped<IFarmerService, FarmerService>();

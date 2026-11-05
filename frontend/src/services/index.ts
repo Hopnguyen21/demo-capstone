@@ -2239,6 +2239,25 @@ export interface ResourceUsageReport { total: number; unit: string; countedComma
 export interface FarmOverviewReport { activeSeasonCount: number; onlineDeviceCount: number; alertsLast7Days: number; openAlertCount: number; openTaskCount: number; zoneCount: number }
 export interface TaskReport { total: number; approved: number; failed: number; overdue: number; completionRatePercent: number }
 
+export const gisProxyService = {
+  /** POST /api/v1/gis/reverse-geocode (dùng POST để bảo vệ tọa độ không bị ghi vào reverse proxy access logs) */
+  reverseGeocode: async (latitude: number, longitude: number) => {
+    const res = await apiClient.post('/api/v1/gis/reverse-geocode', {
+      latitude,
+      longitude
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/gis/search-location (dùng POST để địa chỉ tìm kiếm không bị ghi vào reverse proxy access logs) */
+  searchLocation: async (query: string) => {
+    const res = await apiClient.post('/api/v1/gis/search-location', {
+      query
+    });
+    return res.data ?? [];
+  },
+};
+
 export const reportService = {
   /** GET /api/v1/farms/{farmId}/report/overview */
   getOverview: async (farmId: string): Promise<FarmOverviewReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/overview`)).data,
@@ -2248,4 +2267,38 @@ export const reportService = {
   getElectricity: async (farmId: string, range: ReportRange): Promise<ResourceUsageReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/electricity`, { params: range })).data,
   /** GET /api/v1/farms/{farmId}/report/tasks */
   getTasks: async (farmId: string, range: ReportRange): Promise<TaskReport> => (await apiClient.get(`/api/v1/farms/${farmId}/report/tasks`, { params: range })).data,
+
+  /** GET /api/v1/farms/{farmId}/report/excel - Xuất báo cáo tổng hợp tài nguyên & vận hành ra file .xlsx */
+  exportExcel: async (farmId: string, range?: ReportRange): Promise<{ blob: Blob; fileName: string }> => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/report/excel`, {
+      params: range,
+      responseType: 'blob'
+    });
+    const disposition = res.headers['content-disposition'] || res.headers['Content-Disposition'];
+    let fileName = `SmartFarm_Report_Resource_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    if (disposition) {
+      const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utfMatch && utfMatch[1]) {
+        fileName = decodeURIComponent(utfMatch[1]);
+      } else {
+        const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+        if (asciiMatch && asciiMatch[1]) {
+          fileName = asciiMatch[1];
+        }
+      }
+    }
+    return { blob: res.data, fileName };
+  },
+
+  /** Helper tải trực tiếp file blob xuống trình duyệt */
+  downloadBlob: (blob: Blob, fileName: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };

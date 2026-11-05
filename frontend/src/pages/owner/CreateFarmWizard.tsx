@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, calculatePolygonAreaM2, toGeoJsonPolygon } from '../../components/maps/GISLocationPicker';
-import { farmService, cropService } from '../../services';
+import { farmService, cropService, gisProxyService } from '../../services';
 import { HoneycombEstimator } from '../../components/estimation/HoneycombEstimator';
 
 export const CreateFarmWizard: React.FC = () => {
@@ -190,19 +190,28 @@ export const CreateFarmWizard: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=vn&limit=1`);
-      const data = await res.json();
-      if (data && data.length > 0) {
-        const lat = parseFloat(data[0].lat);
-        const lon = parseFloat(data[0].lon);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          const newCoords: [number, number] = [parseFloat(lat.toFixed(6)), parseFloat(lon.toFixed(6))];
-          setFarmData(prev => ({ ...prev, center: newCoords }));
-          setSearchNotice(`Đã định vị địa chỉ thành công!`);
-          setTimeout(() => setSearchNotice(null), 3500);
+      // 0. Thử Backend Proxy trước (bảo vệ quyền riêng tư & cache server-side)
+      let found = false;
+      try {
+        const proxyResults = await gisProxyService.searchLocation(q);
+        if (proxyResults && proxyResults.length > 0) {
+          const first = proxyResults[0];
+          const lat = typeof first.latitude === 'number' ? first.latitude : parseFloat(first.latitude);
+          const lon = typeof first.longitude === 'number' ? first.longitude : parseFloat(first.longitude);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            const newCoords: [number, number] = [parseFloat(lat.toFixed(6)), parseFloat(lon.toFixed(6))];
+            setFarmData(prev => ({ ...prev, center: newCoords }));
+            setSearchNotice(`Đã định vị địa chỉ thành công qua proxy!`);
+            setTimeout(() => setSearchNotice(null), 3500);
+            found = true;
+          }
         }
-      } else {
-        setSearchNotice('Không tìm thấy vị trí. Thử các vùng nông nghiệp gợi ý bên dưới.');
+      } catch (proxyErr) {
+        console.warn('Backend search location proxy failed, fallback to direct search:', proxyErr);
+      }
+
+      if (!found) {
+        setSearchNotice('Không tìm thấy vị trí qua hệ thống. Bạn có thể chọn các vùng gợi ý hoặc bấm chọn trực tiếp trên bản đồ.');
       }
     } catch (err) {
       console.warn('Geocoding search failed', err);

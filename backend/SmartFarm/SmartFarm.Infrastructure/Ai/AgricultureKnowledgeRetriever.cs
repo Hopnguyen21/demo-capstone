@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using SmartFarm.Infrastructure.Ai.Location;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 using SmartFarm.Application.Common.Interfaces;
@@ -135,7 +136,7 @@ public sealed class AgricultureKnowledgeRetriever(
                 .Select(c => new { c.Id, c.Topic })
                 .ToDictionaryAsync(c => c.Id, c => c.Topic, ct);
 
-        return candidates
+        var ranked = candidates
             .Select(c => (Passage: c, Score: c.SimilarityScore
                 + (topics.TryGetValue(c.ChunkId, out var t) && questionTopics.Contains(t) ? TopicBoost : 0f)
                 + (cropSpecific.Contains(c.DocumentId) ? CropSpecificBoost : 0f)))
@@ -143,9 +144,18 @@ public sealed class AgricultureKnowledgeRetriever(
             .GroupBy(x => x.Passage.DocumentId)
             .SelectMany(g => g.Take(MaxPassagesPerDocument))
             .OrderByDescending(x => x.Score)
-            .Take(topK)
-            .Select(x => x.Passage)
             .ToList();
+
+        var result = new List<KnowledgePassageView>();
+        foreach (var item in ranked)
+        {
+            if (!result.Any(existing => existing.DocumentId == item.Passage.DocumentId && AiPromptBuilder.ArePassagesDuplicates(existing, item.Passage)))
+            {
+                result.Add(item.Passage);
+                if (result.Count >= topK) break;
+            }
+        }
+        return result;
     }
 
     private async Task<IReadOnlyList<KnowledgePassageView>> RetrieveCandidatesAsync(
@@ -157,35 +167,36 @@ public sealed class AgricultureKnowledgeRetriever(
         IReadOnlyList<string>? expansionTerms,
         CancellationToken cancellationToken)
     {
-        // ── 1. Tạo embedding cho câu hỏi ─────────────────────────────────────
-        // Vector của cùng một câu hỏi không đổi: dùng lại để khỏi gọi API embedding mỗi lần.
-        var embeddingKey = "ai_query_embedding_" + question.Trim().ToLowerInvariant();
-        float[]? questionEmbedding = null;
-        // API embedding vừa lỗi (thường là hết quota): tạm dùng tìm theo từ khóa, không gọi lại ở mọi câu hỏi.
-        if ((cache is null || !cache.TryGetValue(embeddingKey, out questionEmbedding)) && cache?.TryGetValue(EmbeddingUnavailableKey, out _) != true)
-        {
-            questionEmbedding = await embeddingProvider.EmbedQueryAsync(question, cancellationToken);
-            if (questionEmbedding is not null) cache?.Set(embeddingKey, questionEmbedding, TimeSpan.FromHours(6));
-            else cache?.Set(EmbeddingUnavailableKey, true, TimeSpan.FromMinutes(5));
-        }
-
-        if (questionEmbedding is not null)
-        {
-            try
-            {
-                var vectorResults = await SearchByVectorAsync(question, questionEmbedding, allowedDocumentIds, category, tenantId, topK, cancellationToken);
-                if (vectorResults.Count > 0) return vectorResults;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex, "[RAG] Vector query failed (e.g. pgvector not installed in PostgreSQL). Falling back gracefully to keyword search.");
-            }
-        }
-
-        // ── 2. Fallback: keyword scoring khi chưa có embedding hoặc embedding chưa trả kết quả ──
-        // Vẫn trong cùng phạm vi tài liệu (đúng cây + chung): không nới sang tài liệu của cây khác.
-        logger.LogDebug("[RAG] Vector search empty or unavailable, using keyword fallback for question: {Q}", question[..Math.Min(100, question.Length)]);
-        return await SearchByKeywordsAsync(question, allowedDocumentIds, category, tenantId, topK, expansionTerms, cancellationToken);
+        // ── 1. Chuẩn hóa & giảm thiểu dữ liệu câu hỏi trước khi tạo embedding ──
+        var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
+        var embeddingKey = "ai_query_embedding_" + sanitizedQuestion.Trim().ToLowerInvariant();
+        float[]? questionEmbedding = null;
+        // API embedding vừa lỗi (thường là hết quota): tạm dùng tìm theo từ khóa, không gọi lại ở mọi câu hỏi.
+        if ((cache is null || !cache.TryGetValue(embeddingKey, out questionEmbedding)) && cache?.TryGetValue(EmbeddingUnavailableKey, out _) != true)
+        {
+            questionEmbedding = await embeddingProvider.EmbedQueryAsync(sanitizedQuestion, cancellationToken);
+            if (questionEmbedding is not null) cache?.Set(embeddingKey, questionEmbedding, TimeSpan.FromHours(6));
+            else cache?.Set(EmbeddingUnavailableKey, true, TimeSpan.FromMinutes(5));
+        }
+
+        if (questionEmbedding is not null)
+        {
+            try
+            {
+                var vectorResults = await SearchByVectorAsync(sanitizedQuestion, questionEmbedding, allowedDocumentIds, category, tenantId, topK, cancellationToken);
+                if (vectorResults.Count > 0) return vectorResults;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "[RAG] Vector query failed (e.g. pgvector not installed in PostgreSQL). Falling back gracefully to keyword search.");
+            }
+        }
+
+        // ── 2. Fallback: keyword scoring khi chưa có embedding hoặc embedding chưa trả kết quả ──
+        // Vẫn trong cùng phạm vi tài liệu (đúng cây + chung): không nới sang tài liệu của cây khác.
+        // Ghi log metadata an toàn, tuyệt đối không ghi nội dung câu hỏi ra log.
+        logger.LogDebug("[RAG] Vector search empty or unavailable, using keyword fallback (QueryLength: {Length}).", sanitizedQuestion.Length);
+        return await SearchByKeywordsAsync(sanitizedQuestion, allowedDocumentIds, category, tenantId, topK, expansionTerms, cancellationToken);
     }
 
     // ────────────────────────────────────────────────────────────────────────

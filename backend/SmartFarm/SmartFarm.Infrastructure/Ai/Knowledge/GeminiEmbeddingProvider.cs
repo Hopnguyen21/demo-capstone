@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using SmartFarm.Infrastructure.Ai.Location;
 using Microsoft.Extensions.Options;
 
 namespace SmartFarm.Infrastructure.Ai.Knowledge;
@@ -55,7 +56,7 @@ public sealed class GeminiEmbeddingProvider
         GenerateEmbeddingAsync(text, ct);
 
     public Task<float[]> GenerateQueryEmbeddingAsync(string text, CancellationToken ct = default) =>
-        EmbedStrictAsync(text, "RETRIEVAL_QUERY", ct, maxRateWaitSeconds: 0);
+        EmbedStrictAsync(AiPrivacySanitizer.SanitizeUserQuestion(text), "RETRIEVAL_QUERY", ct, maxRateWaitSeconds: 0);
 
     public async Task<float[]?> EmbedDocumentAsync(string text, CancellationToken ct = default)
     {
@@ -69,7 +70,7 @@ public sealed class GeminiEmbeddingProvider
 
     public async Task<float[]?> EmbedQueryAsync(string text, CancellationToken ct = default)
     {
-        try { return await EmbedStrictAsync(text, "RETRIEVAL_QUERY", ct, maxRateWaitSeconds: 0); }
+        try { return await EmbedStrictAsync(AiPrivacySanitizer.SanitizeUserQuestion(text), "RETRIEVAL_QUERY", ct, maxRateWaitSeconds: 0); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "[Embedding] Failed to embed query with model '{Model}'. Falling back to keyword search.", settings.Model);
@@ -185,7 +186,7 @@ public sealed class GeminiEmbeddingProvider
                 if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
-                    throw new HttpRequestException($"Gemini embedding API returned 400 Bad Request: {errorBody}", null, System.Net.HttpStatusCode.BadRequest);
+                    throw new HttpRequestException("Gemini embedding API returned 400 Bad Request.", null, System.Net.HttpStatusCode.BadRequest);
                 }
 
                 if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
@@ -196,7 +197,7 @@ public sealed class GeminiEmbeddingProvider
                     {
                         quotaBlockedUntilUtc = DateTime.UtcNow + QuotaCooldown;
                         logger.LogWarning("[Embedding] Daily quota exceeded; embedding paused for {Minutes} minutes.", QuotaCooldown.TotalMinutes);
-                        throw new HttpRequestException($"Gemini embedding daily quota exceeded (429): {quotaBody}", null, response.StatusCode);
+                        throw new HttpRequestException("Gemini embedding daily quota exceeded (429).", null, response.StatusCode);
                     }
 
                     // Giới hạn theo phút: chờ đúng thời gian Google yêu cầu rồi thử lại (nạp tài liệu); câu hỏi người dùng không chờ, và việc gọi
@@ -217,7 +218,7 @@ public sealed class GeminiEmbeddingProvider
                 if (!isRetryable || attempt >= maxRetries - 1)
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
-                    throw new HttpRequestException($"Gemini embedding request failed with status {(int)response.StatusCode}: {errorBody}", null, response.StatusCode);
+                    throw new HttpRequestException($"Gemini embedding request failed with status {(int)response.StatusCode}.", null, response.StatusCode);
                 }
 
                 var delay = TimeSpan.FromSeconds(settings.RetryBaseDelaySeconds * Math.Pow(2, attempt));

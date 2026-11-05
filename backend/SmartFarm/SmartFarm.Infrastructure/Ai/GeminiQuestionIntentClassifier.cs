@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using SmartFarm.Application.Features.Ai;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Ai.Knowledge;
+using SmartFarm.Infrastructure.Ai.Location;
 
 namespace SmartFarm.Infrastructure.Ai;
 
@@ -69,12 +70,13 @@ public sealed class GeminiQuestionIntentClassifier(
 
     public async Task<QuestionIntent?> ClassifyAsync(string question, CancellationToken cancellationToken)
     {
-        var settings = options.Value;
-        var cacheKey = "ai_intent_" + string.Join(' ', question.ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        if (cache is not null && cache.TryGetValue(cacheKey, out QuestionIntent? cached) && cached is not null) return cached;
-        try
-        {
-            var user = $"<question>{AiPromptBuilder.Escape(question)}</question>";
+        var settings = options.Value;
+        var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
+        var cacheKey = "ai_intent_" + string.Join(' ', sanitizedQuestion.ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (cache is not null && cache.TryGetValue(cacheKey, out QuestionIntent? cached) && cached is not null) return cached;
+        try
+        {
+            var user = $"<question>{AiPromptBuilder.Escape(sanitizedQuestion)}</question>";
             var (json, _) = await GeminiJsonClient.SendAsync(httpClient, settings, SystemInstruction, user, 1024, Timeout, cancellationToken);
             var intent = Parse(json);
             // Chỉ nhớ kết quả hợp lệ; lỗi hoặc kết quả rỗng lần sau được phân loại lại.

@@ -7,7 +7,8 @@ import {
   XCircle, 
   Sparkles, 
   Sprout, 
-  ShieldAlert, 
+  ShieldAlert,
+  Lock, 
   Cpu, 
   Clock, 
   RefreshCw, 
@@ -1231,8 +1232,8 @@ export const AIAssistantPage: React.FC = () => {
                     <RagSourcesAccordion sources={msg.sources} />
                   )}
 
-                  {/* Log dữ liệu BE gửi cho AI (chỉ hiện cho Admin hoặc chế độ debug) */}
-                  {!isUser && isPrivileged && (msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson) && (
+                  {/* Log dữ liệu BE gửi cho AI */}
+                  {!isUser && (msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson) && (
                     <AiPayloadLogViewer snapshotJson={msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson} />
                   )}
 
@@ -1312,6 +1313,10 @@ export const AIAssistantPage: React.FC = () => {
               <Send size={16} />
             </Button>
           </form>
+          <div className="px-3 py-1 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[10.5px] text-slate-500">
+            <Lock size={11} className="text-emerald-600 shrink-0" />
+            <span>Bảo mật dữ liệu: AI chỉ xử lý thông số kỹ thuật Zone & thời tiết vùng. Vui lòng không gửi số điện thoại, thông tin liên hệ hoặc hợp đồng.</span>
+          </div>
         </div>
 
         {/* Right Col: Active Recommendation Cards Inbox */}
