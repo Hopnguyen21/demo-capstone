@@ -64,16 +64,19 @@ export const AIAssistantPage: React.FC = () => {
 
           {/* Messages Stream */}
           <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs bg-slate-50/50">
-            {messages.map(msg => (
-              <div key={msg.messageId} className={`flex gap-3 ${msg.senderType === 'USER' ? 'justify-end' : 'justify-start'}`}>
-                {msg.senderType === 'AI' && (
-                  <div className="w-8 h-8 rounded-full bg-[#062326] text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <Bot size={18} />
-                  </div>
-                )}
+            {messages.map(msg => {
+              const isUser = msg.senderType === 'USER' || msg.sender === 'USER';
+              const textContent = msg.messageText || msg.text || '';
+              return (
+                <div key={msg.messageId} className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  {!isUser && (
+                    <div className="w-8 h-8 rounded-full bg-[#062326] text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <Bot size={18} />
+                    </div>
+                  )}
 
-                <div className={`max-w-[85%] p-4 rounded-xl space-y-2 ${msg.senderType === 'USER' ? 'bg-[#062326] text-white rounded-br-none shadow-xs' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs'}`}>
-                  <p className="leading-relaxed whitespace-pre-wrap">{msg.messageText}</p>
+                  <div className={`max-w-[85%] p-4 rounded-xl space-y-2 ${isUser ? 'bg-[#062326] text-white rounded-br-none shadow-xs' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-xs'}`}>
+                    <p className="leading-relaxed whitespace-pre-wrap">{textContent}</p>
 
                   {/* Embedded Recommendation Card inside AI message */}
                   {msg.recommendation && (
@@ -104,7 +107,8 @@ export const AIAssistantPage: React.FC = () => {
                   <span className={`text-[9px] block text-right opacity-70 ${msg.senderType === 'USER' ? 'text-slate-200' : 'text-slate-400'}`}>{msg.createdAt}</span>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
 
           {/* Input Bar */}
