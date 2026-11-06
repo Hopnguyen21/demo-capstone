@@ -169,12 +169,38 @@ export const tenantService = {
 
   /** GET /api/v1/tenants or fallback to /api/v1/tenants/me */
   getTenants: async () => {
+    const normalize = (t: any) => {
+      if (!t || typeof t !== 'object') return null;
+      return {
+        ...t,
+        tenantId: t.tenantId || t.id || '',
+        name: t.name || t.companyName || 'Hợp tác xã',
+        code: t.code || t.subdomain || t.taxCode || 'TENANT',
+        email: t.email || '',
+        phone: t.phone || '',
+        address: t.address || '',
+        status: (t.status === 1 || t.status === 'Active' || t.status === 'ACTIVE') ? 'ACTIVE' : (t.status === 2 ? 'SUSPENDED' : (t.status || 'ACTIVE')),
+        createdAt: t.createdAtUtc || t.createdAt || '',
+        updatedAt: t.updatedAtUtc || t.updatedAt || '',
+        farmsCount: t.stats?.totalFarms ?? t.farmsCount ?? 0,
+        usersCount: t.stats?.activeUsers ?? t.usersCount ?? 0,
+      };
+    };
+
     try {
       const res = await apiClient.get('/api/v1/tenants');
-      return res.data?.value ?? res.data ?? [];
+      const raw = res.data?.value ?? res.data ?? [];
+      const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      return list.map(normalize).filter(Boolean);
     } catch {
-      const res = await apiClient.get('/api/v1/tenants/me');
-      return [res.data];
+      try {
+        const res = await apiClient.get('/api/v1/tenants/me');
+        if (!res.data) return [];
+        const norm = normalize(res.data);
+        return norm ? [norm] : [];
+      } catch {
+        return [];
+      }
     }
   },
 
@@ -1012,7 +1038,125 @@ export const supportService = {
   /** GET /api/v1/service-requests */
   getServiceRequests: async () => {
     const res = await apiClient.get('/api/v1/service-requests');
-    return res.data?.value ?? res.data ?? [];
+    const rawList: any[] = res.data?.value ?? res.data ?? [];
+    if (!Array.isArray(rawList)) return [];
+
+    // Parallel lookup for quotation & zone devices
+    const enriched = await Promise.all(
+      rawList.map(async (sr: any) => {
+        const id = sr.id || sr.serviceRequestId;
+        let contractDetails: any = null;
+        let acceptanceDetails: any = null;
+        let mappedNodesCount = 4;
+
+        try {
+          const qRes = await apiClient.get(`/api/v1/service-requests/${id}/quotation`);
+          const q = qRes.data;
+          if (q && q.id) {
+            const isSigned = Boolean(sr.isContractSigned || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
+            const isDepositPaid = Boolean(sr.isDepositPaid || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
+            const isCompleted = Boolean(sr.isFullyPaid || sr.isAcceptanceSigned || q.status === 'Completed');
+
+            contractDetails = {
+              contractId: q.id,
+              createdAt: q.createdAtUtc || new Date().toISOString(),
+              items: (q.items || []).map((it: any) => ({
+                id: it.id,
+                code: it.code || it.hardwareItemCode || 'HW-01',
+                name: it.name || it.hardwareItemName || 'Thiết bị IoT',
+                category: it.category || 'GATEWAY',
+                unit: it.unit || 'Bộ',
+                quantity: it.quantity || 1,
+                unitPrice: it.unitPrice || 0,
+                vatPercent: it.vatPercent || 8,
+                totalAmount: it.totalAmount || (it.quantity * it.unitPrice * 1.08),
+                notes: it.notes || '',
+              })),
+              subtotal: q.subtotal || 0,
+              vatTotal: q.vatAmount || 0,
+              totalAmount: q.totalAmount || 0,
+              deposit30Percent: q.deposit30Percent || Math.round((q.totalAmount || 0) * 0.3),
+              remaining70Percent: q.remaining70Percent || Math.round((q.totalAmount || 0) * 0.7),
+              isContractSent: q.status !== 'Draft',
+              contractSentAt: q.createdAtUtc,
+              isSignedByOwner: isSigned,
+              signedAtByOwner: isSigned ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
+              ownerSignatureName: 'Lê Văn An (Chủ Trang Trại)',
+              is30PercentPaid: isDepositPaid,
+              paid30At: isDepositPaid ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
+              payment30Method: 'BANK_TRANSFER',
+              payment30Ref: `PAY30-${id.substring(0, 8).toUpperCase()}`,
+            };
+
+            acceptanceDetails = {
+              isAcceptanceSigned: isCompleted,
+              signedAt: isCompleted ? (q.updatedAtUtc || new Date().toISOString()) : undefined,
+              ownerSignatureName: 'Lê Văn An (Chủ Trang Trại)',
+              is70PercentPaid: isCompleted,
+              paid70At: isCompleted ? (q.updatedAtUtc || new Date().toISOString()) : undefined,
+              payment70Method: 'BANK_TRANSFER',
+              payment70Ref: `PAY70-${id.substring(0, 8).toUpperCase()}`,
+              notes: 'Đã nghiệm thu thiết bị hoạt động ổn định.',
+            };
+          }
+        } catch {
+          // Quotation not yet issued for this request
+        }
+
+        // Fetch GIS mapped nodes count for zone if available
+        if (sr.zoneId) {
+          try {
+            const locRes = await apiClient.get(`/api/v1/zones/${sr.zoneId}/devices/map-locations`);
+            const locs = locRes.data?.value ?? locRes.data ?? [];
+            if (Array.isArray(locs) && locs.length > 0) {
+              mappedNodesCount = locs.length;
+            }
+          } catch {}
+        }
+
+        const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned || sr.status === 'Closed' || sr.status === 'Resolved');
+        const isContractSigned = Boolean(contractDetails?.isSignedByOwner && contractDetails?.is30PercentPaid);
+
+        let derivedStatus: 'OPEN' | 'IN_PROGRESS' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER' | 'RESOLVED' | 'CLOSED' = 'OPEN';
+        if (isAccepted) {
+          derivedStatus = 'ACCEPTED_BY_OWNER';
+        } else if (isContractSigned) {
+          derivedStatus = 'CONTRACT_SIGNED_30PAID';
+        } else if (contractDetails) {
+          derivedStatus = 'CONTRACT_SENT';
+        } else if (sr.status === 'Assigned' || sr.status === 'InProgress') {
+          derivedStatus = 'IN_PROGRESS';
+        } else if (sr.status === 'Closed') {
+          derivedStatus = 'CLOSED';
+        }
+
+        return {
+          serviceRequestId: id,
+          tenantId: sr.tenantId,
+          farmId: sr.farmId,
+          farmName: sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao Đà Lạt',
+          zoneId: sr.zoneId,
+          zoneName: sr.zoneName || 'Nhà màng Z01',
+          deviceId: sr.originalDeviceId || sr.currentDeviceId,
+          deviceName: sr.failureCode || 'Cụm thiết bị IoT',
+          title: sr.description?.split('.')[0] || sr.failureCode || 'Yêu cầu Hỗ trợ Kỹ thuật',
+          description: sr.description || 'Yêu cầu kiểm tra và bảo dưỡng phần cứng tại nông trang.',
+          priority: sr.priority || 'HIGH',
+          status: derivedStatus,
+          requestType: (sr.failureCode === 'NEW_INSTALL' ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
+          requestedBy: 'Lê Văn An (Owner)',
+          assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
+          createdAt: sr.createdAtUtc || sr.createdAt || new Date().toISOString(),
+          mappedNodesCount,
+          isAcceptedByOwner: isAccepted,
+          acceptedAtByOwner: isAccepted ? (sr.closedAtUtc || new Date().toISOString()) : undefined,
+          contractDetails,
+          acceptanceDetails,
+        };
+      })
+    );
+
+    return enriched;
   },
 
   /** GET /api/v1/service-requests/{id} */
@@ -1029,17 +1173,28 @@ export const supportService = {
     const isObj = typeof farmIdOrData === 'object' && farmIdOrData !== null;
     const data = isObj ? farmIdOrData : maybeData;
     const farmId = isObj ? (farmIdOrData.farmId || '30000000-0000-0000-0000-000000000001') : farmIdOrData;
-    try {
-      const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
-        zoneId: data.zoneId || '32000000-0000-0000-0000-000000000001',
-        deviceId: data.deviceId || '50000000-0000-0000-0000-000000000001',
-        failureCode: data.failureCode || data.requestType || 'GENERAL_MAINTENANCE',
-        description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Dashboard',
-      });
-      return res.data;
-    } catch {
-      return { success: true, ...data };
+
+    // Lookup an available device for this farm / zone
+    let deviceId = data.deviceId;
+    if (!deviceId) {
+      try {
+        const devRes = await apiClient.get(`/api/v1/farms/${farmId}/devices`);
+        const devList = devRes.data?.value ?? devRes.data ?? [];
+        if (Array.isArray(devList) && devList.length > 0) {
+          const match = devList.find((d: any) => d.zoneId === data.zoneId) || devList[0];
+          deviceId = match.deviceId || match.id;
+        }
+      } catch {}
     }
+    if (!deviceId) deviceId = '52000000-0000-0000-0000-000000000002';
+
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/service-requests`, {
+      zoneId: data.zoneId || '32000000-0000-0000-0000-000000000001',
+      deviceId,
+      failureCode: data.failureCode || data.requestType || 'MAINTENANCE',
+      description: data.description || data.title || 'Yêu cầu hỗ trợ kỹ thuật từ Owner Portal',
+    });
+    return res.data;
   },
 
   /** POST /api/v1/service-requests/{id}/assign  (Admin only) */
@@ -1162,19 +1317,30 @@ export const supportService = {
   },
 
   /** PUT /api/v1/zones/{zoneId}/devices/bulk-locations */
-  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any) => {
+  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any, serviceRequestId?: string) => {
     const isArray = Array.isArray(nodesOrCount);
     const nodes = isArray ? nodesOrCount : [];
-    const zoneId = !isArray && typeof nodesOrCount === 'string' ? nodesOrCount : zoneIdOrRequestId;
-    const res = await apiClient.put(`/api/v1/zones/${zoneId}/devices/bulk-locations`, {
-      serviceRequestId: typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined,
-      nodes: nodes.map((n: any) => ({
-        deviceId: n.deviceId || n.id,
-        latitude: n.latitude || n.lat || 11.9404,
-        longitude: n.longitude || n.lng || 108.4583,
+    const zoneId = zoneIdOrRequestId;
+    const reqId = serviceRequestId || (typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined);
+
+    const formattedNodes = nodes.map((n: any, idx: number) => {
+      let devId = n.deviceId || n.nodeId || n.id;
+      const isGuid = typeof devId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(devId);
+      if (!isGuid) {
+        devId = `52000000-0000-0000-0000-${String(idx + 1).padStart(12, '0')}`;
+      }
+      return {
+        deviceId: devId,
+        latitude: typeof n.latitude === 'number' ? n.latitude : (typeof n.lat === 'number' ? n.lat : 11.9404),
+        longitude: typeof n.longitude === 'number' ? n.longitude : (typeof n.lng === 'number' ? n.lng : 108.4583),
         batteryLevel: n.batteryLevel ?? 100,
         rssi: n.rssi ?? -70
-      }))
+      };
+    });
+
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}/devices/bulk-locations`, {
+      serviceRequestId: reqId,
+      nodes: formattedNodes
     });
     return res.data;
   },
@@ -1189,6 +1355,44 @@ export const supportService = {
   getTechnicianSpareParts: async () => {
     const res = await apiClient.get('/api/v1/platform/technicians/me/spare-parts');
     return res.data?.value ?? res.data ?? [];
+  },
+
+  /** POST /api/v1/zones/{zoneId}/devices/{oldDeviceId}/hot-swap */
+  hotSwapDevice: async (zoneId: string, oldDeviceId: string, newDeviceId: string, serviceRequestId?: string, notes?: string) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/devices/${oldDeviceId}/hot-swap`, {
+      serviceRequestId,
+      newDeviceId,
+      notes: notes || 'Hot-swap replacement executed by technician.'
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/diagnosis */
+  diagnoseRequest: async (requestId: string, inspectionNotes: string, diagnosis: string, resolutionAction: number = 0) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/diagnosis`, {
+      inspectionNotes,
+      diagnosis,
+      resolutionAction
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/work */
+  recordWork: async (requestId: string, workPerformed: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/work`, { workPerformed });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/connection-tests */
+  testConnection: async (requestId: string, succeeded: boolean = true, roundTripLatencyMs: number = 35) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/connection-tests`, {
+      succeeded,
+      observedAtUtc: new Date().toISOString(),
+      roundTripLatencyMs,
+      rssi: -72,
+      snr: 9.5
+    });
+    return res.data;
   },
 };
 

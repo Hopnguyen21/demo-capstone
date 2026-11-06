@@ -471,6 +471,8 @@ export interface ContractDetails {
   paid30At?: string;
   payment30Method?: 'CASH' | 'BANK_TRANSFER'; // Tiền mặt hoặc Chuyển khoản
   payment30Ref?: string;
+  notes?: string;
+  contractTerms?: string;
 }
 
 export interface AcceptanceDetails {
@@ -510,21 +512,31 @@ export interface ServiceRequest {
   createdAt: string;
   resolution?: string;
 
+  // Trạng thái ký HĐ & thanh toán
+  isContractSigned?: boolean;
+  isDepositPaid?: boolean;
+  isFullyPaid?: boolean;
+
   // Thông tin Hợp đồng & Nghiệm thu
   contractDetails?: ContractDetails;
   acceptanceDetails?: AcceptanceDetails;
 }
 
 export interface AuditLog {
-  auditLogId: string;
-  userId: string;
-  userName: string;
-  userRole: UserRole;
+  auditLogId?: string;
+  id?: string;
+  userId?: string;
+  actorUserId?: string;
+  userName?: string;
+  actorName?: string;
+  userRole?: UserRole | string;
+  actorRole?: string;
   action: string;
-  entityName: string;
-  entityId: string;
-  ipAddress: string;
-  createdAt: string;
+  entityName?: string;
+  entityId?: string;
+  ipAddress?: string;
+  createdAt?: string;
+  createdAtUtc?: string;
   details?: string;
 }
 
