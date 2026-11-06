@@ -18,7 +18,6 @@ import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 import { OpenMeteoWeatherWidget } from '../../components/weather/OpenMeteoWeatherWidget';
 import { ZoneContractDetailsModal } from '../../components/contracts/ZoneContractDetailsModal';
 import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
-import { ZoneContractCreateModal } from '../../components/contracts/ZoneContractCreateModal';
 import { DeviceDepreciationModal } from '../../components/contracts/DeviceDepreciationModal';
 
 export const FarmsPage: React.FC = () => {
@@ -36,10 +35,8 @@ export const FarmsPage: React.FC = () => {
   const [zoneDepreciations, setZoneDepreciations] = useState<DeviceDepreciation[]>([]);
   const [selectedContractForDetail, setSelectedContractForDetail] = useState<ZoneContract | null>(null);
   const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
-  const [parentContractForNew, setParentContractForNew] = useState<ZoneContract | null>(null);
   const [showContractDetailModal, setShowContractDetailModal] = useState<boolean>(false);
   const [showRenewContractModal, setShowRenewContractModal] = useState<boolean>(false);
-  const [showCreateContractModal, setShowCreateContractModal] = useState<boolean>(false);
   const [showCreateDepreciationModal, setShowCreateDepreciationModal] = useState<boolean>(false);
   const [zoneActiveTab, setZoneActiveTab] = useState<'OVERVIEW' | 'CONTRACTS' | 'DEPRECIATION' | 'CF3'>('OVERVIEW');
 
@@ -119,6 +116,39 @@ export const FarmsPage: React.FC = () => {
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
 
+  // Auto drill-down to Zone when navigated from Service Request / Contract / GIS Map
+  useEffect(() => {
+    const state = location.state as any;
+    if (!state || (!state.zoneId && !state.farmId)) return;
+
+    if (zones.length > 0 && fields.length > 0 && farms.length > 0) {
+      if (state.zoneId) {
+        const targetZone = zones.find(z => z.zoneId === state.zoneId || (z as any).id === state.zoneId);
+        if (targetZone) {
+          const targetField = fields.find(f => f.fieldId === targetZone.fieldId || (f as any).id === targetZone.fieldId);
+          const targetFarm = farms.find(farm => farm.farmId === targetField?.farmId || (farm as any).id === targetField?.farmId);
+          if (targetFarm) setSelectedFarm(targetFarm);
+          if (targetField) setSelectedField(targetField);
+          setSelectedZone(targetZone);
+
+          if (state.openContract) {
+            setZoneActiveTab('CONTRACTS');
+          } else if (state.openDepreciation) {
+            setZoneActiveTab('DEPRECIATION');
+          } else {
+            setZoneActiveTab('OVERVIEW');
+          }
+          return;
+        }
+      }
+
+      if (state.farmId) {
+        const targetFarm = farms.find(f => f.farmId === state.farmId || (f as any).id === state.farmId);
+        if (targetFarm) setSelectedFarm(targetFarm);
+      }
+    }
+  }, [location.state, zones, fields, farms]);
+
   // Helper to find the active contract for a Zone
   const getZoneActiveContract = (zoneId: string): ZoneContract | undefined => {
     const list = allContracts.filter(c => c.zoneId === zoneId);
@@ -185,25 +215,105 @@ export const FarmsPage: React.FC = () => {
       zoneContractService.getDepreciationsByZone(zid).then(deps => {
         if (Array.isArray(deps)) setZoneDepreciations(deps);
       }).catch(() => {});
+
+      // Fetch mapped nodes for this zone so Owner can view them on the GIS map and Live Telemetry card
+      supportService.getMappedNodes(zid).then(mapped => {
+        if (Array.isArray(mapped) && mapped.length > 0) {
+          const formatted = mapped.map((m: any, idx: number) => ({
+            ...m,
+            nodeId: m.deviceId || m.id || `node-${idx}`,
+            id: m.deviceId || m.id || `node-${idx}`,
+            name: m.deviceName || m.installationNotes || m.hardwareAddress || `Node ${idx + 1}`,
+            nodeCode: m.hardwareAddress || `NODE-0${idx + 1}`,
+            hardwareAddress: m.hardwareAddress,
+            zoneId: zid,
+            latitude: typeof m.latitude === 'number' ? m.latitude : (typeof m.gpsLatitude === 'number' ? m.gpsLatitude : 11.9404),
+            longitude: typeof m.longitude === 'number' ? m.longitude : (typeof m.gpsLongitude === 'number' ? m.gpsLongitude : 108.4583),
+            batteryLevel: m.batteryLevel ?? 95,
+            status: m.status?.toUpperCase() || 'ONLINE',
+            rssi: m.rssi ?? -70,
+            deviceType: m.deviceType || (m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT') ? 'ActuatorNode' : 'SensorNode'),
+            actuatorsCount: (m.deviceType === 'ActuatorNode' || m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT')) ? 1 : 0,
+            sensorsCount: (m.deviceType === 'SensorNode' || m.hardwareAddress?.includes('SN') || m.hardwareAddress?.includes('AIR') || m.hardwareAddress?.includes('SOIL')) ? 2 : 0,
+            telemetry: [
+              { label: 'Nhiệt độ KK', value: '25.8 °C' },
+              { label: 'Độ ẩm KK', value: '74.2 %' },
+              { label: 'Độ ẩm đất', value: '68.5 %' },
+            ]
+          }));
+
+          setNodes(prev => {
+            const others = prev.filter(n => n.zoneId !== zid);
+            return [...others, ...formatted];
+          });
+        }
+      }).catch(err => {
+        console.warn('Could not load mapped nodes for zone:', err);
+      });
     }
   }, [selectedZone]);
 
-  // Deep-linking from OwnerDashboard or other pages
+  // Deep-linking from OwnerDashboard, SupportPage or other pages
+  const handledDeepLinkRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (location.state && farms.length > 0 && fields.length > 0 && zones.length > 0) {
-      const { farmId, zoneId, openContract } = location.state as any;
-      if (farmId) {
-        const targetFarm = farms.find(f => f.farmId === farmId);
-        if (targetFarm) setSelectedFarm(targetFarm);
+    if (location.state && (farms.length > 0 || fields.length > 0 || zones.length > 0)) {
+      const { farmId, farmName, zoneId, zoneName, openContract } = location.state as any;
+      const stateKey = `${farmId || ''}_${farmName || ''}_${zoneId || ''}_${zoneName || ''}_${openContract || ''}`;
+      
+      if (handledDeepLinkRef.current === stateKey) return;
+
+      // 1. Find Target Zone (match by zoneId or name)
+      let targetZone: Zone | undefined = undefined;
+      if (zones.length > 0) {
+        targetZone = zones.find(z =>
+          (zoneId && (z.zoneId === zoneId || (z as any).id === zoneId)) ||
+          (zoneName && (
+            z.name?.toLowerCase().trim() === zoneName.toLowerCase().trim() ||
+            z.name?.toLowerCase().includes(zoneName.toLowerCase().trim()) ||
+            zoneName.toLowerCase().includes(z.name?.toLowerCase().trim())
+          ))
+        );
       }
-      if (zoneId) {
-        const targetZone = zones.find(z => z.zoneId === zoneId);
-        if (targetZone) {
-          const targetField = fields.find(fd => fd.fieldId === targetZone.fieldId);
-          if (targetField) setSelectedField(targetField);
-          setSelectedZone(targetZone);
-          if (openContract) setZoneActiveTab('CONTRACTS');
+
+      // 2. Find Target Field (from targetZone.fieldId)
+      let targetField: Field | undefined = undefined;
+      if (targetZone && fields.length > 0) {
+        targetField = fields.find(fd => fd.fieldId === targetZone?.fieldId || (fd as any).id === targetZone?.fieldId);
+      }
+
+      // 3. Find Target Farm (from farmId, farmName, targetField.farmId, or targetZone.farmId)
+      let targetFarm: Farm | undefined = undefined;
+      if (farms.length > 0) {
+        targetFarm = farms.find(f =>
+          (farmId && (f.farmId === farmId || (f as any).id === farmId)) ||
+          (farmName && (
+            f.name?.toLowerCase().trim() === farmName.toLowerCase().trim() ||
+            f.name?.toLowerCase().includes(farmName.toLowerCase().trim()) ||
+            farmName.toLowerCase().includes(f.name?.toLowerCase().trim())
+          )) ||
+          (targetField && (f.farmId === targetField.farmId || (f as any).id === targetField.farmId)) ||
+          (targetZone?.farmId && (f.farmId === targetZone.farmId || (f as any).id === targetZone.farmId))
+        );
+      }
+
+      // If we found targetZone:
+      if (targetZone) {
+        if (targetFarm) setSelectedFarm(targetFarm);
+        if (targetField) setSelectedField(targetField);
+        setSelectedZone(targetZone);
+        if (openContract) {
+          setZoneActiveTab('CONTRACTS');
         }
+        handledDeepLinkRef.current = stateKey;
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 150);
+      } else if (targetFarm && zones.length > 0) {
+        // If specific zone not found but farm is found
+        setSelectedFarm(targetFarm);
+        if (targetField) setSelectedField(targetField);
+        handledDeepLinkRef.current = stateKey;
       }
     }
   }, [location.state, farms, fields, zones]);
@@ -213,13 +323,6 @@ export const FarmsPage: React.FC = () => {
     setShowRenewContractModal(false);
     setSelectedContractForRenew(null);
     alert(`🎉 Đã gia hạn hợp đồng #${updatedContract.contractNumber} thành công! Thời hạn mới: ${updatedContract.endDate}`);
-  };
-
-  const handleCreateContractSuccess = (newContract: ZoneContract) => {
-    setAllContracts(prev => [newContract, ...prev.filter(c => c.id !== newContract.id)]);
-    setShowCreateContractModal(false);
-    setParentContractForNew(null);
-    alert(`🎉 Đã lập và kích hoạt hợp đồng #${newContract.contractNumber} cho Zone thành công!`);
   };
 
   const handleCreateDepreciationSuccess = (newDep: DeviceDepreciation) => {
@@ -478,6 +581,23 @@ export const FarmsPage: React.FC = () => {
     }
     return [11.9408, 108.4582] as [number, number];
   }, [currentZonePoints, currentFieldPolygon, selectedFarm]);
+
+  const zoneDeviceMarkers = React.useMemo(() => {
+    if (!selectedZone) return [];
+    const zid = selectedZone.zoneId || (selectedZone as any).id;
+    const zoneNodes = nodes.filter(n => n.zoneId === zid || !n.zoneId);
+    return zoneNodes
+      .filter(n => typeof n.latitude === 'number' && typeof n.longitude === 'number' && n.latitude > 0 && n.longitude > 0)
+      .map((n, idx) => ({
+        id: n.nodeId || n.deviceId || n.id || `node-${idx}`,
+        name: n.name || n.nodeCode || n.hardwareAddress || `Node ${idx + 1}`,
+        code: n.nodeCode || n.hardwareAddress || `N-0${idx + 1}`,
+        type: (n.actuatorsCount && n.actuatorsCount > 0) || (n.deviceType?.includes('Actuator')) || (n.hardwareAddress?.includes('VALVE')) ? 'ACTUATOR' : 'SENSOR',
+        status: n.status || 'ONLINE',
+        batteryLevel: n.batteryLevel ?? 100,
+        coords: [n.latitude, n.longitude] as [number, number],
+      }));
+  }, [selectedZone, nodes]);
 
   // Memoized zone contract and depreciation helpers
   const currentZoneContracts = React.useMemo(() => {
@@ -769,6 +889,13 @@ export const FarmsPage: React.FC = () => {
   };
 
   const openInstallModalForZone = (zone: Zone) => {
+    const zid = zone.zoneId || (zone as any).id;
+    const existingContract = getZoneActiveContract(zid);
+    if (existingContract) {
+      setSelectedContractForRenew(existingContract);
+      setShowRenewContractModal(true);
+      return;
+    }
     const parentField = fields.find(f => f.fieldId === zone.fieldId) || selectedField;
     if (parentField) setInstallTargetField(parentField);
     setInstallTargetZone(zone);
@@ -784,8 +911,20 @@ export const FarmsPage: React.FC = () => {
       alert('Vui lòng nhập tiêu đề yêu cầu lắp đặt!');
       return;
     }
-    const farmId = selectedFarm?.farmId || (installTargetField ? installTargetField.farmId : '30000000-0000-0000-0000-000000000001');
-    const zoneId = installTargetZone?.zoneId || (zones.find(z => z.farmId === farmId)?.zoneId || '32000000-0000-0000-0000-000000000001');
+    const farmId = selectedFarm?.farmId || (selectedFarm as any)?.id || (installTargetZone as any)?.farmId || (installTargetField ? (installTargetField.farmId || (installTargetField as any).id) : '30000000-0000-0000-0000-000000000001');
+    const zoneId = installTargetZone?.zoneId || (installTargetZone as any)?.id || selectedZone?.zoneId || (selectedZone as any)?.id || (zones.find(z => (z.farmId === farmId || (z as any).id === farmId))?.zoneId || (zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001'));
+
+
+    if (installTargetZone) {
+      const existingContract = getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id);
+      if (existingContract) {
+        alert(`Zone "${installTargetZone.name}" đã có hợp đồng #${existingContract.contractNumber}. Hệ thống chuyển hướng sang Tái kí hợp đồng.`);
+        setShowInstallModal(false);
+        setSelectedContractForRenew(existingContract);
+        setShowRenewContractModal(true);
+        return;
+      }
+    }
 
     setIsSubmittingInstall(true);
     try {
@@ -1194,12 +1333,20 @@ export const FarmsPage: React.FC = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedZone(zone);
-                              setShowCreateContractModal(true);
+                              navigate('/owner/support', {
+                                state: {
+                                  farmId: selectedFarm?.farmId,
+                                  farmName: selectedFarm?.name,
+                                  zoneId: zone.zoneId || (zone as any).id,
+                                  zoneName: zone.name,
+                                  createRequest: true,
+                                },
+                              });
                             }}
                             className="text-emerald-700 font-bold hover:underline flex items-center gap-0.5"
+                            title="Chuyển đến Cổng Dịch vụ để tạo yêu cầu khảo sát và ký hợp đồng thiết bị IoT"
                           >
-                            + Lập hợp đồng
+                            + Yêu cầu ký HĐ
                           </button>
                         </div>
                       )}
@@ -1209,18 +1356,40 @@ export const FarmsPage: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openInstallModalForZone(zone);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
-                      title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
-                    >
-                      <Wrench size={13} className="text-emerald-700" />
-                      <span>Yêu cầu thiết bị</span>
-                    </button>
+                    {(() => {
+                      const zoneContract = getZoneActiveContract(zone.zoneId || (zone as any).id);
+                      if (zoneContract) {
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedContractForRenew(zoneContract);
+                              setShowRenewContractModal(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-all shadow-2xs cursor-pointer"
+                            title={`Zone đã có Hợp đồng #${zoneContract.contractNumber} - Nhấn để Tái kí hợp đồng`}
+                          >
+                            <RefreshCw size={13} className="text-indigo-700" />
+                            <span>Tái kí hợp đồng</span>
+                          </button>
+                        );
+                      }
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openInstallModalForZone(zone);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs cursor-pointer"
+                          title="Gửi yêu cầu lắp đặt thiết bị cho Zone này"
+                        >
+                          <Wrench size={13} className="text-emerald-700" />
+                          <span>Yêu cầu lắp đặt</span>
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1257,13 +1426,27 @@ export const FarmsPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  size="sm"
-                  onClick={() => openInstallModalForZone(selectedZone)}
-                  className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm border border-emerald-200"
-                >
-                  <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
-                </Button>
+                {activeZoneContract ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedContractForRenew(activeZoneContract);
+                      setShowRenewContractModal(true);
+                    }}
+                    className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold shadow-sm border border-indigo-200 cursor-pointer"
+                    title={`Zone đã có Hợp đồng #${activeZoneContract.contractNumber} - Nhấn để Tái kí hợp đồng`}
+                  >
+                    <RefreshCw size={14} className="mr-1.5 text-indigo-600" /> Tái kí hợp đồng
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => openInstallModalForZone(selectedZone)}
+                    className="bg-white text-[#119653] hover:bg-emerald-50 font-bold shadow-sm border border-emerald-200"
+                  >
+                    <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -1418,115 +1601,169 @@ export const FarmsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setParentContractForNew(null);
-                      setShowCreateContractModal(true);
+                      navigate('/owner/support', {
+                        state: {
+                          farmId: selectedFarm?.farmId,
+                          farmName: selectedFarm?.name,
+                          zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                          zoneName: selectedZone?.name,
+                          createRequest: true,
+                        },
+                      });
                     }}
                     className="text-emerald-700 font-bold hover:underline flex items-center gap-1"
+                    title="Chuyển đến Cổng Dịch vụ để tạo yêu cầu khảo sát và ký hợp đồng"
                   >
-                    <Plus size={13} /> Lập hợp đồng mới
+                    <Plus size={13} /> Tạo yêu cầu ký HĐ
                   </button>
                 </div>
               )}
 
               {/* GIS Map Location of Zone & Telemetry */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-                {/* GIS Map Location of Zone */}
-                <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                        <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
-                      </h4>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
-                        </span>
-                        <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
+                {/* Left Column: GIS Map Location of Zone & Node Telemetry Return Directly Below */}
+                <div className="space-y-5">
+                  {/* Card 1: GIS Map Location of Zone */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                          <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
+                        </h4>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
+                          </span>
+                          <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      {!isEditingZoneGIS ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
-                          onClick={() => {
-                            setIsEditingZoneGIS(true);
-                            setZoneEditPolygon(currentZonePoints);
-                            setZoneEditCenter(currentZoneCenter);
-                          }}
-                        >
-                          <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
-                        </Button>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
+                      <div>
+                        {!isEditingZoneGIS ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs"
-                            onClick={() => setIsEditingZoneGIS(false)}
-                            disabled={isSavingZoneGIS}
+                            className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+                            onClick={() => {
+                              setIsEditingZoneGIS(true);
+                              setZoneEditPolygon(currentZonePoints);
+                              setZoneEditCenter(currentZoneCenter);
+                            }}
                           >
-                            Hủy
+                            <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
                           </Button>
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                            onClick={handleSaveZoneGIS}
-                            disabled={isSavingZoneGIS}
-                          >
-                            <Save size={13} className="mr-1" />
-                            {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
-                          </Button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => setIsEditingZoneGIS(false)}
+                              disabled={isSavingZoneGIS}
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                              onClick={handleSaveZoneGIS}
+                              disabled={isSavingZoneGIS}
+                            >
+                              <Save size={13} className="mr-1" />
+                              {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <GISLocationPicker
+                      level="ZONE"
+                      center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
+                      onCenterChange={setZoneEditCenter}
+                      polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
+                      onPolygonChange={setZoneEditPolygon}
+                      parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
+                      deviceMarkers={zoneDeviceMarkers}
+                      height="280px"
+                      readOnly={!isEditingZoneGIS}
+                    />
+                  </div>
+
+                  {/* Card 2: Thông tin Node & Cảm biến Trả về của Zone này (Đặt ngay dưới Vị trí GIS Map của Zone này) */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                        <Cpu size={16} className="text-[#119653]" /> Thông tin Node Cảm biến & Vi khí hậu Trả về (Live Telemetry)
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                        {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length} Node kết nối
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
+                        <div className="p-4 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-xs space-y-2">
+                          <Radio size={24} className="mx-auto text-slate-400" />
+                          <div className="font-medium text-slate-700">Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.</div>
+                          <p className="text-[11px] text-slate-500">
+                            Bấm nút <strong>"Gửi yêu cầu lắp đặt thiết bị"</strong> ở trên để phòng Kỹ thuật khảo sát & gắn trạm Node cảm biến vi khí hậu vào Zone.
+                          </p>
                         </div>
+                      ) : (
+                        nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
+                          <div key={node.nodeId || node.deviceId || node.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                                  <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Trạm Cảm Biến IoT'}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono">
+                                  Mã: {node.nodeCode || node.hardwareAddress || 'NODE'} • Model: {node.model || node.deviceType || 'LoRa Sensor Node'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">
+                                  🔋 {node.batteryLevel ?? 92}%
+                                </span>
+                                <StatusBadge status={node.status || 'ONLINE'} />
+                              </div>
+                            </div>
+
+                            {/* Node Sensors / Telemetry Readings */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                              {(node.telemetry || node.sensors || [
+                                { label: 'Nhiệt độ', value: '27.4 °C' },
+                                { label: 'Độ ẩm KK', value: '72.0 %' },
+                                { label: 'Độ ẩm đất', value: '65.2 %' },
+                              ]).map((s: any, idx: number) => {
+                                const sLabel = typeof s === 'string' ? s : (s.label || s.sensorType || s.name || 'Sensor');
+                                const sVal = typeof s === 'string' ? 'Đang đọc' : (s.value || s.reading || (s.sensorType === 'AirTemperature' ? '27.4 °C' : s.sensorType === 'AirHumidity' ? '72.0 %' : 'Bình thường'));
+                                return (
+                                  <div key={idx} className="p-2 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
+                                    <span className="text-slate-600 text-[10px]">{sLabel}</span>
+                                    <strong className="text-slate-800 font-mono text-[11px]">{sVal}</strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
-
-                  <GISLocationPicker
-                    level="ZONE"
-                    center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
-                    onCenterChange={setZoneEditCenter}
-                    polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
-                    onPolygonChange={setZoneEditPolygon}
-                    parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
-                    height="280px"
-                    readOnly={!isEditingZoneGIS}
-                  />
                 </div>
 
-                {/* Right Column: Telemetry, Yield Tracking, and Employee Assignment */}
+                {/* Right Column: Crop Stage, Yield Tracking, and Employee Assignment */}
                 <div className="space-y-5">
-                  {/* Zone Telemetry & Connected Devices */}
-                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
+                  {/* Crop Info Card */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
                     <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                      <Cpu size={16} className="text-sky-700" /> Cảm biến LoRa & Cây trồng đang canh tác
+                      <Sprout size={16} className="text-[#119653]" /> Cây trồng & Giai đoạn Sinh trưởng
                     </h4>
 
                     <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
                       <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop || 'Chưa có dữ liệu'}</strong></div>
                       <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage || 'Chưa có dữ liệu'}</strong></div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
-                      {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
-                        <div className="p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-[11px]">
-                          Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.
-                        </div>
-                      ) : (
-                        nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
-                          <div key={node.nodeId || node.deviceId || node.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                            <div>
-                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                                <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Thiết bị IoT'}
-                              </div>
-                              <div className="text-[11px] text-slate-500">Mã: {node.nodeCode || node.hardwareAddress || node.deviceType || 'NODE'} • Pin: {node.batteryLevel ?? 92}%</div>
-                            </div>
-                            <StatusBadge status={node.status || 'ONLINE'} />
-                          </div>
-                        ))
-                      )}
                     </div>
                   </div>
 
@@ -1719,12 +1956,20 @@ export const FarmsPage: React.FC = () => {
                   <Button
                     size="sm"
                     onClick={() => {
-                      setParentContractForNew(null);
-                      setShowCreateContractModal(true);
+                      navigate('/owner/support', {
+                        state: {
+                          farmId: selectedFarm?.farmId,
+                          farmName: selectedFarm?.name,
+                          zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                          zoneName: selectedZone?.name,
+                          createRequest: true,
+                        },
+                      });
                     }}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xs cursor-pointer"
+                    title="Hợp đồng được tạo tập trung qua Cổng Dịch vụ & Hợp đồng (Owner Portal)"
                   >
-                    <Plus size={14} className="mr-1" /> Lập Hợp Đồng Mới
+                    <Plus size={14} className="mr-1" /> Tạo Yêu Cầu Ký HĐ Mới
                   </Button>
                 </div>
               </div>
@@ -1788,14 +2033,21 @@ export const FarmsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            setParentContractForNew(activeZoneContract);
-                            setShowCreateContractModal(true);
+                            navigate('/owner/support', {
+                              state: {
+                                farmId: selectedFarm?.farmId,
+                                farmName: selectedFarm?.name,
+                                zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                                zoneName: selectedZone?.name,
+                                createRequest: true,
+                              },
+                            });
                           }}
                           className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                          title="Tái ký hợp đồng mới khi có thay đổi thiết bị hoặc diện tích, hưởng chiết khấu khách hàng cũ"
+                          title="Chuyển đến Cổng Dịch vụ để tạo yêu cầu khảo sát, báo giá và ký hợp đồng mở rộng thiết bị"
                         >
                           <PlusCircle size={14} className="text-purple-600" />
-                          <span>Tái Ký Mở Rộng HĐ Mới</span>
+                          <span>Yêu Cầu Mở Rộng HĐ Mới</span>
                         </button>
 
                         <button
@@ -1966,18 +2218,25 @@ export const FarmsPage: React.FC = () => {
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm">Chưa có hợp đồng nào đang áp dụng cho Zone này</h4>
                       <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                        Tạo hợp đồng mới để quy định bên thuê phân khu, thời hạn hiệu lực, loại cây trồng và cấu hình thiết bị IoT gắn với Zone.
+                        Hợp đồng phân khu và thiết bị IoT được tạo tập trung duy nhất tại Cổng Dịch vụ & Hợp đồng (Owner Portal). Gửi yêu cầu để kỹ thuật viên khảo sát, gửi báo giá và tiến hành ký hợp đồng (cọc 30%).
                       </p>
                     </div>
                     <Button
                       size="sm"
                       onClick={() => {
-                        setParentContractForNew(null);
-                        setShowCreateContractModal(true);
+                        navigate('/owner/support', {
+                          state: {
+                            farmId: selectedFarm?.farmId,
+                            farmName: selectedFarm?.name,
+                            zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+                            zoneName: selectedZone?.name,
+                            createRequest: true,
+                          },
+                        });
                       }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs cursor-pointer"
                     >
-                      <Plus size={14} className="mr-1.5" /> Lập Hợp Đồng Đầu Tiên Cho Zone
+                      <Plus size={14} className="mr-1.5" /> Chuyển Đến Cổng Dịch Vụ Để Tạo Yêu Cầu Ký HĐ
                     </Button>
                   </div>
                 )}
@@ -2144,7 +2403,7 @@ export const FarmsPage: React.FC = () => {
                 <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
                   <div className="text-amber-700 font-medium text-[11px]">Tình Trạng Tuổi Thọ</div>
                   <div className="text-lg font-black text-amber-700 font-mono">
-                    {currentZoneDepreciations.filter(d => d.status === 'Active').length} / {currentZoneDepreciations.length}
+                    {currentZoneDepreciations.filter(d => (d.status === 'Active' || d.depreciationStatus === 'Active' || (d.remainingLifespanMonths ?? d.remainingMonths ?? 0) > 0)).length} / {currentZoneDepreciations.length}
                   </div>
                   <div className="text-[10px] text-slate-500">Thiết bị còn trong thời hạn sử dụng</div>
                 </div>
@@ -2268,6 +2527,7 @@ export const FarmsPage: React.FC = () => {
                 farmId={selectedFarm?.farmId}
                 fieldId={selectedField?.fieldId}
                 zoneId={selectedZone.zoneId}
+                nodes={nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id))}
                 title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
                 subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
               />
@@ -2628,12 +2888,42 @@ export const FarmsPage: React.FC = () => {
                 <option value="">-- Toàn bộ Lô đất (Khảo sát đo đạc thực địa / Đặt hàng mới) --</option>
                 {zones
                   .filter(z => z.fieldId === installTargetField.fieldId)
-                  .map(z => (
-                    <option key={z.zoneId} value={z.zoneId}>
-                      {z.name} ({z.areaM2} m² - {z.currentCrop || 'Zone'})
-                    </option>
-                  ))}
+                  .map(z => {
+                    const c = getZoneActiveContract(z.zoneId || (z as any).id);
+                    return (
+                      <option key={z.zoneId} value={z.zoneId}>
+                        {z.name} ({z.areaM2} m² - {z.currentCrop || 'Zone'}) {c ? `• [ĐÃ CÓ HỢP ĐỒNG #${c.contractNumber} - Cần Tái ký]` : ''}
+                      </option>
+                    );
+                  })}
               </select>
+            </div>
+          )}
+
+          {/* Warning banner when a zone with contract is selected */}
+          {installTargetZone && getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id) && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-900">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  Zone <strong>{installTargetZone.name}</strong> đã có hợp đồng <strong>#{getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id)?.contractNumber}</strong>. Không cần yêu cầu lắp đặt mới!
+                </span>
+              </div>
+              <Button
+                size="sm"
+                type="button"
+                onClick={() => {
+                  const c = getZoneActiveContract(installTargetZone.zoneId || (installTargetZone as any).id);
+                  setShowInstallModal(false);
+                  if (c) {
+                    setSelectedContractForRenew(c);
+                    setShowRenewContractModal(true);
+                  }
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold ml-2 shrink-0"
+              >
+                <RefreshCw size={12} className="mr-1" /> Tái kí hợp đồng
+              </Button>
             </div>
           )}
 
@@ -2835,9 +3125,17 @@ export const FarmsPage: React.FC = () => {
           setSelectedContractForRenew(contract);
           setShowRenewContractModal(true);
         }}
-        onOpenNewContractModal={(parentContract) => {
-          setParentContractForNew(parentContract);
-          setShowCreateContractModal(true);
+        onOpenNewContractModal={(_parentContract) => {
+          setShowContractDetailModal(false);
+          navigate('/owner/support', {
+            state: {
+              farmId: selectedFarm?.farmId,
+              farmName: selectedFarm?.name,
+              zoneId: selectedZone?.zoneId || (selectedZone as any)?.id,
+              zoneName: selectedZone?.name,
+              createRequest: true,
+            },
+          });
         }}
       />
 
@@ -2846,16 +3144,6 @@ export const FarmsPage: React.FC = () => {
         onClose={() => setShowRenewContractModal(false)}
         contract={selectedContractForRenew}
         onSuccess={handleRenewSuccess}
-      />
-
-      <ZoneContractCreateModal
-        isOpen={showCreateContractModal}
-        onClose={() => setShowCreateContractModal(false)}
-        farm={selectedFarm}
-        zone={selectedZone}
-        existingContracts={currentZoneContracts}
-        parentContract={parentContractForNew}
-        onSuccess={handleCreateContractSuccess}
       />
 
       <DeviceDepreciationModal

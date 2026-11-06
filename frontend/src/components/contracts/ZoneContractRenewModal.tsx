@@ -22,6 +22,17 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
 }) => {
   if (!contract) return null;
 
+  // Check if contract was created or signed within the last 2 months (60 days)
+  const isSecondPurchaseInTwoMonths = React.useMemo(() => {
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60);
+
+    const dateStr = contract.createdAtUtc || contract.signedAtUtc || contract.startDate;
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    return !isNaN(d.getTime()) && d >= twoMonthsAgo;
+  }, [contract]);
+
   // Preset: "6_MONTHS" | "1_YEAR" | "3_YEARS" | "CUSTOM"
   const [durationPreset, setDurationPreset] = useState<'6_MONTHS' | '1_YEAR' | '3_YEARS' | 'CUSTOM'>('1_YEAR');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -30,8 +41,8 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
   const [priceMode, setPriceMode] = useState<'KEEP' | 'NEW'>('KEEP');
   const [newMonthlyRent, setNewMonthlyRent] = useState<string>(String(contract.monthlyRentVnd || 12000000));
 
-  // Discount for old customer
-  const [discountPercent, setDiscountPercent] = useState<number>(10); // default 10% loyalty discount
+  // Discount for old customer - automatically 15% if 2nd purchase within 2 months!
+  const [discountPercent, setDiscountPercent] = useState<number>(isSecondPurchaseInTwoMonths ? 15 : 10);
   const [discountType, setDiscountType] = useState<'PERCENT' | 'AMOUNT'>('PERCENT');
   const [discountAmount, setDiscountAmount] = useState<string>('0');
 
@@ -91,7 +102,7 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
         newMonthlyRentVnd: priceMode === 'NEW' ? Number(newMonthlyRent) : undefined,
         discountPercent: discountType === 'PERCENT' ? discountPercent : undefined,
         discountAmount: discountType === 'AMOUNT' ? Number(discountAmount) : calculatedDiscount,
-        notes: notes || `Gia hạn ${durationPreset === '6_MONTHS' ? '6 tháng' : durationPreset === '1_YEAR' ? '1 năm' : durationPreset === '3_YEARS' ? '3 năm' : `${monthsAdded} tháng`} (đến ${computedNewEndDate}). Chiết khấu tri ân khách hàng cũ: ${calculatedDiscount.toLocaleString('vi-VN')}đ.`,
+        notes: notes || `Gia hạn ${durationPreset === '6_MONTHS' ? '6 tháng' : durationPreset === '1_YEAR' ? '1 năm' : durationPreset === '3_YEARS' ? '3 năm' : `${monthsAdded} tháng`} (đến ${computedNewEndDate}). ${isSecondPurchaseInTwoMonths ? 'Ưu đãi mua lần 2 trong 2 tháng (-15%): ' : 'Chiết khấu tri ân khách hàng cũ: '}${calculatedDiscount.toLocaleString('vi-VN')}đ.`,
       });
       alert(`🎉 Gia hạn Hợp đồng #${contract.contractNumber} thành công! Thời hạn mới đến ngày ${computedNewEndDate}.`);
       onSuccess(updated);
@@ -126,6 +137,24 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
             <span>Hạn hợp đồng hiện tại: <strong className="font-mono">{contract.endDate}</strong></span>
           </div>
         </div>
+
+        {/* Banner for 2nd purchase within 2 months */}
+        {isSecondPurchaseInTwoMonths && (
+          <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400 rounded-xl space-y-1 text-amber-950 shadow-xs animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-amber-950 text-xs">
+                <Sparkles size={16} className="text-amber-600 animate-pulse" />
+                <span>🎉 ƯU ĐÃI ĐẶC QUYỀN: GIẢM GIÁ MUA / TÁI KÝ LẦN 2 TRONG 2 THÁNG</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-extrabold text-xs shadow-2xs">
+                -15% CHIẾT KHẤU
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-900 leading-snug">
+              Hợp đồng này được kích hoạt gần đây (trong vòng 60 ngày). Hệ thống tự động áp dụng chính sách <strong>giảm giá 15%</strong> cho lần mua / gia hạn thứ 2 này!
+            </p>
+          </div>
+        )}
 
         {step === 'FORM' ? (
           <div className="space-y-4">
