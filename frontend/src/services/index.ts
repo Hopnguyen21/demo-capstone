@@ -103,7 +103,9 @@ export const userService = {
   /** Update farmer zone access */
   updateFarmerZones: async (farmerId: string, zoneIds: string[]) => {
     try {
-      const res = await apiClient.post(`/api/v1/users/farmers/${farmerId}/access`, { zoneIds });
+      const res = await apiClient.put(`/api/v1/users/${farmerId}/zone-access`, {
+        access: zoneIds.map(zid => ({ zoneId: zid, canControl: true }))
+      });
       return res.data;
     } catch {
       return { success: true, farmerId, zoneIds };
@@ -122,10 +124,15 @@ export const tenantService = {
     return res.data;
   },
 
-  /** GET /api/v1/tenants/me  — alias for list compatibility */
+  /** GET /api/v1/tenants or fallback to /api/v1/tenants/me */
   getTenants: async () => {
-    const res = await apiClient.get('/api/v1/tenants/me');
-    return [res.data];
+    try {
+      const res = await apiClient.get('/api/v1/tenants');
+      return res.data?.value ?? res.data ?? [];
+    } catch {
+      const res = await apiClient.get('/api/v1/tenants/me');
+      return [res.data];
+    }
   },
 
   /** PUT /api/v1/tenants/me */
@@ -148,9 +155,37 @@ export const tenantService = {
 };
 
 export const adminService = {
-  getAuditLogs: async () => {
-    const res = await apiClient.get('/api/v1/audit-logs').catch(() => ({ data: [] }));
+  getAuditLogs: async (params?: any) => {
+    const res = await apiClient.get('/api/v1/audit-logs', { params }).catch(() => ({ data: [] }));
+    return res.data?.value?.items ?? res.data?.items ?? res.data?.value ?? res.data ?? [];
+  },
+  getSystemHealth: async () => {
+    const res = await apiClient.get('/api/v1/reports/system-health');
+    return res.data;
+  },
+  getSettings: async () => {
+    const res = await apiClient.get('/api/v1/platform/settings');
     return res.data?.value ?? res.data ?? [];
+  },
+  updateSettings: async (settings: { key: string; value: string }[]) => {
+    const res = await apiClient.put('/api/v1/platform/settings', settings);
+    return res.data?.value ?? res.data ?? [];
+  },
+  getHardwareItems: async () => {
+    const res = await apiClient.get('/api/v1/platform/hardware-items');
+    return res.data?.value ?? res.data ?? [];
+  },
+  createHardwareItem: async (data: any) => {
+    const res = await apiClient.post('/api/v1/platform/hardware-items', data);
+    return res.data;
+  },
+  updateHardwareItem: async (id: string, data: any) => {
+    const res = await apiClient.put(`/api/v1/platform/hardware-items/${id}`, data);
+    return res.data;
+  },
+  deleteHardwareItem: async (id: string) => {
+    const res = await apiClient.delete(`/api/v1/platform/hardware-items/${id}`);
+    return res.data;
   },
 };
 
@@ -209,6 +244,12 @@ export const farmService = {
   /** GET /api/v1/farms/{farmId}/structure */
   getFarmStructure: async (farmId: string) => {
     const res = await apiClient.get(`/api/v1/farms/${farmId}/structure`);
+    return res.data;
+  },
+
+  /** POST /api/v1/farms/wizard-setup */
+  wizardSetup: async (data: any) => {
+    const res = await apiClient.post('/api/v1/farms/wizard-setup', data);
     return res.data;
   },
 };
@@ -374,14 +415,19 @@ export const cropService = {
     return res.data?.value ?? res.data ?? [];
   },
 
-  /** Legacy helper — returns all growth profiles across all crops (for admin pages) */
-  getAllGrowthProfiles: async () => {
-    return [];
+  /** Returns all growth profiles across all crops (for admin pages) */
+  getAllGrowthProfiles: async (params?: { isSystemDefined?: boolean; search?: string }) => {
+    const res = await apiClient.get('/api/v1/growth-profiles', { params });
+    return res.data?.value ?? res.data ?? [];
   },
 
-  /** Stub for legacy compatibility */
-  syncCropScheduleToZone: async (_cropId: string, _zoneId: string) => {
-    return { success: true, createdSchedulesCount: 3, zoneName: 'Z01' };
+  /** Synchronizes recommended irrigation schedule from crop to zone actuator */
+  syncCropScheduleToZone: async (cropId: string, zoneId: string, actuatorId?: string) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/schedules/sync-from-crop`, {
+      cropId,
+      actuatorId: actuatorId || '53000000-0000-0000-0000-000000000001'
+    });
+    return res.data;
   },
 };
 
@@ -711,14 +757,29 @@ export const controlService = {
     }
   },
 
-  /** Legacy stub — emergency stop is not a single endpoint; iterate actuators individually */
-  emergencyStopAll: async (_zoneId?: string) => {
-    return { stoppedCount: 0 };
+  /** POST /api/v1/control/emergency-stop */
+  emergencyStopAll: async (zoneId?: string) => {
+    const res = await apiClient.post('/api/v1/control/emergency-stop', { zoneId });
+    return res.data;
   },
 
-  /** Legacy stubs for mock-only features */
   getActuators: async (zoneId?: string) => deviceService.getActuators(zoneId),
-  getEnvironmentalConfigs: async () => [],
+
+  /** GET /api/v1/control/environmental-configs */
+  getEnvironmentalConfigs: async (zoneId?: string) => {
+    try {
+      const res = await apiClient.get('/api/v1/control/environmental-configs', { params: { zoneId } });
+      return res.data?.value ?? res.data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  /** PUT /api/v1/control/environmental-configs */
+  updateEnvironmentalConfig: async (config: any) => {
+    const res = await apiClient.put('/api/v1/control/environmental-configs', config);
+    return res.data;
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -742,6 +803,11 @@ export const aiService = {
     } catch {
       return { role: 'ASSISTANT', text: 'Mô hình AI Nông học VietGAP khuyến nghị duy trì độ ẩm 70-75% và thông gió nhẹ.' };
     }
+  },
+
+  /** Alias: ask */
+  ask: async (zoneId: string, question: string) => {
+    return aiService.sendMessage(zoneId, question);
   },
 
   /** GET /api/v1/zones/{zoneId}/ai/history */
@@ -874,14 +940,120 @@ export const supportService = {
     return res.data?.value ?? res.data ?? [];
   },
 
-  /** Legacy stubs for mock-only features */
-  getAuditLogs: async () => [],
-  getWeather: async () => null,
+  /** Audit logs via adminService */
+  getAuditLogs: async (params?: any) => adminService.getAuditLogs(params),
 
-  // Legacy contract helpers — kept for compile compatibility; not backed by real API
-  sendContract: async (_requestId: string, _contract: unknown) => undefined,
-  signContractAndPay30: async (_requestId: string, _sig: string, _method: string) => undefined,
-  signAcceptanceAndPay70: async (_requestId: string, _sig: string, _method: string) => undefined,
-  acceptByOwner: async (_requestId: string) => undefined,
-  updateMappedNodes: async (_requestId: string, _count: number) => undefined,
+  /** GET /api/v1/farms/{farmId}/weather */
+  getWeather: async (farmId: string = '30000000-0000-0000-0000-000000000001') => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/weather`).catch(() => null);
+    return res?.data?.value ?? res?.data ?? null;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/quotation */
+  sendContract: async (requestId: string, contract: any) => {
+    const items = contract?.items || [];
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/quotation`, {
+      items: items.map((i: any) => ({
+        code: i.code || i.itemCode || 'HARDWARE-01',
+        name: i.name || i.itemName || 'Linh kiện thiết bị',
+        category: i.category || 'GATEWAY',
+        unit: i.unit || 'Cái',
+        quantity: i.quantity || 1,
+        unitPrice: i.unitPrice || i.price || 100000,
+        vatPercent: i.vatPercent || 8,
+        notes: i.notes || ''
+      })),
+      notes: contract?.notes || 'Báo giá & Hợp đồng triển khai thiết bị IoT',
+      contractTerms: contract?.terms || 'Bảo hành 24 tháng theo tiêu chuẩn SmartFarm.'
+    });
+    return res.data;
+  },
+
+  /** GET /api/v1/service-requests/{requestId}/quotation */
+  getQuotation: async (requestId: string) => {
+    const res = await apiClient.get(`/api/v1/service-requests/${requestId}/quotation`);
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/sign-contract-deposit */
+  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER') => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-contract-deposit`, {
+      signerFullName,
+      paymentMethod,
+      transactionReference: `PAY30-${Date.now()}`
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{requestId}/sign-acceptance-final */
+  signAcceptanceAndPay70: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER') => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-acceptance-final`, {
+      signerFullName,
+      paymentMethod,
+      transactionReference: `PAY70-${Date.now()}`
+    });
+    return res.data;
+  },
+
+  acceptByOwner: async (requestId: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-acceptance-final`, {
+      signerFullName: 'Chủ nông trại',
+      paymentMethod: 'CONFIRMED'
+    });
+    return res.data;
+  },
+
+  /** PUT /api/v1/zones/{zoneId}/devices/bulk-locations */
+  updateMappedNodes: async (zoneIdOrRequestId: string, nodesOrCount: any) => {
+    const isArray = Array.isArray(nodesOrCount);
+    const nodes = isArray ? nodesOrCount : [];
+    const zoneId = !isArray && typeof nodesOrCount === 'string' ? nodesOrCount : zoneIdOrRequestId;
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}/devices/bulk-locations`, {
+      serviceRequestId: typeof zoneIdOrRequestId === 'string' ? zoneIdOrRequestId : undefined,
+      nodes: nodes.map((n: any) => ({
+        deviceId: n.deviceId || n.id,
+        latitude: n.latitude || n.lat || 11.9404,
+        longitude: n.longitude || n.lng || 108.4583,
+        batteryLevel: n.batteryLevel ?? 100,
+        rssi: n.rssi ?? -70
+      }))
+    });
+    return res.data;
+  },
+
+  /** GET /api/v1/zones/{zoneId}/devices/map-locations */
+  getMappedNodes: async (zoneId: string) => {
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/devices/map-locations`);
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** GET /api/v1/platform/technicians/me/spare-parts */
+  getTechnicianSpareParts: async () => {
+    const res = await apiClient.get('/api/v1/platform/technicians/me/spare-parts');
+    return res.data?.value ?? res.data ?? [];
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 15. FARMER SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const farmerService = {
+  /** GET /api/v1/farmer/my-tasks */
+  getMyTasks: async () => {
+    const res = await apiClient.get('/api/v1/farmer/my-tasks');
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** PUT /api/v1/farmer/tasks/{taskId}/complete */
+  completeTask: async (taskId: string, resultNotes?: string) => {
+    const res = await apiClient.put(`/api/v1/farmer/tasks/${taskId}/complete`, { resultNotes });
+    return res.data;
+  },
+
+  /** GET /api/v1/farmer/my-zones */
+  getMyZones: async () => {
+    const res = await apiClient.get('/api/v1/farmer/my-zones');
+    return res.data?.value ?? res.data ?? [];
+  },
 };
