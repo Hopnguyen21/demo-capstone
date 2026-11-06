@@ -26,13 +26,13 @@ export const PlantingSeasonsPage: React.FC = () => {
   const loadData = async () => {
     try {
       const [allSeasons, allSchedules, allActuators] = await Promise.all([
-        seasonService.getSeasons(),
-        controlService.getSchedules(),
-        controlService.getActuators(),
+        seasonService.getSeasons().catch(() => []),
+        controlService.getSchedules().catch(() => []),
+        controlService.getActuators().catch(() => []),
       ]);
       if (Array.isArray(allSeasons)) setSeasons(allSeasons);
-      setSchedules(allSchedules);
-      setActuators(allActuators);
+      if (Array.isArray(allSchedules)) setSchedules(allSchedules);
+      if (Array.isArray(allActuators)) setActuators(allActuators);
     } catch (err) {
       console.error('Failed to load season data:', err);
     }
@@ -181,7 +181,7 @@ export const PlantingSeasonsPage: React.FC = () => {
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono flex justify-between pt-1">
                           <span>Giờ chạy: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
-                          <span>Thứ: <strong className="text-sky-700">{sch.daysOfWeek.join(', ')}</strong></span>
+                          <span>Thứ: <strong className="text-sky-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>
                         </div>
                       </div>
                     ))}

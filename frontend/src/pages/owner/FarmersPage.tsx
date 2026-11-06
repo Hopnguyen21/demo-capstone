@@ -114,11 +114,11 @@ export const FarmersPage: React.FC = () => {
                 <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
                   <ShieldCheck size={12} className="text-emerald-600" /> Phạm vi Phân quyền (Assigned Zones):
                 </span>
-                <span className="text-[10px] font-mono text-slate-500">{emp.assignedZones.length} Zone được gán</span>
+                <span className="text-[10px] font-mono text-slate-500">{(emp.assignedZones || []).length} Zone được gán</span>
               </div>
 
               <div className="flex flex-wrap gap-1.5 pt-0.5">
-                {emp.assignedZones.map(zId => {
+                {(emp.assignedZones || []).map(zId => {
                   const z = zones.find((x: any) => x.zoneId === zId);
                   return (
                     <span key={zId} className="px-2.5 py-1 rounded-lg bg-emerald-100 text-[#062326] border border-emerald-300 text-[11px] font-bold flex items-center gap-1">
