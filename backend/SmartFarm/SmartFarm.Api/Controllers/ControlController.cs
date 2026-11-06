@@ -45,6 +45,9 @@ public sealed class AutoRulesController(IControlService service) : ControllerBas
 [ApiController, Authorize(Roles = "FarmOwner,Farmer")]
 public sealed class ControlController(IControlService service) : ControllerBase
 {
+    [HttpGet("api/v1/zones/{zoneId:guid}/actuators")]
+    public async Task<ActionResult<IReadOnlyList<ZoneActuatorItemView>>> List(Guid zoneId, CancellationToken ct) => Ok(await service.ListActuatorsAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
+
     // API catalog #80. HTTP 202 means queued/published, never physical success.
     [HttpPost("api/v1/zones/{zoneId:guid}/actuators/{actuatorId:guid}/command")]
     public async Task<ActionResult<ActuatorCommandView>> Command(Guid zoneId, Guid actuatorId, ManualControlRequest request, CancellationToken ct) { var result = await service.CreateManualCommandAsync(User.GetUserId(), User.GetTenantId(), zoneId, actuatorId, request.ToCommand(), ct); return Accepted($"/api/v1/zones/{zoneId}/actuators/{actuatorId}/status", result); }

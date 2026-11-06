@@ -82,13 +82,16 @@ public sealed class IoTHardwareController(IIoTDeploymentService service) : Contr
     [HttpPut("api/v1/gateways/{gatewayId:guid}/firmware"), Authorize(Roles = "PlatformTechnician")]
     public async Task<ActionResult<FirmwareJobView>> Firmware(Guid gatewayId, FirmwareRequest body, CancellationToken ct) => Ok(await service.ScheduleFirmwareAsync(User.GetUserId(), gatewayId, new(body.TargetVersion, body.FirmwareUrl, body.ScheduledAtUtc), ct));
     // API catalog #58
-    [HttpGet("api/v1/farms/{farmId:guid}/devices"), Authorize(Roles = "FarmOwner,PlatformTechnician")]
+    [HttpGet("api/v1/farms/{farmId:guid}/devices"), Authorize(Roles = "FarmOwner,PlatformTechnician,Farmer,PlatformAdmin")]
+    [HttpGet("api/v1/farms/{farmId:guid}/nodes"), Authorize(Roles = "FarmOwner,PlatformTechnician,Farmer,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<DeviceView>>> FarmDevices(Guid farmId, CancellationToken ct) => Ok(await service.ListFarmDevicesAsync(User.GetUserId(), User.GetOptionalTenantId(), farmId, ct));
     // API catalog #59
-    [HttpGet("api/v1/zones/{zoneId:guid}/devices"), Authorize(Roles = "FarmOwner")]
-    public async Task<ActionResult<IReadOnlyList<DeviceView>>> ZoneDevices(Guid zoneId, CancellationToken ct) => Ok(await service.ListZoneDevicesAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
+    [HttpGet("api/v1/zones/{zoneId:guid}/devices"), Authorize(Roles = "FarmOwner,PlatformTechnician,Farmer,PlatformAdmin")]
+    [HttpGet("api/v1/zones/{zoneId:guid}/nodes"), Authorize(Roles = "FarmOwner,PlatformTechnician,Farmer,PlatformAdmin")]
+    public async Task<ActionResult<IReadOnlyList<DeviceView>>> ZoneDevices(Guid zoneId, CancellationToken ct) => Ok(await service.ListZoneDevicesAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, ct));
     // API catalog #60
-    [HttpGet("api/v1/devices/{deviceId:guid}"), Authorize(Roles = "FarmOwner,PlatformTechnician")]
+    [HttpGet("api/v1/devices/{deviceId:guid}"), Authorize(Roles = "FarmOwner,PlatformTechnician,Farmer,PlatformAdmin")]
+    [HttpGet("api/v1/nodes/{deviceId:guid}"), Authorize(Roles = "FarmOwner,PlatformTechnician,Farmer,PlatformAdmin")]
     public async Task<ActionResult<DeviceView>> Device(Guid deviceId, CancellationToken ct) => Ok(await service.GetDeviceAsync(User.GetUserId(), User.GetOptionalTenantId(), deviceId, ct));
     // API catalog #61
     [HttpPost("api/v1/devices/provision"), Authorize(Roles = "PlatformTechnician")]

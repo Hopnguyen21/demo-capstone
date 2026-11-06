@@ -21,6 +21,7 @@ public interface IRainForecastProvider
 
 public interface IControlService
 {
+    Task<IReadOnlyList<ZoneActuatorItemView>> ListActuatorsAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct);
     Task<IReadOnlyList<ScheduleView>> ListSchedulesAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct);
     Task<ScheduleView> CreateScheduleAsync(Guid ownerId, Guid tenantId, Guid zoneId, CreateScheduleCommand command, CancellationToken ct);
     Task<ScheduleView> UpdateScheduleAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid scheduleId, UpdateScheduleCommand command, CancellationToken ct);

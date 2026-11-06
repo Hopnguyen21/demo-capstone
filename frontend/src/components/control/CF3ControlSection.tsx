@@ -388,7 +388,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                           </div>
                           <div className="flex items-center justify-between pt-2 border-t border-slate-100 font-mono text-[11px] text-slate-500">
                             <span>Bắt đầu: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
-                            <span>Lặp lại: <strong className="text-sky-700">{sch.daysOfWeek.join(', ')}</strong></span>
+                            <span>Lặp lại: <strong className="text-sky-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>
                           </div>
                         </div>
                       );
