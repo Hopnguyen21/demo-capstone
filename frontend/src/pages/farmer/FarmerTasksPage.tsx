@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../app/providers/AuthContext';
-import { supportService } from '../../services';
+import { supportService, farmerService } from '../../services';
 import { CheckSquare, CheckCircle2 } from 'lucide-react';
 import { Button, StatusBadge } from '../../components/ui/BaseUI';
 
@@ -10,16 +10,19 @@ export const FarmerTasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<any[]>([]);
 
   useEffect(() => {
-    supportService.getTasks(farmId).then(res => {
-      if (res) setTasks(res);
-    }).catch(() => {});
+    farmerService.getMyTasks().then(res => {
+      if (Array.isArray(res) && res.length > 0) setTasks(res);
+      else supportService.getTasks(farmId).then(r => { if (r) setTasks(r); });
+    }).catch(() => {
+      supportService.getTasks(farmId).then(r => { if (r) setTasks(r); }).catch(() => {});
+    });
   }, [farmId]);
 
   const handleComplete = async (id: string) => {
     try {
-      await supportService.updateTask(farmId, id, { action: 'Complete' });
+      await farmerService.completeTask(id, 'Đã hoàn thành tác vụ thực địa');
     } catch {
-      // Fallback update in local state
+      await supportService.updateTask(farmId, id, { action: 'Complete' }).catch(() => {});
     }
     setTasks(tasks.map(t => ((t.taskId === id || t.id === id) ? { ...t, status: 'COMPLETED' } : t)));
   };

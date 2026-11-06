@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import { UserRole, Alert } from '../../types';
-import { alertService } from '../../services';
+import { alertService, supportService } from '../../services';
 import { mockWeather } from '../../mocks/mockData';
 import {
   Sprout, Search, Bell, Sun, CloudRain, UserCheck, LogOut,
@@ -20,7 +20,20 @@ export const Topbar: React.FC = () => {
     alertService.getAlerts().then(res => {
       if (res) setAlerts(res);
     }).catch(() => {});
-  }, []);
+
+    if (selectedFarmId) {
+      supportService.getWeather(selectedFarmId).then((wData: any) => {
+        if (wData && wData.temperature !== undefined) {
+          setWeather(prev => ({
+            ...prev,
+            temperature: Number(wData.temperature),
+            humidity: wData.humidity ? Number(wData.humidity) : prev.humidity,
+            condition: wData.weatherDescription ?? prev.condition,
+          }));
+        }
+      }).catch(() => {});
+    }
+  }, [selectedFarmId]);
 
   const handleRoleSwitch = (targetRole: UserRole) => {
     switchRole(targetRole);
@@ -43,7 +56,7 @@ export const Topbar: React.FC = () => {
     }
   };
 
-  const weather = mockWeather;
+  const [weather, setWeather] = useState(mockWeather);
   const activeAlerts = alerts.filter(a => a.status === 'OPEN');
 
   const roleLabels: Record<UserRole, { label: string; color: string }> = {

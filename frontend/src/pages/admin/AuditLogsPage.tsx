@@ -55,16 +55,22 @@ export const AuditLogsPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-xs text-slate-700 font-mono">
-            {filteredLogs.map(log => (
-              <tr key={log.auditLogId} className="hover:bg-slate-50/80 transition-colors">
-                <td className="p-4 text-slate-500 font-sans">{log.createdAt}</td>
-                <td className="p-4 font-sans font-semibold text-slate-900">{log.userName} ({log.userRole})</td>
-                <td className="p-4 text-[#062326] font-bold">{log.action}</td>
-                <td className="p-4 text-slate-700">{log.entityName} #{log.entityId}</td>
-                <td className="p-4 text-slate-500">{log.ipAddress}</td>
-                <td className="p-4 text-slate-700 font-sans">{log.details}</td>
-              </tr>
-            ))}
+            {filteredLogs.map(log => {
+              const id = (log as any).id || log.auditLogId;
+              const name = (log as any).actorName || log.userName || 'Hệ thống';
+              const role = (log as any).actorRole || log.userRole || 'System';
+              const time = (log as any).createdAtUtc || log.createdAt;
+              return (
+                <tr key={id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="p-4 text-slate-500 font-sans">{time}</td>
+                  <td className="p-4 font-sans font-semibold text-slate-900">{name} ({role})</td>
+                  <td className="p-4 text-[#062326] font-bold">{log.action}</td>
+                  <td className="p-4 text-slate-700">{log.entityName} #{log.entityId}</td>
+                  <td className="p-4 text-slate-500">{log.ipAddress || '-'}</td>
+                  <td className="p-4 text-slate-700 font-sans">{log.details || '-'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

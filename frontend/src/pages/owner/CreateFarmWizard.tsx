@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, calculatePolygonAreaM2 } from '../../components/maps/GISLocationPicker';
+import { farmService } from '../../services';
 
 export const CreateFarmWizard: React.FC = () => {
   const navigate = useNavigate();
@@ -874,7 +875,41 @@ export const CreateFarmWizard: React.FC = () => {
             </Button>
           ) : (
             <Button
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  await farmService.wizardSetup({
+                    farm: {
+                      name: farmData.name || 'Trang trại mới',
+                      locationText: farmData.address || 'Đà Lạt, Lâm Đồng',
+                      latitude: farmData.center[0],
+                      longitude: farmData.center[1],
+                      totalAreaM2: Number(farmData.areaM2) || 10000,
+                      timeZone: 'Asia/Ho_Chi_Minh',
+                    },
+                    field: {
+                      name: fieldData.name || 'Lô đất A1',
+                      areaM2: Number(fieldData.areaM2) || 5000,
+                      soilType: 'Loam',
+                    },
+                    zone: {
+                      name: zoneData.name || 'Nhà màng Z01',
+                      areaM2: Number(zoneData.areaM2) || 2000,
+                      zoneType: 'Greenhouse',
+                    },
+                    season: {
+                      name: cropData.seasonName || 'Vụ mùa mới',
+                      cropId: '40000000-0000-0000-0000-000000000001',
+                      startDate: cropData.startDate || '2026-10-01',
+                      expectedEndDate: cropData.expectedHarvestDate || '2027-01-15',
+                    },
+                    initialDeploymentRequest: {
+                      requiredParameters: ['SoilMoisture', 'Temperature', 'AirHumidity'],
+                      ownerNotes: `Cần ${cropData.gatewaysNeeded || 1} Gateway và ${cropData.nodesNeeded || 4} Sensor Node.`,
+                    },
+                  });
+                } catch (err) {
+                  console.error('Wizard setup error:', err);
+                }
                 alert('Khởi tạo Trang trại & gửi yêu cầu cấp phát IoT cho Kỹ thuật viên thành công!');
                 navigate('/owner/farms');
               }}

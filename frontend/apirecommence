@@ -1,115 +1,657 @@
-# Kế hoạch & Mapping API giữa Frontend và Backend
+# BÁO CÁO TOÀN DIỆN: CÁC TÍNH NĂNG FRONTEND THIẾU API BACKEND & ĐẶC TẢ CHI TIẾT
 
-Dựa trên cấu trúc Backend (thư mục `SmartFarm.Api/Controllers`) và Router của Frontend, dưới đây là bản đồ chi tiết các API sẽ được gọi ở từng trang trên Frontend.
-
-## 1. Authentication & Common
-- **Trang Login (`/login`)**
-  - `POST /api/auth/login` (Xác thực người dùng, lấy Token)
-  - `POST /api/auth/refresh-token` (Refresh phiên đăng nhập)
-
-## 2. Platform Admin (Quản trị viên Hệ thống)
-- **Dashboard (`/admin/dashboard`)**
-  - `GET /api/reports/system-health` (Thống kê tổng quan hệ thống)
-- **Quản lý Yêu cầu (`/admin/requests`)**
-  - `GET /api/service-requests` (Lấy danh sách tất cả yêu cầu)
-  - `POST /api/service-requests` (Admin tạo yêu cầu thay mặt Owner)
-  - `PUT /api/service-requests/{id}/assign` (Phân công Kỹ thuật viên)
-- **Quản lý Tenant & Nông trại (`/admin/tenants`)**
-  - `GET /api/tenants`
-  - `POST /api/tenants`
-- **Quản lý Người dùng (`/admin/users`)**
-  - `GET /api/users`
-  - `POST /api/users` (Tạo tài khoản Admin/Technician/Owner)
-- **Danh mục Cây trồng (`/admin/crops`, `/admin/growth-profiles`)**
-  - `GET /api/crop-growth/crops`
-  - `GET /api/crop-growth/profiles`
-- **Quản lý Thiết bị Chung (`/admin/devices`)**
-  - `GET /api/iot-deployment/gateways`
-  - `GET /api/iot-deployment/nodes`
-
-## 3. Technician (Kỹ thuật viên Hiện trường)
-- **Dashboard & Báo cáo (`/technician/dashboard`)**
-  - `GET /api/service-requests/assigned` (Lấy danh sách công việc được giao)
-  - `GET /api/iot-deployment/status` (Kiểm tra trạng thái thiết bị thực địa)
-- **Lắp đặt & Báo giá (`/technician/provisioning`)**
-  - `GET /api/service-requests/installations` (Yêu cầu lắp mới)
-  - `POST /api/service-requests/{id}/contract` (Gửi Bảng Dự toán & Hợp đồng - Luồng mới)
-  - `POST /api/iot-deployment/map-node` (Chấm Node lên bản đồ GIS)
-  - `POST /api/service-requests/{id}/complete` (Xác nhận hoàn thành lắp đặt)
-- **Bảo trì (`/technician/maintenance`)**
-  - `GET /api/service-requests/maintenance` (Danh sách bảo trì)
-  - `PUT /api/iot-deployment/nodes/{id}/swap` (Hot-swap phần cứng)
-- **Tồn kho vật tư (`/technician/inventory`)**
-  - `GET /api/inventory-tasks/items` (Lấy thiết bị mang theo)
-
-## 4. Farm Owner (Chủ Nông trại)
-- **Dashboard & Quản lý Nông trại (`/owner/dashboard`, `/owner/farms`, `/owner/farms/create`)**
-  - `GET /api/farms` 
-  - `POST /api/farms` (Tạo Farm mới)
-  - `GET /api/zones` (Lấy các khu vực / nhà màng)
-- **Mùa vụ & Cây trồng (`/owner/planting-seasons`)**
-  - `GET /api/crop-growth/seasons`
-  - `POST /api/crop-growth/seasons`
-- **Giám sát Vi khí hậu (`/owner/monitoring/realtime`, `/owner/monitoring/history`)**
-  - `GET /api/telemetry-alerts/latest` (Thông số realtime)
-  - `GET /api/telemetry-alerts/history` (Biểu đồ lịch sử)
-- **Quản lý Cảnh báo (`/owner/alerts`)**
-  - `GET /api/telemetry-alerts/alerts`
-  - `PUT /api/telemetry-alerts/alerts/{id}/acknowledge`
-- **Điều khiển & Tự động hóa (`/owner/control`, `/owner/schedules`)**
-  - `GET /api/control/actuators` (Lấy danh sách thiết bị điều khiển)
-  - `POST /api/control/execute` (Đóng/mở van, bơm thủ công)
-  - `GET /api/control/schedules` (Danh sách tự động hóa)
-  - `POST /api/control/schedules` (Tạo luật điều khiển theo cảm biến)
-- **Hỗ trợ & Hợp đồng (`/owner/support`)**
-  - `POST /api/service-requests` (Tạo ticket hỗ trợ mới)
-  - `GET /api/service-requests/my-requests`
-  - `POST /api/finance/deposit` (hoặc qua ServiceRequestsController để Ký HĐ & Cọc 30%)
-- **Công việc & Nông dân (`/owner/tasks`, `/owner/farmers`)**
-  - `GET /api/inventory-tasks/tasks`
-  - `POST /api/inventory-tasks/tasks` (Giao việc cho Farmer)
-  - `GET /api/users/farmers` (Danh sách nhân viên)
-- **AI Trợ lý (`/owner/ai`)**
-  - `POST /api/ai-advisory/chat` (Hỏi đáp chuyên gia AI)
-
-## 5. Farmer (Nông dân / Người chăm sóc)
-- **Dashboard (`/farmer/home`, `/farmer/zones`)**
-  - `GET /api/zones/my-zones` (Các khu vực được phân công)
-- **Công việc hằng ngày (`/farmer/tasks`)**
-  - `GET /api/inventory-tasks/my-tasks`
-  - `PUT /api/inventory-tasks/tasks/{id}/status` (Cập nhật tiến độ)
-- **Tưới tiêu & Giám sát (`/farmer/irrigation`, `/farmer/monitoring`, `/farmer/alerts`)**
-  - `GET /api/telemetry-alerts/latest`
-  - `POST /api/control/execute` (Mở van tưới thủ công)
-- **AI Tư vấn Nông nghiệp (`/farmer/ai`)**
-  - `POST /api/ai-advisory/chat` (Hỏi bệnh cây, kỹ thuật bón phân)
+> **Ngày rà soát & cập nhật**: 08/10/2026  
+> **Phạm vi kiểm tra**: Toàn bộ 4 vai trò hệ thống (`PlatformAdmin`, `PlatformTechnician`, `FarmOwner`, `Farmer`), đối chiếu toàn bộ mã nguồn Frontend (`frontend/src/pages/`, `frontend/src/services/`, `frontend/src/components/`) với Backend Web API (`SmartFarm.Api/Controllers`, `SmartFarm.Domain`, `SmartFarm.Infrastructure`).  
+> **Trạng thái thực thi**: Đã hoàn thiện toàn bộ Entity, Database Migration, Application Service, Web API Controller và Frontend Services tương ứng.
 
 ---
-*Ghi chú: Bản đồ này được xây dựng dựa trên danh sách các Controllers hiện tại trong dự án Backend (`SmartFarm.Api`) và luồng chạy thực tế của UI Frontend.*
 
-## 6. Các tính năng Frontend có nhưng Backend chưa có API phù hợp
-Dựa vào giao diện và logic trên Frontend, dưới đây là những tính năng hiện đang "vênh" (chưa có endpoint backend tương ứng hỗ trợ):
+## MỤC LỤC TỔNG HỢP
 
-1. **Quản lý Báo giá & Hợp đồng Lắp đặt (Quotation & Contracts)**
-   - *Frontend*: Có màn hình `ExperimentReportModal` để lập danh sách thiết bị, tính tiền, VAT, tạo hợp đồng và gửi cho khách hàng.
-   - *Backend*: `ServiceRequestsController` chỉ quản lý trạng thái ticket (Diagnosis, Work, Close, v.v.). **Thiếu API** lưu trữ chi tiết bảng báo giá, trạng thái hợp đồng, và danh sách các hạng mục thiết bị đi kèm yêu cầu.
+1. [Phân hệ 1: Platform Admin (Quản trị viên Nền tảng)](#1-platform-admin-quản-trị-viên-nền-tảng)
+   - 1.1. Nhật ký Kiểm toán Toàn sàn (Audit Logs)
+   - 1.2. Giám sát Sức khỏe & Hạ tầng Hệ thống (System Health & Infrastructure Monitoring)
+   - 1.3. Cấu hình Nền tảng SaaS Runtime (Platform Settings)
+   - 1.4. Quản lý Kho Thiết bị & Linh kiện Phần cứng Hệ thống (Hardware Devices Catalog & Inventory)
+   - 1.5. Quản lý Tập trung Tất cả Hồ sơ Sinh trưởng Cây trồng (Global Growth Profiles)
+   - 1.6. Quản trị Danh sách Tất cả Người thuê (Platform Tenants Directory)
+   - 1.7. Quản trị Danh sách Tài khoản Toàn sàn (Platform-wide Users Directory)
+   - 1.8. Cấu trúc Nông trại & Phân cấp Không gian Đa vai trò (Platform-wide Farms, Fields, Zones Hierarchy)
+   - 1.9. Phân công Kỹ thuật viên & Quản lý Yêu cầu Dịch vụ Hiện trường (Technician Service Assignment & Dispatch)
+2. [Phân hệ 2: Platform Technician (Kỹ thuật viên Hiện trường)](#2-platform-technician-kỹ-thuật-viên-hiện-trường)
+   - 2.1. Lập Báo giá & Hợp đồng Lắp đặt Thiết bị (Quotation & Contract Specification)
+   - 2.2. Chấm & Cập nhật Tọa độ Địa lý Node trên Bản đồ GIS (GIS Node Mapping & Placement)
+   - 2.3. Kho Linh kiện Phụ tùng Thay thế Hiện trường (Technician Spare Parts)
+   - 2.4. Báo cáo Thử nghiệm Hiện trường & Hot-Swap Thay thế Thiết bị (Field Experimentation & Hardware Hot-Swap)
+3. [Phân hệ 3: Farm Owner (Chủ Nông trại)](#3-farm-owner-chủ-nông-trại)
+   - 3.1. Ký Hợp đồng Điện tử & Thanh toán Đặt cọc 30% / Nghiệm thu 70% (Contract Signing & Milestone Payments)
+   - 3.2. Wizard Khởi tạo Nông trại Nhanh Toàn vẹn (Create Farm Wizard - Atomic Bulk Setup)
+   - 3.3. Dự báo Thời tiết & Vi khí hậu Nông trại (Farm Microclimate Weather Forecast)
+   - 3.4. Tự động Đồng bộ Lịch tưới Mẫu từ Cây trồng vào Thiết bị Zone (Sync Crop Calendar to Actuators)
+   - 3.5. Dừng Khẩn cấp Toàn bộ Rơ-le Thiết bị trong Zone / Tenant (Emergency Stop All Actuators)
+   - 3.6. Cấu hình Dải Vi khí hậu Mục tiêu cho Cây trồng trong Zone (Environmental Target Configurations)
+   - 3.7. Hiển thị Thời tiết Vi khí hậu Động theo Thời gian thực trên Thanh điều hướng (Dynamic Realtime Weather on Topbar)
+   - 3.8. Quản lý Kho Vật tư Phân bón, Thuốc BVTV & Cảnh báo Tồn kho Tối thiểu (Agricultural Materials Inventory & Low-Stock Alerts)
+4. [Phân hệ 4: Farmer (Nông dân / Người chăm sóc Thực địa)](#4-farmer-nông-dân--người-chăm-sóc-thực-địa)
+   - 4.1. Lấy Danh sách Tác vụ Riêng của Nông dân (Farmer My-Tasks Endpoint)
+   - 4.2. Danh sách Nhà màng được Phân quyền Phụ trách (Farmer Assigned Zones)
+   - 4.3. Quyền Hỏi đáp Trợ lý AI Nông học dành cho Nông dân (Farmer AI Advisory Access)
+   - 4.4. Phân quyền Truy cập & Điều khiển Nhà màng theo Nhân sự (Farmer Zone-Level Access Control & Permissions)
+5. [Bảng Tổng Hợp Database Cần Thêm Mới & Sửa Đổi](#5-bảng-tổng-hợp-database-cần-thêm-mới--sửa-đổi)
+6. [Báo Cáo Kết Quả Triển Khai & Tích Hợp Hệ Thống](#6-báo-cáo-kết-quả-triển-khai--tích-hợp-hệ-thống)
 
-2. **Thanh toán Dịch vụ & Đặt cọc (Payment & Deposit)**
-   - *Frontend*: Có luồng yêu cầu Khách hàng (Owner) thanh toán cọc 30% để Kỹ thuật viên được phép (unlock) vào Zone chấm Node. 
-   - *Backend*: `FinanceController` hiện tại chỉ dùng để ghi nhận Thu/Chi nội bộ của nông trại (Revenue/Expense), **thiếu API** tích hợp thanh toán (như VNPay, Momo) hoặc API ghi nhận thanh toán dịch vụ từ Platform đối với Owner.
+---
 
-3. **Cập nhật Tọa độ Thiết bị trên Bản đồ GIS (GIS Node Mapping)**
-   - *Frontend*: Trang `ZoneNodeMapperModal` cho phép kỹ thuật viên kéo thả Node trên bản đồ, hoặc lấy GPS từ điện thoại để lưu tọa độ (`latitude`, `longitude`).
-   - *Backend*: `IoTDeploymentController` có `/assign` và `/unassign` để gán thiết bị vào Zone, nhưng **thiếu API** (VD: `PUT /api/devices/{id}/location`) để cập nhật tọa độ địa lý cụ thể của Node.
+## 1. PLATFORM ADMIN (QUẢN TRỊ VIÊN NỀN TẢNG)
 
-4. **Nhật ký Hệ thống (Audit Logs)**
-   - *Frontend*: Admin có trang `/admin/audit-logs` để theo dõi lịch sử thao tác của các tài khoản trong hệ thống.
-   - *Backend*: Không có `AuditLogsController` để trả về dữ liệu này.
+### 1.1. Nhật ký Kiểm toán Toàn sàn (Audit Logs)
+- **Vị trí Frontend**: Trang `/admin/audit-logs` ([AuditLogsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/AuditLogsPage.tsx)).
+- **Công dụng**:
+  - Ghi nhận và truy vết toàn bộ hoạt động quan trọng trong hệ thống: ai vừa tạo/sửa/xóa Tenant, cấu hình lại cây trồng, cấp phát Gateway, đăng nhập thất bại liên tiếp, hoặc kích hoạt Relay khẩn cấp.
+  - Phục vụ bảo mật, truy cứu trách nhiệm và kiểm định an toàn dữ liệu nhiều bên thuê (Multi-tenancy isolation).
+- **Hiện trạng trước sửa**: Frontend gọi `adminService.getAuditLogs()` nhưng backend trả mảng rỗng qua fallback catch do chưa có API và bảng tương ứng.
+- **Bảng cần thêm mới**: `audit_logs`
+  - `id` (`UUID`, Khóa chính, Mặc định `gen_random_uuid()`)
+  - `actor_user_id` (`UUID`, Khóa ngoại liên kết `app_users.id`, Nullable nếu hệ thống tự sinh)
+  - `actor_name` (`VARCHAR(150)`, Tên hiển thị người thực hiện)
+  - `actor_role` (`VARCHAR(50)`, Vai trò: PlatformAdmin, FarmOwner, Farmer, PlatformTechnician)
+  - `action` (`VARCHAR(100)`, Loại hành động: LOGIN, CREATE_TENANT, ACTUATE_RELAY, UPDATE_FIRMWARE, INVITE_USER...)
+  - `entity_name` (`VARCHAR(100)`, Tên bảng/thực thể chịu tác động: Tenant, Device, Zone, Crop...)
+  - `entity_id` (`VARCHAR(100)`, ID định danh của thực thể chịu tác động)
+  - `ip_address` (`VARCHAR(45)`, Địa chỉ IP IPv4/IPv6 của Client)
+  - `user_agent` (`VARCHAR(500)`, Trình duyệt/thiết bị thực hiện)
+  - `details` (`TEXT` hoặc `JSONB`, Mô tả chi tiết hoặc Payload dữ liệu thay đổi Before/After)
+  - `created_at_utc` (`TIMESTAMPTZ`, Thời gian phát sinh hành động theo UTC)
+- **API triển khai**:
+  - `GET /api/v1/audit-logs`
+    - **Role**: `PlatformAdmin`
+    - **Query params**: `?page=1&pageSize=50&search=...&action=...&entity=...&fromDate=...&toDate=...`
+    - **Response**: `{ items: AuditLogView[], totalCount: number, page: number, pageSize: number }`
 
-5. **Cấu hình Hệ thống (System Settings)**
-   - *Frontend*: Admin có trang `/admin/settings` để tinh chỉnh tham số của Platform.
-   - *Backend*: Không có `SettingsController` hay bảng cấu hình toàn cục.
+---
 
-6. **Tạo mới Nông trại Nhanh (Create Farm Wizard)**
-   - *Frontend*: Màn hình Wizard tạo Farm cho phép Owner tạo Farm + Field + Zone + Cây trồng trong cùng một bước duy nhất để tối ưu trải nghiệm.
-   - *Backend*: Các API hiện đang tách rời (phải gọi tuần tự từng endpoint POST). Nếu gọi nhiều lần ở frontend sẽ dễ gặp lỗi đồng bộ. **Thiếu API** Bulk Create cho Wizard.
+### 1.2. Giám sát Sức khỏe & Hạ tầng Hệ thống (System Health & Infrastructure Monitoring)
+- **Vị trí Frontend**: Trang `/admin/health` ([SystemHealthPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/SystemHealthPage.tsx)) và KPI Banner tại `/admin/dashboard` ([AdminDashboard.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/AdminDashboard.tsx)).
+- **Công dụng**:
+  - Cung cấp cho Admin cái nhìn trực quan về tình trạng cụm Backend API (.NET 8), kết nối MQTT Broker (EMQX), trạng thái cơ sở dữ liệu PostgreSQL/TimescaleDB/PostGIS.
+  - Cảnh báo kịp thời khi tài nguyên RAM/CPU vượt ngưỡng, độ trễ API tăng cao hoặc rớt kết nối trạm Gateway LoRa.
+- **Hiện trạng trước sửa**: Endpoint `/health` chỉ trả về JSON `{ status: "Healthy" }`, thiếu số liệu chi tiết theo nhu cầu UI.
+- **Bảng/Cơ chế**: Dữ liệu tổng hợp từ `SmartFarmDbContext` (đếm telemetry, active gateways) kết hợp `System.Diagnostics.Process` và `GC`.
+- **API triển khai**:
+  - `GET /api/v1/reports/system-health`
+    - **Role**: `PlatformAdmin`
+    - **Response**:
+      ```json
+      {
+        "apiLatencyMs": 18,
+        "memoryUsageBytes": 1288490188,
+        "totalMemoryBytes": 8589934592,
+        "activeTenantsCount": 12,
+        "activeGatewaysCount": 44,
+        "connectedNodesCount": 182,
+        "totalTelemetryRows": 148500000,
+        "mqttBrokerStatus": "Online",
+        "databaseStatus": "Healthy",
+        "lastCheckedAtUtc": "2026-10-08T06:00:00Z"
+      }
+      ```
+
+---
+
+### 1.3. Cấu hình Nền tảng SaaS Runtime (Platform Settings)
+- **Vị trí Frontend**: Trang `/admin/settings` ([SettingsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/SettingsPage.tsx)).
+- **Công dụng**:
+  - Cung cấp giao diện để Quản trị viên thay đổi cấu hình runtime: Gemini API Key, Gemini Model (`gemini-2.5-flash`), Khóa thời tiết OpenWeather/OpenMeteo, SMTP Mail, Thời hạn token JWT mà **không cần khởi động lại server**.
+- **Hiện trạng trước sửa**: Màn hình Settings hoàn toàn là form hiển thị `readOnly` tĩnh, backend chưa có bảng lưu trữ và controller xử lý.
+- **Bảng cần thêm mới**: `platform_settings`
+  - `key` (`VARCHAR(100)`, Khóa chính)
+  - `value` (`TEXT`, Giá trị cấu hình, hỗ trợ che dấu mask nếu `is_secret = true`)
+  - `group` (`VARCHAR(50)`, Nhóm: AI, Weather, Mail, Security, System)
+  - `data_type` (`VARCHAR(20)`, Kiểu dữ liệu: String, Number, Boolean, Json)
+  - `description` (`VARCHAR(255)`, Diễn giải ý nghĩa cấu hình)
+  - `is_secret` (`BOOLEAN`, Có phải dữ liệu nhạy cảm cần ẩn khi trả về UI không)
+  - `updated_by_user_id` (`UUID`, Khóa ngoại `app_users.id`)
+  - `updated_at_utc` (`TIMESTAMPTZ`)
+- **API triển khai**:
+  - `GET /api/v1/platform/settings` (Lấy toàn bộ cài đặt hệ thống, tự động mask secret)
+  - `PUT /api/v1/platform/settings` (Cập nhật danh sách key-value mới)
+    - **Role**: `PlatformAdmin`
+
+---
+
+### 1.4. Quản lý Kho Thiết bị & Linh kiện Phần cứng Hệ thống (Hardware Devices Catalog & Inventory)
+- **Vị trí Frontend**: Trang `/admin/devices` ([DevicesPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/DevicesPage.tsx)).
+- **Công dụng**:
+  - Quản trị kho phần cứng tập trung của Platform trước khi xuất cho các Farm: Gateway ESP32, Sensor Node đo đất, Sensor Node vi khí hậu, Mạch Relay công suất, Đầu đo EC/pH...
+  - Theo dõi số lượng tồn kho theo kệ (`locationRack`), mã Serial xuất xưởng, địa chỉ MAC và trạng thái sẵn sàng (Available, Deployed, Maintenance).
+- **Hiện trạng trước sửa**: Trang `DevicesPage.tsx` dùng `useState` chứa danh sách linh kiện giả lập trong bộ nhớ.
+- **Bảng cần thêm mới**: `platform_hardware_items`
+  - `id` (`UUID`, Khóa chính)
+  - `code` (`VARCHAR(50)`, Mã linh kiện: `GW-ESP32-DL01`, `SN-SOIL-01`...)
+  - `name` (`VARCHAR(150)`, Tên sản phẩm/thiết bị)
+  - `category` (`VARCHAR(50)`, Danh mục: Gateway, SensorNode, ActuatorRelay, Probe)
+  - `model` (`VARCHAR(100)`, Dòng vi điều khiển/chipset: ESP32-S3, SX1278...)
+  - `manufacturer` (`VARCHAR(100)`, Hãng sản xuất)
+  - `serial_number` (`VARCHAR(100)`, Unique, Số serial nhà sản xuất)
+  - `mac_address` (`VARCHAR(50)`, Unique, MAC WiFi/BLE/LoRa)
+  - `quantity_in_stock` (`INT`, Số lượng tồn trong kho trung tâm)
+  - `location_rack` (`VARCHAR(100)`, Vị trí ngăn kệ kho)
+  - `unit_price` (`DECIMAL(18,2)`, Giá niêm yết bán/cho thuê)
+  - `status` (`VARCHAR(30)`, Trạng thái: Available, Deployed, Maintenance)
+  - `created_at_utc` (`TIMESTAMPTZ`), `updated_at_utc` (`TIMESTAMPTZ`)
+- **API triển khai**:
+  - `GET /api/v1/platform/hardware-items` (Xem kho thiết bị toàn sàn)
+  - `POST /api/v1/platform/hardware-items` (Nhập kho thiết bị mới)
+  - `PUT /api/v1/platform/hardware-items/{id}` (Cập nhật thông tin/vị trí kệ)
+  - `DELETE /api/v1/platform/hardware-items/{id}` (Xóa thiết bị khỏi kho)
+    - **Role**: `PlatformAdmin`
+
+---
+
+### 1.5. Quản lý Tập trung Tất cả Hồ sơ Sinh trưởng Cây trồng (Global Growth Profiles)
+- **Vị trí Frontend**: Trang `/admin/growth-profiles` ([GrowthProfilesPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/GrowthProfilesPage.tsx)).
+- **Công dụng**:
+  - Cho phép Admin xem và quản trị toàn bộ Quy trình Sinh trưởng (Growth Profiles) của tất cả các loại cây trồng trên một bảng duy nhất mà không cần chọn từng cây riêng lẻ.
+- **Hiện trạng trước sửa**: Backend chỉ có `GET /api/v1/crops/{cropId}/growth-profiles` (buộc phải có `cropId`), dẫn tới `getAllGrowthProfiles` ở Frontend phải trả về mảng rỗng `[]`.
+- **Cột/Bảng**: Sử dụng bảng `growth_profiles` hiện tại.
+- **API triển khai**:
+  - `GET /api/v1/growth-profiles`
+    - **Role**: `PlatformAdmin`, `FarmOwner`
+    - **Query params**: `?isSystemDefined=true&search=...`
+    - **Response**: Trả về danh sách tất cả hồ sơ sinh trưởng kèm tên cây trồng (`CropName`).
+
+---
+
+### 1.6. Quản trị Danh sách Tất cả Người thuê (Platform Tenants Directory)
+- **Vị trí Frontend**: Trang `/admin/tenants` ([TenantsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/TenantsPage.tsx)).
+- **Công dụng**:
+  - Cho phép Platform Admin xem danh sách toàn bộ các Hợp tác xã, Doanh nghiệp Nông nghiệp đã đăng ký trên hệ thống kèm thống kê (số Farm, số Zone, số tài khoản hoạt động).
+- **Hiện trạng trước sửa**: `TenantsController.cs` chỉ có `GET /api/v1/tenants/me` dành cho `FarmOwner`, khiến Admin không có API xem toàn sàn.
+- **API triển khai**:
+  - `GET /api/v1/tenants`
+    - **Role**: `PlatformAdmin`
+    - **Response**: `TenantView[]` kèm thống kê số nông trại và trạng thái.
+
+---
+
+### 1.7. Quản trị Danh sách Tài khoản Toàn sàn (Platform-wide Users Directory)
+- **Vị trí Frontend**: Trang `/admin/users` ([UsersPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/UsersPage.tsx)).
+- **Công dụng**:
+  - Cho phép Admin xem, phân quyền và giám sát tài khoản của toàn bộ hệ thống (Admin, Technician, FarmOwner, Farmer).
+- **Hiện trạng trước sửa**: `UsersController.cs` chỉ cho `FarmOwner` gọi `GET /api/v1/users` và ép buộc truy vấn theo `TenantId` của Owner, Admin bị lỗi `403 AuthorizationException`.
+- **API triển khai**:
+  - `GET /api/v1/users`
+    - **Role**: `FarmOwner,PlatformAdmin`
+    - **Logic**: Khi caller là `PlatformAdmin`, trả về toàn bộ tài khoản trên sàn; khi là `FarmOwner`, chỉ trả về thành viên trong Tenant.
+
+---
+
+### 1.8. Cấu trúc Nông trại & Phân cấp Không gian Đa vai trò (Platform-wide Farms, Fields, Zones Hierarchy)
+- **Vị trí Frontend**: Bảng điều khiển Topbar selector ([Topbar.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/components/layout/Topbar.tsx)), Bản đồ trang trại ([FarmsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/FarmsPage.tsx)), ([FieldsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/FieldsPage.tsx)), ([ZonesPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/ZonesPage.tsx)).
+- **Công dụng**:
+  - Cho phép người dùng các vai trò `PlatformAdmin`, `PlatformTechnician`, `Farmer` duyệt cấu trúc phân cấp Nông trại (`Farm` -> `Field` -> `Zone`) để chọn phạm vi làm việc mà không bị khóa quyền chỉ riêng cho `FarmOwner`.
+- **Hiện trạng trước sửa**: `FarmsController`, `FieldsController`, `ZonesController` và `FarmStructureService` khóa cứng `[Authorize(Roles = "FarmOwner")]` và kiểm tra `tenantId == user.TenantId`, khiến các vai trò khác bị `403 Forbidden`.
+- **Cơ chế đã cải tiến**:
+  - Cập nhật Controllers: Mở quyền `GET` cho `FarmOwner,PlatformAdmin,Farmer,PlatformTechnician`.
+  - Nới lỏng `FarmStructureService.EnsureOwnerScopeAsync`: PlatformAdmin được xem toàn bộ các Farm; Kỹ thuật viên và Nông dân được xem các trang trại trong cùng Tenant.
+
+---
+
+### 1.9. Phân công Kỹ thuật viên & Quản lý Yêu cầu Dịch vụ Hiện trường (Technician Service Assignment & Dispatch)
+- **Vị trí Frontend**: Trang `/admin/service-requests` ([ServiceRequestsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/ServiceRequestsPage.tsx)).
+- **Công dụng**:
+  - Khi Chủ nông trại gửi yêu cầu Lắp đặt mới hoặc Báo hỏng thiết bị, Quản trị viên (Platform Admin) tiếp nhận và nhấn **"Giao việc cho Kỹ thuật viên"**, chọn kỹ thuật viên phù hợp trong danh bạ để điều phối đi khảo sát thực địa.
+- **Hiện trạng trước sửa**: UI gọi gán việc với ID giả lập và chưa refresh lại bảng sau khi phân công.
+- **API triển khai**:
+  - `POST /api/v1/service-requests/{id}/assign`
+    - **Role**: `PlatformAdmin`
+    - **Request Body**: `{ "technicianUserId": "20000000-0000-0000-0000-000000000004", "notes": "Ưu tiên xử lý trong ngày." }`
+    - **Logic**: Chuyển trạng thái yêu cầu sang `Assigned`, gán `assigned_technician_id`, thông báo cho kỹ thuật viên.
+
+---
+
+## 2. PLATFORM TECHNICIAN (KỸ THUẬT VIÊN HIỆN TRƯỜNG)
+
+### 2.1. Lập Báo giá & Hợp đồng Lắp đặt Thiết bị (Quotation & Contract Specification)
+- **Vị trí Frontend**: Màn hình `ExperimentReportModal.tsx` và trang `ProvisioningPage.tsx` ([ProvisioningPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/technician/ProvisioningPage.tsx)).
+- **Công dụng**:
+  - Sau khi Kỹ thuật viên đi khảo sát thực địa hiện trường Farm, Kỹ thuật viên lập bảng **Dự toán thiết bị & Báo giá lắp đặt**: Chọn Gateway, Cảm biến đất, Van tưới, tính Đơn giá, Số lượng, Thuế VAT 8%, Tổng chi phí, Tạm ứng 30% cọc và 70% còn lại.
+  - Sau đó nhấn **Gửi Báo giá & Hợp đồng** sang tài khoản Farm Owner để yêu cầu ký và đặt cọc.
+- **Hiện trạng trước sửa**: Phương thức `supportService.sendContract` ở Frontend là stub giả lập `() => undefined`. Backend chưa có bảng và endpoint lưu cấu trúc Báo giá/Hợp đồng theo Service Request.
+- **Bảng cần thêm mới**:
+  1. `service_request_quotations`:
+     - `id` (`UUID`, Khóa chính)
+     - `service_request_id` (`UUID`, Unique, Khóa ngoại `service_requests.id`)
+     - `technician_user_id` (`UUID`, Khóa ngoại `app_users.id`)
+     - `subtotal` (`DECIMAL(18,2)`, Tổng tiền trước thuế)
+     - `vat_percent` (`DECIMAL(5,2)`, Phần trăm thuế VAT, ví dụ 8.00)
+     - `vat_amount` (`DECIMAL(18,2)`, Tiền thuế VAT)
+     - `total_amount` (`DECIMAL(18,2)`, Tổng thanh toán)
+     - `deposit_30_percent` (`DECIMAL(18,2)`, Số tiền đặt cọc 30%)
+     - `remaining_70_percent` (`DECIMAL(18,2)`, Số tiền nghiệm thu 70%)
+     - `notes` (`TEXT`, Ghi chú kỹ thuật)
+     - `contract_terms` (`TEXT`, Điều khoản hợp đồng triển khai)
+     - `status` (`VARCHAR(50)`, Trạng thái: Draft, SentToOwner, SignedByOwner, Completed, Cancelled)
+     - `created_at_utc` (`TIMESTAMPTZ`), `updated_at_utc` (`TIMESTAMPTZ`)
+  2. `service_request_quotation_items`:
+     - `id` (`UUID`, Khóa chính)
+     - `quotation_id` (`UUID`, Khóa ngoại `service_request_quotations.id`)
+     - `hardware_item_code` (`VARCHAR(50)`, Mã thiết bị: GW-ESP32-DL01...)
+     - `hardware_item_name` (`VARCHAR(150)`, Tên thiết bị hiển thị)
+     - `category` (`VARCHAR(50)`, Phân loại: GATEWAY, SOIL_SENSOR, VALVE...)
+     - `unit` (`VARCHAR(20)`, Đơn vị: Bộ, Cái, Trạm, Mét...)
+     - `quantity` (`INT`, Số lượng thiết bị)
+     - `unit_price` (`DECIMAL(18,2)`, Đơn giá)
+     - `vat_percent` (`DECIMAL(5,2)`, Tỷ lệ thuế của mặt hàng)
+     - `total_amount` (`DECIMAL(18,2)`, Thành tiền)
+     - `notes` (`VARCHAR(500)`, Ghi chú bảo hành, thông số)
+- **API triển khai**:
+  - `POST /api/v1/service-requests/{id}/quotation`
+    - **Role**: `PlatformTechnician`
+    - **Request Body**:
+      ```json
+      {
+        "items": [
+          { "code": "GW-ESP32-DL01", "name": "Trạm Gateway LoRa", "unit": "Trạm", "quantity": 1, "unitPrice": 3800000, "vatPercent": 8, "notes": "Bảo hành 24 tháng" },
+          { "code": "SN-SOIL-01", "name": "Node Độ ẩm đất RS485", "unit": "Node", "quantity": 2, "unitPrice": 1250000, "vatPercent": 8, "notes": "Đầu đo 3-in-1" }
+        ],
+        "notes": "Lắp đặt nhà màng Z01, thời gian hoàn thành dự kiến 3 ngày."
+      }
+      ```
+  - `GET /api/v1/service-requests/{id}/quotation`
+    - **Role**: `PlatformTechnician`, `FarmOwner`, `PlatformAdmin`
+
+---
+
+### 2.2. Chấm & Cập nhật Tọa độ Địa lý Node trên Bản đồ GIS (GIS Node Mapping & Placement)
+- **Vị trí Frontend**: Component `ZoneNodeMapperModal.tsx` ([ZoneNodeMapperModal.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/components/control/ZoneNodeMapperModal.tsx)) trong cả 2 trang `ProvisioningPage.tsx` và `MaintenancePage.tsx`.
+- **Công dụng**:
+  - Cho phép Kỹ thuật viên kéo thả các Node/Gateway trên bản đồ vệ tinh/GIS hoặc lấy GPS thực tế tại hiện trường, bấm **"Lưu Sơ đồ & Cập nhật Trạng thái Node"** để lưu tọa độ (`latitude`, `longitude`) của từng thiết bị vào Zone tương ứng.
+- **Hiện trạng trước sửa**: Phương thức `supportService.updateMappedNodes` là dummy `() => undefined`, không lưu tọa độ các điểm đã chấm xuống DB.
+- **Cột cần thêm vào bảng `devices`**:
+  - `gps_latitude` (`NUMERIC(10,7)`, Tọa độ vĩ độ địa lý thực tế)
+  - `gps_longitude` (`NUMERIC(10,7)`, Tọa độ kinh độ địa lý thực tế)
+  - `battery_level` (`INT`, Mức pin hiện tại %, mặc định 100)
+  - `rssi` (`DECIMAL(5,2)`, Chỉ số công suất tín hiệu sóng thu được dBm)
+- **API triển khai**:
+  - `PUT /api/v1/zones/{zoneId}/devices/bulk-locations`
+    - **Role**: `PlatformTechnician`
+    - **Request Body**:
+      ```json
+      {
+        "serviceRequestId": "80000000-0000-0000-0000-000000000001",
+        "nodes": [
+          { "deviceId": "52000000-0000-0000-0000-000000000001", "latitude": 11.940512, "longitude": 108.458421, "batteryLevel": 98, "rssi": -68.5 },
+          { "deviceId": "52000000-0000-0000-0000-000000000002", "latitude": 11.940833, "longitude": 108.458910, "batteryLevel": 100, "rssi": -72.0 }
+        ]
+      }
+      ```
+  - `GET /api/v1/zones/{zoneId}/devices/map-locations` (Lấy danh sách điểm Node kèm tọa độ hiển thị lên Leaflet map).
+
+---
+
+### 2.3. Kho Linh kiện Phụ tùng Thay thế Hiện trường (Technician Spare Parts)
+- **Vị trí Frontend**: Trang `/technician/inventory` ([InventoryPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/technician/InventoryPage.tsx)).
+- **Công dụng**:
+  - Cho phép Kỹ thuật viên theo dõi linh kiện mang theo xe/kho di động khi đi lắp đặt/bảo trì (Mạch ESP32, Relay, Pin năng lượng mặt trời, Cảm biến RS485).
+- **Hiện trạng trước sửa**: Hiển thị mock data tĩnh.
+- **Bảng/Cơ chế**: Tái sử dụng bảng `platform_hardware_items`, bổ sung cột `assigned_technician_id` để phân bổ linh kiện mang theo cho từng kỹ thuật viên.
+- **API triển khai**:
+  - `GET /api/v1/platform/technicians/me/spare-parts`
+    - **Role**: `PlatformTechnician`
+
+---
+
+### 2.4. Báo cáo Thử nghiệm Hiện trường & Hot-Swap Thay thế Thiết bị (Field Experimentation & Hardware Hot-Swap)
+- **Vị trí Frontend**: Modal `HotSwapModal` tại [MaintenancePage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/technician/MaintenancePage.tsx) và `GatewaysPage.tsx` ([GatewaysPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/technician/GatewaysPage.tsx)).
+- **Công dụng**:
+  - Khi một Sensor Node hoặc Gateway bị hỏng phần cứng hoặc suy giảm pin nghiêm trọng, Kỹ thuật viên tiến hành thay thế thiết bị mới tương đương (Hot-swap 1-đổi-1) mà không làm gián đoạn chuỗi dữ liệu lịch sử của Farm.
+- **API triển khai**:
+  - `POST /api/v1/platform/deployment-requests/{requestId}/survey`
+    - **Role**: `PlatformTechnician`
+    - **Body**: `{ "isFeasible": true, "siteConditions": "Khu vực có sóng LoRa ổn định", "notes": "Đã khảo sát hiện trường" }`
+  - `POST /api/v1/service-requests/{id}/close`
+    - **Role**: `PlatformTechnician`
+    - **Logic**: Đóng yêu cầu dịch vụ sau khi hoàn thành lắp đặt/bảo trì và đã được Chủ trang trại nghiệm thu.
+
+---
+
+## 3. FARM OWNER (CHỦ NÔNG TRẠI)
+
+### 3.1. Ký Hợp đồng Điện tử & Thanh toán Đặt cọc 30% / Nghiệm thu 70% (Contract Signing & Milestone Payments)
+- **Vị trí Frontend**: Trang `/owner/support` ([SupportPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/SupportPage.tsx)).
+- **Công dụng**:
+  - Owner kiểm tra Báo giá do Kỹ thuật viên gửi đến.
+  - Bấm **"Ký Hợp đồng & Thanh toán 30% Tạm ứng"**: Nhập tên chữ ký điện tử, chọn phương thức thanh toán. Khi thành công, hệ thống mở khóa (Unlock) cho Kỹ thuật viên tiến hành mang thiết bị vào Zone chấm Node.
+  - Khi Kỹ thuật viên lắp xong: Owner kiểm tra thực tế, bấm **"Ký Nghiệm thu & Thanh toán 70% Còn lại"** để kết thúc nghiệm thu công trình.
+- **Hiện trạng trước sửa**: Phương thức `supportService.signContractAndPay30` và `signAcceptanceAndPay70` là dummy `() => undefined`.
+- **Bảng cần thêm mới**: `service_request_payments`
+  - `id` (`UUID`, Khóa chính)
+  - `service_request_id` (`UUID`, Khóa ngoại `service_requests.id`)
+  - `quotation_id` (`UUID`, Khóa ngoại `service_request_quotations.id`)
+  - `payment_stage` (`VARCHAR(20)`, Loại đợt: `DEPOSIT_30` hoặc `FINAL_70`)
+  - `amount` (`DECIMAL(18,2)`, Số tiền đã thanh toán)
+  - `payment_method` (`VARCHAR(50)`, Phương thức: `BANK_TRANSFER`, `CASH`, `ONLINE_VNPAY`)
+  - `transaction_reference` (`VARCHAR(100)`, Mã giao dịch / Số UNC chuyển khoản)
+  - `signer_full_name` (`VARCHAR(150)`, Tên người ký chữ ký số)
+  - `signature_hash` (`VARCHAR(255)`, Mã hash chữ ký điện tử / Audit stamp)
+  - `status` (`VARCHAR(30)`, Trạng thái: `PendingConfirmation`, `Confirmed`, `Failed`)
+  - `paid_at_utc` (`TIMESTAMPTZ`, Thời điểm thanh toán)
+- **Cột cần thêm vào bảng `service_requests`**:
+  - `is_contract_signed` (`BOOLEAN`, Mặc định `FALSE`)
+  - `is_deposit_paid` (`BOOLEAN`, Mặc định `FALSE` - Điều kiện tiên quyết để Kỹ thuật viên được Chấm Node)
+  - `is_acceptance_signed` (`BOOLEAN`, Mặc định `FALSE`)
+  - `is_fully_paid` (`BOOLEAN`, Mặc định `FALSE`)
+- **API triển khai**:
+  - `POST /api/v1/service-requests/{id}/sign-contract-deposit`
+    - **Role**: `FarmOwner`
+    - **Request Body**:
+      ```json
+      {
+        "signerFullName": "Lê Văn An",
+        "paymentMethod": "BANK_TRANSFER",
+        "transactionReference": "TECHCOMBANK-FT260810992",
+        "notes": "Đã chuyển khoản 30% tiền cọc hợp đồng"
+      }
+      ```
+  - `POST /api/v1/service-requests/{id}/sign-acceptance-final`
+    - **Role**: `FarmOwner`
+    - **Request Body**:
+      ```json
+      {
+        "signerFullName": "Lê Văn An",
+        "paymentMethod": "BANK_TRANSFER",
+        "transactionReference": "TECHCOMBANK-FT260815881",
+        "notes": "Đã nghiệm thu toàn bộ 3 Node và Gateway vận hành ổn định"
+      }
+      ```
+
+---
+
+### 3.2. Wizard Khởi tạo Nông trại Nhanh Toàn vẹn (Create Farm Wizard - Atomic Bulk Setup)
+- **Vị trí Frontend**: Trang `/owner/farms/create` ([CreateFarmWizard.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/CreateFarmWizard.tsx)).
+- **Công dụng**:
+  - Cho phép Chủ trang trại tạo toàn bộ mô hình nông nghiệp chỉ trong **1 giao diện Wizard 5 bước**:
+    1. Thông tin Trang trại (Farm) + Tọa độ trung tâm.
+    2. Phân lô Đất (Field) + Tọa độ đa giác Polygon GIS.
+    3. Nhà màng (Zone) + Diện tích + Tọa độ ranh giới.
+    4. Cây trồng & Mùa vụ (Crop & Planting Season).
+    5. Tự động gửi Yêu cầu Triển khai IoT (Deployment Request) cho Kỹ thuật viên.
+- **Hiện trạng trước sửa**: Nút bấm cuối cùng chỉ hiển thị `alert()` mà không gửi dữ liệu xuống backend do thiếu endpoint Atomic Creation.
+- **API triển khai**:
+  - `POST /api/v1/farms/wizard-setup`
+    - **Role**: `FarmOwner`
+    - **Request Body**:
+      ```json
+      {
+        "farm": {
+          "name": "Trang trại Đà Lạt 02",
+          "locationText": "Phường 12, TP. Đà Lạt, Lâm Đồng",
+          "latitude": 11.9404,
+          "longitude": 108.4583,
+          "totalAreaM2": 35000,
+          "timeZone": "Asia/Ho_Chi_Minh"
+        },
+        "field": {
+          "name": "Lô đất A1",
+          "areaM2": 18000,
+          "soilType": "Loam"
+        },
+        "zone": {
+          "name": "Nhà màng Z01 - Cà chua",
+          "areaM2": 4500,
+          "zoneType": "Greenhouse"
+        },
+        "season": {
+          "name": "Vụ Cà chua Đông Xuân 2026",
+          "cropId": "40000000-0000-0000-0000-000000000001",
+          "varietyId": "41000000-0000-0000-0000-000000000001",
+          "startDate": "2026-10-15",
+          "expectedEndDate": "2027-01-15"
+        },
+        "initialDeploymentRequest": {
+          "requiredParameters": ["SoilMoisture", "Temperature", "AirHumidity"],
+          "ownerNotes": "Cần 1 trạm Gateway và 2 sensor đo ẩm đất"
+        }
+      }
+      ```
+    - **Logic Backend**: Thực hiện toàn bộ câu lệnh trong một `IDbContextTransaction`; tự động rollback nếu xảy ra lỗi.
+
+---
+
+### 3.3. Dự báo Thời tiết & Vi khí hậu Nông trại (Farm Microclimate Weather Forecast)
+- **Vị trí Frontend**: Màn hình `OwnerDashboard.tsx` ([OwnerDashboard.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/OwnerDashboard.tsx)) và thanh điều hướng `Topbar.tsx`.
+- **Công dụng**:
+  - Hiển thị nhiệt độ ngoài trời, độ ẩm không khí, khả năng mưa, tốc độ gió và dự báo 7 ngày để chủ nông trại quyết định lịch tưới và đóng/mở màng che.
+- **Hiện trạng trước sửa**: Đang dùng `mockWeather`. Backend có client OpenMeteo nội bộ nhưng chưa expose ra API Controller.
+- **API triển khai**:
+  - `GET /api/v1/farms/{farmId}/weather`
+    - **Role**: `FarmOwner`, `Farmer`
+    - **Logic Backend**: Lấy `latitude` và `longitude` của Farm, gọi OpenMeteo API và cache 30 phút.
+    - **Response**: Trả về nhiệt độ hiện tại, độ ẩm, xác suất mưa %, tốc độ gió, dự báo 7 ngày.
+
+---
+
+### 3.4. Tự động Đồng bộ Lịch tưới Mẫu từ Cây trồng vào Thiết bị Zone (Sync Crop Calendar to Actuators)
+- **Vị trí Frontend**: `CropsPage.tsx` và `PlantingSeasonsPage.tsx` ([PlantingSeasonsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/PlantingSeasonsPage.tsx)).
+- **Công dụng**:
+  - Cây trồng có sẵn lịch tưới mẫu khuyến nghị (ví dụ: tưới sáng 07:30 - 20 phút, tưới trưa 12:00 - 10 phút, tưới chiều 16:30 - 15 phút).
+  - Chủ nông trại chỉ cần bấm **"Đồng bộ Lịch tưới vào Zone"** -> Hệ thống tự động sinh ra các bản ghi `control_schedules` cho van tưới/máy bơm trong Zone mà không cần tạo tay từng lịch.
+- **Hiện trạng trước sửa**: Phương thức `cropService.syncCropScheduleToZone` ở Frontend là stub giả lập `() => ({ success: true })`.
+- **API triển khai**:
+  - `POST /api/v1/zones/{zoneId}/schedules/sync-from-crop`
+    - **Role**: `FarmOwner`
+    - **Request Body**:
+      ```json
+      {
+        "cropId": "40000000-0000-0000-0000-000000000001",
+        "actuatorId": "53000000-0000-0000-0000-000000000001"
+      }
+      ```
+    - **Response**: Trả về danh sách các `ControlScheduleView` vừa được tạo tự động.
+
+---
+
+### 3.5. Dừng Khẩn cấp Toàn bộ Rơ-le Thiết bị trong Zone / Tenant (Emergency Stop All Actuators)
+- **Vị trí Frontend**: `ControlPage.tsx` ([ControlPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/ControlPage.tsx)), `CF3ControlSection.tsx` và `SafetyInterlockRulesCard.tsx`.
+- **Công dụng**:
+  - Khi phát hiện sự cố rò rỉ nước, áp lực béc tưới quá cao, chập điện hoặc thời tiết cực đoan đột ngột, Chủ nông trại hoặc Nông dân bấm nút khẩn cấp **"HỦY LỆNH KHẨN CẤP / DỪNG KHẨN CẤP"** để ngắt điện ngay lập tức toàn bộ rơ-le máy bơm, quạt hút, van điện từ trong Zone hoặc toàn bộ Nông trang.
+  - Tự động hủy (Cancel/Fail) tất cả các lệnh điều khiển đang chờ hàng đợi (`Pending`/`Sent`), gửi lệnh ngắt `TurnOff` cưỡng chế, đồng thời ghi lại vào Nhật ký Kiểm toán `audit_logs` để truy vết an toàn.
+- **Hiện trạng trước sửa**: `controlService.emergencyStopAll()` chỉ là stub trả về `{ stoppedCount: 0 }`.
+- **API triển khai**:
+  - `POST /api/v1/control/emergency-stop`
+    - **Role**: `FarmOwner`, `Farmer`
+    - **Request Body**:
+      ```json
+      {
+        "zoneId": "32000000-0000-0000-0000-000000000001",
+        "notes": "Dừng khẩn cấp toàn bộ thiết bị truyền động từ Dashboard."
+      }
+      ```
+    - **Response**: `{ "success": true, "stoppedCount": 4, "message": "Đã dừng khẩn cấp thành công 4 rơ-le thiết bị." }`
+
+---
+
+### 3.6. Cấu hình Dải Vi khí hậu Mục tiêu cho Cây trồng trong Zone (Environmental Target Configurations)
+- **Vị trí Frontend**: Bước 1 trong quy trình điều khiển thông minh CF3 tại `EnvironmentalParametersPanel.tsx` ([EnvironmentalParametersPanel.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/components/control/EnvironmentalParametersPanel.tsx)), `ControlPage.tsx` và `CF3ControlSection.tsx`.
+- **Công dụng**:
+  - Cho phép Chủ trang trại thiết lập dải thông số mục tiêu vi khí hậu cho từng Phân khu nhà màng: Độ ẩm đất tối thiểu/tối đa/mục tiêu (`minSoilMoisture`, `maxSoilMoisture`, `targetSoilMoisture`), Nhiệt độ tối đa (`maxTemperature`), Độ ẩm không khí mục tiêu (`targetHumidity`), Cường độ sáng mục tiêu (`targetLux`) và công suất rơ-le định mức (`powerWatts`).
+  - Dữ liệu này là căn cứ để Rule Engine tự động bật/tắt thiết bị hoặc cảnh báo vượt ngưỡng.
+- **Hiện trạng trước sửa**: `controlService.getEnvironmentalConfigs()` trả về mảng rỗng `[]`, khiến giao diện `EnvironmentalParametersPanel` bị lỗi `undefined` khi chọn Zone.
+- **API triển khai**:
+  - `GET /api/v1/control/environmental-configs`
+    - **Role**: `FarmOwner`, `Farmer`, `PlatformAdmin`
+    - **Query params**: `?zoneId=...`
+    - **Logic**: Truy vấn yêu cầu sinh trưởng mùa vụ hiện tại, tự động bù giá trị mặc định nông học VietGAP nếu chưa thiết lập.
+  - `PUT /api/v1/control/environmental-configs`
+    - **Role**: `FarmOwner`
+    - **Request Body**:
+      ```json
+      {
+        "zoneId": "32000000-0000-0000-0000-000000000001",
+        "targetSoilMoisture": 70,
+        "minSoilMoisture": 60,
+        "maxSoilMoisture": 80,
+        "maxTemperature": 32,
+        "targetHumidity": 75,
+        "targetLux": 25000,
+        "powerWatts": 750
+      }
+      ```
+
+---
+
+### 3.7. Hiển thị Thời tiết Vi khí hậu Động theo Thời gian thực trên Thanh điều hướng (Dynamic Realtime Weather on Topbar)
+- **Vị trí Frontend**: Thanh điều hướng trên cùng `Topbar.tsx` ([Topbar.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/components/layout/Topbar.tsx)).
+- **Công dụng**:
+  - Hiển thị nhiệt độ ngoài trời, độ ẩm và thời tiết thời gian thực cho từng Trang trại được chọn trên thanh điều hướng, giúp người dùng nắm bắt thời tiết thực tế mà không cần vào sâu trang Dashboard.
+- **Hiện trạng trước sửa**: Sử dụng hằng số giả lập `const weather = mockWeather;`.
+- **Cải tiến**: Đã tích hợp gọi `supportService.getWeather(selectedFarmId)` kết nối API OpenMeteo backend, tự động cập nhật nhiệt độ và độ ẩm khi người dùng đổi Nông trại.
+
+---
+
+### 3.8. Quản lý Kho Vật tư Phân bón, Thuốc BVTV & Cảnh báo Tồn kho Tối thiểu (Agricultural Materials Inventory & Low-Stock Alerts)
+- **Vị trí Frontend**: `TasksPage.tsx` ([TasksPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/TasksPage.tsx)) phần Kho vật tư & Phân bón.
+- **Công dụng**:
+  - Theo dõi lượng phân bón NPK, thuốc sinh học, giá thể, hạt giống trong kho nông trang. Tự động cảnh báo khi tồn kho giảm dưới ngưỡng tối thiểu (`reorderLevel`) để chủ nông trại kịp nhập thêm vật tư trước khi bắt đầu đợt bón mới.
+- **API triển khai**:
+  - `GET /api/v1/farms/{farmId}/inventory`
+    - **Role**: `FarmOwner`, `Farmer`
+  - `GET /api/v1/farms/{farmId}/inventory/low-stock-alerts`
+    - **Role**: `FarmOwner`
+
+---
+
+## 4. FARMER (NÔNG DÂN / NGƯỜI CHĂM SÓC THỰC ĐỊA)
+
+### 4.1. Lấy Danh sách Tác vụ Riêng của Nông dân (Farmer My-Tasks Endpoint)
+- **Vị trí Frontend**: Trang `/farmer/tasks` ([FarmerTasksPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/farmer/FarmerTasksPage.tsx)) và `/farmer/home` ([FarmerHome.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/farmer/FarmerHome.tsx)).
+- **Công dụng**:
+  - Nông dân đăng nhập vào ứng dụng chỉ nhìn thấy đúng các công việc được giao cho cá nhân mình (`assigned_farmer_id == CurrentUser.Id`), cập nhật tiến độ (Mark as Complete / Ghi chú kết quả thực địa).
+- **Hiện trạng trước sửa**: `InventoryTasksController.cs` yêu cầu role `FarmOwner`, khiến Nông dân gọi `GET /api/v1/farms/{farmId}/tasks` bị chặn `403 Forbidden`.
+- **API triển khai**:
+  - `GET /api/v1/farmer/my-tasks`
+    - **Role**: `Farmer`
+    - **Logic Backend**: Lấy `farm_tasks` thỏa mãn `assigned_farmer_id == User.GetUserId()`.
+  - `PUT /api/v1/farmer/tasks/{taskId}/complete`
+    - **Role**: `Farmer`
+    - **Request Body**: `{ "resultNotes": "Đã kiểm tra đường ống và không có rò rỉ" }`
+    - **Logic**: Chuyển trạng thái từ `Accepted`/`InProgress` sang `CompletedPendingReview` để Chủ trang trại duyệt.
+
+---
+
+### 4.2. Danh sách Nhà màng được Phân quyền Phụ trách (Farmer Assigned Zones)
+- **Vị trí Frontend**: Trang `/farmer/zones` ([FarmerZonesPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/farmer/FarmerZonesPage.tsx)) và `/farmer/home`.
+- **Công dụng**:
+  - Nông dân chỉ được thao tác và xem thông số môi trường/cảnh báo tại các Nhà màng (Zone) mà Chủ trang trại đã cấp quyền thông qua bảng `user_zone_accesses`.
+- **Hiện trạng trước sửa**: Endpoint `GET /api/v1/fields/{fieldId}/zones` yêu cầu quyền `FarmOwner`. Nông dân thiếu endpoint để lấy nhanh danh sách Zone mà mình có quyền.
+- **API triển khai**:
+  - `GET /api/v1/farmer/my-zones`
+    - **Role**: `Farmer`
+    - **Logic Backend**: Truy vấn bảng `user_zone_accesses` theo `app_user_id == User.GetUserId()`, `JOIN` bảng `zones` để trả về danh sách phân khu kèm cờ quyền `canControl`.
+
+---
+
+### 4.3. Quyền Hỏi đáp Trợ lý AI Nông học dành cho Nông dân (Farmer AI Advisory Access)
+- **Vị trí Frontend**: Trang `/farmer/ai` ([FarmerAIPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/farmer/FarmerAIPage.tsx)).
+- **Công dụng**:
+  - Nông dân trên đồng ruộng phát hiện dấu hiệu bất thường của cây trồng (lá vàng, rệp sáp, thiếu vi lượng...) muốn đặt câu hỏi cho Trợ lý AI VietGAP để nhận hướng dẫn kỹ thuật tức thì.
+- **Hiện trạng trước sửa**: `AiAdvisoryController.cs` đặt `[Authorize(Roles = "FarmOwner")]` ở cấp Controller, nên Nông dân gửi câu hỏi đến `/api/v1/zones/{zoneId}/ai/ask` bị `403 Forbidden`.
+- **Cải tiến**:
+  - Cập nhật quyền trên Action `Ask` trong `AiAdvisoryController.cs`:
+    `[HttpPost("api/v1/zones/{zoneId:guid}/ai/ask"), Authorize(Roles = "FarmOwner,Farmer")]`
+  - Nông dân có quyền đặt câu hỏi tư vấn (`Ask`); lệnh kích hoạt thi hành thiết bị trực tiếp (`apply-recommendation`) vẫn bảo mật dành riêng cho `FarmOwner`.
+
+---
+
+### 4.4. Phân quyền Truy cập & Điều khiển Nhà màng theo Nhân sự (Farmer Zone-Level Access Control & Permissions)
+- **Vị trí Frontend**: Trang `/owner/farmers` ([FarmersPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/FarmersPage.tsx)).
+- **Công dụng**:
+  - Chủ nông trại (Farm Owner) quản lý danh sách công nhân/nông dân, phân công từng người phụ trách một hoặc nhiều Nhà màng (Zone).
+  - Tùy chỉnh bật/tắt cờ `canControl` để quyết định Nông dân chỉ được đọc cảm biến hay được phép bật tắt máy bơm tưới trong Zone đó.
+- **Hiện trạng trước sửa**: Frontend gọi endpoint không tồn tại `POST /api/v1/users/farmers/{farmerId}/access`.
+- **Cải tiến**:
+  - Tích hợp chuẩn hóa về endpoint backend có sẵn: `PUT /api/v1/users/{userId}/zone-access` với body `{ access: [{ zoneId, canControl }] }`.
+  - Cập nhật hàm `userService.updateFarmerZones(farmerId, zoneIds)` trong `frontend/src/services/index.ts`.
+
+---
+
+## 5. BẢNG TỔNG HỢP DATABASE CẦN THÊM MỚI & SỬA ĐỔI
+
+Dưới đây là bảng tổng hợp tất cả các thay đổi Entity Framework Core Migrations (`SmartFarm.Infrastructure`):
+
+| STT | Bảng Database | Hành động | Mục đích & Chi tiết cột cần thêm | Phục vụ Role |
+| :---: | :--- | :--- :--- | :--- | :--- |
+| **1** | `audit_logs` | **Tạo mới** | `id` (PK, UUID), `actor_user_id` (FK), `actor_name`, `actor_role`, `action`, `entity_name`, `entity_id`, `ip_address`, `user_agent`, `details`, `created_at_utc`. | `PlatformAdmin` |
+| **2** | `platform_settings` | **Tạo mới** | `key` (PK, VARCHAR), `value`, `group`, `data_type`, `description`, `is_secret`, `updated_by_user_id`, `updated_at_utc`. | `PlatformAdmin` |
+| **3** | `platform_hardware_items` | **Tạo mới** | `id` (PK, UUID), `code`, `name`, `category`, `model`, `manufacturer`, `serial_number`, `mac_address`, `quantity_in_stock`, `location_rack`, `unit_price`, `status`, `assigned_technician_id`, `created_at_utc`, `updated_at_utc`. | `PlatformAdmin`, `PlatformTechnician` |
+| **4** | `service_request_quotations` | **Tạo mới** | `id` (PK, UUID), `service_request_id` (FK), `technician_user_id` (FK), `subtotal`, `vat_percent`, `vat_amount`, `total_amount`, `deposit_30_percent`, `remaining_70_percent`, `contract_terms`, `status`, `created_at_utc`, `updated_at_utc`. | `PlatformTechnician`, `FarmOwner` |
+| **5** | `service_request_quotation_items` | **Tạo mới** | `id` (PK, UUID), `quotation_id` (FK), `hardware_item_code`, `hardware_item_name`, `category`, `unit`, `quantity`, `unit_price`, `vat_percent`, `total_amount`, `notes`. | `PlatformTechnician`, `FarmOwner` |
+| **6** | `service_request_payments` | **Tạo mới** | `id` (PK, UUID), `service_request_id` (FK), `quotation_id` (FK), `payment_stage` (`DEPOSIT_30`/`FINAL_70`), `amount`, `payment_method`, `transaction_reference`, `signer_full_name`, `signature_hash`, `status`, `paid_at_utc`. | `FarmOwner`, `PlatformTechnician` |
+| **7** | `service_requests` | **Thêm cột** | `is_contract_signed` (`BOOL`), `is_deposit_paid` (`BOOL`), `is_acceptance_signed` (`BOOL`), `is_fully_paid` (`BOOL`). | `FarmOwner`, `PlatformTechnician` |
+| **8** | `devices` | **Thêm cột** | `gps_latitude` (`NUMERIC(10,7)`), `gps_longitude` (`NUMERIC(10,7)`), `battery_level` (`INT`), `rssi` (`DECIMAL(5,2)`). | `PlatformTechnician`, `FarmOwner` |
+| **9** | `user_zone_accesses` | **Tích hợp** | `app_user_id` (FK), `zone_id` (FK), `can_control` (`BOOL`), `assigned_at_utc`. Chuẩn hóa endpoint `PUT /api/v1/users/{userId}/zone-access`. | `FarmOwner`, `Farmer` |
+| **10** | `farm_tasks` | **Nới quyền** | Cung cấp endpoint riêng `GET /api/v1/farmer/my-tasks` và `PUT /api/v1/farmer/tasks/{taskId}/complete`. | `Farmer`, `FarmOwner` |
+
+---
+
+## 6. BÁO CÁO KẾT QUẢ TRIỂN KHAI & TÍCH HỢP HỆ THỐNG
+
+> **Trạng thái**: Hoàn tất 100% triển khai Backend & Cập nhật Frontend Services.
+
+### 6.1. Tính năng Tự động Migration (Auto-Migration on Startup)
+- Đã cấu hình tại `Program.cs` (`SmartFarm.Api`): Khối lệnh `await db.Database.MigrateAsync()` được thực thi ngay khi backend khởi động, đảm bảo toàn bộ bảng và cột mới được tự động tạo và cập nhật vào cơ sở dữ liệu PostgreSQL (`SmartFarmDB01`).
+- Đã sinh EF Core Migration: `20261008065412_PlatformFeatures` và đã thực thi `database update` thành công vào CSDL.
+
+### 6.2. Các Entity & DbContext
+- Đã tạo [PlatformEntities.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Domain/Entities/PlatformEntities.cs) chứa đầy đủ các thực thể: `AuditLog`, `PlatformSetting`, `PlatformHardwareItem`, `ServiceRequestQuotation`, `ServiceRequestQuotationItem`, `ServiceRequestPayment`.
+- Đã bổ sung các trường mốc hợp đồng & thanh toán vào `ServiceRequest` (`IsContractSigned`, `IsDepositPaid`, `IsAcceptanceSigned`, `IsFullyPaid`) và GPS vào `Device` (`GpsLatitude`, `GpsLongitude`, `BatteryLevel`, `Rssi`) trong [IoTDeployment.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Domain/Entities/IoTDeployment.cs).
+- Đã đăng ký tất cả DbSet trong [SmartFarmDbContext.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Infrastructure/Persistence/SmartFarmDbContext.cs).
+
+### 6.3. Application Contracts & Infrastructure Services
+- **Contracts**: [PlatformServiceContracts.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Application/Features/Platform/PlatformServiceContracts.cs) chứa DTOs và interfaces: `IPlatformAdminService`, `IQuotationService`, `IGisService`, `IFarmWizardService`, `IWeatherService`, `IFarmerService`, `IScheduleSyncService`, `IControlAutomationService`.
+- **Implementations**: [PlatformServices.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Infrastructure/Platform/PlatformServices.cs) hiện thực hóa tất cả các service nghiệp vụ, kết nối OpenMeteo weather API và EF Core.
+- **Dependency Injection**: Đã đăng ký tất cả Service vào [DependencyInjection.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Infrastructure/DependencyInjection.cs).
+
+### 6.4. Web API Controllers
+- Tạo mới [PlatformFeaturesController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/PlatformFeaturesController.cs) phục vụ 14 nhóm API mới:
+  1. `GET /api/v1/audit-logs`
+  2. `GET /api/v1/reports/system-health`
+  3. `GET /api/v1/platform/settings` & `PUT /api/v1/platform/settings`
+  4. `GET /api/v1/platform/hardware-items`, `POST`, `PUT`, `DELETE`
+  5. `GET /api/v1/growth-profiles`
+  6. `POST /api/v1/service-requests/{id}/quotation` & `GET`
+  7. `POST /api/v1/service-requests/{id}/sign-contract-deposit` (30% cọc)
+  8. `POST /api/v1/service-requests/{id}/sign-acceptance-final` (70% nghiệm thu)
+  9. `PUT /api/v1/zones/{zoneId}/devices/bulk-locations` & `GET .../map-locations`
+  10. `GET /api/v1/platform/technicians/me/spare-parts`
+  11. `POST /api/v1/farms/wizard-setup` (Atomic multi-level setup)
+  12. `GET /api/v1/farms/{farmId}/weather`
+  13. `GET /api/v1/farmer/my-tasks` & `PUT .../complete`
+  14. `GET /api/v1/farmer/my-zones`
+  15. `POST /api/v1/zones/{zoneId}/schedules/sync-from-crop`
+  16. `POST /api/v1/control/emergency-stop`
+  17. `GET /api/v1/control/environmental-configs` & `PUT`
+- Cập nhật [TenantsController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/TenantsController.cs) mở `GET /api/v1/tenants` cho PlatformAdmin.
+- Cập nhật [UsersController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/UsersController.cs) cho phép PlatformAdmin xem toàn bộ user.
+- Cập nhật [AiAdvisoryController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/AiAdvisoryController.cs) cho phép vai trò `Farmer` hỏi đáp tư vấn vi khí hậu.
+- Cập nhật [FarmsController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/FarmsController.cs), [FieldsController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/FieldsController.cs), [ZonesController.cs](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/backend/SmartFarm/SmartFarm.Api/Controllers/ZonesController.cs) mở quyền xem cấu trúc cho 4 vai trò.
+
+### 6.5. Cập nhật Frontend Services & UI Integration
+- [frontend/src/services/index.ts](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/services/index.ts): Thay thế toàn bộ các dummy stub cũ bằng các cuộc gọi API thực tế tới Backend.
+- [AuditLogsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/AuditLogsPage.tsx): Kết nối API hiển thị audit log hệ thống.
+- [DevicesPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/DevicesPage.tsx): Tải kho thiết bị từ API và lưu thiết bị mới vào database.
+- [SettingsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/SettingsPage.tsx): Tải và lưu cài đặt Gemini AI và Weather API động.
+- [SystemHealthPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/SystemHealthPage.tsx): Tải thông số latency, RAM, active gateways, telemetries realtime.
+- [ServiceRequestsPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/admin/ServiceRequestsPage.tsx): Giao việc cho Kỹ thuật viên qua API `assignServiceRequest`.
+- [InventoryPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/technician/InventoryPage.tsx): Tải kho phụ tùng kỹ thuật viên từ API.
+- [CreateFarmWizard.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/CreateFarmWizard.tsx): Gửi dữ liệu Wizard 5 bước trực tiếp vào API `wizard-setup`.
+- [ControlPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/ControlPage.tsx) & [EnvironmentalParametersPanel.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/components/control/EnvironmentalParametersPanel.tsx): Kết nối dừng khẩn cấp và cấu hình mục tiêu vi khí hậu.
+- [OwnerDashboard.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/OwnerDashboard.tsx) & [Topbar.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/components/layout/Topbar.tsx): Tải thời tiết vi khí hậu từ OpenMeteo backend API.
+- [FarmerTasksPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/farmer/FarmerTasksPage.tsx): Gọi API `farmer/my-tasks` và cập nhật hoàn thành tác vụ.
+- [FarmerAIPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/farmer/FarmerAIPage.tsx): Kết nối Trợ lý AI thực địa tới `api/v1/zones/{zoneId}/ai/ask`.
+- [FarmersPage.tsx](file:///c:/Users/BINH/Downloads/ki9/doan/demo/demo-capstone/frontend/src/pages/owner/FarmersPage.tsx): Phân quyền Zone cho Nông dân qua `PUT /api/v1/users/{userId}/zone-access`.
+
+---
+
+*Cả Backend và Frontend hiện đã được đồng bộ 100%, tự động migrate database khi khởi chạy và vượt qua toàn bộ các bài kiểm tra biên dịch không có bất kỳ lỗi nào.*

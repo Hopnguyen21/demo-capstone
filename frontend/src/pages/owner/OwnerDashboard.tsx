@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MetricCard, StatusBadge, CropRangeBand, Button } from '../../components/ui/BaseUI';
 import { mockWeather } from '../../mocks/mockData';
 import { useAuth } from '../../app/providers/AuthContext';
-import { alertService, aiService } from '../../services';
+import { alertService, aiService, supportService } from '../../services';
 import { Alert } from '../../types';
 import { Sprout, Gauge, Sliders, ShieldAlert, Bot, Sun, CloudRain, CheckCircle2, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ export const OwnerDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { farms, zones } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [weatherData, setWeatherData] = useState<any>(null);
 
   useEffect(() => {
     alertService.getAlerts().then(data => {
@@ -20,7 +21,16 @@ export const OwnerDashboard: React.FC = () => {
 
   const farm = farms[0] || { name: 'Demo Hydroponic Farm', farmId: '30000000-0000-0000-0000-000000000001' };
   const zone = zones[0] || { name: 'Demo Greenhouse Zone', zoneId: '32000000-0000-0000-0000-000000000001', currentCrop: 'Dưa leo (Cucumber)', currentStage: 'Vegetative' };
-  const weather = mockWeather;
+
+  useEffect(() => {
+    if (farm.farmId) {
+      supportService.getWeather(farm.farmId).then(data => {
+        if (data) setWeatherData(data);
+      }).catch(() => {});
+    }
+  }, [farm.farmId]);
+
+  const weather = weatherData || mockWeather;
   const activeAlerts = alerts.filter(a => (a.status as any) === 'OPEN' || (a.status as any) === 'Open');
   const activeRecommendation = {
     title: 'Khuyến nghị Tối ưu Vi khí hậu Nông học VietGAP',
