@@ -9,18 +9,20 @@ using SmartFarm.Domain.Enums;
 namespace SmartFarm.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "FarmOwner")]
+[Authorize]
 [Route("api/v1/farms")]
 public sealed class FarmsController(IFarmService farmService) : ControllerBase
 {
     // API catalog #16
     [HttpGet]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<FarmSummaryView>>> List(
         [FromQuery] FarmStatus? status, CancellationToken cancellationToken) =>
         Ok(await farmService.ListAsync(User.GetUserId(), User.GetTenantId(), status, cancellationToken));
 
     // API catalog #17
     [HttpPost]
+    [Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<FarmDetailView>> Create(CreateFarmRequest request, CancellationToken cancellationToken)
     {
         var result = await farmService.CreateAsync(User.GetUserId(), User.GetTenantId(), request.ToCommand(), cancellationToken);
@@ -29,22 +31,26 @@ public sealed class FarmsController(IFarmService farmService) : ControllerBase
 
     // API catalog #18
     [HttpGet("{farmId:guid}")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<FarmDetailView>> Get(Guid farmId, CancellationToken cancellationToken) =>
         Ok(await farmService.GetAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
 
     // API catalog #19
     [HttpPut("{farmId:guid}")]
+    [Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<FarmDetailView>> Update(
         Guid farmId, UpdateFarmRequest request, CancellationToken cancellationToken) =>
         Ok(await farmService.UpdateAsync(User.GetUserId(), User.GetTenantId(), farmId, request.ToCommand(), cancellationToken));
 
     // API catalog #20
     [HttpDelete("{farmId:guid}")]
+    [Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<ArchiveView>> Archive(Guid farmId, CancellationToken cancellationToken) =>
         Ok(await farmService.ArchiveAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
 
     // API catalog #21
     [HttpGet("{farmId:guid}/structure")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<FarmStructureView>> Structure(Guid farmId, CancellationToken cancellationToken) =>
         Ok(await farmService.GetStructureAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
 }

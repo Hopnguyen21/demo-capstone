@@ -13,7 +13,7 @@ namespace SmartFarm.Api.Controllers;
 public sealed class UsersController(IUserService userService) : ControllerBase
 {
     // API catalog #6
-    [Authorize(Roles = "FarmOwner")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin")]
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<UserDetailView>>> List(
         [FromQuery] UserRole? role,

@@ -8,11 +8,19 @@ using SmartFarm.Application.Features.Tenants;
 namespace SmartFarm.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "FarmOwner")]
+[Authorize]
 [Route("api/v1/tenants")]
 public sealed class TenantsController(ITenantService tenantService) : ControllerBase
 {
+    [HttpGet]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<IReadOnlyList<TenantView>>> List(CancellationToken cancellationToken)
+    {
+        return Ok(await tenantService.ListAllAsync(cancellationToken));
+    }
+
     // API catalog #13, revised by AUTH_CONTRACT_V1.md
+    [Authorize(Roles = "FarmOwner")]
     [HttpPost("register")]
     public async Task<ActionResult<TenantView>> Register(RegisterTenantRequest request, CancellationToken cancellationToken)
     {

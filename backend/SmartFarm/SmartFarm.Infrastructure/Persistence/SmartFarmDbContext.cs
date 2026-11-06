@@ -57,10 +57,18 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
     public DbSet<ServiceRequestHistory> ServiceRequestHistories => Set<ServiceRequestHistory>();
     public DbSet<DeviceReplacement> DeviceReplacements => Set<DeviceReplacement>();
+    // New platform-level entities
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<PlatformSetting> PlatformSettings => Set<PlatformSetting>();
+    public DbSet<PlatformHardwareItem> PlatformHardwareItems => Set<PlatformHardwareItem>();
+    public DbSet<ServiceRequestQuotation> ServiceRequestQuotations => Set<ServiceRequestQuotation>();
+    public DbSet<ServiceRequestQuotationItem> ServiceRequestQuotationItems => Set<ServiceRequestQuotationItem>();
+    public DbSet<ServiceRequestPayment> ServiceRequestPayments => Set<ServiceRequestPayment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("postgis");
+        modelBuilder.Entity<PlatformSetting>().HasKey(x => x.Key);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmartFarmDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
     }

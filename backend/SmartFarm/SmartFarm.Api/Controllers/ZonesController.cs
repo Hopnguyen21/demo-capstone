@@ -11,17 +11,19 @@ using SmartFarm.Domain.Enums;
 namespace SmartFarm.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "FarmOwner")]
+[Authorize]
 public sealed class ZonesController(IZoneService zoneService) : ControllerBase
 {
     // API catalog #28
     [HttpGet("api/v1/fields/{fieldId:guid}/zones")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<ZoneView>>> List(
         Guid fieldId, [FromQuery] ZoneStatus? status, CancellationToken cancellationToken) =>
         Ok(await zoneService.ListAsync(User.GetUserId(), User.GetTenantId(), fieldId, status, cancellationToken));
 
     // API catalog #29
     [HttpPost("api/v1/fields/{fieldId:guid}/zones")]
+    [Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<ZoneView>> Create(
         Guid fieldId, CreateZoneRequest request, CancellationToken cancellationToken)
     {
@@ -31,17 +33,20 @@ public sealed class ZonesController(IZoneService zoneService) : ControllerBase
 
     // API catalog #30
     [HttpGet("api/v1/zones/{zoneId:guid}")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<ZoneView>> Get(Guid zoneId, CancellationToken cancellationToken) =>
         Ok(await zoneService.GetAsync(User.GetUserId(), User.GetTenantId(), zoneId, cancellationToken));
 
     // API catalog #31
     [HttpPut("api/v1/zones/{zoneId:guid}")]
+    [Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<ZoneView>> Update(
         Guid zoneId, UpdateZoneRequest request, CancellationToken cancellationToken) =>
         Ok(await zoneService.UpdateAsync(User.GetUserId(), User.GetTenantId(), zoneId, request.ToCommand(), cancellationToken));
 
     // API catalog #32
     [HttpDelete("api/v1/zones/{zoneId:guid}")]
+    [Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<ArchiveView>> Archive(Guid zoneId, CancellationToken cancellationToken) =>
         Ok(await zoneService.ArchiveAsync(User.GetUserId(), User.GetTenantId(), zoneId, cancellationToken));
 }
