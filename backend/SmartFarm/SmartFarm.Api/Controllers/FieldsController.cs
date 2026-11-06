@@ -13,6 +13,12 @@ namespace SmartFarm.Api.Controllers;
 [Authorize]
 public sealed class FieldsController(IFieldService fieldService) : ControllerBase
 {
+    [HttpGet("api/v1/fields")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
+    public async Task<ActionResult<IReadOnlyList<FieldDetailView>>> ListAll(
+        [FromQuery] Guid? farmId, CancellationToken cancellationToken) =>
+        Ok(await fieldService.ListAllAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
+
     // API catalog #23
     [HttpGet("api/v1/farms/{farmId:guid}/fields")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]

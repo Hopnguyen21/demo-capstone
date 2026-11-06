@@ -278,7 +278,14 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
         // 2. Create Field (optional)
         if (command.Field is not null)
         {
-            var field = new Field { FarmId = farm.Id, Name = command.Field.Name, AreaM2 = command.Field.AreaM2 ?? 0, SoilType = command.Field.SoilType };
+            var field = new Field
+            {
+                FarmId = farm.Id,
+                Name = command.Field.Name,
+                AreaM2 = command.Field.AreaM2 ?? 0,
+                SoilType = command.Field.SoilType,
+                BoundaryGeoJson = command.Field.BoundaryGeoJson
+            };
             db.Fields.Add(field);
             await db.SaveChangesAsync(ct);
             fieldId = field.Id;
@@ -286,7 +293,15 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
             // 3. Create Zone (optional, requires field)
             if (command.Zone is not null)
             {
-                var zone = new Zone { FieldId = field.Id, Name = command.Zone.Name, AreaM2 = command.Zone.AreaM2 ?? 0, Status = ZoneStatus.Operating };
+                var zone = new Zone
+                {
+                    FieldId = field.Id,
+                    Name = command.Zone.Name,
+                    AreaM2 = command.Zone.AreaM2 ?? 0,
+                    ZoneType = command.Zone.ZoneType ?? "Greenhouse",
+                    BoundaryGeoJson = command.Zone.BoundaryGeoJson,
+                    Status = ZoneStatus.Operating
+                };
                 db.Zones.Add(zone);
                 await db.SaveChangesAsync(ct);
                 zoneId = zone.Id;

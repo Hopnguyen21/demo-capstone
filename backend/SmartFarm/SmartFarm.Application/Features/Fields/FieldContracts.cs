@@ -24,7 +24,10 @@ public sealed record FieldSummaryView(
     string Name,
     decimal AreaM2,
     decimal AvailableAreaM2,
-    int ZonesCount);
+    int ZonesCount,
+    decimal? Latitude = null,
+    decimal? Longitude = null,
+    JsonElement? BoundaryGeoJson = null);
 
 public sealed record FieldDetailView(
     Guid FieldId,

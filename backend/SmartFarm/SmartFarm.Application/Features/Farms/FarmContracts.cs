@@ -24,7 +24,10 @@ public sealed record FarmSummaryView(
     FarmStatus Status,
     decimal TotalAreaM2,
     int FieldsCount,
-    int ZonesCount);
+    int ZonesCount,
+    decimal? Latitude = null,
+    decimal? Longitude = null,
+    string? LocationText = null);
 
 public sealed record FarmDetailView(
     Guid FarmId,

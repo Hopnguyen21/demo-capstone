@@ -33,7 +33,8 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         return await query.OrderBy(x => x.Name).Select(x => new FarmSummaryView(
             x.Id, x.Name, x.Status, x.TotalAreaM2,
             x.Fields.Count(f => f.ArchivedAtUtc == null),
-            x.Fields.SelectMany(f => f.Zones).Count(z => z.Status != ZoneStatus.Archived))).ToListAsync(cancellationToken);
+            x.Fields.SelectMany(f => f.Zones).Count(z => z.Status != ZoneStatus.Archived),
+            x.Latitude, x.Longitude, x.LocationText)).ToListAsync(cancellationToken);
     }
 
     public async Task<FarmDetailView> CreateAsync(
@@ -159,10 +160,24 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
     {
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
         await GetFarmEntityAsync(tenantId, farmId, cancellationToken);
-        return await dbContext.Fields.AsNoTracking().Where(x => x.FarmId == farmId && x.ArchivedAtUtc == null)
-            .OrderBy(x => x.Name).Select(x => new FieldSummaryView(
-                x.Id, x.FarmId, x.Name, x.AreaM2, x.AvailableAreaM2,
-                x.Zones.Count(z => z.Status != ZoneStatus.Archived))).ToListAsync(cancellationToken);
+        var fields = await dbContext.Fields.AsNoTracking().Include(x => x.Zones)
+            .Where(x => x.FarmId == farmId && x.ArchivedAtUtc == null)
+            .OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        return fields.Select(x => new FieldSummaryView(
+            x.Id, x.FarmId, x.Name, x.AreaM2, x.AvailableAreaM2,
+            x.Zones.Count(z => z.Status != ZoneStatus.Archived),
+            x.Latitude, x.Longitude, ParseJson(x.BoundaryGeoJson))).ToList();
+    }
+
+    async Task<IReadOnlyList<FieldDetailView>> IFieldService.ListAllAsync(
+        Guid ownerUserId, Guid tenantId, Guid? farmId, CancellationToken cancellationToken)
+    {
+        await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
+        var query = dbContext.Fields.AsNoTracking().Include(x => x.Zones).Include(x => x.Farm)
+            .Where(x => x.Farm.TenantId == tenantId && x.ArchivedAtUtc == null);
+        if (farmId.HasValue) query = query.Where(x => x.FarmId == farmId.Value);
+        var fields = await query.OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        return fields.Select(x => ToFieldDetail(x, x.Zones.Where(z => z.Status != ZoneStatus.Archived).Select(z => new ZoneSummaryView(z.Id, z.FieldId, z.Name, z.AreaM2, z.ZoneType, z.Status)).ToList())).ToList();
     }
 
     async Task<FieldDetailView> IFieldService.CreateAsync(
@@ -263,6 +278,18 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         var query = dbContext.Zones.AsNoTracking().Where(x => x.FieldId == fieldId);
         query = status.HasValue ? query.Where(x => x.Status == status) : query.Where(x => x.Status != ZoneStatus.Archived);
         var zones = await query.Include(x => x.Field).OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        return zones.Select(x => ToZoneView(x, x.Field.FarmId)).ToList();
+    }
+
+    async Task<IReadOnlyList<ZoneView>> IZoneService.ListAllAsync(
+        Guid ownerUserId, Guid tenantId, Guid? fieldId, ZoneStatus? status, CancellationToken cancellationToken)
+    {
+        await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
+        var query = dbContext.Zones.AsNoTracking().Include(x => x.Field).ThenInclude(f => f.Farm)
+            .Where(x => x.Field.Farm.TenantId == tenantId && x.ArchivedAtUtc == null);
+        if (fieldId.HasValue) query = query.Where(x => x.FieldId == fieldId.Value);
+        if (status.HasValue) query = query.Where(x => x.Status == status.Value);
+        var zones = await query.OrderBy(x => x.Name).ToListAsync(cancellationToken);
         return zones.Select(x => ToZoneView(x, x.Field.FarmId)).ToList();
     }
 
