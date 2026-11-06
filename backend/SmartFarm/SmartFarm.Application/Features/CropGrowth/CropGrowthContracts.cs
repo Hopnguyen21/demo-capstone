@@ -16,9 +16,13 @@ public sealed record GrowthStageView(Guid StageId, string Name, int StageOrder, 
 public sealed record GrowthProfileView(Guid ProfileId, Guid CropId, Guid? VarietyId, string Name, string? Description, bool IsDefault, bool IsSystemDefined, Guid? TenantId, Guid? SourceProfileId, IReadOnlyList<GrowthStageView> Stages);
 public sealed record RequirementUpdateView(Guid EffectiveProfileId, Guid EffectiveStageId, bool ClonedFromSystem, IReadOnlyList<RequirementView> Requirements);
 
-public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate);
+public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, Guid? FarmingSeasonId = null);
 public sealed record TransitionStageCommand(Guid GrowthStageId, string? Notes);
 public sealed record CloseSeasonCommand(DateOnly ActualEndDate, decimal? ActualYieldKg, string? Notes);
 public sealed record RecordSeasonYieldCommand(decimal ActualYieldKg, DateOnly? ActualEndDate, string? Notes, bool MarkCompleted);
 public sealed record StageTransitionView(Guid TransitionId, Guid PreviousStageId, Guid CurrentStageId, DateTime ChangedAtUtc, string? Notes);
-public sealed record PlantingSeasonView(Guid SeasonId, Guid ZoneId, Guid CropId, string CropName, Guid? VarietyId, string? VarietyName, Guid GrowthProfileId, string GrowthProfileName, Guid CurrentGrowthStageId, string CurrentGrowthStageName, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, DateOnly? ActualEndDate, decimal? ActualYieldKg, PlantingSeasonStatus Status, IReadOnlyList<RequirementView> AppliedRequirements, IReadOnlyList<StageTransitionView> StageTransitions);
+public sealed record PlantingSeasonView(Guid SeasonId, Guid ZoneId, Guid CropId, string CropName, Guid? VarietyId, string? VarietyName, Guid GrowthProfileId, string GrowthProfileName, Guid CurrentGrowthStageId, string CurrentGrowthStageName, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, DateOnly? ActualEndDate, decimal? ActualYieldKg, PlantingSeasonStatus Status, IReadOnlyList<RequirementView> AppliedRequirements, IReadOnlyList<StageTransitionView> StageTransitions, Guid? FarmingSeasonId = null, string? FarmingSeasonName = null);
+
+public sealed record FarmingSeasonView(Guid Id, string Code, string Name, int Year, DateOnly StartDate, DateOnly EndDate, string? Description, string Status, bool IsActive, int LinkedBatchesCount);
+public sealed record CreateFarmingSeasonRequest(string Code, string Name, int Year, DateOnly StartDate, DateOnly EndDate, string? Description, string? Status);
+public sealed record UpdateFarmingSeasonRequest(string Code, string Name, int Year, DateOnly StartDate, DateOnly EndDate, string? Description, string? Status);

@@ -15,6 +15,8 @@ public sealed class PlantingSeason : AuditableEntity
     public GrowthProfile GrowthProfile { get; set; } = null!;
     public Guid CurrentGrowthStageId { get; set; }
     public GrowthStage CurrentGrowthStage { get; set; } = null!;
+    public Guid? FarmingSeasonId { get; set; }
+    public FarmingSeason? FarmingSeason { get; set; }
     public string Name { get; set; } = string.Empty;
     public DateOnly StartDate { get; set; }
     public DateOnly ExpectedEndDate { get; set; }

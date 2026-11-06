@@ -19,6 +19,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<GrowthStage> GrowthStages => Set<GrowthStage>();
     public DbSet<EnvironmentalRequirement> EnvironmentalRequirements => Set<EnvironmentalRequirement>();
     public DbSet<PlantingSeason> PlantingSeasons => Set<PlantingSeason>();
+    public DbSet<FarmingSeason> FarmingSeasons => Set<FarmingSeason>();
     public DbSet<SeasonAppliedRequirement> SeasonAppliedRequirements => Set<SeasonAppliedRequirement>();
     public DbSet<SeasonStageTransition> SeasonStageTransitions => Set<SeasonStageTransition>();
     public DbSet<DeviceModelDefinition> DeviceModelDefinitions => Set<DeviceModelDefinition>();
@@ -65,6 +66,9 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<ServiceRequestQuotation> ServiceRequestQuotations => Set<ServiceRequestQuotation>();
     public DbSet<ServiceRequestQuotationItem> ServiceRequestQuotationItems => Set<ServiceRequestQuotationItem>();
     public DbSet<ServiceRequestPayment> ServiceRequestPayments => Set<ServiceRequestPayment>();
+    public DbSet<ZoneContract> ZoneContracts => Set<ZoneContract>();
+    public DbSet<ZoneContractRenewal> ZoneContractRenewals => Set<ZoneContractRenewal>();
+    public DbSet<DeviceDepreciation> DeviceDepreciations => Set<DeviceDepreciation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
