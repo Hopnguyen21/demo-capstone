@@ -117,7 +117,7 @@ public sealed record AllGrowthProfileView(Guid ProfileId, string ProfileName, Gu
 public interface IQuotationService
 {
     Task<QuotationView> CreateAsync(Guid technicianId, Guid serviceRequestId, CreateQuotationCommand command, CancellationToken ct);
-    Task<QuotationView> GetAsync(Guid userId, Guid serviceRequestId, CancellationToken ct);
+    Task<QuotationView?> GetAsync(Guid userId, Guid serviceRequestId, CancellationToken ct);
     Task<ServiceRequestPaymentView> SignContractDepositAsync(Guid ownerId, Guid serviceRequestId, SignContractDepositCommand command, CancellationToken ct);
     Task<ServiceRequestPaymentView> SignAcceptanceFinalAsync(Guid ownerId, Guid serviceRequestId, SignAcceptanceFinalCommand command, CancellationToken ct);
 }

@@ -149,9 +149,26 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         if (sr.AssignedTechnicianId != technicianId)
             throw new AuthorizationException("Only the assigned technician may create a quotation.");
 
+        if (sr.IsContractSigned || sr.IsDepositPaid || sr.IsFullyPaid)
+            throw new ResourceConflictException("Hợp đồng đã được chủ trang trại ký kết và thanh toán. Kỹ thuật viên không thể chỉnh sửa hoặc tạo lại hợp đồng.");
+
+        var hasSignedOrPaid = await db.ServiceRequestQuotations.AnyAsync(
+            x => x.ServiceRequestId == serviceRequestId && (x.Status == "SignedByOwner" || x.Status == "DepositPaid" || x.Status == "Completed"), ct);
+        if (hasSignedOrPaid)
+            throw new ResourceConflictException("Hợp đồng đã được ký kết và thanh toán cọc. Kỹ thuật viên không thể chỉnh sửa hoặc tạo lại hợp đồng.");
+
         // Remove previous draft quotation if any
-        var existing = await db.ServiceRequestQuotations.Include(q => q.Items).SingleOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId && x.Status == "Draft", ct);
-        if (existing is not null) { db.ServiceRequestQuotationItems.RemoveRange(existing.Items); db.ServiceRequestQuotations.Remove(existing); }
+        var existingDrafts = await db.ServiceRequestQuotations.Include(q => q.Items)
+            .Where(x => x.ServiceRequestId == serviceRequestId && x.Status == "Draft")
+            .ToListAsync(ct);
+        if (existingDrafts.Count > 0)
+        {
+            foreach (var d in existingDrafts)
+            {
+                db.ServiceRequestQuotationItems.RemoveRange(d.Items);
+            }
+            db.ServiceRequestQuotations.RemoveRange(existingDrafts);
+        }
 
         var items = command.Items.Select(i => new ServiceRequestQuotationItem
         {
@@ -175,19 +192,19 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         return ToView(q);
     }
 
-    public async Task<QuotationView> GetAsync(Guid userId, Guid serviceRequestId, CancellationToken ct)
+    public async Task<QuotationView?> GetAsync(Guid userId, Guid serviceRequestId, CancellationToken ct)
     {
         var q = await db.ServiceRequestQuotations.Include(x => x.Items).AsNoTracking()
-            .SingleOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId, ct)
-            ?? throw new ResourceNotFoundException("Quotation not found for this Service Request.");
-        return ToView(q);
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId, ct);
+        return q is null ? null : ToView(q);
     }
 
     public async Task<ServiceRequestPaymentView> SignContractDepositAsync(Guid ownerId, Guid serviceRequestId, SignContractDepositCommand command, CancellationToken ct)
     {
-        var sr = await db.ServiceRequests.Include(x => x.Quotations).SingleOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+        var sr = await db.ServiceRequests.Include(x => x.Quotations).FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
-        var quotation = sr.Quotations.FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists for this Service Request.");
+        var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists for this Service Request.");
         var payment = new ServiceRequestPayment
         {
             ServiceRequestId = serviceRequestId, QuotationId = quotation.Id, PaymentStage = "DEPOSIT_30",
@@ -205,10 +222,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
 
     public async Task<ServiceRequestPaymentView> SignAcceptanceFinalAsync(Guid ownerId, Guid serviceRequestId, SignAcceptanceFinalCommand command, CancellationToken ct)
     {
-        var sr = await db.ServiceRequests.Include(x => x.Quotations).SingleOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+        var sr = await db.ServiceRequests.Include(x => x.Quotations).FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
         if (!sr.IsDepositPaid) throw new ResourceConflictException("Deposit must be paid before final acceptance.");
-        var quotation = sr.Quotations.FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
+        var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
         var payment = new ServiceRequestPayment
         {
             ServiceRequestId = serviceRequestId, QuotationId = quotation.Id, PaymentStage = "FINAL_70",
@@ -236,24 +253,79 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 {
     public async Task BulkUpdateNodeLocationsAsync(Guid technicianId, Guid zoneId, BulkUpdateNodeLocationsCommand command, CancellationToken ct)
     {
+        var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+        if (zone is null && command.ServiceRequestId is { } reqId)
+        {
+            var sr = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == reqId, ct);
+            if (sr is not null)
+            {
+                zoneId = sr.ZoneId;
+                zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+            }
+        }
+
+        var farmId = zone?.Field?.FarmId ?? Guid.Parse("30000000-0000-0000-0000-000000000001");
+        var gateway = await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == farmId, ct);
+        var defaultGwId = gateway?.Id ?? Guid.Parse("40000000-0000-0000-0000-000000000001");
+        var defaultDepReqId = gateway?.DeploymentRequestId ?? Guid.Parse("22000000-0000-0000-0000-000000000001");
+
         var deviceIds = command.Nodes.Select(n => n.DeviceId).ToList();
-        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id) && x.ZoneId == zoneId).ToListAsync(ct);
+        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id) || (x.ZoneId == zoneId)).ToListAsync(ct);
+
         foreach (var node in command.Nodes)
         {
             var device = devices.FirstOrDefault(d => d.Id == node.DeviceId);
-            if (device is null) continue;
-            device.GpsLatitude = node.Latitude;
-            device.GpsLongitude = node.Longitude;
-            device.BatteryLevel = node.BatteryLevel;
-            device.Rssi = node.Rssi;
+            if (device is null)
+            {
+                var newId = node.DeviceId != Guid.Empty ? node.DeviceId : Guid.NewGuid();
+                device = new Device
+                {
+                    Id = newId,
+                    FarmId = farmId,
+                    GatewayId = defaultGwId,
+                    DeploymentRequestId = defaultDepReqId,
+                    ZoneId = zoneId,
+                    HardwareAddress = $"NODE-{newId.ToString()[..8].ToUpperInvariant()}",
+                    DeviceType = DeviceType.SensorNode,
+                    Status = DeviceStatus.Online,
+                    GpsLatitude = node.Latitude,
+                    GpsLongitude = node.Longitude,
+                    BatteryLevel = node.BatteryLevel ?? 100,
+                    Rssi = node.Rssi ?? -70
+                };
+                db.Devices.Add(device);
+                devices.Add(device);
+            }
+            else
+            {
+                device.ZoneId = zoneId;
+                device.GpsLatitude = node.Latitude;
+                device.GpsLongitude = node.Longitude;
+                if (node.BatteryLevel.HasValue) device.BatteryLevel = node.BatteryLevel;
+                if (node.Rssi.HasValue) device.Rssi = node.Rssi;
+            }
         }
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct) =>
-        await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && x.Status != DeviceStatus.Decommissioned)
-            .Select(x => new DeviceMapLocationView(x.Id, x.HardwareAddress, x.DeviceType.ToString(), x.GpsLatitude, x.GpsLongitude, x.BatteryLevel, x.Rssi, x.Status.ToString()))
+    public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct)
+    {
+        var sr = await db.ServiceRequests.AsNoTracking().FirstOrDefaultAsync(x => x.Id == zoneId, ct);
+        var targetZoneId = sr?.ZoneId ?? zoneId;
+
+        return await db.Devices.AsNoTracking()
+            .Where(x => x.ZoneId == targetZoneId && x.Status != DeviceStatus.Decommissioned)
+            .Select(x => new DeviceMapLocationView(
+                x.Id,
+                x.HardwareAddress,
+                x.DeviceType.ToString(),
+                x.GpsLatitude,
+                x.GpsLongitude,
+                x.BatteryLevel,
+                x.Rssi,
+                x.Status.ToString()))
             .ToListAsync(ct);
+    }
 }
 
 // ─── Farm Wizard Service ──────────────────────────────────────────────────────
@@ -278,11 +350,14 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
         // 2. Create Field (optional)
         if (command.Field is not null)
         {
+            var fieldArea = command.Field.AreaM2 ?? 0;
+            var zoneArea = command.Zone?.AreaM2 ?? 0;
             var field = new Field
             {
                 FarmId = farm.Id,
                 Name = command.Field.Name,
-                AreaM2 = command.Field.AreaM2 ?? 0,
+                AreaM2 = fieldArea,
+                AvailableAreaM2 = Math.Max(0, fieldArea - zoneArea),
                 SoilType = command.Field.SoilType,
                 BoundaryGeoJson = command.Field.BoundaryGeoJson
             };
