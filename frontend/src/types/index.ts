@@ -40,9 +40,14 @@ export interface Farm {
   name: string;
   description?: string;
   address?: string;
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
   boundary?: GeoPolygon;
+  boundaryGeoJson?: any;
   center?: [number, number]; // [lat, lng]
   areaM2: number;
+  totalAreaM2?: number;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
   fieldsCount?: number;
@@ -55,8 +60,13 @@ export interface Field {
   farmId: string;
   name: string;
   description?: string;
+  latitude?: number;
+  longitude?: number;
   boundary?: GeoPolygon;
+  boundaryGeoJson?: any;
   areaM2: number;
+  availableAreaM2?: number;
+  soilType?: string;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
 }
@@ -67,7 +77,10 @@ export interface Zone {
   farmId: string;
   name: string;
   description?: string;
+  zoneType?: string;
+  notes?: string;
   boundary?: GeoPolygon;
+  boundaryGeoJson?: any;
   areaM2: number;
   status: 'ACTIVE' | 'INACTIVE';
   currentCrop?: string;

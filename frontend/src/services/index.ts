@@ -13,6 +13,14 @@ export { extractApiError, clearTokens, getAccessToken, isAuthenticated, setToken
 // 1. AUTH SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
+export interface RegisterPayload {
+  email: string;
+  fullName: string;
+  phone?: string;
+  password: string;
+  role: 'FarmOwner' | 'Farmer';
+}
+
 export const authService = {
   /** POST /api/v1/auth/login  → { accessToken, refreshToken, user } */
   login: async (email: string, password: string) => {
@@ -22,10 +30,25 @@ export const authService = {
     return data.user;
   },
 
+  /** POST /api/v1/auth/register → { userId, email, fullName, role, status, createdAtUtc } */
+  register: async (payload: RegisterPayload) => {
+    const res = await apiClient.post('/api/v1/auth/register', {
+      email: payload.email.trim(),
+      fullName: payload.fullName.trim(),
+      phone: payload.phone ? payload.phone.trim() : null,
+      password: payload.password,
+      role: payload.role,
+    });
+    return res.data;
+  },
+
   /** POST /api/v1/auth/logout */
   logout: async (refreshToken?: string) => {
     try {
-      await apiClient.post('/api/v1/auth/logout', { refreshToken, revokeAllDevices: false });
+      const token = refreshToken || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('sf_refresh_token') : null);
+      await apiClient.post('/api/v1/auth/logout', { refreshToken: token, revokeAllDevices: false });
+    } catch (err) {
+      console.warn('Backend logout call completed with notice:', err);
     } finally {
       clearTokens();
     }
@@ -279,16 +302,25 @@ export const farmService = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const fieldService = {
-  /** GET /api/v1/farms/{farmId}/fields */
+  /** GET /api/v1/fields or /api/v1/farms/{farmId}/fields */
   getFields: async (farmId?: string) => {
-    const target = farmId || '30000000-0000-0000-0000-000000000001';
-    const res = await apiClient.get(`/api/v1/farms/${target}/fields`);
-    // Backend may return single object or array depending on count
-    const data = res.data;
-    if (Array.isArray(data)) return data;
-    if (data?.value && Array.isArray(data.value)) return data.value;
-    if (data && typeof data === 'object' && 'fieldId' in data) return [data];
-    return [];
+    try {
+      const url = farmId ? `/api/v1/farms/${farmId}/fields` : '/api/v1/fields';
+      const res = await apiClient.get(url);
+      const data = res.data;
+      if (Array.isArray(data)) return data;
+      if (data?.value && Array.isArray(data.value)) return data.value;
+      if (data && typeof data === 'object' && 'fieldId' in data) return [data];
+      return [];
+    } catch {
+      if (!farmId) {
+        try {
+          const res = await apiClient.get('/api/v1/farms/30000000-0000-0000-0000-000000000001/fields');
+          return Array.isArray(res.data) ? res.data : (res.data?.value ?? []);
+        } catch { return []; }
+      }
+      return [];
+    }
   },
 
   /** GET /api/v1/fields/{fieldId} */
@@ -305,6 +337,7 @@ export const fieldService = {
     soilType?: string;
     latitude?: number;
     longitude?: number;
+    boundaryGeoJson?: any;
   }) => {
     const res = await apiClient.post(`/api/v1/farms/${farmId}/fields`, data);
     return res.data;
@@ -328,17 +361,23 @@ export const fieldService = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const zoneService = {
-  /** GET /api/v1/fields/{fieldId}/zones or /api/v1/zones */
+  /** GET /api/v1/zones or /api/v1/fields/{fieldId}/zones */
   getZones: async (fieldId?: string) => {
-    const fId = fieldId || '31000000-0000-0000-0000-000000000001';
     try {
-      const res = await apiClient.get(`/api/v1/fields/${fId}/zones`);
+      const url = fieldId ? `/api/v1/fields/${fieldId}/zones` : '/api/v1/zones';
+      const res = await apiClient.get(url);
       const data = res.data;
       if (Array.isArray(data)) return data;
       if (data?.value && Array.isArray(data.value)) return data.value;
       if (data && typeof data === 'object' && 'zoneId' in data) return [data];
       return [];
     } catch {
+      if (!fieldId) {
+        try {
+          const res = await apiClient.get('/api/v1/fields/31000000-0000-0000-0000-000000000001/zones');
+          return Array.isArray(res.data) ? res.data : (res.data?.value ?? []);
+        } catch { return []; }
+      }
       return [];
     }
   },
@@ -355,14 +394,27 @@ export const zoneService = {
     areaM2: number;
     zoneType?: string;
     notes?: string;
+    polygonGeoJson?: any;
+    boundaryGeoJson?: any;
   }) => {
-    const res = await apiClient.post(`/api/v1/fields/${fieldId}/zones`, data);
+    const payload = {
+      name: data.name,
+      areaM2: data.areaM2,
+      zoneType: data.zoneType || 'Greenhouse',
+      notes: data.notes,
+      polygonGeoJson: data.polygonGeoJson || data.boundaryGeoJson,
+    };
+    const res = await apiClient.post(`/api/v1/fields/${fieldId}/zones`, payload);
     return res.data;
   },
 
   /** PUT /api/v1/zones/{zoneId} */
   updateZone: async (zoneId: string, data: Record<string, unknown>) => {
-    const res = await apiClient.put(`/api/v1/zones/${zoneId}`, data);
+    const payload = {
+      ...data,
+      polygonGeoJson: data.polygonGeoJson || data.boundaryGeoJson,
+    };
+    const res = await apiClient.put(`/api/v1/zones/${zoneId}`, payload);
     return res.data;
   },
 
