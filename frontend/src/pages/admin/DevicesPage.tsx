@@ -237,12 +237,14 @@ export const DevicesPage: React.FC = () => {
   };
 
   // Filter Logic
-  const filteredDevices = devices.filter(item => {
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.macAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.serialNumber.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredDevices = (devices || []).filter(item => {
+    if (!item) return false;
+    const query = String(searchTerm || '').toLowerCase().trim();
+    const matchesSearch = !query ||
+      String(item.name || '').toLowerCase().includes(query) ||
+      String(item.code || '').toLowerCase().includes(query) ||
+      String(item.macAddress || '').toLowerCase().includes(query) ||
+      String(item.serialNumber || '').toLowerCase().includes(query);
 
     if (selectedCategory === 'ALL') return matchesSearch;
     if (selectedCategory === 'AVAILABLE') return matchesSearch && item.status === 'AVAILABLE';
