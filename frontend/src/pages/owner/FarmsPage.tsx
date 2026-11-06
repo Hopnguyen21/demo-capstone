@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Farm, Field, Zone } from '../../types';
-import { farmService, fieldService, zoneService, deviceService } from '../../services';
+import { farmService, fieldService, zoneService, deviceService, supportService, extractApiError } from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
   Building2, MapPin, Layers, Plus, ArrowUpRight, ChevronRight, Sprout,
   CornerDownRight, Home, ArrowLeft, Cpu, Activity, Gauge, Sliders, Calendar,
-  Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3
+  Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3, Wrench
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
@@ -71,7 +71,7 @@ export const FarmsPage: React.FC = () => {
 
   // Form states for quick creation
   const [newFieldName, setNewFieldName] = useState('');
-  const [newFieldArea, setNewFieldArea] = useState('15000');
+  const [newFieldArea, setNewFieldArea] = useState('5000');
   const [fieldCenter, setFieldCenter] = useState<[number, number]>([11.9405, 108.4580]);
   const [fieldPolygon, setFieldPolygon] = useState<[number, number][]>([
     [11.9415, 108.4565],
@@ -81,6 +81,7 @@ export const FarmsPage: React.FC = () => {
   ]);
 
   const [newZoneName, setNewZoneName] = useState('');
+  const [newZoneArea, setNewZoneArea] = useState('1000');
   const [newZoneCrop, setNewZoneCrop] = useState('Cà chua (Tomato)');
   const [zoneCenter, setZoneCenter] = useState<[number, number]>([11.9408, 108.4582]);
   const [zonePolygon, setZonePolygon] = useState<[number, number][]>([
@@ -89,6 +90,30 @@ export const FarmsPage: React.FC = () => {
     [11.9402, 108.4588],
     [11.9402, 108.4572],
   ]);
+
+  // Compute remaining unallocated capacity for selected Farm & Field
+  const currentFarmAllocated = React.useMemo(() => {
+    if (!selectedFarm) return 0;
+    return fields
+      .filter(f => f.farmId === selectedFarm.farmId)
+      .reduce((sum, f) => sum + (Number(f.areaM2) || 0), 0);
+  }, [fields, selectedFarm]);
+
+  const farmAvailableArea = React.useMemo(() => {
+    if (!selectedFarm) return 0;
+    return Math.max(0, (Number(selectedFarm.totalAreaM2) || 25000) - currentFarmAllocated);
+  }, [selectedFarm, currentFarmAllocated]);
+
+  const fieldAvailableArea = React.useMemo(() => {
+    if (!selectedField) return 0;
+    if (selectedField.availableAreaM2 !== undefined && selectedField.availableAreaM2 !== null) {
+      return Number(selectedField.availableAreaM2);
+    }
+    const currentZoneAllocated = zones
+      .filter(z => z.fieldId === selectedField.fieldId)
+      .reduce((sum, z) => sum + (Number(z.areaM2) || 0), 0);
+    return Math.max(0, (Number(selectedField.areaM2) || 5000) - currentZoneAllocated);
+  }, [selectedField, zones]);
 
   // Zone GIS editing state
   const [isEditingZoneGIS, setIsEditingZoneGIS] = useState(false);
@@ -180,11 +205,30 @@ export const FarmsPage: React.FC = () => {
       alert('Vui lòng nhập tên Lô đất!');
       return;
     }
+    if (newFieldName.trim().length < 2) {
+      alert('Tên Phân khu Lô đất phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      return;
+    }
     if (!selectedFarm) return;
+    const computedArea = Number(newFieldArea) || 5000;
+    if (farmAvailableArea > 0 && computedArea > farmAvailableArea) {
+      alert(`Diện tích Lô đất (${computedArea.toLocaleString()} m²) vượt quá diện tích còn lại của Trang trại (${farmAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại.`);
+      return;
+    }
+
     setIsSubmittingField(true);
     try {
-      const geoJson = toGeoJsonPolygon(fieldPolygon);
-      const computedArea = Number(newFieldArea) || calculatePolygonAreaM2(fieldPolygon) || 5000;
+      let geoJson = toGeoJsonPolygon(fieldPolygon);
+      if (!geoJson) {
+        const d = 0.0015;
+        geoJson = toGeoJsonPolygon([
+          [fieldCenter[0] + d, fieldCenter[1] - d],
+          [fieldCenter[0] + d, fieldCenter[1] + d],
+          [fieldCenter[0] - d, fieldCenter[1] + d],
+          [fieldCenter[0] - d, fieldCenter[1] - d],
+        ]);
+      }
+
       await fieldService.createField(selectedFarm.farmId, {
         name: newFieldName.trim(),
         areaM2: computedArea,
@@ -199,7 +243,8 @@ export const FarmsPage: React.FC = () => {
       alert('Đã lưu Lô đất mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi thêm Lô đất:', err);
-      alert('Lỗi thêm Lô đất: ' + (err.response?.data?.message || err.message));
+      const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
+      alert('Lỗi thêm Lô đất: ' + errorMsg);
     } finally {
       setIsSubmittingField(false);
     }
@@ -210,11 +255,31 @@ export const FarmsPage: React.FC = () => {
       alert('Vui lòng nhập tên Nhà màng / Zone!');
       return;
     }
+    if (newZoneName.trim().length < 2) {
+      alert('Tên Nhà màng / Zone phải có ít nhất 2 ký tự (theo quy chuẩn hệ thống)!');
+      return;
+    }
     if (!selectedField) return;
+
+    const computedArea = Number(newZoneArea) || 1000;
+    if (fieldAvailableArea > 0 && computedArea > fieldAvailableArea) {
+      alert(`Diện tích Nhà màng (${computedArea.toLocaleString()} m²) vượt quá diện tích còn trống của Lô đất (${fieldAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại diện tích.`);
+      return;
+    }
+
     setIsSubmittingZone(true);
     try {
-      const geoJson = toGeoJsonPolygon(zonePolygon);
-      const computedArea = calculatePolygonAreaM2(zonePolygon) || 2000;
+      let geoJson = toGeoJsonPolygon(zonePolygon);
+      if (!geoJson) {
+        const d = 0.0006;
+        geoJson = toGeoJsonPolygon([
+          [zoneCenter[0] + d, zoneCenter[1] - d],
+          [zoneCenter[0] + d, zoneCenter[1] + d],
+          [zoneCenter[0] - d, zoneCenter[1] + d],
+          [zoneCenter[0] - d, zoneCenter[1] - d],
+        ]);
+      }
+
       await zoneService.createZone(selectedField.fieldId, {
         name: newZoneName.trim(),
         areaM2: computedArea,
@@ -228,7 +293,8 @@ export const FarmsPage: React.FC = () => {
       alert('Đã lưu Nhà màng mới cùng tọa độ GIS vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi thêm Nhà màng:', err);
-      alert('Lỗi thêm Nhà màng: ' + (err.response?.data?.message || err.message));
+      const errorMsg = extractApiError(err) || err.response?.data?.detail || err.message;
+      alert('Lỗi thêm Nhà màng: ' + errorMsg);
     } finally {
       setIsSubmittingZone(false);
     }
@@ -236,10 +302,14 @@ export const FarmsPage: React.FC = () => {
 
   const handleSaveZoneGIS = async () => {
     if (!selectedZone) return;
+    if (zoneEditPolygon.length < 3) {
+      alert('Vui lòng xác định ít nhất 3 điểm trên bản đồ để lưu ranh giới GIS Nhà màng!');
+      return;
+    }
     setIsSavingZoneGIS(true);
     try {
       const geoJson = toGeoJsonPolygon(zoneEditPolygon);
-      const computedArea = calculatePolygonAreaM2(zoneEditPolygon) || selectedZone.areaM2;
+      const computedArea = Math.max(1, Math.round(calculatePolygonAreaM2(zoneEditPolygon) || Number(selectedZone.areaM2) || 100));
       await zoneService.updateZone(selectedZone.zoneId, {
         name: selectedZone.name,
         areaM2: computedArea,
@@ -251,9 +321,73 @@ export const FarmsPage: React.FC = () => {
       alert('Đã cập nhật và lưu tọa độ GIS Nhà màng vào PostgreSQL thành công!');
     } catch (err: any) {
       console.error('Lỗi lưu GIS Zone:', err);
-      alert('Lỗi lưu GIS: ' + (err.response?.data?.message || err.message));
+      const errorMsg = extractApiError(err) || err.response?.data?.detail || err.response?.data?.message || err.message;
+      alert('Lỗi lưu GIS Zone: ' + errorMsg);
     } finally {
       setIsSavingZoneGIS(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // DEVICE INSTALLATION REQUEST HANDLERS
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [installTargetField, setInstallTargetField] = useState<Field | null>(null);
+  const [installTargetZone, setInstallTargetZone] = useState<Zone | null>(null);
+  const [installCategory, setInstallCategory] = useState('SENSOR_LORA');
+  const [installPriority, setInstallPriority] = useState<'NORMAL' | 'HIGH' | 'CRITICAL'>('HIGH');
+  const [installTitle, setInstallTitle] = useState('');
+  const [installDescription, setInstallDescription] = useState('');
+  const [isSubmittingInstall, setIsSubmittingInstall] = useState(false);
+
+  const openInstallModalForField = (field: Field) => {
+    setInstallTargetField(field);
+    const childZones = zones.filter(z => z.fieldId === field.fieldId);
+    setInstallTargetZone(childZones.length > 0 ? childZones[0] : null);
+    setInstallCategory('SENSOR_LORA');
+    setInstallTitle(`Yêu cầu lắp đặt thiết bị IoT cho Lô đất "${field.name}"`);
+    setInstallDescription(`Kính gửi phòng Kỹ thuật: Trang trại cần khảo sát và lắp đặt cụm trạm quan trắc vi khí hậu & rơ-le tưới tự động tại Lô đất "${field.name}".`);
+    setShowInstallModal(true);
+  };
+
+  const openInstallModalForZone = (zone: Zone) => {
+    const parentField = fields.find(f => f.fieldId === zone.fieldId) || selectedField;
+    if (parentField) setInstallTargetField(parentField);
+    setInstallTargetZone(zone);
+    setInstallCategory('SENSOR_LORA');
+    setInstallTitle(`Yêu cầu lắp đặt thiết bị IoT cho Nhà màng "${zone.name}"`);
+    setInstallDescription(`Kính gửi phòng Kỹ thuật: Cần khảo sát, bổ sung trạm cảm biến LoRa (Nhiệt/Ẩm/EC/pH) và tủ rơ-le điều khiển tự động cho Nhà màng "${zone.name}".`);
+    setShowInstallModal(true);
+  };
+
+  const handleInstallSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!installTitle.trim()) {
+      alert('Vui lòng nhập tiêu đề yêu cầu lắp đặt!');
+      return;
+    }
+    const farmId = selectedFarm?.farmId || (installTargetField ? installTargetField.farmId : '30000000-0000-0000-0000-000000000001');
+    const zoneId = installTargetZone?.zoneId || (zones.find(z => z.farmId === farmId)?.zoneId || '32000000-0000-0000-0000-000000000001');
+
+    setIsSubmittingInstall(true);
+    try {
+      await supportService.createServiceRequest({
+        farmId,
+        zoneId,
+        requestType: 'INSTALLATION',
+        title: installTitle.trim(),
+        description: `[Hạng mục: ${installCategory}] ${installDescription.trim()}`,
+        priority: installPriority,
+        failureCode: 'NEW_INSTALL',
+      });
+      setShowInstallModal(false);
+      alert('🎉 Đã gửi Yêu cầu Lắp đặt Thiết bị thành công lên hệ thống API! Kỹ thuật viên sẽ liên hệ khảo sát thực địa. Bạn có thể theo dõi tiến độ, ký hợp đồng và nghiệm thu tại mục "Yêu cầu Hỗ trợ Kỹ thuật".');
+    } catch (err: any) {
+      console.error('Lỗi gửi yêu cầu lắp đặt:', err);
+      const msg = extractApiError(err) || err.response?.data?.detail || err.message;
+      alert('Lỗi gửi yêu cầu lắp đặt: ' + msg);
+    } finally {
+      setIsSubmittingInstall(false);
     }
   };
 
@@ -374,7 +508,7 @@ export const FarmsPage: React.FC = () => {
                   <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl text-center text-xs">
                     <div>
                       <span className="text-slate-500 block text-[10px]">Diện tích</span>
-                      <strong className="text-slate-900">{(farm.areaM2 / 10000).toFixed(1)} ha</strong>
+                      <strong className="text-slate-900">{(((farm.totalAreaM2 || farm.areaM2 || 0)) / 10000).toFixed(1)} ha</strong>
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[10px]">Lô đất (Fields)</span>
@@ -409,7 +543,7 @@ export const FarmsPage: React.FC = () => {
                 </div>
                 <h2 className="text-xl font-bold text-white mt-1">{selectedFarm.name}</h2>
                 <p className="text-xs text-slate-300 flex items-center gap-1 mt-1">
-                  <MapPin size={13} className="text-emerald-400" /> {selectedFarm.address} • {(selectedFarm.areaM2 / 10000).toFixed(1)} ha
+                  <MapPin size={13} className="text-emerald-400" /> {selectedFarm.address} • {(((selectedFarm.totalAreaM2 || selectedFarm.areaM2 || 0)) / 10000).toFixed(1)} ha
                 </p>
               </div>
 
@@ -472,9 +606,22 @@ export const FarmsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-sky-700 font-bold group-hover:translate-x-1 transition-transform">
-                    <span>Mở danh sách Nhà màng (Zones) trong Lô đất này ➔</span>
-                    <ArrowUpRight size={16} />
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openInstallModalForField(field);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
+                      title="Gửi yêu cầu lắp đặt thiết bị cho Lô đất này"
+                    >
+                      <Wrench size={13} className="text-emerald-700" />
+                      <span>Gửi yêu cầu thiết bị</span>
+                    </button>
+                    <span className="text-xs text-sky-700 font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                      Mở Nhà màng ➔ <ArrowUpRight size={14} />
+                    </span>
                   </div>
                 </div>
               );
@@ -509,7 +656,14 @@ export const FarmsPage: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  onClick={() => openInstallModalForField(selectedField)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                >
+                  <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
+                </Button>
                 <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800/80 hover:bg-slate-700" onClick={() => setSelectedField(null)}>
                   <ArrowLeft size={14} className="mr-1" /> Trở lại Lô đất
                 </Button>
@@ -569,9 +723,22 @@ export const FarmsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-amber-700 font-bold group-hover:translate-x-1 transition-transform">
-                  <span>Chi tiết Vi khí hậu & Cảm biến LoRa ➔</span>
-                  <ArrowUpRight size={16} />
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openInstallModalForZone(zone);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all shadow-2xs"
+                    title="Gửi yêu cầu lắp đặt thiết bị cho Nhà màng này"
+                  >
+                    <Wrench size={13} className="text-emerald-700" />
+                    <span>Gửi yêu cầu thiết bị</span>
+                  </button>
+                  <span className="text-xs text-amber-700 font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                    Vi khí hậu & LoRa ➔ <ArrowUpRight size={14} />
+                  </span>
                 </div>
               </div>
             ))}
@@ -603,7 +770,14 @@ export const FarmsPage: React.FC = () => {
                 <p className="text-xs text-slate-300">{selectedZone.description} • {selectedZone.areaM2} m²</p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  onClick={() => openInstallModalForZone(selectedZone)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                >
+                  <Wrench size={14} className="mr-1.5" /> Gửi yêu cầu lắp đặt thiết bị
+                </Button>
                 <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800/80 hover:bg-slate-700" onClick={() => setSelectedZone(null)}>
                   <ArrowLeft size={14} className="mr-1" /> Trở lại danh sách Nhà màng
                 </Button>
@@ -810,14 +984,30 @@ export const FarmsPage: React.FC = () => {
       {/* Modal Add Field inside Selected Farm */}
       <Modal isOpen={showAddFieldModal} title={`Thêm Phân khu Lô đất Mới vào "${selectedFarm?.name || 'Trang trại'}"`} onClose={() => setShowAddFieldModal(false)}>
         <div className="space-y-4 text-xs">
-          <div>
-            <label className="block text-slate-700 font-bold mb-1">Tên Phân khu Lô đất mới *</label>
-            <Input value={newFieldName} onChange={e => setNewFieldName(e.target.value)} placeholder="Nhập tên Lô đất (vd: Lô C - Dưa màng)" />
+          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex justify-between items-center">
+            <span>Diện tích còn trống của Trang trại:</span>
+            <strong className="font-mono text-sm text-sky-800">{farmAvailableArea.toLocaleString()} m²</strong>
           </div>
 
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Diện tính quy hoạch (m²)</label>
-            <Input value={newFieldArea} onChange={e => setNewFieldArea(e.target.value)} />
+            <label className="block text-slate-700 font-bold mb-1">Tên Phân khu Lô đất mới * (Tối thiểu 2 ký tự)</label>
+            <Input
+              value={newFieldName}
+              onChange={e => setNewFieldName(e.target.value)}
+              placeholder="Nhập tên Lô đất (vd: Lô C - Dưa màng)"
+              minLength={2}
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Diện tích quy hoạch (m²) *</label>
+            <Input
+              type="number"
+              value={newFieldArea}
+              onChange={e => setNewFieldArea(e.target.value)}
+              placeholder="VD: 5000"
+            />
+            <span className="text-[10px] text-slate-500 mt-0.5 block">Tối đa diện tích còn lại của Trang trại ({farmAvailableArea.toLocaleString()} m²).</span>
           </div>
 
           <div>
@@ -844,9 +1034,30 @@ export const FarmsPage: React.FC = () => {
       {/* Modal Add Zone inside Selected Field */}
       <Modal isOpen={showAddZoneModal} title={`Thêm Nhà màng Mới vào Lô đất "${selectedField?.name || 'Field'}"`} onClose={() => setShowAddZoneModal(false)}>
         <div className="space-y-4 text-xs">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex justify-between items-center">
+            <span>Diện tích còn trống trong Lô đất:</span>
+            <strong className="font-mono text-sm text-amber-800">{fieldAvailableArea.toLocaleString()} m²</strong>
+          </div>
+
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Tên Nhà màng / Zone *</label>
-            <Input value={newZoneName} onChange={e => setNewZoneName(e.target.value)} placeholder="Nhập tên Zone (vd: Nhà màng 05)" />
+            <label className="block text-slate-700 font-bold mb-1">Tên Nhà màng / Zone * (Tối thiểu 2 ký tự)</label>
+            <Input
+              value={newZoneName}
+              onChange={e => setNewZoneName(e.target.value)}
+              placeholder="Nhập tên Zone (vd: Nhà màng 05)"
+              minLength={2}
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Diện tích quy hoạch Nhà màng (m²) *</label>
+            <Input
+              type="number"
+              value={newZoneArea}
+              onChange={e => setNewZoneArea(e.target.value)}
+              placeholder="VD: 1000"
+            />
+            <span className="text-[10px] text-slate-500 mt-0.5 block">Tối đa diện tích còn lại của Lô đất ({fieldAvailableArea.toLocaleString()} m²).</span>
           </div>
 
           <div>
@@ -871,6 +1082,153 @@ export const FarmsPage: React.FC = () => {
             <Button variant="outline" onClick={() => setShowAddZoneModal(false)} disabled={isSubmittingZone}>Hủy</Button>
             <Button onClick={handleAddZoneSubmit} disabled={isSubmittingZone}>
               {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Field'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Submit Device Installation Request for Field or Zone */}
+      <Modal
+        isOpen={showInstallModal}
+        title="Gửi Yêu cầu Lắp đặt Thiết bị IoT & Khảo sát Thực địa"
+        onClose={() => setShowInstallModal(false)}
+      >
+        <div className="space-y-4 text-xs">
+          {/* Target Hierarchy Location Breadcrumb */}
+          <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl space-y-1.5 text-slate-700">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-900 text-[11px]">
+              <Wrench size={14} className="text-emerald-700" />
+              <span>Vị trí triển khai lắp đặt thiết bị:</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="px-2 py-0.5 bg-white border border-emerald-300 rounded text-emerald-800 font-semibold flex items-center gap-1">
+                <Building2 size={12} /> {selectedFarm?.name || 'Trang trại'}
+              </span>
+              <span>➔</span>
+              <span className="px-2 py-0.5 bg-white border border-sky-300 rounded text-sky-800 font-semibold flex items-center gap-1">
+                <MapPin size={12} /> {installTargetField?.name || 'Lô đất'}
+              </span>
+              {installTargetZone && (
+                <>
+                  <span>➔</span>
+                  <span className="px-2 py-0.5 bg-white border border-amber-300 rounded text-amber-800 font-semibold flex items-center gap-1">
+                    <Sprout size={12} /> {installTargetZone.name}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Select Target Zone if opened from Field */}
+          {installTargetField && (
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">Khu vực Nhà màng (Zone) chỉ định lắp đặt:</label>
+              <select
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
+                value={installTargetZone?.zoneId || ''}
+                onChange={e => {
+                  const found = zones.find(z => z.zoneId === e.target.value);
+                  setInstallTargetZone(found || null);
+                }}
+              >
+                <option value="">-- Toàn bộ Lô đất (Khảo sát đo đạc thực địa / Đặt hàng mới) --</option>
+                {zones
+                  .filter(z => z.fieldId === installTargetField.fieldId)
+                  .map(z => (
+                    <option key={z.zoneId} value={z.zoneId}>
+                      {z.name} ({z.areaM2} m² - {z.currentCrop || 'Zone'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {/* Device Category */}
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Hạng mục Thiết bị IoT cần lắp đặt *</label>
+            <select
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326]"
+              value={installCategory}
+              onChange={e => setInstallCategory(e.target.value)}
+            >
+              <option value="SENSOR_LORA">📡 Trạm Cảm biến Vi khí hậu LoRaWAN (Nhiệt/Ẩm không khí, Ánh sáng, CO2)</option>
+              <option value="SOIL_PH_EC">🌱 Cụm Cảm biến Đất & Dung dịch (Độ ẩm đất, EC, pH, NPK luống cây)</option>
+              <option value="ACTUATOR_VALVE">⚡ Tủ điều khiển Actuator & Van điện từ Solenoid tưới tự động (Relay LoRa Gateway)</option>
+              <option value="DRIP_IRRIGATION">💧 Hệ thống Châm phân & Tưới nhỏ giọt tự động áp lực cao</option>
+              <option value="AI_CAMERA">📹 Camera AI Giám sát Sinh trưởng Cây trồng & Cảnh báo Sâu bệnh</option>
+              <option value="ALL_IN_ONE">🚀 Gói Thiết bị Thông minh Toàn diện (All-in-one SmartFarm IoT Package)</option>
+            </select>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Tiêu đề Yêu cầu *</label>
+            <Input
+              value={installTitle}
+              onChange={e => setInstallTitle(e.target.value)}
+              placeholder="VD: Yêu cầu lắp đặt cảm biến vi khí hậu cho Lô đất A"
+            />
+          </div>
+
+          {/* Detailed Description */}
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Mô tả chi tiết & Ghi chú kỹ thuật *</label>
+            <textarea
+              rows={3}
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] text-xs resize-none"
+              value={installDescription}
+              onChange={e => setInstallDescription(e.target.value)}
+              placeholder="Nhập chi tiết nhu cầu: số lượng node cảm biến, loại cây trồng, van điều khiển, vị trí kéo dây điện/nguồn pin mặt trời..."
+            />
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Mức độ ưu tiên</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setInstallPriority('NORMAL')}
+                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${
+                  installPriority === 'NORMAL'
+                    ? 'bg-slate-100 border-slate-400 text-slate-900'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Bình thường
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstallPriority('HIGH')}
+                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${
+                  installPriority === 'HIGH'
+                    ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-2xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                ⚡ Ưu tiên cao
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstallPriority('CRITICAL')}
+                className={`py-2 px-3 rounded-lg border text-center font-semibold transition-all ${
+                  installPriority === 'CRITICAL'
+                    ? 'bg-rose-100 border-rose-400 text-rose-900 shadow-2xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                🚨 Khẩn cấp
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button variant="outline" onClick={() => setShowInstallModal(false)} disabled={isSubmittingInstall}>
+              Hủy
+            </Button>
+            <Button onClick={handleInstallSubmit} disabled={isSubmittingInstall} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+              <Wrench size={14} className="mr-1.5" />
+              {isSubmittingInstall ? 'Đang gửi yêu cầu lên API...' : 'Gửi Yêu cầu Thiết bị Ngay'}
             </Button>
           </div>
         </div>

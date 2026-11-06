@@ -48,11 +48,14 @@ export const ServiceRequestsPage: React.FC = () => {
   });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const filteredRequests = requests.filter(r => {
+  const filteredRequests = (requests || []).filter(r => {
+    if (!r) return false;
     const matchesFilter = activeFilter === 'ALL' ? true : r.status === activeFilter;
-    const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (r.farmName && r.farmName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                          (r.requestedBy && r.requestedBy.toLowerCase().includes(searchTerm.toLowerCase()));
+    const query = String(searchTerm || '').toLowerCase().trim();
+    const matchesSearch = !query ||
+      String(r.title || '').toLowerCase().includes(query) ||
+      String(r.farmName || '').toLowerCase().includes(query) ||
+      String(r.requestedBy || '').toLowerCase().includes(query);
     return matchesFilter && matchesSearch;
   });
 

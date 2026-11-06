@@ -178,23 +178,39 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="divide-y divide-slate-100">
-          {auditLogs.map(log => (
-            <div key={log.auditLogId} className="py-3 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-[#062326] border border-slate-200">
-                  {log.userName.charAt(0)}
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-900">{log.action} <span className="font-normal text-slate-500">bởi</span> {log.userName} ({log.userRole})</div>
-                  <div className="text-[11px] text-slate-500">{log.details}</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-500 font-mono text-[10px]">{log.ipAddress}</span>
-                <span className="text-slate-400 block text-[10px]">{log.createdAt}</span>
-              </div>
+          {auditLogs.length === 0 ? (
+            <div className="py-6 text-center text-xs text-slate-400 italic">
+              Chưa có nhật ký hoạt động nào gần đây.
             </div>
-          ))}
+          ) : (
+            auditLogs.map((log, index) => {
+              const logId = log.id || log.auditLogId || `audit-${index}`;
+              const userName = log.actorName || log.userName || 'Hệ thống';
+              const userRole = log.actorRole || log.userRole || 'System';
+              const createdAt = log.createdAtUtc || log.createdAt || '-';
+              const initial = (userName?.trim()?.charAt(0) || 'H').toUpperCase();
+
+              return (
+                <div key={logId} className="py-3 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-[#062326] border border-slate-200">
+                      {initial}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-900">
+                        {log.action} <span className="font-normal text-slate-500">bởi</span> {userName} ({userRole})
+                      </div>
+                      <div className="text-[11px] text-slate-500">{log.details || '-'}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500 font-mono text-[10px]">{log.ipAddress || '-'}</span>
+                    <span className="text-slate-400 block text-[10px]">{createdAt}</span>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

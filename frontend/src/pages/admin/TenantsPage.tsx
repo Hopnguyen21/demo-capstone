@@ -23,7 +23,14 @@ export const TenantsPage: React.FC = () => {
     loadTenants();
   }, []);
 
-  const filtered = tenants.filter(t => t.name.toLowerCase().includes(search.toLowerCase()) || (t.code && t.code.toLowerCase().includes(search.toLowerCase())));
+  const filtered = (tenants || []).filter(t => {
+    if (!t) return false;
+    const name = String(t.name || (t as any).companyName || '').toLowerCase();
+    const code = String(t.code || (t as any).subdomain || (t as any).taxCode || '').toLowerCase();
+    const query = String(search || '').toLowerCase().trim();
+    if (!query) return true;
+    return name.includes(query) || code.includes(query);
+  });
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,42 +78,56 @@ export const TenantsPage: React.FC = () => {
       </div>
 
       {/* Tenants Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map(t => (
-          <div key={t.tenantId} className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-xs hover:border-[#062326]/30 transition-all">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-[#062326] border border-slate-200">
-                  {t.code}
-                </span>
-                <h3 className="text-base font-bold text-slate-900 mt-1.5">{t.name}</h3>
-              </div>
-              <StatusBadge status={t.status} />
-            </div>
+      {filtered.length === 0 ? (
+        <div className="p-12 text-center bg-white border border-slate-200 rounded-xl">
+          <Building2 size={36} className="mx-auto text-slate-300 mb-2" />
+          <p className="text-sm font-semibold text-slate-700">Chưa có tổ chức người thuê nào</p>
+          <p className="text-xs text-slate-500 mt-1">Hãy nhấp vào "Đăng ký Tenant Mới" để thêm tổ chức đầu tiên.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map((t, idx) => {
+            const tenantName = t.name || (t as any).companyName || 'Hợp tác xã nông nghiệp';
+            const tenantCode = t.code || (t as any).subdomain || (t as any).taxCode || `HTX-${idx + 1}`;
+            const farmCount = t.farmsCount ?? (t as any).stats?.totalFarms ?? 0;
+            const userCount = t.usersCount ?? (t as any).stats?.activeUsers ?? 0;
+            return (
+              <div key={t.tenantId || idx} className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-xs hover:border-[#062326]/30 transition-all">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-[#062326] border border-slate-200">
+                      {tenantCode}
+                    </span>
+                    <h3 className="text-base font-bold text-slate-900 mt-1.5">{tenantName}</h3>
+                  </div>
+                  <StatusBadge status={t.status || 'ACTIVE'} />
+                </div>
 
-            <div className="space-y-1.5 text-xs text-slate-600">
-              <div className="flex items-center gap-2 text-slate-600">
-                <MapPin size={14} className="text-[#062326] shrink-0" />
-                <span className="truncate">{t.address || 'Chưa cập nhật địa chỉ'}</span>
-              </div>
-              <div className="flex items-center gap-4 text-slate-600">
-                <span className="flex items-center gap-1.5"><Mail size={13} /> {t.email}</span>
-                <span className="flex items-center gap-1.5"><Phone size={13} /> {t.phone}</span>
-              </div>
-            </div>
+                <div className="space-y-1.5 text-xs text-slate-600">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <MapPin size={14} className="text-[#062326] shrink-0" />
+                    <span className="truncate">{t.address || 'Chưa cập nhật địa chỉ'}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-slate-600">
+                    <span className="flex items-center gap-1.5"><Mail size={13} /> {t.email || 'contact@smartfarm.vn'}</span>
+                    <span className="flex items-center gap-1.5"><Phone size={13} /> {t.phone || 'Chưa cập nhật'}</span>
+                  </div>
+                </div>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-3">
-                <span className="text-slate-500">Trang trại: <strong className="text-slate-900">{t.farmsCount}</strong></span>
-                <span className="text-slate-500">Tài khoản: <strong className="text-slate-900">{t.usersCount}</strong></span>
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-500">Trang trại: <strong className="text-slate-900">{farmCount}</strong></span>
+                    <span className="text-slate-500">Tài khoản: <strong className="text-slate-900">{userCount}</strong></span>
+                  </div>
+                  <button className="text-[#062326] hover:underline font-semibold flex items-center gap-1">
+                    Chi tiết & Cấu hình <ExternalLink size={12} />
+                  </button>
+                </div>
               </div>
-              <button className="text-[#062326] hover:underline font-semibold flex items-center gap-1">
-                Chi tiết & Cấu hình <ExternalLink size={12} />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Create Tenant Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Đăng ký Hợp tác xã / Tenant Mới">

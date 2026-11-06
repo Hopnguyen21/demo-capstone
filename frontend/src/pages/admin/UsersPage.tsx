@@ -23,7 +23,14 @@ export const UsersPage: React.FC = () => {
     loadUsers();
   }, []);
 
-  const filtered = users.filter(u => u.fullName.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
+  const filtered = (users || []).filter(u => {
+    if (!u) return false;
+    const name = String(u.fullName || '').toLowerCase();
+    const email = String(u.email || '').toLowerCase();
+    const query = String(search || '').toLowerCase().trim();
+    if (!query) return true;
+    return name.includes(query) || email.includes(query);
+  });
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();

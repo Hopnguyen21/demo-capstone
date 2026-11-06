@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, calculatePolygonAreaM2, toGeoJsonPolygon } from '../../components/maps/GISLocationPicker';
-import { farmService } from '../../services';
+import { farmService, cropService } from '../../services';
 
 export const CreateFarmWizard: React.FC = () => {
   const navigate = useNavigate();
@@ -91,6 +91,71 @@ export const CreateFarmWizard: React.FC = () => {
     nodesNeeded: 4,
     actuatorsNeeded: 4,
   });
+
+  // Dynamic backend crops & varieties
+  const [serverCrops, setServerCrops] = useState<any[]>([]);
+  const [selectedCropId, setSelectedCropId] = useState<string>('10000000-0000-0000-0000-000000000001');
+  const [serverVarieties, setServerVarieties] = useState<any[]>([]);
+  const [selectedVarietyId, setSelectedVarietyId] = useState<string>('');
+  const [serverProfiles, setServerProfiles] = useState<any[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [wizardSuccessData, setWizardSuccessData] = useState<{
+    farmId: string;
+    fieldId?: string;
+    zoneId?: string;
+    seasonId?: string;
+    deploymentRequestId?: string;
+  } | null>(null);
+
+  const loadVarietiesAndProfiles = async (cropId: string) => {
+    try {
+      const [vars, profs] = await Promise.all([
+        cropService.getVarieties(cropId).catch(() => []),
+        cropService.getGrowthProfiles(cropId).catch(() => []),
+      ]);
+      if (Array.isArray(vars) && vars.length > 0) {
+        setServerVarieties(vars);
+        setSelectedVarietyId(vars[0].varietyId);
+        setCropData(prev => ({ ...prev, variety: vars[0].name }));
+      } else {
+        setServerVarieties([]);
+        setSelectedVarietyId('');
+      }
+      if (Array.isArray(profs) && profs.length > 0) {
+        setServerProfiles(profs);
+        setSelectedProfileId(profs[0].profileId || profs[0].id || '');
+      } else {
+        setServerProfiles([]);
+        setSelectedProfileId('');
+      }
+    } catch (err) {
+      console.warn('Failed to load crop varieties/profiles', err);
+    }
+  };
+
+  useEffect(() => {
+    const fetchCrops = async () => {
+      try {
+        const crops = await cropService.getCrops();
+        if (Array.isArray(crops) && crops.length > 0) {
+          setServerCrops(crops);
+          const initial = crops[0];
+          setSelectedCropId(initial.cropId);
+          setCropData(prev => ({
+            ...prev,
+            crop: `${initial.name} (${initial.scientificName || 'Thương phẩm'})`,
+            seasonName: `Vụ ${initial.name.split('(')[0].trim()} Đông Xuân 2026-2027`,
+          }));
+          loadVarietiesAndProfiles(initial.cropId);
+        }
+      } catch (err) {
+        console.warn('Failed to load server crops', err);
+      }
+    };
+    fetchCrops();
+  }, []);
 
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
@@ -554,15 +619,35 @@ export const CreateFarmWizard: React.FC = () => {
                   </h4>
 
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Loài Cây trồng *</label>
+                    <label className="block text-slate-700 font-medium mb-1">Loài Cây trồng (Backend Crop Catalog) *</label>
                     <select
                       className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs"
-                      value={cropData.crop}
-                      onChange={e => setCropData({ ...cropData, crop: e.target.value, variety: CROP_PROFILES[e.target.value]?.varieties[0] || '' })}
+                      value={selectedCropId}
+                      onChange={e => {
+                        const newCropId = e.target.value;
+                        setSelectedCropId(newCropId);
+                        const c = serverCrops.find(x => x.cropId === newCropId);
+                        if (c) {
+                          setCropData(prev => ({
+                            ...prev,
+                            crop: `${c.name} (${c.scientificName || ''})`,
+                            seasonName: `Vụ ${c.name.split('(')[0].trim()} Đông Xuân 2026-2027`,
+                          }));
+                          loadVarietiesAndProfiles(newCropId);
+                        }
+                      }}
                     >
-                      {Object.entries(CROP_PROFILES).map(([key, val]) => (
-                        <option key={key} value={key}>{val.icon} {key}</option>
-                      ))}
+                      {serverCrops.length > 0 ? (
+                        serverCrops.map(c => (
+                          <option key={c.cropId} value={c.cropId}>
+                            🌱 {c.name} {c.scientificName ? `(${c.scientificName})` : ''}
+                          </option>
+                        ))
+                      ) : (
+                        Object.entries(CROP_PROFILES).map(([key, val]) => (
+                          <option key={key} value={key}>{val.icon} {key}</option>
+                        ))
+                      )}
                     </select>
                     {/* Crop note badge */}
                     <div className={`mt-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] flex items-center gap-1.5 ${badgeColor}`}>
@@ -572,13 +657,25 @@ export const CreateFarmWizard: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Giống thương mại / Variety *</label>
+                    <label className="block text-slate-700 font-medium mb-1">Giống thương mại / Variety (Backend Catalog) *</label>
                     <select
                       className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#062326] shadow-xs"
-                      value={cropData.variety}
-                      onChange={e => setCropData({ ...cropData, variety: e.target.value })}
+                      value={selectedVarietyId}
+                      onChange={e => {
+                        setSelectedVarietyId(e.target.value);
+                        const v = serverVarieties.find(x => x.varietyId === e.target.value);
+                        if (v) setCropData(prev => ({ ...prev, variety: v.name }));
+                      }}
                     >
-                      {profile.varieties.map(v => <option key={v}>{v}</option>)}
+                      {serverVarieties.length > 0 ? (
+                        serverVarieties.map(v => (
+                          <option key={v.varietyId} value={v.varietyId}>
+                            {v.name} {v.description ? `— ${v.description}` : ''}
+                          </option>
+                        ))
+                      ) : (
+                        profile.varieties.map(v => <option key={v} value={v}>{v}</option>)
+                      )}
                     </select>
                   </div>
 
@@ -845,6 +942,34 @@ export const CreateFarmWizard: React.FC = () => {
           </div>
         )}
 
+        {submitError && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 font-semibold flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-600 shrink-0" />
+            <span>{submitError}</span>
+          </div>
+        )}
+
+        {wizardSuccessData && (
+          <div className="p-5 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs space-y-3 text-emerald-950 animate-in fade-in">
+            <div className="flex items-center gap-2 font-bold text-sm text-emerald-900">
+              <CheckCircle2 size={20} className="text-emerald-600" />
+              Khởi tạo Phân cấp Nông trang & Cấp phát IoT thành công!
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono bg-white p-3 rounded-xl border border-emerald-200">
+              <div>🏢 Farm ID: <strong className="text-slate-900">{wizardSuccessData.farmId}</strong></div>
+              <div>📍 Field ID: <strong className="text-slate-900">{wizardSuccessData.fieldId || 'N/A'}</strong></div>
+              <div>🌱 Zone ID: <strong className="text-slate-900">{wizardSuccessData.zoneId || 'N/A'}</strong></div>
+              <div>📅 Season ID: <strong className="text-slate-900">{wizardSuccessData.seasonId || 'N/A'}</strong></div>
+              <div className="sm:col-span-2 text-emerald-800">📡 Phiếu Yêu cầu IoT ID: <strong>{wizardSuccessData.deploymentRequestId || 'N/A'}</strong></div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => navigate('/owner/farms')} className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs">
+                Xem Trang trại trong Quản lý Nông trang <ArrowRight size={14} className="ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Wizard Footer Controls */}
         <div className="flex items-center justify-between pt-4 border-t border-slate-200">
           <Button
@@ -873,49 +998,66 @@ export const CreateFarmWizard: React.FC = () => {
             </Button>
           ) : (
             <Button
+              disabled={isSubmitting}
               onClick={async () => {
+                setIsSubmitting(true);
+                setSubmitError(null);
                 try {
-                  await farmService.wizardSetup({
+                  const res = await farmService.wizardSetup({
                     farm: {
-                      name: farmData.name || 'Trang trại mới',
-                      locationText: farmData.address || 'Đà Lạt, Lâm Đồng',
+                      name: farmData.name.trim() || 'Trang trại mới',
+                      locationText: farmData.address.trim() || 'Đà Lạt, Lâm Đồng',
                       latitude: farmData.center[0],
                       longitude: farmData.center[1],
                       totalAreaM2: Number(farmData.areaM2) || 10000,
                       timeZone: 'Asia/Ho_Chi_Minh',
                     },
                     field: {
-                      name: fieldData.name || 'Lô đất A1',
+                      name: fieldData.name.trim() || 'Lô đất A1',
                       areaM2: Number(fieldData.areaM2) || 5000,
                       soilType: 'Loam',
                       boundaryGeoJson: JSON.stringify(toGeoJsonPolygon(fieldData.polygon)),
                     },
                     zone: {
-                      name: zoneData.name || 'Nhà màng Z01',
+                      name: zoneData.name.trim() || 'Nhà màng Z01',
                       areaM2: Number(zoneData.areaM2) || 2000,
                       zoneType: 'Greenhouse',
                       boundaryGeoJson: JSON.stringify(toGeoJsonPolygon(zoneData.polygon)),
                     },
                     season: {
-                      name: cropData.seasonName || 'Vụ mùa mới',
-                      cropId: '40000000-0000-0000-0000-000000000001',
-                      startDate: cropData.startDate || '2026-10-01',
-                      expectedEndDate: cropData.expectedHarvestDate || '2027-01-15',
+                      name: cropData.seasonName.trim() || 'Vụ mùa mới',
+                      cropId: selectedCropId || '10000000-0000-0000-0000-000000000001',
+                      varietyId: selectedVarietyId || undefined,
+                      growthProfileId: selectedProfileId || undefined,
+                      startDate: cropData.startDate ? `${cropData.startDate}T00:00:00Z` : new Date().toISOString(),
+                      expectedEndDate: cropData.expectedHarvestDate ? `${cropData.expectedHarvestDate}T00:00:00Z` : undefined,
                     },
                     initialDeploymentRequest: {
                       requiredParameters: ['SoilMoisture', 'Temperature', 'AirHumidity'],
-                      ownerNotes: `Cần ${cropData.gatewaysNeeded || 1} Gateway và ${cropData.nodesNeeded || 4} Sensor Node.`,
+                      ownerNotes: `Cần ${cropData.gatewaysNeeded || 1} Gateway LoRaWAN và ${cropData.nodesNeeded || 4} Sensor Node.`,
                     },
                   });
-                } catch (err) {
+
+                  setWizardSuccessData(res);
+                } catch (err: any) {
                   console.error('Wizard setup error:', err);
+                  const msg = err.response?.data?.detail || err.response?.data?.title || err.message || 'Lỗi khi gửi yêu cầu khởi tạo phân cấp';
+                  setSubmitError(`Lỗi thiết lập: ${msg}`);
+                } finally {
+                  setIsSubmitting(false);
                 }
-                alert('Khởi tạo Trang trại & gửi yêu cầu cấp phát IoT cho Kỹ thuật viên thành công!');
-                navigate('/owner/farms');
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
             >
-              <Send size={16} className="mr-1.5" /> Gửi Yêu cầu Cấu hình IoT cho Kỹ thuật viên
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="mr-1.5 animate-spin" /> Đang thiết lập qua API...
+                </>
+              ) : (
+                <>
+                  <Send size={16} className="mr-1.5" /> Gửi Yêu cầu Cấu hình IoT cho Kỹ thuật viên
+                </>
+              )}
             </Button>
           )}
         </div>

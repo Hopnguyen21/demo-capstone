@@ -126,7 +126,14 @@ export const CropsPage: React.FC = () => {
     }
   };
 
-  const filtered = crops.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || (c.scientificName && c.scientificName.toLowerCase().includes(search.toLowerCase())));
+  const filtered = (crops || []).filter(c => {
+    if (!c) return false;
+    const name = String(c.name || '').toLowerCase();
+    const scientific = String(c.scientificName || '').toLowerCase();
+    const query = String(search || '').toLowerCase().trim();
+    if (!query) return true;
+    return name.includes(query) || scientific.includes(query);
+  });
 
   return (
     <div className="space-y-6">
