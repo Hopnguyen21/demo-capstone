@@ -17,14 +17,14 @@ public sealed class FieldsController(IFieldService fieldService) : ControllerBas
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<FieldDetailView>>> ListAll(
         [FromQuery] Guid? farmId, CancellationToken cancellationToken) =>
-        Ok(await fieldService.ListAllAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
+        Ok(await fieldService.ListAllAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, cancellationToken));
 
     // API catalog #23
     [HttpGet("api/v1/farms/{farmId:guid}/fields")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<IReadOnlyList<FieldSummaryView>>> List(
         Guid farmId, CancellationToken cancellationToken) =>
-        Ok(await fieldService.ListAsync(User.GetUserId(), User.GetTenantId(), farmId, cancellationToken));
+        Ok(await fieldService.ListAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, cancellationToken));
 
     // API catalog #24
     [HttpPost("api/v1/farms/{farmId:guid}/fields")]
@@ -40,7 +40,7 @@ public sealed class FieldsController(IFieldService fieldService) : ControllerBas
     [HttpGet("api/v1/fields/{fieldId:guid}")]
     [Authorize(Roles = "FarmOwner,PlatformAdmin,Farmer,PlatformTechnician")]
     public async Task<ActionResult<FieldDetailView>> Get(Guid fieldId, CancellationToken cancellationToken) =>
-        Ok(await fieldService.GetAsync(User.GetUserId(), User.GetTenantId(), fieldId, cancellationToken));
+        Ok(await fieldService.GetAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, fieldId, cancellationToken));
 
     // API catalog #26
     [HttpPut("api/v1/fields/{fieldId:guid}")]

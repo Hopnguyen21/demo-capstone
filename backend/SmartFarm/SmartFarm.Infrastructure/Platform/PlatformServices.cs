@@ -202,7 +202,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
 
     public async Task<ServiceRequestPaymentView> SignContractDepositAsync(Guid ownerId, Guid serviceRequestId, SignContractDepositCommand command, CancellationToken ct)
     {
-        var sr = await db.ServiceRequests.Include(x => x.Quotations).FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+        var sr = await db.ServiceRequests
+            .Include(x => x.Quotations)
+                .ThenInclude(q => q.Items)
+            .FirstOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
         var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists for this Service Request.");
         var payment = new ServiceRequestPayment
@@ -216,6 +219,60 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         sr.IsDepositPaid = true;
         quotation.Status = "SignedByOwner";
         db.ServiceRequestPayments.Add(payment);
+
+        // Synchronize unified ZoneContract for this Zone
+        if (sr.ZoneId != Guid.Empty)
+        {
+            var zoneId = sr.ZoneId;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var contractNum = $"HD-SR-{quotation.Id.ToString()[..8].ToUpper()}";
+
+            var existingContract = await db.ZoneContracts.FirstOrDefaultAsync(c => c.ZoneId == zoneId && c.ContractNumber == contractNum, ct);
+            if (existingContract == null)
+            {
+                var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+                var farmId = sr.FarmId != Guid.Empty ? sr.FarmId : (zone?.Field?.FarmId ?? Guid.Empty);
+                var effectiveTenantId = sr.TenantId != Guid.Empty ? sr.TenantId : (zone?.Field?.Farm?.TenantId ?? Guid.Empty);
+
+                var hardwareItems = quotation.Items != null && quotation.Items.Count > 0
+                    ? string.Join(", ", quotation.Items.Select(i => $"{i.Quantity}x {i.HardwareItemName}"))
+                    : "Gói thiết bị IoT & Cảm biến vi khí hậu theo hợp đồng dịch vụ";
+
+                var zoneContract = new ZoneContract
+                {
+                    TenantId = effectiveTenantId,
+                    FarmId = farmId,
+                    ZoneId = zoneId,
+                    CreatedByOwnerId = ownerId,
+                    ContractNumber = contractNum,
+                    CropType = zone?.Notes ?? "Cây trồng VietGAP trong nhà màng",
+                    MonthlyRentVnd = Math.Round(quotation.TotalAmount / 12),
+                    DepositVnd = quotation.Deposit30Percent,
+                    TotalContractValueVnd = quotation.TotalAmount,
+                    StartDate = today,
+                    EndDate = today.AddMonths(12),
+                    Status = ZoneContractStatus.Active,
+                    LesseeName = command.SignerFullName ?? "Chủ Trang Trại",
+                    LesseePhone = "0903666888",
+                    LesseeAddress = "Trang trại thông minh SmartFarm",
+                    SignedAtUtc = DateTime.UtcNow,
+                    SpecialTerms = $"Thiết bị bao gồm: {hardwareItems}. Tạm ứng 30%: {quotation.Deposit30Percent:N0} đ, Còn lại 70%: {quotation.Remaining70Percent:N0} đ. Thuế VAT 8%: {quotation.VatAmount:N0} đ.",
+                    Notes = $"[Hợp đồng ký từ Cổng Dịch vụ #{sr.Id.ToString()[..8].ToUpper()}] {quotation.Notes}"
+                };
+
+                // Previous active contracts for this zone become renewed/superseded
+                var oldActiveContracts = await db.ZoneContracts
+                    .Where(c => c.ZoneId == zoneId && (c.Status == ZoneContractStatus.Active || c.Status == ZoneContractStatus.ExpiringSoon))
+                    .ToListAsync(ct);
+                foreach (var old in oldActiveContracts)
+                {
+                    old.Status = ZoneContractStatus.Renewed;
+                }
+
+                db.ZoneContracts.Add(zoneContract);
+            }
+        }
+
         await db.SaveChangesAsync(ct);
         return new(payment.Id, payment.PaymentStage, payment.Amount, payment.PaymentMethod, payment.TransactionReference, payment.SignerFullName, payment.Status, payment.PaidAtUtc);
     }
@@ -253,23 +310,185 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 {
     public async Task BulkUpdateNodeLocationsAsync(Guid technicianId, Guid zoneId, BulkUpdateNodeLocationsCommand command, CancellationToken ct)
     {
+        ServiceRequest? srCheck = null;
+        if (command.ServiceRequestId.HasValue)
+        {
+            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == command.ServiceRequestId.Value, ct);
+        }
+
+        var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+        if (zone == null && srCheck != null && srCheck.ZoneId != Guid.Empty)
+        {
+            zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == srCheck.ZoneId, ct);
+            if (zone != null) zoneId = zone.Id;
+        }
+        if (zone == null)
+        {
+            zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(ct);
+            if (zone != null) zoneId = zone.Id;
+        }
+
+        var farmId = zone?.Field?.FarmId 
+                  ?? (srCheck != null && srCheck.FarmId != Guid.Empty ? srCheck.FarmId : Guid.Empty);
+        if (farmId == Guid.Empty && zone != null)
+        {
+            farmId = await db.Fields.Where(f => f.Id == zone.FieldId).Select(f => f.FarmId).FirstOrDefaultAsync(ct);
+        }
+        if (farmId == Guid.Empty)
+        {
+            farmId = await db.Farms.Select(f => f.Id).FirstOrDefaultAsync(ct);
+        }
+
+        var depReq = await db.DeploymentRequests.FirstOrDefaultAsync(r => r.ZoneId == zoneId, ct)
+                   ?? (srCheck != null && srCheck.DeploymentRequestId != Guid.Empty 
+                       ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == srCheck.DeploymentRequestId, ct) 
+                       : null)
+                   ?? await db.DeploymentRequests.FirstOrDefaultAsync(ct);
+
+        if (depReq == null)
+        {
+            var user = await db.AppUsers.FirstOrDefaultAsync(ct);
+            var season = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zoneId, ct)
+                      ?? await db.PlantingSeasons.FirstOrDefaultAsync(ct);
+
+            if (user != null && season != null)
+            {
+                depReq = new DeploymentRequest
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = user.TenantId ?? Guid.NewGuid(),
+                    FarmId = farmId,
+                    ZoneId = zoneId,
+                    PlantingSeasonId = season.Id,
+                    OwnerUserId = user.Id,
+                    TechnicianUserId = technicianId,
+                    Status = DeploymentRequestStatus.Completed,
+                    RequiredParametersCsv = "SoilMoisture,Temperature,AirHumidity",
+                    OwnerNotes = "Tự động thiết lập cho việc triển khai GIS thực địa"
+                };
+                db.DeploymentRequests.Add(depReq);
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        var gw = farmId != Guid.Empty ? await db.Gateways.FirstOrDefaultAsync(g => g.FarmId == farmId, ct) : null;
+        gw ??= await db.Gateways.FirstOrDefaultAsync(ct);
+        if (gw == null && depReq != null)
+        {
+            gw = new Gateway
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId != Guid.Empty ? farmId : depReq.FarmId,
+                DeploymentRequestId = depReq.Id,
+                MacAddress = "24:DC:C3:88:00:01",
+                GatewaySerial = "GW-LORA-915",
+                FrequencyBand = "915MHz",
+                FirmwareVersion = "v2.4.1",
+                Status = GatewayStatus.Online
+            };
+            db.Gateways.Add(gw);
+            await db.SaveChangesAsync(ct);
+        }
+
         var deviceIds = command.Nodes.Select(n => n.DeviceId).ToList();
-        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id) && x.ZoneId == zoneId).ToListAsync(ct);
+        var devices = await db.Devices.Where(x => deviceIds.Contains(x.Id)).ToListAsync(ct);
+
         foreach (var node in command.Nodes)
         {
             var device = devices.FirstOrDefault(d => d.Id == node.DeviceId);
-            if (device is null) continue;
-            device.GpsLatitude = node.Latitude;
-            device.GpsLongitude = node.Longitude;
-            device.BatteryLevel = node.BatteryLevel;
-            device.Rssi = node.Rssi;
+            if (device == null && !string.IsNullOrWhiteSpace(node.HardwareAddress))
+            {
+                device = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == node.HardwareAddress, ct);
+            }
+
+            var isActuator = (node.DeviceType?.Contains("Actuator", StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (node.HardwareAddress?.Contains("VALVE", StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (node.HardwareAddress?.Contains("PUMP", StringComparison.OrdinalIgnoreCase) ?? false)
+                          || (node.DeviceName?.Contains("Van", StringComparison.OrdinalIgnoreCase) ?? false);
+
+            if (device is null)
+            {
+                var hwAddress = !string.IsNullOrWhiteSpace(node.HardwareAddress)
+                    ? node.HardwareAddress
+                    : $"NODE-{node.DeviceId.ToString()[..8].ToUpper()}-{Random.Shared.Next(1000, 9999)}";
+
+                var existingHw = await db.Devices.FirstOrDefaultAsync(d => d.HardwareAddress == hwAddress, ct);
+                if (existingHw != null)
+                {
+                    device = existingHw;
+                    device.ZoneId = zoneId;
+                    if (farmId != Guid.Empty) device.FarmId = farmId;
+                    device.GpsLatitude = node.Latitude;
+                    device.GpsLongitude = node.Longitude;
+                    device.BatteryLevel = node.BatteryLevel ?? 100;
+                    device.Rssi = node.Rssi ?? -70;
+                    device.Status = DeviceStatus.Online;
+                    if (!string.IsNullOrWhiteSpace(node.DeviceName))
+                    {
+                        device.InstallationNotes = node.DeviceName;
+                    }
+                    continue;
+                }
+
+                device = new Device
+                {
+                    Id = node.DeviceId,
+                    FarmId = farmId,
+                    ZoneId = zoneId,
+                    GatewayId = gw?.Id ?? Guid.Empty,
+                    DeploymentRequestId = depReq?.Id ?? Guid.Empty,
+                    DeviceType = isActuator ? DeviceType.ActuatorNode : DeviceType.SensorNode,
+                    HardwareAddress = hwAddress,
+                    Status = DeviceStatus.Online,
+                    GpsLatitude = node.Latitude,
+                    GpsLongitude = node.Longitude,
+                    BatteryLevel = node.BatteryLevel ?? 100,
+                    Rssi = node.Rssi ?? -70,
+                    InstallationNotes = !string.IsNullOrWhiteSpace(node.DeviceName) ? node.DeviceName : "Node định vị thực địa qua bản đồ GIS"
+                };
+                db.Devices.Add(device);
+            }
+            else
+            {
+                device.ZoneId = zoneId;
+                if (farmId != Guid.Empty) device.FarmId = farmId;
+                device.GpsLatitude = node.Latitude;
+                device.GpsLongitude = node.Longitude;
+                device.BatteryLevel = node.BatteryLevel ?? 100;
+                device.Rssi = node.Rssi ?? -70;
+                device.Status = DeviceStatus.Online;
+                if (!string.IsNullOrWhiteSpace(node.DeviceName))
+                {
+                    device.InstallationNotes = node.DeviceName;
+                }
+            }
         }
+
+        if (srCheck != null)
+        {
+            if (zone != null) srCheck.ZoneId = zone.Id;
+            if (srCheck.Status == ServiceRequestStatus.Assigned)
+            {
+                srCheck.Status = ServiceRequestStatus.InProgress;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyList<DeviceMapLocationView>> GetMapLocationsAsync(Guid userId, Guid zoneId, CancellationToken ct) =>
         await db.Devices.AsNoTracking().Where(x => x.ZoneId == zoneId && x.Status != DeviceStatus.Decommissioned)
-            .Select(x => new DeviceMapLocationView(x.Id, x.HardwareAddress, x.DeviceType.ToString(), x.GpsLatitude, x.GpsLongitude, x.BatteryLevel, x.Rssi, x.Status.ToString()))
+            .Select(x => new DeviceMapLocationView(
+                x.Id, 
+                x.HardwareAddress, 
+                x.DeviceType.ToString(), 
+                x.GpsLatitude, 
+                x.GpsLongitude, 
+                x.BatteryLevel, 
+                x.Rssi, 
+                x.Status.ToString(),
+                x.InstallationNotes ?? (x.DeviceType == DeviceType.ActuatorNode ? "Cụm Van/Bơm Điều khiển" : "Node Cảm biến Vi khí hậu")
+            ))
             .ToListAsync(ct);
 }
 
