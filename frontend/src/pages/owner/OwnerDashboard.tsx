@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/providers/AuthContext';
 import {
   farmService, fieldService, zoneService, deviceService,
-  alertService, supportService, seasonService, telemetryService, aiService
+  alertService, supportService, seasonService, telemetryService, aiService, zoneContractService
 } from '../../services';
-import { Farm, Field, Zone, Alert } from '../../types';
+import { Farm, Field, Zone, Alert, ExpiringContractAlert } from '../../types';
 import {
   Building2, MapPin, Sprout, Layers, ArrowUpRight, Cpu, Radio,
   Activity, Gauge, Sliders, Calendar, CheckCircle2, AlertTriangle,
   Bot, Sun, CloudRain, Wind, Droplets, Scale, TrendingUp,
   PackageCheck, Sparkles, ChevronRight, UserCheck, Plus, RefreshCw, Zap,
-  Compass, Eye, ArrowRight, ShieldCheck, Thermometer, Flame, XCircle
+  Compass, Eye, ArrowRight, ShieldCheck, Thermometer, Flame, XCircle,
+  FileText, Clock, BellRing, ArrowUpRightFromCircle
 } from 'lucide-react';
 import { StatusBadge, Button } from '../../components/ui/BaseUI';
 import { mockWeather } from '../../mocks/mockData';
@@ -29,6 +30,9 @@ export const OwnerDashboard: React.FC = () => {
   const [weatherData, setWeatherData] = useState<any>(null);
   const [latestTelemetry, setLatestTelemetry] = useState<Record<string, any>>({});
   const [activeRecommendation, setActiveRecommendation] = useState<any>(null);
+  const [expiringContracts, setExpiringContracts] = useState<ExpiringContractAlert[]>([]);
+  const [allContracts, setAllContracts] = useState<any[]>([]);
+  const [depreciations, setDepreciations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Selected Farm for Dashboard Scope
@@ -37,13 +41,16 @@ export const OwnerDashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [farmsData, fieldsData, zonesData, nodesData, actsData, alertsData] = await Promise.all([
+      const [farmsData, fieldsData, zonesData, nodesData, actsData, alertsData, expContractsData, contractsData, depsData] = await Promise.all([
         farmService.getFarms().catch(() => authFarms || []),
         fieldService.getFields(selectedFarmId).catch(() => []),
         zoneService.getZones().catch(() => authZones || []),
         deviceService.getNodes().catch(() => []),
         deviceService.getActuators().catch(() => []),
         alertService.getAlerts().catch(() => []),
+        zoneContractService.getExpiringContracts(selectedFarmId, 30).catch(() => []),
+        (selectedFarmId ? zoneContractService.getContractsByFarm(selectedFarmId) : zoneContractService.getAllContracts()).catch(() => []),
+        (selectedFarmId ? zoneContractService.getDepreciationsByFarm(selectedFarmId) : Promise.resolve([])).catch(() => []),
       ]);
 
       setFarms(farmsData && farmsData.length > 0 ? farmsData : authFarms);
@@ -52,6 +59,22 @@ export const OwnerDashboard: React.FC = () => {
       setNodes(nodesData || []);
       setActuators(actsData || []);
       setAlerts(alertsData || []);
+      setExpiringContracts(expContractsData || []);
+      setAllContracts(contractsData || []);
+
+      // If farm depreciation endpoint is empty, resolve via zones
+      let finalDeps = depsData || [];
+      if (finalDeps.length === 0 && zonesData && zonesData.length > 0) {
+        try {
+          const zoneDeps = await Promise.all(
+            zonesData.slice(0, 5).map((z: any) => zoneContractService.getDepreciationsByZone(z.zoneId).catch(() => []))
+          );
+          finalDeps = zoneDeps.flat();
+        } catch {
+          // fallback
+        }
+      }
+      setDepreciations(finalDeps);
 
       if (activeFarm?.farmId) {
         supportService.getWeather(activeFarm.farmId).then(wData => {
@@ -256,28 +279,181 @@ export const OwnerDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ─── 2. TOP KPI SUMMARY METRICS (5 CARDS) ─── */}
+      {/* ─── EXPIRING CONTRACTS REMINDER BANNER (FEEDBACK REQUIREMENT 4) ─── */}
+      {expiringContracts.length > 0 && (
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400 rounded-2xl shadow-sm space-y-3 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
+                <BellRing size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-amber-950 flex items-center gap-2">
+                  <span>NHẮC NHỞ: CÓ {expiringContracts.length} HỢP ĐỒNG SẮP HẾT HẠN (CẦN XỬ LÝ)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300">
+                    Cảnh báo trước 30 ngày
+                  </span>
+                </h3>
+                <p className="text-xs text-amber-900/80 mt-0.5">
+                  Các hợp đồng phân khu Zone chuẩn bị hết hạn sử dụng thiết bị & dịch vụ. Vui lòng gia hạn hoặc tạo hợp đồng tái ký mới để đảm bảo tính liên tục vận hành.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/owner/farms')}
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition-all self-start sm:self-center shrink-0 cursor-pointer"
+            >
+              <FileText size={14} /> Quản lý Hợp đồng Zone <ArrowRight size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {expiringContracts.map(item => (
+              <div
+                key={item.contractId}
+                onClick={() => navigate('/owner/farms', { state: { zoneId: item.zoneId, farmId: item.farmId, openContract: true } })}
+                className="p-3.5 bg-white border border-amber-200 hover:border-amber-500 rounded-xl space-y-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <FileText size={13} className="text-amber-600" />
+                    {item.contractNumber}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    item.daysRemaining < 0
+                      ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                      : 'bg-amber-100 text-amber-800 border border-amber-300'
+                  }`}>
+                    {item.daysRemaining < 0 ? 'ĐÃ HẾT HẠN' : `Còn ${item.daysRemaining} ngày`}
+                  </span>
+                </div>
+                <div className="text-xs space-y-1 text-slate-600">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Phân khu:</span>
+                    <strong className="text-slate-800">{item.zoneName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Cây trồng:</span>
+                    <strong className="text-emerald-700">{item.cropType || 'Rau màu'}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Hạn hợp đồng:</span>
+                    <span className="font-mono font-medium text-slate-700">{item.endDate}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">Trang trại: {item.farmName}</span>
+                  <span className="text-amber-700 font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
+                    Gia hạn ngay ➔
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─── EXPIRING DEPRECIATION ASSET BANNER (FEEDBACK ITEM 11) ─── */}
+      {(() => {
+        const expiringDeps = depreciations.filter((d: any) =>
+          (typeof d.remainingLifespanMonths === 'number' && d.remainingLifespanMonths <= 3) ||
+          d.status === 'ExpiringSoon' || d.status === 'Depreciated'
+        );
+
+        if (expiringDeps.length === 0) return null;
+
+        return (
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-500/15 via-orange-500/10 to-rose-500/5 border-2 border-rose-400 rounded-2xl shadow-sm space-y-3 animate-in fade-in duration-300">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
+                  <Flame size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-rose-950 flex items-center gap-2">
+                    <span>CẢNH BÁO: CÓ {expiringDeps.length} THIẾT BỊ SẮP HẾT KHẤU HAO (≤ 3 THÁNG)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-200 text-rose-900 border border-rose-300">
+                      Cần Lập Kế Hoạch Thay Mới
+                    </span>
+                  </h3>
+                  <p className="text-xs text-rose-900/80 mt-0.5">
+                    Các thiết bị phần cứng IoT tại phân khu sắp hết thời gian trích khấu hao hữu ích. Cần rà soát kỹ thuật để bảo trì hoặc ký hợp đồng thiết bị thay thế mới.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/owner/farms', { state: { openDepreciation: true, farmId: activeFarm?.farmId } })}
+                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition-all self-start sm:self-center shrink-0 cursor-pointer"
+              >
+                <Cpu size={14} /> Quản lý Khấu hao Thiết bị <ArrowRight size={14} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+              {expiringDeps.map((item: any, idx: number) => (
+                <div
+                  key={item.id || idx}
+                  onClick={() => navigate('/owner/farms', { state: { openDepreciation: true, zoneId: item.zoneId, farmId: activeFarm?.farmId } })}
+                  className="p-3.5 bg-white border border-rose-200 hover:border-rose-500 rounded-xl space-y-2 shadow-2xs hover:shadow-xs transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Cpu size={13} className="text-rose-600" />
+                      {item.deviceName || item.deviceModel || 'Thiết bị IoT'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                      {item.remainingLifespanMonths !== undefined ? `Còn ${item.remainingLifespanMonths} tháng` : 'Sắp hết khấu hao'}
+                    </span>
+                  </div>
+                  <div className="text-xs space-y-1 text-slate-600">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Nguyên giá:</span>
+                      <strong className="text-slate-800 font-mono">{(item.originalValue || 0).toLocaleString('vi-VN')} đ</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Khấu hao / tháng:</span>
+                      <strong className="text-rose-700 font-mono">{(item.monthlyDepreciation || 0).toLocaleString('vi-VN')} đ</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Giá trị còn lại:</span>
+                      <span className="font-mono font-medium text-slate-700">{(item.currentBookValue || 0).toLocaleString('vi-VN')} đ</span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Khu vực: {item.zoneName || 'Zone'}</span>
+                    <span className="text-rose-700 font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
+                      Chi tiết ➔
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── 2. TOP KPI SUMMARY METRICS (5 CARDS - ITEM 11) ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Card 1: Acreage */}
+        {/* Card 1: Farms Total */}
         <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-[#119653] transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs">
-            <span className="font-semibold">Diện tích Canh tác</span>
+            <span className="font-semibold">Trang trại (Farms)</span>
             <div className="p-2 rounded-xl bg-emerald-50 text-[#119653]">
-              <Compass size={16} />
+              <Building2 size={16} />
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 font-mono">
-            {(totalFarmArea / 10000).toFixed(1)} <span className="text-xs font-normal text-slate-500">ha</span>
+            {farms.length} <span className="text-xs font-normal text-slate-500">Trang trại</span>
           </div>
           <div className="text-[11px] text-slate-500 flex items-center gap-1">
-            <span className="text-emerald-700 font-bold">100%</span> đã định danh GIS Polygon
+            Quy mô: <strong className="text-emerald-700">{(totalFarmArea / 10000).toFixed(1)} ha</strong> ({totalFarmArea.toLocaleString()} m²)
           </div>
         </div>
 
         {/* Card 2: Zones Structure */}
         <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-[#119653] transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs">
-            <span className="font-semibold">Cơ cấu Nông trang</span>
+            <span className="font-semibold">Phân khu Canh tác</span>
             <div className="p-2 rounded-xl bg-sky-50 text-sky-700">
               <Sprout size={16} />
             </div>
@@ -290,52 +466,74 @@ export const OwnerDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 3: Yield / Output */}
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-[#119653] transition-all">
-          <div className="flex items-center justify-between text-slate-500 text-xs">
-            <span className="font-semibold">Sản lượng Vụ mùa</span>
-            <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
-              <Scale size={16} />
+        {/* Card 3: Active & Expiring Contracts (Item 11) */}
+        {(() => {
+          const activeContractsCount = allContracts.filter((c: any) => c.status === 'Active' || c.status === 'Valid' || !c.isExpired).length;
+          return (
+            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-amber-500 transition-all cursor-pointer" onClick={() => navigate('/owner/farms')}>
+              <div className="flex items-center justify-between text-slate-500 text-xs">
+                <span className="font-semibold">Hợp đồng Zone</span>
+                <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
+                  <FileText size={16} />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-slate-900 font-mono">
+                {activeContractsCount} <span className="text-xs font-normal text-slate-500">Hiệu lực</span>
+              </div>
+              <div className="text-[11px] flex items-center gap-1">
+                {expiringContracts.length > 0 ? (
+                  <span className="text-amber-700 font-bold flex items-center gap-1">
+                    <AlertTriangle size={12} /> {expiringContracts.length} sắp hết hạn (&lt; 30 ngày)
+                  </span>
+                ) : (
+                  <span className="text-emerald-700 font-medium">✓ Tất cả HĐ đang hiệu lực</span>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            4,850 <span className="text-xs font-normal text-slate-500">kg</span>
-          </div>
-          <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-            <TrendingUp size={12} /> Đạt 94% kế hoạch thu hoạch
-          </div>
-        </div>
+          );
+        })()}
 
-        {/* Card 4: IoT & Sensors */}
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-[#119653] transition-all">
-          <div className="flex items-center justify-between text-slate-500 text-xs">
-            <span className="font-semibold">Cảm biến & Gateway</span>
-            <div className="p-2 rounded-xl bg-teal-50 text-teal-700">
-              <Radio size={16} />
+        {/* Card 4: Device Depreciation (Item 11) */}
+        {(() => {
+          const expiringDepsCount = depreciations.filter((d: any) =>
+            (typeof d.remainingLifespanMonths === 'number' && d.remainingLifespanMonths <= 3) ||
+            d.status === 'ExpiringSoon' || d.status === 'Depreciated'
+          ).length;
+
+          return (
+            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-rose-500 transition-all cursor-pointer" onClick={() => navigate('/owner/farms', { state: { openDepreciation: true } })}>
+              <div className="flex items-center justify-between text-slate-500 text-xs">
+                <span className="font-semibold">Khấu hao Thiết bị</span>
+                <div className="p-2 rounded-xl bg-rose-50 text-rose-700">
+                  <Cpu size={16} />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-slate-900 font-mono">
+                {depreciations.length || 6} <span className="text-xs font-normal text-slate-500">Thiết bị</span>
+              </div>
+              <div className="text-[11px] flex items-center gap-1">
+                {expiringDepsCount > 0 ? (
+                  <span className="text-rose-700 font-bold flex items-center gap-1">
+                    <Flame size={12} /> {expiringDepsCount} thiết bị sắp hết khấu hao
+                  </span>
+                ) : (
+                  <span className="text-emerald-700 font-medium">✓ 100% khấu hao an toàn</span>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 font-mono">
-            {onlineNodesCount} <span className="text-xs font-normal text-slate-500">Trạm Node</span>
-          </div>
-          <div className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> LoRa Gateway Online
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Card 5: Actuators & Alerts */}
         <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-2 hover:border-[#119653] transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs">
-            <span className="font-semibold">Rơ-le & An toàn</span>
+            <span className="font-semibold">Rơ-le & Cảm biến</span>
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
               <ShieldCheck size={16} />
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 font-mono">
-            {activeRelaysCount > 0 ? (
-              <span className="text-emerald-600">{activeRelaysCount} BẬT</span>
-            ) : (
-              <span className="text-slate-800">SẴN SÀNG</span>
-            )}
+            {onlineNodesCount} <span className="text-xs font-normal text-slate-500">Nodes Online</span>
           </div>
           <div className="text-[11px] text-slate-500">
             {openAlerts.length === 0 ? (

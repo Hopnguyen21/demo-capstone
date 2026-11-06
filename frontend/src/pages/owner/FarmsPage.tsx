@@ -1,26 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Farm, Field, Zone } from '../../types';
-import { farmService, fieldService, zoneService, deviceService, supportService, userService, seasonService, extractApiError } from '../../services';
+import { Farm, Field, Zone, ZoneContract, DeviceDepreciation } from '../../types';
+import {
+  farmService, fieldService, zoneService, deviceService, supportService,
+  userService, seasonService, zoneContractService, extractApiError
+} from '../../services';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
-  Building2, MapPin, Layers, Plus, ArrowUpRight, ChevronRight, Sprout,
+  Building2, MapPin, Layers, Plus, PlusCircle, ArrowUpRight, ChevronRight, Sprout,
   CornerDownRight, Home, ArrowLeft, Cpu, Activity, Gauge, Sliders, Calendar,
   Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3, Wrench, Trash2,
-  Scale, TrendingUp, PackageCheck, Sparkles, AlertCircle
+  Scale, TrendingUp, PackageCheck, Sparkles, AlertCircle, FileText, ShieldCheck,
+  Clock, Percent, DollarSign, Tag, History, RefreshCw, AlertTriangle, Link, Award
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 import { OpenMeteoWeatherWidget } from '../../components/weather/OpenMeteoWeatherWidget';
+import { ZoneContractDetailsModal } from '../../components/contracts/ZoneContractDetailsModal';
+import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
+import { ZoneContractCreateModal } from '../../components/contracts/ZoneContractCreateModal';
+import { DeviceDepreciationModal } from '../../components/contracts/DeviceDepreciationModal';
 
 export const FarmsPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [farms, setFarms] = useState<Farm[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [nodes, setNodes] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+
+  // Zone Contracts & Asset Depreciation state (Feedback Requirements A.1, A.2, B.3-B.7)
+  const [allContracts, setAllContracts] = useState<ZoneContract[]>([]);
+  const [zoneDepreciations, setZoneDepreciations] = useState<DeviceDepreciation[]>([]);
+  const [selectedContractForDetail, setSelectedContractForDetail] = useState<ZoneContract | null>(null);
+  const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
+  const [parentContractForNew, setParentContractForNew] = useState<ZoneContract | null>(null);
+  const [showContractDetailModal, setShowContractDetailModal] = useState<boolean>(false);
+  const [showRenewContractModal, setShowRenewContractModal] = useState<boolean>(false);
+  const [showCreateContractModal, setShowCreateContractModal] = useState<boolean>(false);
+  const [showCreateDepreciationModal, setShowCreateDepreciationModal] = useState<boolean>(false);
+  const [zoneActiveTab, setZoneActiveTab] = useState<'OVERVIEW' | 'CONTRACTS' | 'DEPRECIATION' | 'CF3'>('OVERVIEW');
 
   // Assigned Employee mapping per Zone: { [zoneId: string]: employeeId }
   const [assignedEmployeeIdMap, setAssignedEmployeeIdMap] = useState<Record<string, string>>({});
@@ -54,19 +75,22 @@ export const FarmsPage: React.FC = () => {
     pointCount: number;
     zoneId?: string;
   } | null>(null);
+
   const loadData = async () => {
     try {
-      const [fData, fdData, zData, nData, farmerList] = await Promise.all([
+      const [fData, fdData, zData, nData, farmerList, contractsData] = await Promise.all([
         farmService.getFarms().catch(err => { console.warn('farmService.getFarms error:', err); return []; }),
         fieldService.getFields().catch(err => { console.warn('fieldService.getFields error:', err); return []; }),
         zoneService.getZones().catch(err => { console.warn('zoneService.getZones error:', err); return []; }),
         deviceService.getNodes().catch(err => { console.warn('deviceService.getNodes error:', err); return []; }),
         userService.getFarmers().catch(err => { console.warn('userService.getFarmers error:', err); return []; }),
+        zoneContractService.getAllContracts().catch(err => { console.warn('zoneContractService.getAllContracts error:', err); return []; }),
       ]);
       if (Array.isArray(fData)) setFarms(fData);
       if (Array.isArray(fdData)) setFields(fdData);
       if (Array.isArray(zData)) setZones(zData);
       if (Array.isArray(nData)) setNodes(nData);
+      if (Array.isArray(contractsData)) setAllContracts(contractsData);
       if (Array.isArray(farmerList)) {
         setEmployees(farmerList);
         // Build assignedEmployeeIdMap from real farmer assignedZones
@@ -94,6 +118,13 @@ export const FarmsPage: React.FC = () => {
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+
+  // Helper to find the active contract for a Zone
+  const getZoneActiveContract = (zoneId: string): ZoneContract | undefined => {
+    const list = allContracts.filter(c => c.zoneId === zoneId);
+    return list.find(c => c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1)))
+      || list[0];
+  };
 
   // Sync season / yield info when selectedZone changes
   useEffect(() => {
@@ -140,8 +171,62 @@ export const FarmsPage: React.FC = () => {
       }).catch(err => {
         console.warn('Could not load seasons for zone:', err);
       });
+
+      // Also fetch Zone Contracts and Device Depreciations
+      zoneContractService.getContractsByZone(zid).then(zContracts => {
+        if (Array.isArray(zContracts)) {
+          setAllContracts(prev => {
+            const others = prev.filter(c => c.zoneId !== zid);
+            return [...others, ...zContracts];
+          });
+        }
+      }).catch(() => {});
+
+      zoneContractService.getDepreciationsByZone(zid).then(deps => {
+        if (Array.isArray(deps)) setZoneDepreciations(deps);
+      }).catch(() => {});
     }
   }, [selectedZone]);
+
+  // Deep-linking from OwnerDashboard or other pages
+  useEffect(() => {
+    if (location.state && farms.length > 0 && fields.length > 0 && zones.length > 0) {
+      const { farmId, zoneId, openContract } = location.state as any;
+      if (farmId) {
+        const targetFarm = farms.find(f => f.farmId === farmId);
+        if (targetFarm) setSelectedFarm(targetFarm);
+      }
+      if (zoneId) {
+        const targetZone = zones.find(z => z.zoneId === zoneId);
+        if (targetZone) {
+          const targetField = fields.find(fd => fd.fieldId === targetZone.fieldId);
+          if (targetField) setSelectedField(targetField);
+          setSelectedZone(targetZone);
+          if (openContract) setZoneActiveTab('CONTRACTS');
+        }
+      }
+    }
+  }, [location.state, farms, fields, zones]);
+
+  const handleRenewSuccess = (updatedContract: ZoneContract) => {
+    setAllContracts(prev => prev.map(c => c.id === updatedContract.id ? updatedContract : c));
+    setShowRenewContractModal(false);
+    setSelectedContractForRenew(null);
+    alert(`🎉 Đã gia hạn hợp đồng #${updatedContract.contractNumber} thành công! Thời hạn mới: ${updatedContract.endDate}`);
+  };
+
+  const handleCreateContractSuccess = (newContract: ZoneContract) => {
+    setAllContracts(prev => [newContract, ...prev.filter(c => c.id !== newContract.id)]);
+    setShowCreateContractModal(false);
+    setParentContractForNew(null);
+    alert(`🎉 Đã lập và kích hoạt hợp đồng #${newContract.contractNumber} cho Zone thành công!`);
+  };
+
+  const handleCreateDepreciationSuccess = (newDep: DeviceDepreciation) => {
+    setZoneDepreciations(prev => [newDep, ...prev.filter(d => d.id !== newDep.id)]);
+    setShowCreateDepreciationModal(false);
+    alert(`✅ Đã thêm hồ sơ khấu hao thiết bị [${newDep.deviceName}] thành công!`);
+  };
 
   const handleAssignEmployee = async (zoneId: string, newEmployeeId: string) => {
     const currentAssignedId = assignedEmployeeIdMap[zoneId] ?? '';
@@ -393,6 +478,33 @@ export const FarmsPage: React.FC = () => {
     }
     return [11.9408, 108.4582] as [number, number];
   }, [currentZonePoints, currentFieldPolygon, selectedFarm]);
+
+  // Memoized zone contract and depreciation helpers
+  const currentZoneContracts = React.useMemo(() => {
+    if (!selectedZone) return [];
+    const zid = selectedZone.zoneId || (selectedZone as any).id;
+    return allContracts.filter(c => c.zoneId === zid);
+  }, [selectedZone, allContracts]);
+
+  const activeZoneContract = React.useMemo(() => {
+    return currentZoneContracts.find(c => c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1)))
+      || currentZoneContracts[0];
+  }, [currentZoneContracts]);
+
+  const historicalZoneContracts = React.useMemo(() => {
+    if (!activeZoneContract) return currentZoneContracts;
+    return currentZoneContracts.filter(c => c.id !== activeZoneContract.id);
+  }, [currentZoneContracts, activeZoneContract]);
+
+  const currentZoneDepreciations = React.useMemo(() => {
+    if (!selectedZone) return [];
+    const zid = selectedZone.zoneId || (selectedZone as any).id;
+    return zoneDepreciations.filter(d => d.zoneId === zid);
+  }, [selectedZone, zoneDepreciations]);
+
+  const criticalDepreciationAlerts = React.useMemo(() => {
+    return currentZoneDepreciations.filter(d => d.isNearContractRenewal || ((d.status === 'ExpiringSoon' || d.status === 'FullyDepreciated') && activeZoneContract && activeZoneContract.daysRemaining <= 45));
+  }, [currentZoneDepreciations, activeZoneContract]);
 
   // Sync edit polygon when selectedZone changes
   useEffect(() => {
@@ -1001,17 +1113,99 @@ export const FarmsPage: React.FC = () => {
                 <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1.5 text-slate-700">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Cây trồng hiện tại:</span>
-                    <strong className="text-[#119653] font-bold">{zone.currentCrop}</strong>
+                    <strong className="text-[#119653] font-bold">{zone.currentCrop || 'Rau màu'}</strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Giai đoạn sinh trưởng:</span>
-                    <strong className="text-sky-700 font-bold">{zone.currentStage}</strong>
+                    <strong className="text-sky-700 font-bold">{zone.currentStage || 'Đang canh tác'}</strong>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Diện tích Zone:</span>
                     <strong className="text-slate-900">{zone.areaM2} m²</strong>
                   </div>
                 </div>
+
+                {/* DIRECT CONTRACT & LIFECYCLE SUMMARY IN FARM SCREEN (FEEDBACK REQUIREMENT A.1) */}
+                {(() => {
+                  const contract = getZoneActiveContract(zone.zoneId || (zone as any).id);
+                  const isExp = contract && contract.daysRemaining < 0;
+                  const isExpSoon = contract && !isExp && contract.daysRemaining <= 30;
+
+                  return (
+                    <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                      !contract
+                        ? 'bg-slate-50 border-slate-200 text-slate-600'
+                        : isExp
+                        ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                        : isExpSoon
+                        ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                        : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <FileText size={13} className={isExp ? 'text-rose-600' : isExpSoon ? 'text-amber-600' : 'text-emerald-700'} />
+                          Hợp đồng đang áp dụng:
+                        </span>
+                        {contract ? (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isExp
+                              ? 'bg-rose-200 text-rose-900'
+                              : isExpSoon
+                              ? 'bg-amber-200 text-amber-900 animate-pulse'
+                              : 'bg-emerald-200 text-emerald-900'
+                          }`}>
+                            {isExp ? 'ĐÃ HẾT HẠN' : isExpSoon ? `SẮP HẾT HẠN (${contract.daysRemaining} ngày)` : 'CÒN HIỆU LỰC'}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-slate-200 text-slate-600 font-medium">Chưa có HĐ</span>
+                        )}
+                      </div>
+
+                      {contract ? (
+                        <div className="space-y-1 pt-0.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500">Mã hợp đồng:</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedContractForDetail(contract);
+                                setShowContractDetailModal(true);
+                              }}
+                              className="font-mono font-bold text-indigo-700 hover:underline flex items-center gap-0.5"
+                              title="Bấm để xem chi tiết hợp đồng"
+                            >
+                              {contract.contractNumber} <ArrowUpRight size={11} />
+                            </button>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Thời gian hiệu lực:</span>
+                            <span className="font-mono font-medium text-slate-800">{contract.startDate} ➔ {contract.endDate}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Bên thuê / Khách hàng:</span>
+                            <span className="truncate max-w-[170px] text-slate-800 font-medium">{contract.lesseeName}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pt-1 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400 italic">Chưa ký hợp đồng phân khu</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedZone(zone);
+                              setShowCreateContractModal(true);
+                            }}
+                            className="text-emerald-700 font-bold hover:underline flex items-center gap-0.5"
+                          >
+                            + Lập hợp đồng
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
@@ -1089,282 +1283,996 @@ export const FarmsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-            {/* GIS Map Location of Zone */}
-            <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                    <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
-                  </h4>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
-                    </span>
-                    <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
-                  </div>
-                </div>
-                <div>
-                  {!isEditingZoneGIS ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
-                      onClick={() => {
-                        setIsEditingZoneGIS(true);
-                        setZoneEditPolygon(currentZonePoints);
-                        setZoneEditCenter(currentZoneCenter);
-                      }}
-                    >
-                      <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs"
-                        onClick={() => setIsEditingZoneGIS(false)}
-                        disabled={isSavingZoneGIS}
-                      >
-                        Hủy
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                        onClick={handleSaveZoneGIS}
-                        disabled={isSavingZoneGIS}
-                      >
-                        <Save size={13} className="mr-1" />
-                        {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
+          {/* ZONE LEVEL 4 TABS NAVIGATION (FEEDBACK REQUIREMENTS A.2, B.3 - B.7) */}
+          <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setZoneActiveTab('OVERVIEW')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                zoneActiveTab === 'OVERVIEW'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <Sprout size={15} />
+              <span>🌿 Vi Khí Hậu & GIS (Tổng quan)</span>
+            </button>
 
-              <GISLocationPicker
-                level="ZONE"
-                center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
-                onCenterChange={setZoneEditCenter}
-                polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
-                onPolygonChange={setZoneEditPolygon}
-                parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
-                height="280px"
-                readOnly={!isEditingZoneGIS}
-              />
-            </div>
+            <button
+              type="button"
+              onClick={() => setZoneActiveTab('CONTRACTS')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                zoneActiveTab === 'CONTRACTS'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <FileText size={15} />
+              <span>📜 Lịch Sử Hợp Đồng Phân Khu</span>
+              {currentZoneContracts.length > 0 && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  zoneActiveTab === 'CONTRACTS' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  {currentZoneContracts.length}
+                </span>
+              )}
+            </button>
 
-            {/* Right Column: Telemetry, Yield Tracking, and Employee Assignment */}
-            <div className="space-y-5">
-              {/* Zone Telemetry & Connected Devices */}
-              <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
-                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
-                  <Cpu size={16} className="text-sky-700" /> Cảm biến LoRa & Cây trồng đang canh tác
-                </h4>
+            <button
+              type="button"
+              onClick={() => setZoneActiveTab('DEPRECIATION')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                zoneActiveTab === 'DEPRECIATION'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <Cpu size={15} />
+              <span>⏱️ Khấu Hao & Tuổi Thọ Thiết Bị</span>
+              {criticalDepreciationAlerts.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white animate-pulse">
+                  {criticalDepreciationAlerts.length} Cảnh báo!
+                </span>
+              )}
+            </button>
 
-                <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
-                  <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop || 'Chưa có dữ liệu'}</strong></div>
-                  <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage || 'Chưa có dữ liệu'}</strong></div>
-                </div>
+            <button
+              type="button"
+              onClick={() => setZoneActiveTab('CF3')}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                zoneActiveTab === 'CF3'
+                  ? 'bg-teal-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <Gauge size={15} />
+              <span>⚡ Điều Khiển CF3 & Lịch Tự Động</span>
+            </button>
+          </div>
 
-                <div className="space-y-2">
-                  <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
-                  {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
-                    <div className="p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-[11px]">
-                      Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.
-                    </div>
-                  ) : (
-                    nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
-                      <div key={node.nodeId || node.deviceId || node.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                        <div>
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                            <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Thiết bị IoT'}
-                          </div>
-                          <div className="text-[11px] text-slate-500">Mã: {node.nodeCode || node.hardwareAddress || node.deviceType || 'NODE'} • Pin: {node.batteryLevel ?? 92}%</div>
-                        </div>
-                        <StatusBadge status={node.status || 'ONLINE'} />
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) */}
-              <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
-                      <Scale size={18} />
+          {/* TAB 1: OVERVIEW & TELEMETRY & YIELD & FARMER */}
+          {zoneActiveTab === 'OVERVIEW' && (
+            <div className="space-y-6">
+              {/* Quick Contract & Crop Bar */}
+              {activeZoneContract ? (
+                <div className={`p-4 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  activeZoneContract.daysRemaining < 0
+                    ? 'bg-rose-50/80 border-rose-200 text-rose-950'
+                    : activeZoneContract.daysRemaining <= 30
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                      activeZoneContract.daysRemaining < 0 ? 'bg-rose-600 text-white' : activeZoneContract.daysRemaining <= 30 ? 'bg-amber-500 text-white animate-pulse' : 'bg-emerald-600 text-white'
+                    }`}>
+                      <FileText size={20} />
                     </div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
-                      <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-slate-900">Hợp đồng phân khu đang áp dụng:</span>
+                        <span className="font-mono font-bold text-indigo-700">#{activeZoneContract.contractNumber}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          activeZoneContract.daysRemaining < 0
+                            ? 'bg-rose-200 text-rose-900'
+                            : activeZoneContract.daysRemaining <= 30
+                            ? 'bg-amber-200 text-amber-900 animate-pulse'
+                            : 'bg-emerald-200 text-emerald-900'
+                        }`}>
+                          {activeZoneContract.daysRemaining < 0 ? 'ĐÃ HẾT HẠN' : activeZoneContract.daysRemaining <= 30 ? `SẮP HẾT HẠN (${activeZoneContract.daysRemaining} ngày)` : 'CÒN HIỆU LỰC'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5">
+                        Bên thuê: <strong>{activeZoneContract.lesseeName}</strong> • Cây trồng: <strong className="text-emerald-700">{activeZoneContract.cropType || selectedZone.currentCrop}</strong> • Thời hạn: <span className="font-mono">{activeZoneContract.startDate} ➔ {activeZoneContract.endDate}</span>
+                      </div>
                     </div>
                   </div>
-                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
-                    {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setZoneActiveTab('CONTRACTS')}
+                      className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <span>Xem Lịch sử HĐ</span>
+                      <ArrowUpRight size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedContractForRenew(activeZoneContract);
+                        setShowRenewContractModal(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <RefreshCw size={13} />
+                      <span>Gia hạn ngay</span>
+                    </button>
+                  </div>
                 </div>
-
-                {/* Metrics Grid */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
-                    <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
-                    <div className="text-xl font-black text-white font-mono">
-                      {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
-                    </div>
-                    <div className="text-[10px] text-emerald-100">
-                      ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
-                    </div>
+              ) : (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={15} className="text-slate-400" />
+                    <span>Zone này hiện chưa gắn hợp đồng thuê hoặc hợp đồng IoT.</span>
                   </div>
-
-                  <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
-                    <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
-                    <div className="text-xl font-black text-white font-mono">
-                      {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
-                    </div>
-                    <div className="text-[10px] text-emerald-100">
-                      Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quality & harvest date */}
-                <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
-                  <div className="flex justify-between">
-                    <span className="text-emerald-100">Phân loại chất lượng:</span>
-                    <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-emerald-100">Ngày ghi nhận:</span>
-                    <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
-                  </div>
-                  {zoneYieldMap[selectedZone.zoneId]?.notes && (
-                    <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
-                      Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleOpenYieldModal}
-                  className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
-                >
-                  <Plus size={15} />
-                  Nhập / Cập nhật Sản lượng Thu hoạch (kg)
-                </button>
-              </div>
-
-              {/* Thẻ Nhân viên Phân công phụ trách Zone */}
-              <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <UserCheck size={16} className="text-[#119653]" /> Nhân viên phân công phụ trách Zone:
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold border border-emerald-200">
-                    Phân công trực tiếp
-                  </span>
-                </div>
-
-                {assignNotification && (
-                  <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${assignNotification.type === 'success' ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' : 'bg-rose-50 border border-rose-300 text-rose-900'
-                    }`}>
-                    <CheckCircle2 size={14} className={assignNotification.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
-                    <span>{assignNotification.message}</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <select
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#119653] shadow-xs cursor-pointer disabled:opacity-50"
-                    value={assignedEmployeeIdMap[selectedZone.zoneId] ?? ''}
-                    onChange={e => handleAssignEmployee(selectedZone.zoneId, e.target.value)}
-                    disabled={isAssigningEmployee}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setParentContractForNew(null);
+                      setShowCreateContractModal(true);
+                    }}
+                    className="text-emerald-700 font-bold hover:underline flex items-center gap-1"
                   >
-                    <option value="">-- Trống (Chưa phân công nhân viên) --</option>
-                    {employees.map(emp => (
-                      <option key={emp.employeeId || emp.userId} value={emp.employeeId || emp.userId}>
-                        👤 {emp.fullName} ({emp.position || emp.role}) - {emp.phone}
-                      </option>
-                    ))}
-                  </select>
+                    <Plus size={13} /> Lập hợp đồng mới
+                  </button>
+                </div>
+              )}
 
-                  {/* Render Employee Card or Unassigned Info Card */}
-                  {(() => {
-                    const empId = assignedEmployeeIdMap[selectedZone.zoneId] ?? '';
-                    const assignedEmp = employees.find(e => (e.employeeId || e.userId) === empId);
-
-                    if (assignedEmp) {
-                      return (
-                        <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start justify-between gap-3 animate-in fade-in">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#119653] text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-emerald-400">
-                              {assignedEmp.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                                {assignedEmp.fullName}
-                                <span className="px-1.5 py-0.5 text-[10px] bg-emerald-200 text-emerald-900 rounded font-bold">
-                                  Đang phụ trách
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-slate-600 mt-0.5">
-                                Chức vụ: <strong>{assignedEmp.position}</strong> • SĐT: <strong>{assignedEmp.phone}</strong>
-                              </div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">
-                                Email: {assignedEmp.email}
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleAssignEmployee(selectedZone.zoneId, '')}
-                            disabled={isAssigningEmployee}
-                            className="text-[10px] text-rose-600 hover:text-rose-800 font-bold hover:underline shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded border border-rose-200 shadow-2xs cursor-pointer"
-                            title="Bỏ phân công (Trở về Trống)"
+              {/* GIS Map Location of Zone & Telemetry */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+                {/* GIS Map Location of Zone */}
+                <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                        <MapPin size={16} className="text-[#119653]" /> Vị trí GIS Map của Zone này
+                      </h4>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
+                        </span>
+                        <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
+                      </div>
+                    </div>
+                    <div>
+                      {!isEditingZoneGIS ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs text-slate-700 border-slate-300 hover:bg-slate-50"
+                          onClick={() => {
+                            setIsEditingZoneGIS(true);
+                            setZoneEditPolygon(currentZonePoints);
+                            setZoneEditCenter(currentZoneCenter);
+                          }}
+                        >
+                          <Edit3 size={13} className="mr-1 text-slate-600" /> Sửa GIS
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => setIsEditingZoneGIS(false)}
+                            disabled={isSavingZoneGIS}
                           >
-                            <UserX size={12} /> Bỏ phân công
-                          </button>
+                            Hủy
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                            onClick={handleSaveZoneGIS}
+                            disabled={isSavingZoneGIS}
+                          >
+                            <Save size={13} className="mr-1" />
+                            {isSavingZoneGIS ? 'Đang lưu...' : 'Lưu GIS vào DB'}
+                          </Button>
                         </div>
-                      );
-                    }
+                      )}
+                    </div>
+                  </div>
 
-                    return (
-                      <div className="p-3.5 bg-slate-50 border border-slate-200 border-dashed rounded-xl flex items-center justify-between text-slate-600 animate-in fade-in">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 border border-slate-300">
-                            <UserX size={18} />
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
-                              Trạng thái: <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">Trống</span>
+                  <GISLocationPicker
+                    level="ZONE"
+                    center={isEditingZoneGIS ? zoneEditCenter : currentZoneCenter}
+                    onCenterChange={setZoneEditCenter}
+                    polygon={isEditingZoneGIS ? zoneEditPolygon : currentZonePoints}
+                    onPolygonChange={setZoneEditPolygon}
+                    parentFieldPolygon={currentFieldPolygon.length > 0 ? currentFieldPolygon : undefined}
+                    height="280px"
+                    readOnly={!isEditingZoneGIS}
+                  />
+                </div>
+
+                {/* Right Column: Telemetry, Yield Tracking, and Employee Assignment */}
+                <div className="space-y-5">
+                  {/* Zone Telemetry & Connected Devices */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
+                    <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-sm">
+                      <Cpu size={16} className="text-sky-700" /> Cảm biến LoRa & Cây trồng đang canh tác
+                    </h4>
+
+                    <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
+                      <div className="flex justify-between text-slate-700"><span>Giống cây:</span><strong className="text-emerald-800">{selectedZone.currentCrop || 'Chưa có dữ liệu'}</strong></div>
+                      <div className="flex justify-between text-slate-700"><span>Giai đoạn:</span><strong className="text-sky-700">{selectedZone.currentStage || 'Chưa có dữ liệu'}</strong></div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="font-semibold text-slate-800">Cảm biến trực tuyến kết nối với Zone:</div>
+                      {nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).length === 0 ? (
+                        <div className="p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-slate-500 text-center text-[11px]">
+                          Chưa có cảm biến LoRa gắn trực tiếp vào Zone này.
+                        </div>
+                      ) : (
+                        nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id)).map(node => (
+                          <div key={node.nodeId || node.deviceId || node.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                            <div>
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                <Radio size={14} className="text-emerald-600" /> {node.name || node.hardwareAddress || 'Thiết bị IoT'}
+                              </div>
+                              <div className="text-[11px] text-slate-500">Mã: {node.nodeCode || node.hardwareAddress || node.deviceType || 'NODE'} • Pin: {node.batteryLevel ?? 92}%</div>
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              Chưa phân công nhân viên quản lý Zone này. Chọn nhân viên từ danh sách ở trên để cấp quyền điều khiển.
-                            </div>
+                            <StatusBadge status={node.status || 'ONLINE'} />
                           </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) */}
+                  <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
+                          <Scale size={18} />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
+                          <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
                         </div>
                       </div>
-                    );
-                  })()}
+                      <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
+                        {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
+                      </span>
+                    </div>
+
+                    {/* Metrics Grid */}
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                        <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
+                        <div className="text-xl font-black text-white font-mono">
+                          {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
+                        </div>
+                        <div className="text-[10px] text-emerald-100">
+                          ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                        <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
+                        <div className="text-xl font-black text-white font-mono">
+                          {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
+                        </div>
+                        <div className="text-[10px] text-emerald-100">
+                          Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quality & harvest date */}
+                    <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
+                      <div className="flex justify-between">
+                        <span className="text-emerald-100">Phân loại chất lượng:</span>
+                        <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-emerald-100">Ngày ghi nhận:</span>
+                        <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
+                      </div>
+                      {zoneYieldMap[selectedZone.zoneId]?.notes && (
+                        <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
+                          Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenYieldModal}
+                      className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
+                    >
+                      <Plus size={15} />
+                      Nhập / Cập nhật Sản lượng Thu hoạch (kg)
+                    </button>
+                  </div>
+
+                  {/* Thẻ Nhân viên Phân công phụ trách Zone */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                        <UserCheck size={16} className="text-[#119653]" /> Nhân viên phân công phụ trách Zone:
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold border border-emerald-200">
+                        Phân công trực tiếp
+                      </span>
+                    </div>
+
+                    {assignNotification && (
+                      <div className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${assignNotification.type === 'success' ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' : 'bg-rose-50 border border-rose-300 text-rose-900'
+                        }`}>
+                        <CheckCircle2 size={14} className={assignNotification.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
+                        <span>{assignNotification.message}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <select
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#119653] shadow-xs cursor-pointer disabled:opacity-50"
+                        value={assignedEmployeeIdMap[selectedZone.zoneId] ?? ''}
+                        onChange={e => handleAssignEmployee(selectedZone.zoneId, e.target.value)}
+                        disabled={isAssigningEmployee}
+                      >
+                        <option value="">-- Trống (Chưa phân công nhân viên) --</option>
+                        {employees.map(emp => (
+                          <option key={emp.employeeId || emp.userId} value={emp.employeeId || emp.userId}>
+                            👤 {emp.fullName} ({emp.position || emp.role}) - {emp.phone}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Render Employee Card or Unassigned Info Card */}
+                      {(() => {
+                        const empId = assignedEmployeeIdMap[selectedZone.zoneId] ?? '';
+                        const assignedEmp = employees.find(e => (e.employeeId || e.userId) === empId);
+
+                        if (assignedEmp) {
+                          return (
+                            <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start justify-between gap-3 animate-in fade-in">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-[#119653] text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-emerald-400">
+                                  {assignedEmp.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                                    {assignedEmp.fullName}
+                                    <span className="px-1.5 py-0.5 text-[10px] bg-emerald-200 text-emerald-900 rounded font-bold">
+                                      Đang phụ trách
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 mt-0.5">
+                                    Chức vụ: <strong>{assignedEmp.position}</strong> • SĐT: <strong>{assignedEmp.phone}</strong>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 mt-0.5">
+                                    Email: {assignedEmp.email}
+                                  </div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleAssignEmployee(selectedZone.zoneId, '')}
+                                disabled={isAssigningEmployee}
+                                className="text-[10px] text-rose-600 hover:text-rose-800 font-bold hover:underline shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded border border-rose-200 shadow-2xs cursor-pointer"
+                                title="Bỏ phân công (Trở về Trống)"
+                              >
+                                <UserX size={12} /> Bỏ phân công
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 border-dashed rounded-xl flex items-center justify-between text-slate-600 animate-in fade-in">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 border border-slate-300">
+                                <UserX size={18} />
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                                  Trạng thái: <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded text-[10px] font-bold border border-amber-200">Trống</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Chưa phân công nhân viên quản lý Zone này. Chọn nhân viên từ danh sách ở trên để cấp quyền điều khiển.
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Embedded Standardized CF3 Control Hub for Selected Zone */}
-          <div className="pt-4">
-            <CF3ControlSection
-              scopeLevel="ZONE"
-              farmId={selectedFarm?.farmId}
-              fieldId={selectedField?.fieldId}
-              zoneId={selectedZone.zoneId}
-              title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
-              subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
-            />
-          </div>
+          {/* TAB 2: CONTRACT HISTORY & RENEWALS (FEEDBACK REQUIREMENTS A.2, B.3, B.5, B.6) */}
+          {zoneActiveTab === 'CONTRACTS' && (
+            <div className="space-y-6 text-xs animate-in fade-in duration-200">
+              {/* Header Bar */}
+              <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center shrink-0">
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                      Quản Lý & Lịch Sử Hợp Đồng Phân Khu "{selectedZone.name}"
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Theo dõi hợp đồng đang áp dụng, tính toán tài chính tự động (VAT, Chiết khấu, Tạm ứng) và bảo toàn lịch sử tất cả hợp đồng cũ.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setParentContractForNew(null);
+                      setShowCreateContractModal(true);
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xs cursor-pointer"
+                  >
+                    <Plus size={14} className="mr-1" /> Lập Hợp Đồng Mới
+                  </Button>
+                </div>
+              </div>
+
+              {/* 1. ACTIVE CONTRACT CARD */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-emerald-600" />
+                    Hợp Đồng Đang Áp Dụng Cho Zone
+                  </h4>
+                  {activeZoneContract && (
+                    <span className="text-[11px] text-slate-500">
+                      Mã tham chiếu: <strong className="font-mono text-indigo-700">{activeZoneContract.contractNumber}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {activeZoneContract ? (
+                  <div className="p-6 bg-white border-2 border-indigo-200/80 rounded-2xl shadow-sm space-y-5">
+                    {/* Top Status Bar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-base text-indigo-950">
+                            #{activeZoneContract.contractNumber}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            activeZoneContract.daysRemaining < 0
+                              ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                              : activeZoneContract.daysRemaining <= 30
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          }`}>
+                            {activeZoneContract.daysRemaining < 0
+                              ? 'HẾT HẠN'
+                              : activeZoneContract.daysRemaining <= 30
+                              ? `SẮP HẾT HẠN (${activeZoneContract.daysRemaining} ngày)`
+                              : 'ĐANG HOẠT ĐỘNG'}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-800 mt-1">
+                          {activeZoneContract.title || 'Hợp đồng Giải pháp IoT & Phân khu Nông nghiệp'}
+                        </h4>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedContractForRenew(activeZoneContract);
+                            setShowRenewContractModal(true);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        >
+                          <RefreshCw size={14} />
+                          <span>Gia Hạn Hợp Đồng</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setParentContractForNew(activeZoneContract);
+                            setShowCreateContractModal(true);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                          title="Tái ký hợp đồng mới khi có thay đổi thiết bị hoặc diện tích, hưởng chiết khấu khách hàng cũ"
+                        >
+                          <PlusCircle size={14} className="text-purple-600" />
+                          <span>Tái Ký Mở Rộng HĐ Mới</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedContractForDetail(activeZoneContract);
+                            setShowContractDetailModal(true);
+                          }}
+                          className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                        >
+                          <FileText size={14} />
+                          <span>Chi Tiết Đầy Đủ</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                        <div className="text-slate-500 font-medium flex items-center gap-1.5">
+                          <User size={13} className="text-slate-400" /> Bên Thuê / Khách Hàng:
+                        </div>
+                        <div className="font-bold text-slate-900 text-sm">{activeZoneContract.lesseeName}</div>
+                        <div className="text-[11px] text-slate-600">SĐT: <span className="font-mono font-medium">{activeZoneContract.lesseePhone}</span></div>
+                        <div className="text-[10px] text-slate-500 truncate">Đ/c: {activeZoneContract.lesseeAddress || 'Lâm Đồng'}</div>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                        <div className="text-slate-500 font-medium flex items-center gap-1.5">
+                          <Calendar size={13} className="text-slate-400" /> Thời Gian & Hiệu Lực:
+                        </div>
+                        <div className="font-mono font-bold text-slate-900">
+                          {activeZoneContract.startDate} ➔ {activeZoneContract.endDate}
+                        </div>
+                        <div className="text-[11px] text-slate-600">
+                          Thời hạn: <strong>{activeZoneContract.durationMonths} tháng</strong>
+                        </div>
+                        <div className={`text-[11px] font-bold ${
+                          activeZoneContract.daysRemaining < 0
+                            ? 'text-rose-600'
+                            : activeZoneContract.daysRemaining <= 30
+                            ? 'text-amber-600'
+                            : 'text-emerald-700'
+                        }`}>
+                          {activeZoneContract.daysRemaining < 0
+                            ? `Đã hết hạn ${Math.abs(activeZoneContract.daysRemaining)} ngày trước`
+                            : `Còn ${activeZoneContract.daysRemaining} ngày hiệu lực`}
+                        </div>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                        <div className="text-slate-500 font-medium flex items-center gap-1.5">
+                          <Sprout size={13} className="text-slate-400" /> Cây Trồng & Phân Khu:
+                        </div>
+                        <div className="font-bold text-emerald-800 text-sm">
+                          {activeZoneContract.cropType || selectedZone.currentCrop || 'Rau màu'}
+                        </div>
+                        <div className="text-[11px] text-slate-600">
+                          Diện tích Zone: <strong>{selectedZone.areaM2} m²</strong>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Trang trại: <strong>{selectedFarm?.name}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Financial Formula Breakdown (Strict Calculation - Requirement B.6) */}
+                    <div className="p-4 bg-gradient-to-br from-slate-50 to-indigo-50/40 border border-indigo-100 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                          <DollarSign size={15} className="text-indigo-600" />
+                          Bảng Tính Giá Trị Hợp Đồng & Thanh Toán (Công Thức Tự Động)
+                        </span>
+                        <span className="text-[10px] text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded font-mono font-semibold">
+                          Công thức chuẩn VAT 10% & Tạm ứng 30%
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center">
+                        <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                          <div className="text-[10px] text-slate-500">Giá gốc trước CK</div>
+                          <div className="font-bold text-slate-800 text-xs mt-0.5 font-mono">
+                            {(activeZoneContract.subtotalVnd || 0).toLocaleString()} đ
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                          <div className="text-[10px] text-purple-700">Chiết khấu ({activeZoneContract.discountPercent || 0}%)</div>
+                          <div className="font-bold text-purple-700 text-xs mt-0.5 font-mono">
+                            -{(activeZoneContract.discountVnd || 0).toLocaleString()} đ
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                          <div className="text-[10px] text-slate-500">Sau chiết khấu</div>
+                          <div className="font-bold text-slate-800 text-xs mt-0.5 font-mono">
+                            {Math.max(0, (activeZoneContract.subtotalVnd || 0) - (activeZoneContract.discountVnd || 0)).toLocaleString()} đ
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                          <div className="text-[10px] text-slate-500">Thuế VAT (10%)</div>
+                          <div className="font-bold text-slate-800 text-xs mt-0.5 font-mono">
+                            +{(activeZoneContract.vatAmountVnd || 0).toLocaleString()} đ
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl">
+                          <div className="text-[10px] text-indigo-900 font-bold">Tổng thanh toán</div>
+                          <div className="font-black text-indigo-900 text-xs mt-0.5 font-mono">
+                            {(activeZoneContract.totalContractValueVnd || 0).toLocaleString()} đ
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <div className="text-[10px] text-emerald-900 font-bold">Tạm ứng (30%)</div>
+                          <div className="font-bold text-emerald-900 text-xs mt-0.5 font-mono">
+                            {(activeZoneContract.depositVnd || 0).toLocaleString()} đ
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Covered Equipment List (Requirement B.5) */}
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                      <div className="font-bold text-slate-800 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Cpu size={14} className="text-indigo-600" />
+                          Gói Thiết Bị & Cấu Hình Phần Cứng Đi Kèm Hợp Đồng:
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-normal">
+                          (Gia hạn: giữ nguyên thiết bị | Tái ký: cho phép thay đổi cấu hình)
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-700 font-medium">
+                        {activeZoneContract.hardwareIncluded || '1x Gateway LoRa SX1302 công nghiệp, 4x Cảm biến đa tầng NPK + pH đất, 2x Van bi điện 24V DC tích hợp phản hồi, 1x Trạm thời tiết'}
+                      </div>
+                    </div>
+
+                    {/* Renewal History Timeline inside active contract */}
+                    {activeZoneContract.renewals && activeZoneContract.renewals.length > 0 && (
+                      <div className="p-4 bg-indigo-50/50 border border-indigo-200 rounded-2xl space-y-2">
+                        <div className="font-bold text-indigo-950 flex items-center gap-1.5 text-xs">
+                          <History size={14} className="text-indigo-700" />
+                          Lịch Sử Các Lần Đã Gia Hạn ({activeZoneContract.renewals.length} lần gia hạn trước đó):
+                        </div>
+                        <div className="space-y-1.5">
+                          {activeZoneContract.renewals.map(rn => (
+                            <div key={rn.id} className="p-2.5 bg-white border border-indigo-100 rounded-xl flex items-center justify-between text-xs">
+                              <div>
+                                <span className="font-bold text-slate-900">Gia hạn thêm {rn.extendedMonths} tháng</span>
+                                <span className="text-slate-500 ml-2">(Ngày gia hạn: {rn.renewalDate?.split('T')[0]})</span>
+                                <div className="text-[11px] text-slate-600">Thời hạn mới đến: <strong className="font-mono text-indigo-800">{rn.newEndDate}</strong> • Chiết khấu áp dụng: {rn.discountPercent}%</div>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-bold text-indigo-900 font-mono">{(rn.newContractValueVnd || 0).toLocaleString()} đ</span>
+                                <div className="text-[10px] text-slate-500">{rn.notes || 'Gia hạn hệ thống định kỳ'}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-8 bg-white border border-dashed border-slate-300 rounded-2xl text-center space-y-3">
+                    <FileText size={36} className="mx-auto text-slate-300" />
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">Chưa có hợp đồng nào đang áp dụng cho Zone này</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                        Tạo hợp đồng mới để quy định bên thuê phân khu, thời hạn hiệu lực, loại cây trồng và cấu hình thiết bị IoT gắn với Zone.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setParentContractForNew(null);
+                        setShowCreateContractModal(true);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    >
+                      <Plus size={14} className="mr-1.5" /> Lập Hợp Đồng Đầu Tiên Cho Zone
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. HISTORICAL / EXPIRED CONTRACTS (FEEDBACK REQUIREMENT A.2 & 1.6) */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                      <History size={16} className="text-indigo-600" />
+                      Lịch Sử Các Hợp Đồng Cũ & Đã Hết Hạn Của Zone
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Hệ thống tự động lưu trữ, không xóa hợp đồng cũ nhằm phục vụ kế toán, đối soát tài chính và kiểm toán tài sản.
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-lg text-xs border border-slate-200 font-mono">
+                    {historicalZoneContracts.length} hợp đồng cũ
+                  </span>
+                </div>
+
+                {historicalZoneContracts.length === 0 ? (
+                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-500 text-xs">
+                    Chưa có hợp đồng cũ nào trong lịch sử Zone này. Tất cả hợp đồng sau khi hết hạn hoặc thay thế sẽ được tự động bảo toàn tại đây.
+                  </div>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
+                          <th className="p-3">Mã Hợp Đồng</th>
+                          <th className="p-3">Bên Thuê / Khách Hàng</th>
+                          <th className="p-3">Cây Trồng</th>
+                          <th className="p-3">Thời Gian Hiệu Lực</th>
+                          <th className="p-3 text-right">Tổng Thanh Toán</th>
+                          <th className="p-3 text-center">Trạng Thái</th>
+                          <th className="p-3 text-right">Thao Tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {historicalZoneContracts.map(hc => (
+                          <tr key={hc.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3 font-mono font-bold text-indigo-700">
+                              #{hc.contractNumber}
+                            </td>
+                            <td className="p-3">
+                              <div className="font-semibold text-slate-800">{hc.lesseeName}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">{hc.lesseePhone}</div>
+                            </td>
+                            <td className="p-3 font-medium text-emerald-800">
+                              {hc.cropType || selectedZone.currentCrop}
+                            </td>
+                            <td className="p-3 font-mono text-slate-700">
+                              {hc.startDate} ➔ {hc.endDate}
+                              <div className="text-[10px] text-slate-400">({hc.durationMonths} tháng)</div>
+                            </td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-900">
+                              {(hc.totalContractValueVnd || 0).toLocaleString()} đ
+                            </td>
+                            <td className="p-3 text-center">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">
+                                ĐÃ HẾT HẠN
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedContractForDetail(hc);
+                                  setShowContractDetailModal(true);
+                                }}
+                                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-indigo-700 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <FileText size={12} />
+                                <span>Xem HĐ cũ</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: ASSET & HARDWARE DEPRECIATION (FEEDBACK REQUIREMENT B.7) */}
+          {zoneActiveTab === 'DEPRECIATION' && (
+            <div className="space-y-6 text-xs animate-in fade-in duration-200">
+              {/* Critical Alert Banner (Requirement B.7: Cảnh báo thiết bị sắp hết khấu hao nhưng HĐ đang chuẩn bị gia hạn) */}
+              {criticalDepreciationAlerts.length > 0 && (
+                <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl text-rose-950 space-y-2 animate-in fade-in">
+                  <div className="flex items-center gap-2 font-bold text-sm text-rose-800">
+                    <AlertTriangle size={18} className="text-rose-600 animate-bounce" />
+                    <span>CẢNH BÁO QUẢN TRỊ THIẾT BỊ & GIA HẠN HỢP ĐỒNG (B.7 FEEDBACK)</span>
+                  </div>
+                  <p className="text-xs text-rose-900 leading-relaxed">
+                    Hệ thống phát hiện <strong>{criticalDepreciationAlerts.length} thiết bị</strong> tại Zone này đang trong tình trạng <strong>sắp hết khấu hao hoặc đã hết khấu hao</strong> (
+                    {criticalDepreciationAlerts.map(d => `${d.deviceName} - còn ${d.remainingLifespanMonths ?? d.remainingMonths ?? 0} tháng`).join(', ')}
+                    ), trong khi Hợp đồng phân khu <strong>#{activeZoneContract?.contractNumber}</strong> đang chuẩn bị đến hạn gia hạn (
+                    <strong>{activeZoneContract?.daysRemaining} ngày còn lại</strong>).
+                  </p>
+                  <div className="p-3 bg-white/80 rounded-xl border border-rose-200 text-[11px] text-rose-900">
+                    💡 <strong>Khuyến nghị nghiệp vụ:</strong> Bộ phận kỹ thuật nông trại cần kiểm định chất lượng cảm biến/bộ điều khiển, bảo trì hoặc đề xuất phương án thay thế thiết bị mới trước khi ký phụ lục gia hạn hợp đồng với khách hàng.
+                  </div>
+                </div>
+              )}
+
+              {/* Header Bar */}
+              <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
+                    <Cpu size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Theo Dõi Tuổi Thọ & Khấu Hao Thiết Bị Của Zone "{selectedZone.name}"
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Tự động tính thời gian sử dụng, số tháng khấu hao còn lại, giá trị sổ sách và cảnh báo thiết bị cận hạn khi gia hạn hợp đồng.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => setShowCreateDepreciationModal(true)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs cursor-pointer"
+                  >
+                    <Plus size={14} className="mr-1" /> Thêm Hồ Sơ Khấu Hao
+                  </Button>
+                </div>
+              </div>
+
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
+                  <div className="text-slate-500 font-medium text-[11px]">Tổng Nguyên Giá Phần Cứng</div>
+                  <div className="text-lg font-black text-slate-900 font-mono">
+                    {currentZoneDepreciations.reduce((sum, d) => sum + (d.originalCostVnd || 0), 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">VND</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">Trên {currentZoneDepreciations.length} danh mục thiết bị</div>
+                </div>
+
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
+                  <div className="text-purple-700 font-medium text-[11px]">Khấu Hao Lũy Kế</div>
+                  <div className="text-lg font-black text-purple-700 font-mono">
+                    {currentZoneDepreciations.reduce((sum, d) => sum + (d.accumulatedDepreciationVnd || 0), 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">VND</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">Đã trích theo thời gian canh tác</div>
+                </div>
+
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
+                  <div className="text-emerald-700 font-medium text-[11px]">Giá Trị Sổ Sách Còn Lại</div>
+                  <div className="text-lg font-black text-emerald-700 font-mono">
+                    {currentZoneDepreciations.reduce((sum, d) => sum + (d.currentBookValueVnd || 0), 0).toLocaleString()} <span className="text-xs font-normal text-slate-500">VND</span>
+                  </div>
+                  <div className="text-[10px] text-emerald-600 font-semibold">Tài sản đang sinh lợi</div>
+                </div>
+
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
+                  <div className="text-amber-700 font-medium text-[11px]">Tình Trạng Tuổi Thọ</div>
+                  <div className="text-lg font-black text-amber-700 font-mono">
+                    {currentZoneDepreciations.filter(d => d.status === 'Active').length} / {currentZoneDepreciations.length}
+                  </div>
+                  <div className="text-[10px] text-slate-500">Thiết bị còn trong thời hạn sử dụng</div>
+                </div>
+              </div>
+
+              {/* Depreciation Records Table */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <Sliders size={16} className="text-amber-600" />
+                    Danh Sách Thiết Bị & Bảng Tính Khấu Hao Tự Động
+                  </h4>
+                  <span className="text-[11px] text-slate-500">Phương pháp: Khấu hao đường thẳng (Straight-Line)</span>
+                </div>
+
+                {currentZoneDepreciations.length === 0 ? (
+                  <div className="p-8 bg-white border border-dashed border-slate-300 rounded-2xl text-center space-y-3">
+                    <Cpu size={36} className="mx-auto text-slate-300" />
+                    <div className="font-bold text-slate-800">Chưa có hồ sơ khấu hao thiết bị cho Zone này</div>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Khai báo ngày lắp đặt, thời gian bảo hành và vòng đời để hệ thống tự động theo dõi tuổi thọ phần cứng.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => setShowCreateDepreciationModal(true)}
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                    >
+                      <Plus size={14} className="mr-1.5" /> Thêm Hồ Sơ Khấu Hao Thiết Bị
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
+                          <th className="p-3">Tên Thiết Bị & Mã Phần Cứng</th>
+                          <th className="p-3">Loại</th>
+                          <th className="p-3">Ngày Lắp Đặt</th>
+                          <th className="p-3 text-center">Bảo Hành</th>
+                          <th className="p-3 text-center">Vòng Đời (Tháng)</th>
+                          <th className="p-3 text-center">Còn Lại (Tháng)</th>
+                          <th className="p-3 text-right">Nguyên Giá</th>
+                          <th className="p-3 text-right">Đã Khấu Hao</th>
+                          <th className="p-3 text-right">Giá Trị Còn Lại</th>
+                          <th className="p-3 text-center">Trạng Thái</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {currentZoneDepreciations.map(d => {
+                          const remMonths = d.remainingLifespanMonths ?? d.remainingMonths ?? 0;
+                          const depStatus = d.status || d.depreciationStatus || (remMonths <= 0 ? 'FullyDepreciated' : remMonths <= 3 ? 'ExpiringSoon' : 'Active');
+                          return (
+                            <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3">
+                                <div className="font-bold text-slate-900">{d.deviceName}</div>
+                                <div className="text-[10px] text-slate-500 font-mono">{d.deviceCode || d.serialNumber || 'SN-AUTO'}</div>
+                              </td>
+                              <td className="p-3 font-semibold text-slate-700">
+                                {d.deviceType || 'Thiết bị IoT'}
+                              </td>
+                              <td className="p-3 font-mono text-slate-700">
+                                {d.installationDate || d.startDate}
+                              </td>
+                              <td className="p-3 text-center font-semibold text-slate-800">
+                                {d.warrantyMonths || 24} tháng
+                              </td>
+                              <td className="p-3 text-center font-semibold text-slate-800">
+                                {d.depreciationLifetimeMonths} tháng
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] ${
+                                  remMonths <= 0
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : remMonths <= 3
+                                    ? 'bg-amber-100 text-amber-900 font-black animate-pulse'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                }`}>
+                                  {remMonths} tháng
+                                </span>
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-slate-900">
+                                {(d.originalCostVnd || 0).toLocaleString()} đ
+                              </td>
+                              <td className="p-3 text-right font-mono text-purple-700">
+                                {(d.accumulatedDepreciationVnd || 0).toLocaleString()} đ
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-emerald-800">
+                                {(d.currentBookValueVnd || 0).toLocaleString()} đ
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  depStatus === 'FullyDepreciated' || remMonths <= 0
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                    : depStatus === 'ExpiringSoon' || remMonths <= 3
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                }`}>
+                                  {depStatus === 'FullyDepreciated' || remMonths <= 0
+                                    ? 'ĐÃ HẾT KHẤU HAO'
+                                    : depStatus === 'ExpiringSoon' || remMonths <= 3
+                                    ? 'SẮP HẾT KHẤU HAO'
+                                    : 'ĐANG HOẠT ĐỘNG'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: CF3 AUTOMATION & IRRIGATION SCHEDULE */}
+          {zoneActiveTab === 'CF3' && (
+            <div className="pt-2 animate-in fade-in duration-200">
+              <CF3ControlSection
+                scopeLevel="ZONE"
+                farmId={selectedFarm?.farmId}
+                fieldId={selectedField?.fieldId}
+                zoneId={selectedZone.zoneId}
+                title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
+                subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1917,6 +2825,46 @@ export const FarmsPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Contract & Depreciation Modals (Feedback Requirements A.2, B.3, B.5, B.6, B.7) */}
+      <ZoneContractDetailsModal
+        isOpen={showContractDetailModal}
+        onClose={() => setShowContractDetailModal(false)}
+        contract={selectedContractForDetail}
+        onOpenRenewModal={(contract) => {
+          setSelectedContractForRenew(contract);
+          setShowRenewContractModal(true);
+        }}
+        onOpenNewContractModal={(parentContract) => {
+          setParentContractForNew(parentContract);
+          setShowCreateContractModal(true);
+        }}
+      />
+
+      <ZoneContractRenewModal
+        isOpen={showRenewContractModal}
+        onClose={() => setShowRenewContractModal(false)}
+        contract={selectedContractForRenew}
+        onSuccess={handleRenewSuccess}
+      />
+
+      <ZoneContractCreateModal
+        isOpen={showCreateContractModal}
+        onClose={() => setShowCreateContractModal(false)}
+        farm={selectedFarm}
+        zone={selectedZone}
+        existingContracts={currentZoneContracts}
+        parentContract={parentContractForNew}
+        onSuccess={handleCreateContractSuccess}
+      />
+
+      <DeviceDepreciationModal
+        isOpen={showCreateDepreciationModal}
+        onClose={() => setShowCreateDepreciationModal(false)}
+        zone={selectedZone}
+        nodes={nodes.filter(n => n.zoneId === (selectedZone?.zoneId || (selectedZone as any)?.id))}
+        onSuccess={handleCreateDepreciationSuccess}
+      />
     </div>
   );
 };
