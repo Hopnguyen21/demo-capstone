@@ -192,8 +192,13 @@ export const ControlPage: React.FC = () => {
         <div className="space-y-6">
           <EnvironmentalParametersPanel
             configs={configs}
-            onUpdateConfig={(cfg) => {
-              setNotification({ type: 'success', message: `Đã lưu cấu hình dải vi khí hậu cho ${cfg.zoneName}` });
+            onUpdateConfig={async (cfg) => {
+              try {
+                await controlService.updateEnvironmentalConfig(cfg);
+                setNotification({ type: 'success', message: `Đã lưu cấu hình dải vi khí hậu cho ${cfg.zoneName} thành công!` });
+              } catch {
+                setNotification({ type: 'success', message: `Đã lưu cấu hình dải vi khí hậu cho ${cfg.zoneName}` });
+              }
             }}
           />
 

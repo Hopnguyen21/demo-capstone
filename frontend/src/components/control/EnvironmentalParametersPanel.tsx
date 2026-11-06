@@ -9,11 +9,32 @@ interface EnvironmentalParametersPanelProps {
 }
 
 export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanelProps> = ({ configs, onUpdateConfig }) => {
-  const [selectedZoneId, setSelectedZoneId] = useState<string>(configs[0]?.zoneId || 'zone-01');
-  const [currentConfigs, setCurrentConfigs] = useState<EnvironmentalTargetConfig[]>(configs);
+  const fallbackConfig: EnvironmentalTargetConfig = {
+    zoneId: '32000000-0000-0000-0000-000000000001',
+    zoneName: 'Nhà màng Z01 - Cà chua Beefsteak',
+    targetSoilMoisture: 70,
+    minSoilMoisture: 60,
+    maxSoilMoisture: 80,
+    maxTemperature: 32,
+    targetHumidity: 75,
+    targetLux: 25000,
+    powerWatts: 750,
+  };
+
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(configs[0]?.zoneId || '32000000-0000-0000-0000-000000000001');
+  const [currentConfigs, setCurrentConfigs] = useState<EnvironmentalTargetConfig[]>(configs.length > 0 ? configs : [fallbackConfig]);
   const [isSaved, setIsSaved] = useState<boolean>(false);
 
-  const activeConfig = currentConfigs.find(c => c.zoneId === selectedZoneId) || currentConfigs[0];
+  React.useEffect(() => {
+    if (configs && configs.length > 0) {
+      setCurrentConfigs(configs);
+      if (!selectedZoneId || !configs.some(c => c.zoneId === selectedZoneId)) {
+        setSelectedZoneId(configs[0].zoneId);
+      }
+    }
+  }, [configs]);
+
+  const activeConfig = currentConfigs.find(c => c.zoneId === selectedZoneId) || currentConfigs[0] || fallbackConfig;
 
   const handleParamChange = (field: keyof EnvironmentalTargetConfig, val: number) => {
     setCurrentConfigs(prev => prev.map(c => {
