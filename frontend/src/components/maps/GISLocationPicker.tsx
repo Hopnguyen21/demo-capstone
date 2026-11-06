@@ -103,6 +103,64 @@ export const calculatePolygonAreaM2 = (coords: [number, number][]): number => {
   return Math.abs(Math.round(area / 2));
 };
 
+/** Extracts Leaflet [lat, lng][] vertices from GeoJSON Polygon or raw coordinates */
+export const extractPolygonPoints = (geo: any): [number, number][] => {
+  if (!geo) return [];
+  if (typeof geo === 'string') {
+    try {
+      geo = JSON.parse(geo);
+    } catch {
+      return [];
+    }
+  }
+  // Standard GeoJSON Polygon: coordinates = [[[lng, lat], [lng, lat], ...]]
+  if (geo.type === 'Polygon' && Array.isArray(geo.coordinates) && Array.isArray(geo.coordinates[0])) {
+    const ring = geo.coordinates[0];
+    const points: [number, number][] = ring.map((c: any) => [Number(c[1]), Number(c[0])]);
+    if (points.length > 3) {
+      const first = points[0];
+      const last = points[points.length - 1];
+      if (Math.abs(first[0] - last[0]) < 1e-6 && Math.abs(first[1] - last[1]) < 1e-6) {
+        points.pop();
+      }
+    }
+    return points;
+  }
+  // Array of coordinates
+  if (Array.isArray(geo) && geo.length > 0) {
+    if (Array.isArray(geo[0])) {
+      return geo.map((pt: any) => [Number(pt[0]), Number(pt[1])]) as [number, number][];
+    }
+  }
+  return [];
+};
+
+/** Converts Leaflet [lat, lng][] array to standard GeoJSON Polygon object */
+export const toGeoJsonPolygon = (points: [number, number][]) => {
+  if (!points || points.length < 3) return null;
+  const ring = points.map(([lat, lng]) => [Number(lng), Number(lat)]);
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    ring.push([first[0], first[1]]);
+  }
+  return {
+    type: 'Polygon',
+    coordinates: [ring],
+  };
+};
+
+/** Computes centroid [lat, lng] of a polygon */
+export const getPolygonCenter = (points: [number, number][], fallback: [number, number] = [11.9404, 108.4583]): [number, number] => {
+  if (!points || points.length === 0) return fallback;
+  const lats = points.map(p => p[0]);
+  const lngs = points.map(p => p[1]);
+  return [
+    Number(((Math.min(...lats) + Math.max(...lats)) / 2).toFixed(6)),
+    Number(((Math.min(...lngs) + Math.max(...lngs)) / 2).toFixed(6)),
+  ];
+};
+
 // ─── Point-in-Polygon (Ray Casting) ───────────────────────────────────────────
 function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
   if (polygon.length < 3) return true; // no boundary = always inside
@@ -881,11 +939,6 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
 
           {/* Legend Overlay */}
           <div className="absolute bottom-3 left-3 z-[1000] bg-white/90 backdrop-blur-md p-2 rounded-lg border border-slate-200 text-[10px] text-slate-700 shadow-xs flex items-center gap-3">
-            {parentFarmPolygon && parentFarmPolygon.length >= 3 && (
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-[#062326]/20 border border-[#062326] border-dashed" /> Trang trại mẹ
-              </div>
-            )}
             {parentFieldPolygon && parentFieldPolygon.length >= 3 && (
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-sky-500/20 border border-sky-600 border-dashed" /> Phân khu mẹ
@@ -941,13 +994,6 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               </Popup>
             </Marker>
 
-            {/* Parent Farm Polygon */}
-            {parentFarmPolygon && parentFarmPolygon.length >= 3 && (
-              <Polygon
-                positions={parentFarmPolygon}
-                pathOptions={{ color: '#062326', fillColor: '#062326', fillOpacity: 0.08, weight: 2, dashArray: '6, 6' }}
-              />
-            )}
 
             {/* Parent Field Polygon */}
             {parentFieldPolygon && parentFieldPolygon.length >= 3 && (

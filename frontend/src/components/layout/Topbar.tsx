@@ -66,6 +66,11 @@ export const Topbar: React.FC = () => {
     FARMER: { label: 'Farm Worker', color: 'bg-amber-50 text-amber-800 border-amber-200' },
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
+
   return (
     <header className="sticky top-0 z-40 w-full h-16 bg-[#119653] text-white border-b border-[#0e8046] px-4 flex items-center justify-between shadow-md">
       {/* Left section: Logo & Farm Selector */}
@@ -225,13 +230,17 @@ export const Topbar: React.FC = () => {
         </div>
 
         {/* User Avatar & Logout */}
-        <div className="flex items-center gap-2 pl-2 border-l border-white/20">
+        <div className="flex items-center gap-2.5 pl-2 border-l border-white/20">
+          <div className="hidden lg:flex flex-col text-right">
+            <span className="text-xs font-semibold leading-tight text-white max-w-[140px] truncate">{user?.fullName || 'Người dùng'}</span>
+            <span className="text-[10px] text-emerald-100/80 leading-tight max-w-[140px] truncate">{user?.email || ''}</span>
+          </div>
           <div className="w-8 h-8 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-white font-bold text-xs shadow-xs">
-            {user?.fullName.charAt(0) || 'U'}
+            {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
           </div>
           <button
-            onClick={logout}
-            title="Đăng xuất"
+            onClick={handleLogout}
+            title="Đăng xuất khỏi hệ thống"
             className="p-1.5 text-emerald-100 hover:text-white rounded-lg hover:bg-[#0e8046] transition-colors"
           >
             <LogOut size={16} />

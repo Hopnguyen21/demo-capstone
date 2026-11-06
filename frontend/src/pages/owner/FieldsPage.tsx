@@ -3,7 +3,7 @@ import { Field, Farm, Zone } from '../../types';
 import { fieldService, farmService, zoneService } from '../../services';
 import { MapPin, Plus, Building2, Sprout, ArrowUpRight, Layers } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
-import { GISLocationPicker } from '../../components/maps/GISLocationPicker';
+import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { useNavigate } from 'react-router-dom';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
 
@@ -24,6 +24,7 @@ export const FieldsPage: React.FC = () => {
     [11.9395, 108.4595],
     [11.9395, 108.4565],
   ]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadData = async () => {
     try {
@@ -35,11 +36,46 @@ export const FieldsPage: React.FC = () => {
       if (Array.isArray(fdData)) setFields(fdData);
       if (Array.isArray(fData)) {
         setFarms(fData);
-        if (fData.length > 0) setSelectedFarmId(fData[0].farmId);
+        if (fData.length > 0 && !selectedFarmId) setSelectedFarmId(fData[0].farmId);
       }
       if (Array.isArray(zData)) setZones(zData);
     } catch (err) {
       console.error('Failed to load fields data:', err);
+    }
+  };
+
+  const handleCreateField = async () => {
+    if (!fieldName.trim()) {
+      alert('Vui lòng nhập tên Lô đất!');
+      return;
+    }
+    const farmId = selectedFarmId || (farms.length > 0 ? farms[0].farmId : '');
+    if (!farmId) {
+      alert('Vui lòng chọn Trang trại Mẹ!');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const geoJson = toGeoJsonPolygon(polygon);
+      const computedArea = calculatePolygonAreaM2(polygon) || Number(areaM2) || 5000;
+      await fieldService.createField(farmId, {
+        name: fieldName.trim(),
+        areaM2: computedArea,
+        soilType: 'Loam',
+        latitude: center[0],
+        longitude: center[1],
+        boundaryGeoJson: geoJson,
+      });
+      await loadData();
+      setShowCreateModal(false);
+      setFieldName('');
+      setDescription('');
+      alert('Đã lưu Lô đất mới cùng tọa độ GIS vào PostgreSQL thành công!');
+    } catch (err: any) {
+      console.error('Lỗi tạo Field:', err);
+      alert('Lỗi tạo Field: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -153,17 +189,15 @@ export const FieldsPage: React.FC = () => {
               onCenterChange={setCenter}
               polygon={polygon}
               onPolygonChange={setPolygon}
-              parentFarmPolygon={farms[0]?.boundary?.coordinates[0]?.map(c => [c[1], c[0]]) as [number, number][]}
               height="320px"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setShowCreateModal(false)}>Hủy</Button>
-            <Button onClick={() => {
-              alert('Tạo Lô đất thành công!');
-              setShowCreateModal(false);
-            }}>Tạo Field & Lưu GIS</Button>
+            <Button variant="outline" onClick={() => setShowCreateModal(false)} disabled={isSubmitting}>Hủy</Button>
+            <Button onClick={handleCreateField} disabled={isSubmitting}>
+              {isSubmitting ? 'Đang lưu vào DB...' : 'Tạo Field & Lưu GIS'}
+            </Button>
           </div>
         </div>
       </Modal>
