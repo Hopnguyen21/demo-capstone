@@ -184,10 +184,15 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
     setQuotationItems(prev => prev.filter(item => item.id !== id));
   };
 
+  const [applyRepeatDiscount, setApplyRepeatDiscount] = useState<boolean>(true);
+  const [repeatDiscountPercent, setRepeatDiscountPercent] = useState<number>(15);
+
   const selectedItems = quotationItems.filter(i => i.isSelected);
   const subtotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
   const vatTotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity * (i.vatPercent / 100)), 0);
-  const grandTotal = subtotal + vatTotal;
+  const grandTotalBeforeDiscount = subtotal + vatTotal;
+  const discountAmount = applyRepeatDiscount ? Math.round(grandTotalBeforeDiscount * (repeatDiscountPercent / 100)) : 0;
+  const grandTotal = Math.max(0, grandTotalBeforeDiscount - discountAmount);
   const deposit30 = Math.round(grandTotal * 0.3);
   const remaining70 = grandTotal - deposit30;
 
@@ -202,13 +207,20 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
       return;
     }
 
+    const finalNotes = applyRepeatDiscount && discountAmount > 0
+      ? `${contractNote} [Ưu đãi mua lần 2 trong 2 tháng: Giảm ${repeatDiscountPercent}% (-${discountAmount.toLocaleString('vi-VN')} VNĐ)].`
+      : contractNote;
+
     await supportService.sendContract(request.serviceRequestId, {
       items: selectedItems,
       subtotal,
       vatTotal,
+      discountPercent: applyRepeatDiscount ? repeatDiscountPercent : 0,
+      discountAmount,
       totalAmount: grandTotal,
       deposit30Percent: deposit30,
       remaining70Percent: remaining70,
+      notes: finalNotes,
     });
 
     if (onSendContractSuccess) {
@@ -435,6 +447,41 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
           </div>
         </div>
 
+        {/* Discount 2nd purchase within 2 months option */}
+        <div className="p-3 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400 rounded-xl space-y-1.5 text-xs text-amber-950 shadow-xs">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={applyRepeatDiscount}
+                disabled={isLocked}
+                onChange={e => setApplyRepeatDiscount(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+              />
+              <Sparkles size={16} className="text-amber-600 animate-pulse" />
+              <span>🎉 ƯU ĐÃI ĐẶC QUYỀN: Giảm giá Mua lần 2 trong vòng 2 tháng</span>
+            </label>
+            <div className="flex items-center gap-1.5 font-bold">
+              <span>Mức giảm:</span>
+              <input
+                type="number"
+                min="0"
+                max="50"
+                value={repeatDiscountPercent}
+                disabled={isLocked || !applyRepeatDiscount}
+                onChange={e => setRepeatDiscountPercent(Number(e.target.value))}
+                className="w-14 p-1 bg-white border border-amber-300 rounded text-center font-bold text-amber-800"
+              />
+              <span>%</span>
+            </div>
+          </div>
+          {applyRepeatDiscount && (
+            <p className="text-[11px] text-amber-900 leading-snug">
+              Áp dụng chính sách chiết khấu <strong>{repeatDiscountPercent}%</strong> trực tiếp vào đơn hàng/hợp đồng cho khách hàng mua lần thứ 2 trong vòng 60 ngày!
+            </p>
+          )}
+        </div>
+
         {/* Contract Financial Summary Box */}
         <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-emerald-200 rounded-xl space-y-2">
           <div className="flex items-center justify-between text-slate-700 text-xs">
@@ -445,6 +492,15 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
             <span>Thuế VAT (8%):</span>
             <span className="font-mono font-semibold">{vatTotal.toLocaleString('vi-VN')} VNĐ</span>
           </div>
+          {applyRepeatDiscount && discountAmount > 0 && (
+            <div className="flex items-center justify-between text-purple-700 text-xs font-semibold bg-purple-50/70 p-1.5 rounded-lg border border-purple-200">
+              <span className="flex items-center gap-1">
+                <Sparkles size={13} className="text-amber-500" />
+                <span>• Chiết khấu Mua lần 2 trong 2 tháng ({repeatDiscountPercent}%):</span>
+              </span>
+              <span className="font-mono font-bold text-purple-800">-{discountAmount.toLocaleString('vi-VN')} VNĐ</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-emerald-200">
             <span>TỔNG GIÁ TRỊ HỢP ĐỒNG:</span>
             <span className="font-mono text-emerald-950 text-base">{grandTotal.toLocaleString('vi-VN')} VNĐ</span>

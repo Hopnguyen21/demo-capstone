@@ -25,6 +25,8 @@ export const DevicesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryDevice | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   // Initial Inventory Devices Stock List
@@ -234,6 +236,35 @@ export const DevicesPage: React.FC = () => {
       quantityInStock: 10,
       locationRack: 'Kệ A1 - Kho Trung tâm',
     });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    try {
+      if (editingItem.id && editingItem.id.length === 36 && editingItem.id.includes('-')) {
+        await adminService.updateHardwareItem(editingItem.id, {
+          name: editingItem.name,
+          category: editingItem.category,
+          model: editingItem.model,
+          manufacturer: editingItem.manufacturer,
+          serialNumber: editingItem.serialNumber,
+          macAddress: editingItem.macAddress,
+          quantityInStock: Number(editingItem.quantityInStock),
+          locationRack: editingItem.locationRack,
+          status: editingItem.status,
+        });
+      }
+    } catch (err) {
+      console.warn('API update hardware item fallback to local state:', err);
+    }
+
+    setDevices(prev => prev.map(d => d.id === editingItem.id ? editingItem : d));
+    setSuccessNotice(`✅ Đã cập nhật thành công thông tin kho cho [${editingItem.code}]!`);
+    setIsEditModalOpen(false);
+    setEditingItem(null);
+    setTimeout(() => setSuccessNotice(null), 3000);
   };
 
   // Filter Logic
@@ -451,17 +482,15 @@ export const DevicesPage: React.FC = () => {
                     </td>
                     <td className="p-3.5 text-right space-x-1">
                       <button
+                        type="button"
                         onClick={() => {
-                          const newQty = prompt(`Cập nhật số lượng kho cho [${item.code}]:`, String(item.quantityInStock));
-                          if (newQty !== null && !isNaN(Number(newQty))) {
-                            setDevices(prev => prev.map(d => d.id === item.id ? { ...d, quantityInStock: Number(newQty) } : d));
-                            setSuccessNotice(`Đã cập nhật số lượng tồn kho cho ${item.code} thành ${newQty} bộ.`);
-                            setTimeout(() => setSuccessNotice(null), 3000);
-                          }
+                          setEditingItem({ ...item });
+                          setIsEditModalOpen(true);
                         }}
-                        className="px-2 py-1 rounded bg-slate-100 hover:bg-emerald-100 hover:text-emerald-900 text-slate-700 text-[11px] font-bold transition-colors"
+                        className="px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-900 text-emerald-800 border border-emerald-200 text-[11px] font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                        title="Chỉnh sửa số lượng, vị trí kệ và thông số kho"
                       >
-                        Sửa kho
+                        <Edit size={12} className="text-emerald-700" /> Sửa kho
                       </button>
                     </td>
                   </tr>
@@ -582,6 +611,92 @@ export const DevicesPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Admin Modal: Edit Hardware Component in Inventory */}
+      <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditingItem(null); }} title={`🛠️ Chỉnh Sửa Thông Tin Kho Vật Tư [${editingItem?.code || ''}]`}>
+        {editingItem && (
+          <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 flex items-start gap-2">
+              <ShieldCheck size={16} className="text-emerald-700 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Cập nhật kho lưu trữ vật tư và thiết bị nền tảng</span>
+                <p className="text-[11px] text-emerald-800 mt-0.5">
+                  Mã thiết bị: <strong className="font-mono text-emerald-900">{editingItem.code}</strong>. Thay đổi số lượng tồn kho, kệ lưu trữ và trạng thái.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Tên thiết bị / linh kiện *</label>
+              <Input
+                value={editingItem.name}
+                onChange={e => setEditingItem({ ...editingItem, name: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Số lượng tồn kho (bộ) *</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={editingItem.quantityInStock}
+                  onChange={e => setEditingItem({ ...editingItem, quantityInStock: Math.max(0, parseInt(e.target.value) || 0) })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Trạng thái thiết bị</label>
+                <select
+                  value={editingItem.status}
+                  onChange={e => setEditingItem({ ...editingItem, status: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800"
+                >
+                  <option value="AVAILABLE">AVAILABLE (Sẵn sàng trong kho)</option>
+                  <option value="DEPLOYED">DEPLOYED (Đã xuất thực địa)</option>
+                  <option value="MAINTENANCE">MAINTENANCE (Bảo dưỡng / Kiểm thử)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Vị trí kệ kho (Rack Location)</label>
+              <Input
+                value={editingItem.locationRack}
+                onChange={e => setEditingItem({ ...editingItem, locationRack: e.target.value })}
+                placeholder="VD: Kệ A1 - Tầng 2 (Kho Trung tâm)"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Model phần cứng</label>
+                <Input
+                  value={editingItem.model}
+                  onChange={e => setEditingItem({ ...editingItem, model: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Nhà sản xuất</label>
+                <Input
+                  value={editingItem.manufacturer}
+                  onChange={e => setEditingItem({ ...editingItem, manufacturer: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+              <Button type="button" variant="outline" size="sm" onClick={() => { setIsEditModalOpen(false); setEditingItem(null); }}>
+                Hủy bỏ
+              </Button>
+              <Button type="submit" size="sm" className="bg-[#119653] hover:bg-emerald-700 text-white font-bold">
+                Lưu Thay Đổi Vào Kho
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );
