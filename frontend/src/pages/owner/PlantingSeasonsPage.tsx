@@ -3,14 +3,14 @@ import {
   Calendar, Plus, Clock, CheckCircle2, Sliders, Droplets, Radio, Play,
   ShieldCheck, Sparkles, QrCode, FileText, Printer, Download, Package,
   DollarSign, AlertTriangle, Check, Layers, History, Filter, ArrowRight,
-  Edit2, Trash2, Sprout, Tag, ChevronRight, BarChart3, Info
+  Edit2, Trash2, Sprout, Tag, ChevronRight, FileSpreadsheet, BarChart3, Info
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 import { BulkSeasonModal, SeasonZonesModal } from '../../components/seasons/SeasonZonesModals';
 import {
   controlService, farmService, fieldService, seasonService,
-  zoneService, farmingSeasonService, cropService
+  zoneService, farmingSeasonService, cropService, reportService, extractApiError
 } from '../../services';
 import {
   PlantingSeason, ControlSchedule, Actuator, FarmingSeason,
@@ -49,6 +49,7 @@ export const PlantingSeasonsPage: React.FC = () => {
   const [isZoneHistoryModalOpen, setIsZoneHistoryModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isVietgapLogModalOpen, setIsVietgapLogModalOpen] = useState(false);
+  const [isExportingSeasonExcel, setIsExportingSeasonExcel] = useState(false);
 
   // Notifications
   const [successToast, setSuccessToast] = useState<string | null>(null);
@@ -524,6 +525,21 @@ export const PlantingSeasonsPage: React.FC = () => {
   };
 
   // Open VietGAP Log Modal
+  const handleExportSeasonExcel = async (zoneId: string) => {
+    try {
+      setIsExportingSeasonExcel(true);
+      const { blob, fileName } = await reportService.exportSeasonSummaryExcel(zoneId);
+      reportService.downloadBlob(blob, fileName);
+      setSuccessToast(`Đã xuất file báo cáo vụ mùa: ${fileName}`);
+      setTimeout(() => setSuccessToast(null), 4000);
+    } catch (err) {
+      setErrorMessage(`Lỗi xuất Excel vụ mùa: ${extractApiError(err)}`);
+      setTimeout(() => setErrorMessage(null), 5000);
+    } finally {
+      setIsExportingSeasonExcel(false);
+    }
+  };
+
   const handleOpenVietgapLog = (season: PlantingSeason) => {
     setSelectedSeason(season);
     setIsVietgapLogModalOpen(true);

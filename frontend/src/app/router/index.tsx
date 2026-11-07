@@ -15,6 +15,7 @@ import { DevicesPage } from '../../pages/admin/DevicesPage';
 import { SystemHealthPage } from '../../pages/admin/SystemHealthPage';
 import { AuditLogsPage } from '../../pages/admin/AuditLogsPage';
 import { SettingsPage } from '../../pages/admin/SettingsPage';
+import { BackupRestorePage } from '../../pages/admin/BackupRestorePage';
 
 import { TechnicianDashboard } from '../../pages/technician/TechnicianDashboard';
 import { ProvisioningPage } from '../../pages/technician/ProvisioningPage';
@@ -124,6 +125,7 @@ export const router = createBrowserRouter([
       { path: '/admin/system-health', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><SystemHealthPage /></RequireRole> },
       { path: '/admin/audit-logs', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><AuditLogsPage /></RequireRole> },
       { path: '/admin/settings', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><SettingsPage /></RequireRole> },
+      { path: '/admin/backup-restore', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><BackupRestorePage /></RequireRole> },
 
       // Technician Routes (Exclusive to PLATFORM_TECHNICIAN and PLATFORM_ADMIN)
       { path: '/technician/dashboard', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><TechnicianDashboard /></RequireRole> },

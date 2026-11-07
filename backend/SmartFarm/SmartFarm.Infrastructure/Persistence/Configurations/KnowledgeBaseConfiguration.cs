@@ -42,8 +42,14 @@ internal sealed class AgricultureDocumentConfiguration : IEntityTypeConfiguratio
         b.Property(x => x.ContentHash).HasColumnName("content_hash").HasMaxLength(64);
         b.Property(x => x.ChunkerVersion).HasColumnName("chunker_version").HasDefaultValue(0);
         b.Property(x => x.Topics).HasColumnName("topics").HasMaxLength(300).HasDefaultValue(string.Empty);
+        b.Property(x => x.StandardCode).HasColumnName("standard_code").HasMaxLength(100);
+        b.Property(x => x.IssuedDate).HasColumnName("issued_date");
+        b.Property(x => x.EffectiveDate).HasColumnName("effective_date");
+        b.Property(x => x.ExpirationDate).HasColumnName("expiration_date");
+        b.Property(x => x.PreviousVersionId).HasColumnName("previous_version_id");
         b.Property(x => x.SupersededByDocumentId).HasColumnName("superseded_by_document_id");
         b.HasIndex(x => x.ContentHash);
+        b.HasIndex(x => x.PreviousVersionId);
         b.Property(x => x.TenantId).HasColumnName("tenant_id");
 
         b.HasIndex(x => x.Category);

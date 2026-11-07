@@ -30,6 +30,17 @@ public sealed class UsersController(IUserService userService, IFarmInvitationSer
         return Ok(await userService.GetCurrentUserAsync(User.GetUserId(), cancellationToken));
     }
 
+    [HttpPut("me")]
+    public async Task<ActionResult<UserDetailView>> UpdateMe(
+        [FromBody] UpdateUserProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await userService.UpdateCurrentUserProfileAsync(
+            User.GetUserId(),
+            new UpdateUserProfileCommand(request.FullName, request.Phone),
+            cancellationToken));
+    }
+
     // API catalog #7
     [Authorize(Roles = "FarmOwner")]
     [HttpGet("{userId:guid}")]

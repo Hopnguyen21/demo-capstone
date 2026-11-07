@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
-  LayoutDashboard, Building2, Users, Sprout, Cpu, Radio, Activity,
+  LayoutDashboard, Building2, Database, Users, Sprout, Cpu, Radio, Activity,
   ShieldAlert, Settings, Wrench, Package, CpuIcon, MapPin, Gauge,
   Sliders, Calendar, Bot, FileText, ClipboardList, PackageCheck, Headphones,
   ChevronRight, FileCheck, BookOpen
@@ -29,6 +29,7 @@ export const Sidebar: React.FC = () => {
     { title: 'Kho Vật tư & Linh kiện', path: '/admin/devices', icon: <Package size={18} />, badge: 'Kho' },
     { title: 'Sức khỏe Máy chủ & IoT', path: '/admin/system-health', icon: <Radio size={18} /> },
     { title: 'Nhật ký Audit Logs', path: '/admin/audit-logs', icon: <ShieldAlert size={18} /> },
+    { title: 'Sao lưu & Khôi phục', path: '/admin/backup-restore', icon: <Database size={18} /> },
     { title: 'Cấu hình Platform', path: '/admin/settings', icon: <Settings size={18} /> },
   ];
 

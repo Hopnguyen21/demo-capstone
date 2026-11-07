@@ -21,10 +21,15 @@ public sealed record AgricultureDocumentSummaryView(
     bool HasOriginalFile,
     string DocumentType = "Unspecified",
     string Topics = "",
-    /// <summary>Chủ đề hệ thống tự nhận diện từ nội dung các đoạn (khác với Topics do người tải lên khai báo).</summary>
     string DetectedTopics = "",
-    /// <summary>Trạng thái AI kiểm tra chủ đề nông nghiệp (null = chưa có).</summary>
-    string? VerificationStatus = null);
+    string? VerificationStatus = null,
+    string? StandardCode = null,
+    DateTime? IssuedDate = null,
+    DateTime? EffectiveDate = null,
+    DateTime? ExpirationDate = null,
+    Guid? PreviousVersionId = null,
+    Guid? SupersededByDocumentId = null,
+    bool IsActiveInRag = false);
 
 public sealed record AgricultureChunkView(
     Guid Id,
@@ -59,8 +64,50 @@ public sealed record AgricultureDocumentDetailView(
     string DocumentType = "Unspecified",
     string Topics = "",
     DocumentMetadataDetection? MetadataDetection = null,
-    /// <summary>Trạng thái rà soát (kể cả Pending khi AI chưa có kết quả).</summary>
-    string? VerificationStatus = null);
+    string? VerificationStatus = null,
+    string? StandardCode = null,
+    DateTime? IssuedDate = null,
+    DateTime? EffectiveDate = null,
+    DateTime? ExpirationDate = null,
+    Guid? PreviousVersionId = null,
+    Guid? SupersededByDocumentId = null,
+    bool IsActiveInRag = false);
+
+public sealed record DocumentUpdateResult(
+    Guid DocumentId,
+    bool IsNewVersion,
+    Guid? PreviousVersionId,
+    string Version,
+    string ReviewStatus,
+    string Message);
+
+public sealed record DocumentVersionView(
+    Guid Id,
+    string Version,
+    string Title,
+    string? StandardCode,
+    string ReviewStatus,
+    DateTime CreatedAtUtc,
+    DateTime? ReviewedAtUtc,
+    string? AuthorOrganization,
+    bool IsActiveInRag,
+    Guid? PreviousVersionId,
+    Guid? SupersededByDocumentId);
+
+public sealed record DocumentPreviewResult(
+    string Title,
+    string? StandardCode,
+    string? AuthorOrganization,
+    string? Version,
+    string Category,
+    string CropScope,
+    AgricultureDocumentType DocumentType,
+    DateTime? IssuedDate,
+    DateTime? EffectiveDate,
+    int EstimatedChunkCount,
+    string ContentPreview,
+    DocumentMetadataDetection? MetadataDetection,
+    DocumentSufficiencyResult Sufficiency);
 
 /// <summary>Bằng chứng nguồn của một giá trị nhận diện: câu trích nguyên văn và số trang nếu file có đánh dấu trang.</summary>
 public sealed record MetadataEvidence(string Quote, int? Page);
@@ -104,7 +151,8 @@ public sealed record DocumentMetadataDetection(
 /// <summary>Chỉnh sửa metadata của người duyệt sau khi đối chiếu file gốc; trường null = giữ nguyên.</summary>
 public sealed record DocumentMetadataOverrides(
     string? Title, string? CropScope, string? AuthorOrganization, string? Version,
-    AgricultureDocumentType? DocumentType, bool ConfirmGeneralScope);
+    AgricultureDocumentType? DocumentType, bool ConfirmGeneralScope,
+    string? StandardCode = null, DateTime? IssuedDate = null, DateTime? EffectiveDate = null, DateTime? ExpirationDate = null);
 
 public sealed record AgricultureOriginalFileView(byte[] Content, string FileName, string ContentType);
 
@@ -117,8 +165,22 @@ public interface IAgricultureDocumentService
     Task<AgricultureDocumentDetailView?> GetDocumentByIdAsync(Guid documentId, Guid? tenantId, CancellationToken cancellationToken);
     Task<AgricultureOriginalFileView?> GetOriginalFileAsync(Guid documentId, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
     Task<Guid> IngestDocumentAsync(string title, string fileName, string fileType, byte[] fileBytes, string? authorOrganization, string category, string cropScope, string? version, AgricultureDocumentType documentType, IReadOnlyList<string>? topics, Guid? tenantId, bool isPublic, CancellationToken cancellationToken);
-    Task<bool> UpdateDocumentAsync(Guid documentId, string title, string? fileName, string? fileType, byte[]? fileBytes, string? contentText, string? authorOrganization, string category, string cropScope, string? version, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
-    Task<bool> ReviewDocumentAsync(Guid documentId, string? contentText, bool approve, string? reviewNotes, Guid? tenantId, bool isPlatformAdmin, DocumentMetadataOverrides? overrides, CancellationToken cancellationToken);
+    Task<DocumentUpdateResult> UpdateDocumentAsync(
+        Guid documentId, string title, string? fileName, string? fileType, byte[]? fileBytes, string? contentText,
+        string? authorOrganization, string category, string cropScope, string? version,
+        string? standardCode, DateTime? issuedDate, DateTime? effectiveDate, DateTime? expirationDate, AgricultureDocumentType? documentType,
+        bool? forceNewVersion, string? notes, Guid? actorUserId, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
+
+    Task<DocumentPreviewResult> PreviewDocumentAsync(
+        byte[]? fileBytes, string? fileType, string? fileName, string? contentText, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<DocumentVersionView>> GetDocumentVersionsAsync(
+        Guid documentId, Guid? tenantId, CancellationToken cancellationToken);
+
+    Task<bool> ArchiveDocumentAsync(
+        Guid documentId, string? reason, Guid? actorUserId, Guid? tenantId, bool isPlatformAdmin, CancellationToken cancellationToken);
+
+    Task<bool> ReviewDocumentAsync(Guid documentId, string? contentText, bool approve, string? reviewNotes, Guid? actorUserId, Guid? tenantId, bool isPlatformAdmin, DocumentMetadataOverrides? overrides, CancellationToken cancellationToken);
     /// <summary>
     /// Yêu cầu AI kiểm tra lại tài liệu có thuộc lĩnh vực nông nghiệp hay không (đánh dấu Pending, worker nền chạy).
     /// Không ảnh hưởng trạng thái duyệt.

@@ -804,13 +804,59 @@ export interface AgricultureDocumentSummary {
   tenantId?: string;
   chunkCount: number;
   createdAtUtc: string;
-  reviewStatus: 'PendingReview' | 'Approved' | 'NeedsCorrection' | 'Superseded' | string;
+  reviewStatus: 'PendingReview' | 'Approved' | 'NeedsCorrection' | 'Superseded' | 'Draft' | 'Rejected' | 'Expired' | 'Archived' | string;
   topics?: string;
   detectedTopics?: string;
   reviewNotes?: string;
   reviewedAtUtc?: string;
   hasOriginalFile: boolean;
   documentType: 'OfficialStandard' | 'TechnicalGuide' | 'Thematic' | string;
+  standardCode?: string;
+  issuedDate?: string;
+  effectiveDate?: string;
+  expirationDate?: string;
+  previousVersionId?: string;
+  supersededByDocumentId?: string;
+  isActiveInRag?: boolean;
+}
+
+export interface DocumentVersionView {
+  id: string;
+  version: string;
+  title: string;
+  standardCode?: string;
+  reviewStatus: string;
+  createdAtUtc: string;
+  reviewedAtUtc?: string;
+  authorOrganization?: string;
+  isActiveInRag: boolean;
+  previousVersionId?: string;
+  supersededByDocumentId?: string;
+}
+
+export interface DocumentPreviewResult {
+  title: string;
+  standardCode?: string;
+  authorOrganization?: string;
+  version?: string;
+  category: string;
+  cropScope: string;
+  documentType: string;
+  issuedDate?: string;
+  effectiveDate?: string;
+  estimatedChunkCount: number;
+  contentPreview: string;
+  metadataDetection?: any;
+  sufficiency?: any;
+}
+
+export interface DocumentUpdateResult {
+  documentId: string;
+  isNewVersion: boolean;
+  previousVersionId?: string;
+  version: string;
+  reviewStatus: string;
+  message: string;
 }
 
 export interface AgricultureChunk {

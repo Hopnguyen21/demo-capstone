@@ -21,6 +21,7 @@ interface AuthContextType {
   }) => Promise<any>;
   logout: () => Promise<void>;
   refreshFarmsAndZones: () => Promise<void>;
+  updateCurrentUser: (updated: Partial<User>) => void;
   farms: Farm[];
   zones: Zone[];
 }
@@ -100,6 +101,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Fetch real farms & zones when logged in
+  const updateCurrentUser = (updated: Partial<User>) => {
+    setUser(prev => {
+      if (!prev) return null;
+      const next = { ...prev, ...updated };
+      localStorage.setItem('smartfarm_user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   const refreshFarmsAndZones = async () => {
     setFarmZonesRevision(revision => revision + 1);
     setFarms([]);
@@ -243,6 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         refreshFarmsAndZones,
+        updateCurrentUser,
         farms,
         zones,
       }}

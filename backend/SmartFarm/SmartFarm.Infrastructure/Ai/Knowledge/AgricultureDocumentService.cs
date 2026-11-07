@@ -54,6 +54,7 @@ public sealed class AgricultureDocumentService(
                 d.Id, d.Title, d.FileName, d.FileType, d.AuthorOrganization, d.Category,
                 d.CropScope, d.Version, d.IsPublic, d.TenantId, ChunkCount = d.Chunks.Count,
                 d.CreatedAtUtc, d.ReviewStatus, d.ReviewNotes, d.ReviewedAtUtc, d.DocumentType, d.Topics, d.VerificationStatus,
+                d.StandardCode, d.IssuedDate, d.EffectiveDate, d.ExpirationDate, d.PreviousVersionId, d.SupersededByDocumentId,
                 HasOriginalFile = d.OriginalFileBytes != null
             })
             .ToListAsync(ct);
@@ -72,7 +73,9 @@ public sealed class AgricultureDocumentService(
             d.Id, d.Title, d.FileName, d.FileType, d.AuthorOrganization, d.Category,
             d.CropScope, d.Version, d.IsPublic, d.TenantId, d.ChunkCount, d.CreatedAtUtc,
             d.ReviewStatus.ToString(), d.ReviewNotes, d.ReviewedAtUtc, d.HasOriginalFile, d.DocumentType.ToString(), d.Topics,
-            detected.GetValueOrDefault(d.Id, string.Empty), d.VerificationStatus)).ToList();
+            detected.GetValueOrDefault(d.Id, string.Empty), d.VerificationStatus,
+            d.StandardCode, d.IssuedDate, d.EffectiveDate, d.ExpirationDate, d.PreviousVersionId, d.SupersededByDocumentId,
+            d.ReviewStatus == AgricultureDocumentReviewStatus.Approved)).ToList();
     }
 
     public async Task<AgricultureDocumentDetailView?> GetDocumentByIdAsync(Guid documentId, Guid? tenantId, CancellationToken ct)
@@ -88,7 +91,8 @@ public sealed class AgricultureDocumentService(
                 x.Id, x.Title, x.FileName, x.FileType, x.AuthorOrganization, x.Category,
                 x.CropScope, x.Version, x.IsPublic, x.TenantId, x.ContentText, x.CreatedAtUtc,
                 x.ReviewStatus, x.ReviewNotes, x.ReviewedAtUtc, x.VerificationJson, x.VerificationStatus, x.DocumentType, x.Topics,
-                x.MetadataDetectionJson,
+                x.MetadataDetectionJson, x.StandardCode, x.IssuedDate, x.EffectiveDate, x.ExpirationDate,
+                x.PreviousVersionId, x.SupersededByDocumentId,
                 HasOriginalFile = x.OriginalFileBytes != null
             })
             .FirstOrDefaultAsync(ct);
@@ -104,7 +108,9 @@ public sealed class AgricultureDocumentService(
         return new AgricultureDocumentDetailView(d.Id, d.Title, d.FileName, d.FileType, d.AuthorOrganization,
             d.Category, d.CropScope, d.Version, d.IsPublic, d.TenantId, d.ContentText, chunks, d.CreatedAtUtc,
             d.ReviewStatus.ToString(), d.ReviewNotes, d.ReviewedAtUtc, d.HasOriginalFile,
-            DeserializeVerification(d.VerificationJson), d.DocumentType.ToString(), d.Topics, DeserializeDetection(d.MetadataDetectionJson), d.VerificationStatus);
+            DeserializeVerification(d.VerificationJson), d.DocumentType.ToString(), d.Topics, DeserializeDetection(d.MetadataDetectionJson), d.VerificationStatus,
+            d.StandardCode, d.IssuedDate, d.EffectiveDate, d.ExpirationDate, d.PreviousVersionId, d.SupersededByDocumentId,
+            d.ReviewStatus == AgricultureDocumentReviewStatus.Approved);
     }
 
     public async Task<AgricultureOriginalFileView?> GetOriginalFileAsync(
@@ -203,23 +209,65 @@ public sealed class AgricultureDocumentService(
             "Tài liệu được lưu độc lập với Growth Profile. Cần người quản trị rà soát nguồn, nội dung và cây trồng áp dụng.",
             "manual-review");
 
-    public async Task<bool> UpdateDocumentAsync(
+
+    private async Task TryRecordAuditLogAsync(Guid? actorUserId, string actorRole, string action, string entityId, string details, CancellationToken ct)
+    {
+        try
+        {
+            await db.AuditLogs.AddAsync(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                ActorUserId = actorUserId,
+                ActorName = actorUserId.HasValue ? "Administrator" : "System",
+                ActorRole = actorRole,
+                Action = action,
+                EntityName = "AgricultureDocument",
+                EntityId = entityId,
+                Details = details,
+                CreatedAtUtc = DateTime.UtcNow
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to record audit log for action {Action} on {EntityId}", action, entityId);
+        }
+    }
+
+    private static string BumpVersion(string? currentVersion)
+    {
+        if (string.IsNullOrWhiteSpace(currentVersion)) return "V2.0";
+        var match = System.Text.RegularExpressions.Regex.Match(currentVersion.Trim(), @"^(?:v|ver|version)?s*(d+)(?:.(d+))?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            var major = int.Parse(match.Groups[1].Value);
+            if (match.Groups[2].Success)
+            {
+                var minor = int.Parse(match.Groups[2].Value);
+                return $"V{major}.{minor + 1}";
+            }
+            return $"V{major + 1}.0";
+        }
+        return $"{currentVersion}.1";
+    }
+
+    public async Task<DocumentUpdateResult> UpdateDocumentAsync(
         Guid documentId, string title, string? fileName, string? fileType, byte[]? fileBytes, string? contentText,
         string? authorOrganization, string category, string cropScope, string? version,
-        Guid? tenantId, bool isPlatformAdmin, CancellationToken ct)
+        string? standardCode, DateTime? issuedDate, DateTime? effectiveDate, DateTime? expirationDate, AgricultureDocumentType? documentType,
+        bool? forceNewVersion, string? notes, Guid? actorUserId, Guid? tenantId, bool isPlatformAdmin, CancellationToken ct)
     {
         var q = db.AgricultureDocuments.Where(d => d.Id == documentId);
         if (!isPlatformAdmin)
         {
-            if (tenantId is null) return false;
+            if (tenantId is null) throw new UnauthorizedAccessException("Không có quyền truy cập tài liệu.");
             q = q.Where(d => d.TenantId == tenantId.Value);
         }
 
         var doc = await q.FirstOrDefaultAsync(ct);
-        if (doc is null) return false;
+        if (doc is null) throw new RequestValidationException("documentId", "Không tìm thấy tài liệu nông học cần cập nhật.");
 
         title = (title ?? string.Empty).Trim();
-        if (title.Length is < 3 or > 300) throw new ArgumentException("Tiêu đề phải từ 3 đến 300 ký tự.");
+        if (title.Length is < 3 or > 300) throw new RequestValidationException("title", "Tiêu đề phải từ 3 đến 300 ký tự.");
         category = Categories.Contains(category?.ToLowerInvariant() ?? "") ? category!.ToLowerInvariant() : "general";
 
         string? newText = null;
@@ -232,81 +280,267 @@ public sealed class AgricultureDocumentService(
             newText = contentText.Trim();
         }
 
-        if (newText is { Length: < 50 })
-            throw new InvalidOperationException("Nội dung tài liệu sau khi cập nhật phải có ít nhất 50 ký tự; nội dung và chunks cũ chưa bị thay đổi.");
+        if (newText != null && newText.Length < 50)
+            throw new RequestValidationException("contentText", "Nội dung tài liệu sau khi cập nhật phải có ít nhất 50 ký tự; phiên bản hiện tại chưa bị thay đổi.");
 
-        if (fileBytes is { Length: > 0 } && !string.IsNullOrWhiteSpace(fileType))
-        {
-            doc.FileName = fileName ?? doc.FileName;
-            doc.FileType = fileType;
-            doc.OriginalFileBytes = fileBytes;
-            doc.OriginalFileContentType = GetContentType(fileType);
-        }
-        else if (!string.IsNullOrWhiteSpace(contentText))
-        {
-            // Keep the source format when a reviewer edits extracted text for an uploaded file.
-            if (fileName != null) doc.FileName = fileName;
-        }
+        var isNewVersion = forceNewVersion == true || doc.ReviewStatus == AgricultureDocumentReviewStatus.Approved;
 
-        doc.Title = title;
-        doc.AuthorOrganization = authorOrganization;
-        doc.Category = category;
-        doc.CropScope = CropNames.NormalizeScope(cropScope);
-        if (!string.IsNullOrWhiteSpace(version)) doc.Version = version.Trim();
-        doc.UpdatedAtUtc = DateTime.UtcNow;
-
-        if (newText != null)
+        if (isNewVersion)
         {
-            var sourceFileReplaced = fileBytes is { Length: > 0 };
-            var extractedTextChanged = !string.Equals(doc.ContentText, newText, StringComparison.Ordinal);
-            if (sourceFileReplaced || extractedTextChanged)
+            // CRITICAL INVARIANT: Never overwrite an approved active document.
+            // Create a NEW document record linked to the predecessor version.
+            var nextVersionStr = VersionParser.NormalizeOrBump(doc.Version ?? "V1.0", version);
+
+            var effectiveText = newText ?? doc.ContentText;
+            var effectiveFileBytes = fileBytes ?? doc.OriginalFileBytes;
+            var effectiveFileType = !string.IsNullOrWhiteSpace(fileType) ? fileType : doc.FileType;
+            var effectiveFileName = !string.IsNullOrWhiteSpace(fileName) ? fileName : doc.FileName;
+            var effectiveStandardCode = !string.IsNullOrWhiteSpace(standardCode) ? standardCode.Trim() : doc.StandardCode;
+            var effectiveAuthor = !string.IsNullOrWhiteSpace(authorOrganization) ? authorOrganization.Trim() : doc.AuthorOrganization;
+            var effectiveDocType = documentType ?? doc.DocumentType;
+            var effectiveCropScope = CropNames.NormalizeScope(string.IsNullOrWhiteSpace(cropScope) ? doc.CropScope : cropScope);
+
+            var newDoc = new AgricultureDocument
             {
-                using var tx = await db.Database.BeginTransactionAsync(ct);
-                try
-                {
-                    doc.ContentText = newText;
-                    doc.ContentHash = TopicClassifier.ContentHash(newText);
-                    await QueueVerificationAsync(doc, ct); // Kết quả rà soát cũ không còn khớp toàn văn mới.
-                    doc.ReviewStatus = AgricultureDocumentReviewStatus.PendingReview;
-                    doc.ReviewNotes = null;
-                    doc.ReviewedAtUtc = null;
-                    await db.SaveChangesAsync(ct);
+                Id = Guid.NewGuid(),
+                Title = title,
+                FileName = effectiveFileName,
+                FileType = effectiveFileType,
+                OriginalFileBytes = effectiveFileBytes,
+                OriginalFileContentType = effectiveFileBytes != null ? GetContentType(effectiveFileType) : doc.OriginalFileContentType,
+                ContentText = effectiveText,
+                AuthorOrganization = effectiveAuthor,
+                Category = category,
+                CropScope = effectiveCropScope,
+                Version = nextVersionStr,
+                StandardCode = effectiveStandardCode,
+                IssuedDate = issuedDate ?? doc.IssuedDate,
+                EffectiveDate = effectiveDate ?? doc.EffectiveDate,
+                ExpirationDate = expirationDate ?? doc.ExpirationDate,
+                DocumentType = effectiveDocType,
+                IsPublic = doc.IsPublic,
+                TenantId = doc.TenantId,
+                PreviousVersionId = doc.Id, // Linking to predecessor!
+                ReviewStatus = AgricultureDocumentReviewStatus.PendingReview,
+                ReviewNotes = !string.IsNullOrWhiteSpace(notes) ? notes.Trim() : $"Cập nhật phiên bản từ {doc.Version ?? "V1.0"}",
+                ContentHash = TopicClassifier.ContentHash(effectiveText),
+                ChunkerVersion = StructuredChunker.Version,
+                Topics = doc.Topics,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            };
 
-                    // Xóa triệt để toàn bộ chunks và vector cũ bằng bulk delete
-                    await db.AgricultureKnowledgeChunks
-                        .Where(c => c.DocumentId == doc.Id)
-                        .ExecuteDeleteAsync(ct);
-
-                    // Cắt nhỏ văn bản mới và nạp vào DB
-                    db.AgricultureKnowledgeChunks.AddRange(BuildChunks(doc.Id, newText, doc.CropScope));
-                    doc.ChunkerVersion = StructuredChunker.Version;
-                    await db.SaveChangesAsync(ct);
-
-                    await tx.CommitAsync(ct);
-                }
-                catch
-                {
-                    await tx.RollbackAsync(ct);
-                    throw;
-                }
-            }
-            else
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            try
             {
-                // Metadata-only edit that resubmits the same text preserves the prior review and vectors.
+                db.AgricultureDocuments.Add(newDoc);
+                db.AgricultureKnowledgeChunks.AddRange(BuildChunks(newDoc.Id, effectiveText, newDoc.CropScope));
                 await db.SaveChangesAsync(ct);
+
+                await QueueVerificationAsync(newDoc, ct);
+                await TryRecordAuditLogAsync(actorUserId, isPlatformAdmin ? "PlatformAdmin" : "FarmOwner", "CREATE_DOCUMENT_VERSION", newDoc.Id.ToString(),
+                    $"Tạo phiên bản mới {newDoc.Version} cho tài liệu '{newDoc.Title}' (predecessor ID={doc.Id}, v={doc.Version}).", ct);
+
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+
+                return new DocumentUpdateResult(
+                    newDoc.Id,
+                    IsNewVersion: true,
+                    doc.Id,
+                    newDoc.Version,
+                    newDoc.ReviewStatus.ToString(),
+                    $"Đã tạo phiên bản mới {newDoc.Version} thành công ở trạng thái chờ duyệt. Phiên bản hiện tại ({doc.Version}) vẫn tiếp tục hoạt động phục vụ AI RAG.");
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
             }
         }
         else
         {
-            await db.SaveChangesAsync(ct);
+            // Draft / PendingReview / NeedsCorrection in-place update
+            var textChanged = newText != null && !string.Equals(doc.ContentText, newText, StringComparison.Ordinal);
+            var fileChanged = fileBytes is { Length: > 0 };
+
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                doc.Title = title;
+                if (!string.IsNullOrWhiteSpace(authorOrganization)) doc.AuthorOrganization = authorOrganization.Trim();
+                if (!string.IsNullOrWhiteSpace(version)) doc.Version = VersionParser.NormalizeOrBump(doc.Version, version);
+                if (!string.IsNullOrWhiteSpace(standardCode)) doc.StandardCode = standardCode.Trim();
+                if (issuedDate.HasValue) doc.IssuedDate = issuedDate.Value;
+                if (effectiveDate.HasValue) doc.EffectiveDate = effectiveDate.Value;
+                if (expirationDate.HasValue) doc.ExpirationDate = expirationDate.Value;
+                if (documentType.HasValue) doc.DocumentType = documentType.Value;
+                doc.Category = category;
+                doc.CropScope = CropNames.NormalizeScope(cropScope);
+                if (!string.IsNullOrWhiteSpace(notes)) doc.ReviewNotes = notes.Trim();
+                doc.UpdatedAtUtc = DateTime.UtcNow;
+
+                if (fileChanged)
+                {
+                    doc.FileName = fileName ?? doc.FileName;
+                    doc.FileType = fileType!;
+                    doc.OriginalFileBytes = fileBytes;
+                    doc.OriginalFileContentType = GetContentType(fileType!);
+                }
+
+                if (textChanged || fileChanged)
+                {
+                    var updatedText = newText ?? doc.ContentText;
+                    doc.ContentText = updatedText;
+                    doc.ContentHash = TopicClassifier.ContentHash(updatedText);
+                    doc.ReviewStatus = AgricultureDocumentReviewStatus.PendingReview;
+                    doc.ReviewedAtUtc = null;
+
+                    await db.AgricultureKnowledgeChunks.Where(c => c.DocumentId == doc.Id).ExecuteDeleteAsync(ct);
+                    db.AgricultureKnowledgeChunks.AddRange(BuildChunks(doc.Id, updatedText, doc.CropScope));
+                    doc.ChunkerVersion = StructuredChunker.Version;
+                    await QueueVerificationAsync(doc, ct);
+                }
+
+                await TryRecordAuditLogAsync(actorUserId, isPlatformAdmin ? "PlatformAdmin" : "FarmOwner", "UPDATE_DOCUMENT_DRAFT", doc.Id.ToString(),
+                    $"Cập nhật bản nháp/chờ duyệt tài liệu '{doc.Title}' ({doc.Version}).", ct);
+
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+
+                return new DocumentUpdateResult(
+                    doc.Id,
+                    IsNewVersion: false,
+                    doc.PreviousVersionId,
+                    doc.Version ?? "V1.0",
+                    doc.ReviewStatus.ToString(),
+                    "Đã cập nhật tài liệu thành công.");
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }
+    }
+
+    public async Task<DocumentPreviewResult> PreviewDocumentAsync(
+        byte[]? fileBytes, string? fileType, string? fileName, string? contentText, CancellationToken ct)
+    {
+        string text;
+        if (fileBytes is { Length: > 0 } && !string.IsNullOrWhiteSpace(fileType))
+        {
+            text = await ExtractDocumentTextAsync(fileBytes, fileType, ct);
+        }
+        else if (!string.IsNullOrWhiteSpace(contentText))
+        {
+            text = contentText.Trim();
+        }
+        else
+        {
+            throw new RequestValidationException("file", "Vui lòng chọn tệp hoặc nhập nội dung văn bản để xem trước.");
         }
 
+        if (text.Length < 50)
+            throw new RequestValidationException("contentText", "Nội dung trích xuất quá ngắn (dưới 50 ký tự), không đủ điều kiện xử lý.");
+
+        var detection = VietGapMetadataExtractor.Detect(text, fileName);
+        var chunks = StructuredChunker.Chunk(text);
+
+        var docType = Enum.TryParse<AgricultureDocumentType>(detection.DocumentType.Value, out var dt)
+            ? dt
+            : AgricultureDocumentType.Unspecified;
+
+        DateTime? effectiveDate = null;
+        if (detection.EffectiveDate.Status == DocumentMetadataDetection.Detected && DateTime.TryParse(detection.EffectiveDate.Value, out var ed))
+        {
+            effectiveDate = DateTime.SpecifyKind(ed, DateTimeKind.Utc);
+        }
+
+        var previewSnippet = text.Length > 1000 ? text[..1000] + "..." : text;
+        var sufficiency = ManualReviewRequired(docType);
+
+        return new DocumentPreviewResult(
+            Title: detection.Title.Value ?? fileName ?? "Tài liệu chưa đặt tên",
+            StandardCode: detection.StandardCode.Value,
+            AuthorOrganization: detection.Publisher.Value,
+            Version: detection.Version.Value ?? "V1.0",
+            Category: "general",
+            CropScope: detection.Crops.Value ?? string.Empty,
+            DocumentType: docType,
+            IssuedDate: null,
+            EffectiveDate: effectiveDate,
+            EstimatedChunkCount: chunks.Count,
+            ContentPreview: previewSnippet,
+            MetadataDetection: detection,
+            Sufficiency: sufficiency);
+    }
+
+    public async Task<IReadOnlyList<DocumentVersionView>> GetDocumentVersionsAsync(Guid documentId, Guid? tenantId, CancellationToken ct)
+    {
+        var current = await db.AgricultureDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (current is null) return Array.Empty<DocumentVersionView>();
+
+        var title = current.Title.Trim().ToLower();
+        var author = (current.AuthorOrganization ?? string.Empty).Trim().ToLower();
+        var code = (current.StandardCode ?? string.Empty).Trim().ToLower();
+
+        var query = db.AgricultureDocuments.AsNoTracking()
+            .Where(d => d.IsPublic || d.TenantId == tenantId)
+            .Where(d => d.Id == current.Id
+                || d.PreviousVersionId == current.Id
+                || current.PreviousVersionId == d.Id
+                || d.SupersededByDocumentId == current.Id
+                || current.SupersededByDocumentId == d.Id
+                || (d.Title.Trim().ToLower() == title && (d.AuthorOrganization ?? string.Empty).Trim().ToLower() == author)
+                || (!string.IsNullOrEmpty(code) && (d.StandardCode ?? string.Empty).Trim().ToLower() == code));
+
+        var docs = await query
+            .OrderByDescending(d => d.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        return docs.Select(d => new DocumentVersionView(
+            d.Id,
+            d.Version ?? "V1.0",
+            d.Title,
+            d.StandardCode,
+            d.ReviewStatus.ToString(),
+            d.CreatedAtUtc,
+            d.ReviewedAtUtc,
+            d.AuthorOrganization,
+            d.ReviewStatus == AgricultureDocumentReviewStatus.Approved,
+            d.PreviousVersionId,
+            d.SupersededByDocumentId)).ToList();
+    }
+
+    public async Task<bool> ArchiveDocumentAsync(Guid documentId, string? reason, Guid? actorUserId, Guid? tenantId, bool isPlatformAdmin, CancellationToken ct)
+    {
+        var q = db.AgricultureDocuments.Where(d => d.Id == documentId);
+        if (!isPlatformAdmin)
+        {
+            if (tenantId is null) return false;
+            q = q.Where(d => d.TenantId == tenantId.Value);
+        }
+
+        var doc = await q.FirstOrDefaultAsync(ct);
+        if (doc is null) return false;
+
+        doc.ReviewStatus = AgricultureDocumentReviewStatus.Archived;
+        doc.ReviewNotes = !string.IsNullOrWhiteSpace(reason)
+            ? $"[Lưu trữ: {reason.Trim()}] {doc.ReviewNotes}".Trim()
+            : $"[Đã lưu trữ] {doc.ReviewNotes}".Trim();
+        doc.UpdatedAtUtc = DateTime.UtcNow;
+
+        await TryRecordAuditLogAsync(actorUserId, isPlatformAdmin ? "PlatformAdmin" : "FarmOwner", "ARCHIVE_DOCUMENT", doc.Id.ToString(),
+            $"Lưu trữ tài liệu '{doc.Title}' ({doc.Version}). Tạm ngừng phục vụ AI RAG. Lý do: {reason}", ct);
+
+        await db.SaveChangesAsync(ct);
         return true;
     }
 
     public async Task<bool> ReviewDocumentAsync(
         Guid documentId, string? contentText, bool approve, string? reviewNotes,
-        Guid? tenantId, bool isPlatformAdmin, DocumentMetadataOverrides? overrides, CancellationToken ct)
+        Guid? actorUserId, Guid? tenantId, bool isPlatformAdmin, DocumentMetadataOverrides? overrides, CancellationToken ct)
     {
         var query = db.AgricultureDocuments.Where(d => d.Id == documentId);
         if (!isPlatformAdmin)
@@ -380,6 +614,10 @@ public sealed class AgricultureDocumentService(
             document.Title = newTitle;
             if (overrides?.AuthorOrganization is { } author) document.AuthorOrganization = string.IsNullOrWhiteSpace(author) ? null : author.Trim();
             if (overrides?.Version is { } ver) document.Version = string.IsNullOrWhiteSpace(ver) ? null : (ver.Trim().Length > 50 ? ver.Trim()[..50] : ver.Trim());
+            if (overrides?.StandardCode is { } sc) document.StandardCode = string.IsNullOrWhiteSpace(sc) ? null : sc.Trim();
+            if (overrides?.IssuedDate is { } isd) document.IssuedDate = isd;
+            if (overrides?.EffectiveDate is { } efd) document.EffectiveDate = efd;
+            if (overrides?.ExpirationDate is { } exd) document.ExpirationDate = exd;
             document.DocumentType = newType;
             if (!string.Equals(document.CropScope, newCropScope, StringComparison.Ordinal))
             {
@@ -398,6 +636,11 @@ public sealed class AgricultureDocumentService(
             document.UpdatedAtUtc = DateTime.UtcNow;
             document.SupersededByDocumentId = null;
             if (approve) await SupersedeOlderVersionsAsync(document, ct);
+
+            await TryRecordAuditLogAsync(actorUserId, isPlatformAdmin ? "PlatformAdmin" : "FarmOwner",
+                approve ? "APPROVE_DOCUMENT" : "REJECT_DOCUMENT", document.Id.ToString(),
+                approve ? $"Phê duyệt tài liệu '{document.Title}' ({document.Version}). Kích hoạt RAG." : $"Từ chối tài liệu '{document.Title}'. Ghi chú: {reviewNotes}", ct);
+
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return true;
@@ -464,10 +707,26 @@ public sealed class AgricultureDocumentService(
     {
         var title = document.Title.Trim().ToLower();
         var author = (document.AuthorOrganization ?? string.Empty).Trim().ToLower();
+        var code = (document.StandardCode ?? string.Empty).Trim().ToLower();
+
+        // 1. Direct predecessor via PreviousVersionId
+        if (document.PreviousVersionId.HasValue)
+        {
+            var prev = await db.AgricultureDocuments.FirstOrDefaultAsync(d => d.Id == document.PreviousVersionId.Value, ct);
+            if (prev != null && prev.ReviewStatus == AgricultureDocumentReviewStatus.Approved)
+            {
+                prev.ReviewStatus = AgricultureDocumentReviewStatus.Superseded;
+                prev.SupersededByDocumentId = document.Id;
+                prev.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        // 2. Older approved versions with same title & author or standard code in same tenant scope
         var older = await db.AgricultureDocuments
             .Where(d => d.Id != document.Id && d.ReviewStatus == AgricultureDocumentReviewStatus.Approved
                 && d.TenantId == document.TenantId && d.CreatedAtUtc < document.CreatedAtUtc
-                && d.Title.Trim().ToLower() == title && (d.AuthorOrganization ?? string.Empty).Trim().ToLower() == author)
+                && ((d.Title.Trim().ToLower() == title && (d.AuthorOrganization ?? string.Empty).Trim().ToLower() == author)
+                    || (!string.IsNullOrEmpty(code) && (d.StandardCode ?? string.Empty).Trim().ToLower() == code)))
             .ToListAsync(ct);
         foreach (var d in older)
         {

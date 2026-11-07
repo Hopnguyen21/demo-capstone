@@ -142,7 +142,17 @@ public sealed record AiZoneContext(
 
 
 public sealed record AiProposedControlAction(Guid ActuatorId, ActuatorCommandAction Action, int DurationSeconds);
-public sealed record AiSourceView(Guid DocumentId, string Title, string? Organization, string Category, float Similarity, string? ContentSnippet = null, int? PageNumber = null, string? SectionTitle = null);
+public sealed record AiSourceView(
+    Guid DocumentId,
+    string Title,
+    string? Organization,
+    string Category,
+    float Similarity,
+    string? ContentSnippet = null,
+    int? PageNumber = null,
+    string? SectionTitle = null,
+    string? Version = null,
+    string? StandardCode = null);
 public sealed record AiProviderRequest(
     string Question,
     AiZoneContext Context,
