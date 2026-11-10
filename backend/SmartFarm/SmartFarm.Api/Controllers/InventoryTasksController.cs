@@ -8,12 +8,13 @@ using SmartFarm.Domain.Enums;
 namespace SmartFarm.Api.Controllers;
 
 [ApiController, Route("api/v1/farms/{farmId:guid}")]
-[Authorize(Roles = "FarmOwner,Farmer")]
+[Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin,PlatformTechnician")]
 public sealed class InventoryTasksController(IInventoryTaskService service) : ControllerBase
 {
     // API catalog #96
     [HttpGet("inventory")]
-    public async Task<ActionResult<IReadOnlyList<InventoryItemView>>> Inventory(Guid farmId, CancellationToken ct) => Ok(await service.ListInventoryAsync(User.GetUserId(), User.GetTenantId(), farmId, ct));
+    [Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin,PlatformTechnician")]
+    public async Task<ActionResult<IReadOnlyList<InventoryItemView>>> Inventory(Guid farmId, CancellationToken ct) => Ok(await service.ListInventoryAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, ct));
 
     // API catalog #97. Creation is not an implicit upsert; receipts use the endpoint below.
     [HttpPost("inventory"), Authorize(Roles = "FarmOwner")]

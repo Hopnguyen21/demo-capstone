@@ -4,7 +4,7 @@ import { Zone, Farm, ZoneContract } from '../../types';
 import { zoneContractService } from '../../services';
 import {
   FileText, Calendar, DollarSign, Percent, ShieldCheck, CheckCircle2,
-  Building2, MapPin, Tag, User, Phone, Sparkles, AlertCircle, Link
+  Building2, MapPin, Tag, User, Phone, Sparkles, AlertCircle, Link, PackageCheck
 } from 'lucide-react';
 
 interface ZoneContractCreateModalProps {
@@ -39,6 +39,12 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
 
   // Selected parent contract for returning customer link
   const [selectedParentId, setSelectedParentId] = useState<string>(parentContract?.id || '');
+
+  // Package Mode: Custom Package for this contract vs None
+  const [packageMode, setPackageMode] = useState<'custom' | 'none'>('custom');
+  const [customPackageName, setCustomPackageName] = useState<string>('');
+  const [customPackageDesc, setCustomPackageDesc] = useState<string>('');
+  const [customMaxZones, setCustomMaxZones] = useState<number>(1);
 
   // Check if user has an existing contract signed/created within the last 2 months (60 days)
   const recentTwoMonthsContract = React.useMemo(() => {
@@ -81,6 +87,8 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
     if (isOpen) {
       setContractNumber(`HD-ZN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`);
       if (zone?.currentCrop) setCropType(zone.currentCrop);
+      setCustomPackageName(`Gói Canh Tác ${zone?.name || 'Zone'} - VIP`);
+      setCustomPackageDesc(`Gói dịch vụ tùy chỉnh riêng cho khách hàng, bao gồm thiết bị IoT và bảo trì`);
       if (recentTwoMonthsContract) {
         setSelectedParentId(parentContract?.id || recentTwoMonthsContract.id);
         setLesseeName(parentContract?.lesseeName || recentTwoMonthsContract.lesseeName || lesseeName);
@@ -145,6 +153,14 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
         lesseeAddress: lesseeAddress.trim(),
         specialTerms,
         notes: isReturningCustomer ? `Hợp đồng mới tái ký từ HĐ cũ. Chiết khấu khách hàng cũ: ${discountPercent}%. ${notes}` : notes,
+        customPackage: packageMode === 'custom' && customPackageName.trim() ? {
+          packageName: customPackageName.trim(),
+          description: customPackageDesc.trim() || undefined,
+          durationMonths,
+          maxZones: customMaxZones,
+          price: finalTotalAmount,
+          currency: 'VND'
+        } : undefined
       });
 
       alert(`🎉 Đã tạo Hợp đồng mới #${created.contractNumber} thành công cho Zone "${zone.name}"!`);
@@ -333,6 +349,97 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
               </div>
             </div>
           </div>
+        </div>
+
+        {/* 2.5 Package Configuration (Gói Dịch Vụ Riêng Khách Hàng) */}
+        <div className="p-3.5 bg-gradient-to-r from-emerald-50/70 via-indigo-50/40 to-slate-50 border border-emerald-300 rounded-xl space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-[#119653] text-white">
+                <PackageCheck size={16} />
+              </div>
+              <div>
+                <h5 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  Gói Dịch Vụ Hợp Đồng (Contract Package)
+                </h5>
+                <p className="text-[11px] text-slate-500">
+                  Tạo gói tùy chỉnh dành riêng cho khách hàng theo hợp đồng này
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Mode */}
+            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 text-[11px] self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setPackageMode('custom')}
+                className={`px-2.5 py-1 rounded-md font-bold transition-all ${
+                  packageMode === 'custom'
+                    ? 'bg-[#119653] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                ⭐ Tạo Gói Riêng Cho Khách Hàng
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackageMode('none')}
+                className={`px-2.5 py-1 rounded-md font-bold transition-all ${
+                  packageMode === 'none'
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Tự Nhập Thủ Công
+              </button>
+            </div>
+          </div>
+
+          {packageMode === 'custom' ? (
+            <div className="space-y-2.5 pt-2 border-t border-emerald-200/60 bg-white/80 p-3 rounded-lg border border-emerald-100">
+              <div className="p-2.5 bg-purple-50 border border-purple-200 rounded-lg text-purple-900 text-[11px] flex items-start gap-2">
+                <Sparkles size={16} className="text-purple-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Chính sách lưu trữ riêng biệt:</strong> Gói dịch vụ này sẽ được lưu và gắn <strong>RIÊNG cho khách hàng "{lesseeName || 'Bên thuê'}"</strong> của hợp đồng này. Gói này được thiết kế độc quyền và <strong>KHÔNG</strong> lưu vào danh sách các gói dịch vụ dùng chung của toàn hệ thống.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tên gói riêng cho khách hàng *</label>
+                  <Input
+                    value={customPackageName}
+                    onChange={e => setCustomPackageName(e.target.value)}
+                    placeholder="VD: Gói VIP Canh Tác Nhà Màng - LangBiang"
+                    required={packageMode === 'custom'}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Số Zone tối đa áp dụng</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={customMaxZones}
+                    onChange={e => setCustomMaxZones(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Mô tả đặc quyền của gói riêng</label>
+                <Input
+                  value={customPackageDesc}
+                  onChange={e => setCustomPackageDesc(e.target.value)}
+                  placeholder="VD: Gói độc quyền bao gồm thiết bị IoT, hỗ trợ trọn vụ, kỹ thuật trực tiếp..."
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="p-2 bg-slate-100 rounded-lg text-[11px] text-slate-500 italic">
+              Hợp đồng này không tạo gói dịch vụ riêng, đơn giá sẽ tính toán theo bảng giá thuê tháng bên dưới.
+            </div>
+          )}
         </div>
 
         {/* 3. Automatic Calculation Financial Table (Requirement 6) */}

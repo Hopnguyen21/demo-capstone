@@ -19,6 +19,16 @@ public sealed class TenantsController(ITenantService tenantService) : Controller
         return Ok(await tenantService.ListAllAsync(cancellationToken));
     }
 
+    [HttpPost]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<TenantView>> Create(RegisterTenantRequest request, CancellationToken cancellationToken)
+    {
+        var result = await tenantService.CreateByAdminAsync(
+            new RegisterTenantCommand(request.CompanyName, request.Subdomain, request.TaxCode, request.Address, request.LogoUrl),
+            cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, result);
+    }
+
     // API catalog #13, revised by AUTH_CONTRACT_V1.md
     [Authorize(Roles = "FarmOwner")]
     [HttpPost("register")]

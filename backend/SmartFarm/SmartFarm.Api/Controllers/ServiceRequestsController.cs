@@ -10,8 +10,8 @@ namespace SmartFarm.Api.Controllers;
 [ApiController, Authorize]
 public sealed class ServiceRequestsController(IServiceRequestService service) : ControllerBase
 {
-    [HttpPost("api/v1/farms/{farmId:guid}/service-requests"), Authorize(Roles = "FarmOwner")] // SERVICE-V1-01
-    public async Task<ActionResult<ServiceRequestView>> Create(Guid farmId, CreateServiceRequest r, CancellationToken ct) { var x = await service.CreateAsync(User.GetUserId(), User.GetTenantId(), farmId, new(r.ZoneId, r.DeviceId, r.FailureCode, r.Description, r.DeploymentRequestId), ct); return Created($"/api/v1/service-requests/{x.Id}", x); }
+    [HttpPost("api/v1/farms/{farmId:guid}/service-requests"), Authorize(Roles = "FarmOwner,PlatformAdmin")] // SERVICE-V1-01
+    public async Task<ActionResult<ServiceRequestView>> Create(Guid farmId, CreateServiceRequest r, CancellationToken ct) { var x = await service.CreateAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, new(r.ZoneId, r.DeviceId, r.FailureCode, r.Description, r.DeploymentRequestId), ct); return Created($"/api/v1/service-requests/{x.Id}", x); }
     [HttpGet("api/v1/service-requests"), Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")] // SERVICE-V1-02
     public async Task<ActionResult<IReadOnlyList<ServiceRequestView>>> List(CancellationToken ct) => Ok(await service.ListAsync(User.GetUserId(), User.GetOptionalTenantId(), ct));
     [HttpGet("api/v1/service-requests/{id:guid}"), Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")] // SERVICE-V1-03

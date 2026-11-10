@@ -983,7 +983,7 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
                 GatewayId = act.Device.GatewayId,
                 ActuatorId = act.Id,
                 Action = ActuatorCommandAction.TurnOff,
-                DurationSeconds = 0,
+                DurationSeconds = 1,
                 TriggerSource = CommandTriggerSource.Manual,
                 Status = ActuatorCommandStatus.Pending,
                 QueuedAtUtc = now,

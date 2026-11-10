@@ -95,14 +95,27 @@ export const MaintenancePage: React.FC = () => {
   };
 
   const handleCompleteRequest = async (req: ServiceRequest) => {
+    if (req.isAcceptedByOwner || req.status === 'ACCEPTED_BY_OWNER' || req.status === 'CLOSED' || req.status === 'RESOLVED') {
+      alert('✅ Công trình này đã hoàn tất nghiệm thu. Không cần thao tác lại.');
+      return;
+    }
     if (!req.isAcceptedByOwner) {
       alert('⚠️ Bạn chỉ có thể Xác nhận Hoàn thành sau khi Chủ trang trại (Owner) đã bấm "Đã nghiệm thu"!');
       return;
     }
-    await supportService.completeByTechnician(req.serviceRequestId);
-    await loadRequests();
-    setSuccessMsg(`Đã xác nhận hoàn thành công trình Bảo trì [${req.title}]!`);
-    setTimeout(() => setSuccessMsg(null), 4000);
+    try {
+      await supportService.completeByTechnician(req.serviceRequestId);
+      await loadRequests();
+      setSuccessMsg(`Đã xác nhận hoàn thành công trình Bảo trì [${req.title}]!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        alert('ℹ️ Yêu cầu này đã được hoàn thành trước đó.');
+        await loadRequests();
+      } else {
+        alert('Lỗi: ' + (err?.response?.data?.message || err?.message || 'Không thể hoàn thành yêu cầu.'));
+      }
+    }
   };
 
   return (
@@ -202,8 +215,8 @@ export const MaintenancePage: React.FC = () => {
           </div>
         ) : (
           displayedRequests.map(req => {
-            const isAccepted = Boolean(req.isAcceptedByOwner);
-            const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED';
+            const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || req.status === 'ACCEPTED_BY_OWNER');
+            const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED' || isAccepted;
 
             return (
               <div key={req.serviceRequestId} className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4 hover:border-slate-300 transition-all">
@@ -276,28 +289,21 @@ export const MaintenancePage: React.FC = () => {
                       <MapPin size={15} className="mr-1.5" /> Vào Zone Chấm Node
                     </Button>
 
-                    {/* Button 2: Xác nhận hoàn thành (Enabled only if Owner accepted) */}
+                    {/* Button 2: Trạng thái hoàn thành */}
                     {isCompleted ? (
-                      <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
-                        <CheckCircle2 size={14} /> Đã hoàn thành
+                      <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1.5 select-none">
+                        <CheckCircle2 size={14} className="text-emerald-400" /> Đã hoàn thành (Owner đã nghiệm thu)
                       </span>
-                    ) : isAccepted ? (
-                      <Button
-                        onClick={() => handleCompleteRequest(req)}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold animate-pulse shadow-md"
-                      >
-                        <CheckCircle2 size={15} className="mr-1.5" /> Xác nhận Hoàn thành (Owner đã nghiệm thu)
-                      </Button>
                     ) : (
                       <div className="relative group">
                         <Button
                           disabled
-                          className="bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed"
+                          className="bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed text-xs"
                         >
-                          <Lock size={14} className="mr-1.5 text-slate-500" /> Xác nhận Hoàn thành
+                          <Lock size={14} className="mr-1.5 text-slate-500" /> Chờ Owner nghiệm thu
                         </Button>
                         <div className="absolute right-0 bottom-full mb-1 hidden group-hover:block w-56 p-2 bg-slate-800 text-amber-300 text-[10px] rounded shadow-lg border border-slate-700">
-                          Chờ Chủ trang trại (Owner) bấm "Đã nghiệm thu" mới kích hoạt nút này!
+                          Chờ Chủ trang trại (Owner) bấm "Đã nghiệm thu" để hoàn tất công việc!
                         </div>
                       </div>
                     )}

@@ -15,6 +15,9 @@ public sealed class InventoryTaskService(SmartFarmDbContext db, TimeProvider clo
 {
     public async Task<IReadOnlyList<InventoryItemView>> ListInventoryAsync(Guid userId, Guid tenantId, Guid farmId, CancellationToken ct)
     {
+        var farm = await db.Farms.AsNoTracking().FirstOrDefaultAsync(x => x.Id == farmId && x.ArchivedAtUtc == null, ct)
+            ?? throw new ResourceNotFoundException("Farm was not found.");
+        tenantId = farm.TenantId;
         await EnsureFarmAccess(userId, tenantId, farmId, false, ct);
         return (await db.InventoryItems.AsNoTracking().Include(x => x.Requirements)
             .Where(x => x.TenantId == tenantId && x.FarmId == farmId && x.ArchivedAtUtc == null)
@@ -296,7 +299,12 @@ public sealed class InventoryTaskService(SmartFarmDbContext db, TimeProvider clo
     private async Task<AppUser> EnsureFarmAccess(Guid userId, Guid tenantId, Guid farmId, bool ownerOnly, CancellationToken ct)
     {
         if (!await db.Farms.AnyAsync(x => x.Id == farmId && x.TenantId == tenantId && x.ArchivedAtUtc == null, ct)) throw new ResourceNotFoundException("Farm was not found in the authenticated Tenant.");
-        var user = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == userId && x.TenantId == tenantId && x.Status == AccountStatus.Active, ct) ?? throw new AuthorizationException();
+        var user = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == userId && x.Status == AccountStatus.Active, ct) ?? throw new AuthorizationException();
+        if (user.Role is UserRole.PlatformAdmin or UserRole.PlatformTechnician)
+        {
+            return user;
+        }
+        if (user.TenantId != tenantId) throw new AuthorizationException();
         if (ownerOnly && user.Role != UserRole.FarmOwner) throw new AuthorizationException("FarmOwner role is required.");
         if (user.Role == UserRole.Farmer && user.FarmId != farmId) throw new AuthorizationException("Farmer belongs to a different Farm.");
         if (user.Role is not (UserRole.FarmOwner or UserRole.Farmer)) throw new AuthorizationException(); return user;

@@ -11,13 +11,18 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
 {
     public async Task<ServiceRequestView> CreateAsync(Guid owner, Guid tenant, Guid farm, CreateServiceRequestCommand c, CancellationToken ct)
     {
-        await Role(owner, UserRole.FarmOwner, ct);
-        
-        // Chỉ làm việc trong Tenant của Owner: Farm và Zone phải thuộc Tenant này. Trước đây các nhánh dự phòng có thể lấy Farm/Zone của Tenant khác.
-        var targetFarm = await db.Farms.FirstOrDefaultAsync(x => x.Id == farm && x.TenantId == tenant && x.ArchivedAtUtc == null, ct)
-            ?? await db.Farms.FirstOrDefaultAsync(x => x.TenantId == tenant && x.ArchivedAtUtc == null, ct)
-            ?? throw new ResourceNotFoundException("Farm was not found in the authenticated Tenant.");
+        var caller = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == owner && x.Status == AccountStatus.Active, ct)
+            ?? throw new AuthorizationException();
+        if (caller.Role != UserRole.FarmOwner && caller.Role != UserRole.PlatformAdmin)
+            throw new AuthorizationException();
+
+        var targetFarm = await db.Farms.FirstOrDefaultAsync(x => x.Id == farm && (caller.Role == UserRole.PlatformAdmin || x.TenantId == tenant) && x.ArchivedAtUtc == null, ct)
+            ?? (caller.Role == UserRole.PlatformAdmin
+                ? await db.Farms.FirstOrDefaultAsync(x => x.ArchivedAtUtc == null, ct)
+                : await db.Farms.FirstOrDefaultAsync(x => x.TenantId == tenant && x.ArchivedAtUtc == null, ct))
+            ?? throw new ResourceNotFoundException("Farm was not found.");
         farm = targetFarm.Id;
+        tenant = targetFarm.TenantId;
 
         var zone = await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(x => x.Id == c.ZoneId && x.Field.FarmId == farm, ct)
             ?? await db.Zones.Include(x => x.Field).FirstOrDefaultAsync(x => x.Field.FarmId == farm, ct);

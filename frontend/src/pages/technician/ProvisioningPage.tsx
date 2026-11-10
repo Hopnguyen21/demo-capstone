@@ -4,9 +4,9 @@ import { supportService, deviceService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
 import { ExperimentReportModal, HardwareItem } from '../../components/control/ExperimentReportModal';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
-import { 
-  CpuIcon, QrCode, Wifi, CheckCircle2, ArrowRight, MapPin, 
-  CheckSquare, Layers, Lock, ShieldCheck, Wrench, Building2, 
+import {
+  CpuIcon, QrCode, Wifi, CheckCircle2, ArrowRight, MapPin,
+  CheckSquare, Layers, Lock, ShieldCheck, Wrench, Building2,
   FlaskConical, FileText, Send, DollarSign, ChevronDown, ChevronUp,
   Search, Filter, Clock
 } from 'lucide-react';
@@ -100,14 +100,27 @@ export const ProvisioningPage: React.FC = () => {
   };
 
   const handleCompleteRequest = async (req: ServiceRequest) => {
+    if (req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || req.status === 'ACCEPTED_BY_OWNER' || req.status === 'CLOSED' || req.status === 'RESOLVED') {
+      alert('✅ Công trình này đã hoàn tất (Owner đã ký nghiệm thu 100%). Không thể thao tác lại.');
+      return;
+    }
     if (!req.isAcceptedByOwner) {
       alert('⚠️ Bạn chỉ có thể Xác nhận Hoàn thành sau khi Chủ trang trại (Owner) đã Ký Nghiệm thu!');
       return;
     }
-    await supportService.completeByTechnician(req.serviceRequestId);
-    await loadRequests();
-    setSuccessMsg(`Đã xác nhận hoàn thành công trình Lắp đặt [${req.title}]!`);
-    setTimeout(() => setSuccessMsg(null), 4000);
+    try {
+      await supportService.completeByTechnician(req.serviceRequestId);
+      await loadRequests();
+      setSuccessMsg(`Đã xác nhận hoàn thành công trình Lắp đặt [${req.title}]!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        alert('ℹ️ Yêu cầu này đã được hoàn thành trước đó.');
+        await loadRequests();
+      } else {
+        alert('Lỗi: ' + (err?.response?.data?.message || err?.message || 'Không thể hoàn thành yêu cầu.'));
+      }
+    }
   };
 
   // Filter requests based on tab, status and search
@@ -162,40 +175,7 @@ export const ProvisioningPage: React.FC = () => {
         {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-slate-800 border border-slate-700"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-slate-300">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-slate-700 text-xs font-bold">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
       </section>}
 
-      {/* Workflow Steps Indicator */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs font-semibold">
-        <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center gap-2.5 shadow-2xs">
-          <div className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">1</div>
-          <div>
-            <span className="block text-slate-900">1. Lập Báo giá & Hợp đồng</span>
-            <span className="text-[10px] text-slate-500 font-normal">Kỹ thuật viên soạn danh sách thiết bị</span>
-          </div>
-        </div>
 
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2.5 shadow-2xs">
-          <div className="w-7 h-7 rounded-full bg-amber-600 text-white flex items-center justify-center text-xs font-bold shrink-0">2</div>
-          <div>
-            <span className="block text-amber-950 font-bold">2. Owner Ký HĐ & Cọc 30%</span>
-            <span className="text-[10px] text-amber-800 font-normal">Tiền mặt hoặc Chuyển khoản VietQR</span>
-          </div>
-        </div>
-
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 shadow-2xs">
-          <div className="w-7 h-7 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-bold shrink-0">3</div>
-          <div>
-            <span className="block text-emerald-950 font-bold">3. Vào Zone Chấm Node</span>
-            <span className="text-[10px] text-emerald-800 font-normal">Mở khóa chấm GPS/GIS Node</span>
-          </div>
-        </div>
-
-        <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl flex items-center gap-2.5 shadow-2xs">
-          <div className="w-7 h-7 rounded-full bg-sky-700 text-white flex items-center justify-center text-xs font-bold shrink-0">4</div>
-          <div>
-            <span className="block text-sky-950 font-bold">4. Nghiệm thu & 70%</span>
-            <span className="text-[10px] text-sky-800 font-normal">Owner bàn giao & hoàn tất 100%</span>
-          </div>
-        </div>
-      </div>
 
       {/* Filter Tabs & Search / Filter Controls (Like Owner SupportPage) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 border border-slate-200 rounded-2xl shadow-xs">
@@ -204,43 +184,38 @@ export const ProvisioningPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTabFilter('ALL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTabFilter === 'ALL'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeTabFilter === 'ALL'
+              ? 'bg-white text-slate-900 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             Tất cả ({requests.length})
           </button>
           <button
             type="button"
             onClick={() => setActiveTabFilter('INSTALLATION')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTabFilter === 'INSTALLATION'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTabFilter === 'INSTALLATION'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <span>⚡ Lắp đặt mới</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-              activeTabFilter === 'INSTALLATION' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTabFilter === 'INSTALLATION' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
               {requests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP').length}
             </span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTabFilter('MAINTENANCE')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTabFilter === 'MAINTENANCE'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTabFilter === 'MAINTENANCE'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             <span>🛠️ Bảo trì & Thay thế</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-              activeTabFilter === 'MAINTENANCE' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTabFilter === 'MAINTENANCE' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
               {requests.filter(r => r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT').length}
             </span>
           </button>
@@ -278,9 +253,7 @@ export const ProvisioningPage: React.FC = () => {
 
       {/* List Action Toolbar */}
       <div className="flex items-center justify-between text-xs px-1">
-        <span className="text-slate-500 font-medium">
-          Danh sách yêu cầu kỹ thuật (<strong>{filteredRequests.length}</strong> yêu cầu) — <em>Bấm vào từng yêu cầu để mở rộng/thu gọn chi tiết:</em>
-        </span>
+
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -310,31 +283,28 @@ export const ProvisioningPage: React.FC = () => {
             const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
             const contract = req.contractDetails;
             const is30Paid = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || req.isContractSigned || req.isDepositPaid || req.isFullyPaid);
-            const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
-            const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED';
+            const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || req.status === 'ACCEPTED_BY_OWNER');
+            const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED' || isAccepted;
             const isExpanded = !!expandedRequestIds[req.serviceRequestId];
 
             return (
-              <div 
-                key={req.serviceRequestId} 
-                className={`bg-white border rounded-2xl shadow-xs transition-all ${
-                  isExpanded 
-                    ? 'p-5 border-slate-300 ring-1 ring-slate-200 space-y-4' 
-                    : 'p-4 border-slate-200 hover:border-emerald-300 hover:shadow-sm'
-                }`}
+              <div
+                key={req.serviceRequestId}
+                className={`bg-white border rounded-2xl shadow-xs transition-all ${isExpanded
+                  ? 'p-5 border-slate-300 ring-1 ring-slate-200 space-y-4'
+                  : 'p-4 border-slate-200 hover:border-emerald-300 hover:shadow-sm'
+                  }`}
               >
                 {/* Header Summary Row */}
-                <div 
-                  className={`flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-                    isExpanded ? 'border-b border-slate-100 pb-3.5' : 'cursor-pointer select-none'
-                  }`}
+                <div
+                  className={`flex flex-col md:flex-row md:items-center justify-between gap-3 ${isExpanded ? 'border-b border-slate-100 pb-3.5' : 'cursor-pointer select-none'
+                    }`}
                   onClick={() => !isExpanded && toggleExpand(req.serviceRequestId)}
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                        isInstallation ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
-                      }`}>
+                      <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${isInstallation ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
+                        }`}>
                         {isInstallation ? '⚡ LẮP ĐẶT THIẾT BỊ MỚI' : '🛠️ BẢO TRÌ & THAY THẾ'}
                       </span>
                       <StatusBadge status={req.status} />
@@ -396,17 +366,16 @@ export const ProvisioningPage: React.FC = () => {
                         e.stopPropagation();
                         toggleExpand(req.serviceRequestId);
                       }}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
-                        isExpanded
-                          ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                          : isInstallation && !contract
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${isExpanded
+                        ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        : isInstallation && !contract
                           ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                           : is30Paid && !isAccepted
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse'
-                          : isAccepted && !isCompleted
-                          ? 'bg-sky-600 hover:bg-sky-700 text-white'
-                          : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
-                      }`}
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse'
+                            : isAccepted && !isCompleted
+                              ? 'bg-sky-600 hover:bg-sky-700 text-white'
+                              : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                        }`}
                     >
                       {isExpanded ? (
                         <>
@@ -420,10 +389,10 @@ export const ProvisioningPage: React.FC = () => {
                             {isInstallation && !contract
                               ? 'Soạn Báo giá & HĐ'
                               : is30Paid && !isAccepted
-                              ? 'Vào Thực địa Chấm Node'
-                              : isAccepted && !isCompleted
-                              ? 'Xác nhận Hoàn thành'
-                              : 'Xem chi tiết'}
+                                ? 'Vào Thực địa Chấm Node'
+                                : isCompleted
+                                  ? 'Đã hoàn thành'
+                                  : 'Xem chi tiết'}
                           </span>
                         </>
                       )}
@@ -537,24 +506,20 @@ export const ProvisioningPage: React.FC = () => {
 
                         {/* BUTTON 3: XÁC NHẬN HOÀN THÀNH */}
                         {isCompleted ? (
-                          <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
-                            <CheckCircle2 size={14} /> Đã hoàn thành
+                          <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1.5 select-none">
+                            <CheckCircle2 size={15} className="text-emerald-400" /> Đã hoàn thành (Owner đã nghiệm thu 100%)
                           </span>
-                        ) : isAccepted ? (
-                          <Button
-                            onClick={() => handleCompleteRequest(req)}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shadow-md"
-                          >
-                            <CheckCircle2 size={15} className="mr-1.5" /> Xác nhận Hoàn thành (Owner đã nghiệm thu 100%)
-                          </Button>
                         ) : (
                           <div className="relative group">
                             <Button
                               disabled
-                              className="bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
+                              className="bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed text-xs"
                             >
-                              <Lock size={14} className="mr-1.5 text-slate-500" /> Xác nhận Hoàn thành
+                              <Lock size={14} className="mr-1.5 text-slate-500" /> Chờ Owner nghiệm thu 100%
                             </Button>
+                            <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-64 p-2.5 bg-slate-800 text-amber-300 text-[11px] rounded-xl shadow-xl border border-slate-700 z-20">
+                              🔒 Công trình sẽ tự động hoàn tất sau khi Chủ trang trại (Owner) ký biên bản nghiệm thu & thanh toán 70% còn lại.
+                            </div>
                           </div>
                         )}
                       </div>

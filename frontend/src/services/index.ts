@@ -2,13 +2,13 @@
 // Replaces all mock data imports from ./mocks/mockData
 
 import { apiClient, setTokens, clearTokens, extractApiError } from './api';
-import type { 
-  FarmingSeason, 
-  PlantingSeason, 
-  CropVariety, 
-  AgricultureDocumentSummary, 
-  AgricultureDocumentDetail, 
-  KnowledgePassage 
+import type {
+  FarmingSeason,
+  PlantingSeason,
+  CropVariety,
+  AgricultureDocumentSummary,
+  AgricultureDocumentDetail,
+  KnowledgePassage
 } from '../types';
 
 // ─── Re-export api utilities ─────────────────────────────────────────────────
@@ -231,10 +231,18 @@ export const tenantService = {
     return res.data;
   },
 
-  /** Alias: createTenant */
+  /** Alias: createTenant (Admin creates tenant via /api/v1/tenants; fallback /register) */
   createTenant: async (data: any) => {
-    const res = await apiClient.post('/api/v1/tenants/register', data);
-    return res.data;
+    try {
+      const res = await apiClient.post('/api/v1/tenants', data);
+      return res.data;
+    } catch (e: any) {
+      if (e?.response?.status === 404 || e?.response?.status === 405) {
+        const fallback = await apiClient.post('/api/v1/tenants/register', data);
+        return fallback.data;
+      }
+      throw e;
+    }
   },
 };
 
@@ -1432,10 +1440,10 @@ export const knowledgeService = {
   /** GET /api/v1/ai/knowledge/search */
   search: async (query: string, cropName?: string, topK: number = 5) => {
     const res = await apiClient.get('/api/v1/ai/knowledge/search', {
-      params: { 
-        query: query.trim(), 
-        cropName: cropName?.trim() || undefined, 
-        topK 
+      params: {
+        query: query.trim(),
+        cropName: cropName?.trim() || undefined,
+        topK
       },
     });
     const list = res.data?.value ?? res.data ?? [];
@@ -1667,9 +1675,9 @@ export const supportService = {
           }
         }
 
-        const resolvedZoneName = zoneObj?.name 
+        const resolvedZoneName = zoneObj?.name
           || (extractedZone ? (extractedZone.toLowerCase().startsWith('nhà màng') ? extractedZone : `Nhà màng "${extractedZone}"`) : '')
-          || sr.zoneName 
+          || sr.zoneName
           || (zoneObj ? `Zone ${zoneObj.name}` : 'Nhà màng');
 
         const resolvedFarmName = farmObj?.name || sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao';
@@ -2239,23 +2247,40 @@ export interface ResourceUsageReport { total: number; unit: string; countedComma
 export interface FarmOverviewReport { activeSeasonCount: number; onlineDeviceCount: number; alertsLast7Days: number; openAlertCount: number; openTaskCount: number; zoneCount: number }
 export interface TaskReport { total: number; approved: number; failed: number; overdue: number; completionRatePercent: number }
 
-export const gisProxyService = {
-  /** POST /api/v1/gis/reverse-geocode (dùng POST để bảo vệ tọa độ không bị ghi vào reverse proxy access logs) */
-  reverseGeocode: async (latitude: number, longitude: number) => {
-    const res = await apiClient.post('/api/v1/gis/reverse-geocode', {
-      latitude,
-      longitude
-    });
-    return res.data;
-  },
-
-  /** POST /api/v1/gis/search-location (dùng POST để địa chỉ tìm kiếm không bị ghi vào reverse proxy access logs) */
-  searchLocation: async (query: string) => {
-    const res = await apiClient.post('/api/v1/gis/search-location', {
-      query
-    });
-    return res.data ?? [];
-  },
+export const gisProxyService = {
+
+  /** POST /api/v1/gis/reverse-geocode (dùng POST để bảo vệ tọa độ không bị ghi vào reverse proxy access logs) */
+
+  reverseGeocode: async (latitude: number, longitude: number) => {
+
+    const res = await apiClient.post('/api/v1/gis/reverse-geocode', {
+
+      latitude,
+
+      longitude
+
+    });
+
+    return res.data;
+
+  },
+
+
+
+  /** POST /api/v1/gis/search-location (dùng POST để địa chỉ tìm kiếm không bị ghi vào reverse proxy access logs) */
+
+  searchLocation: async (query: string) => {
+
+    const res = await apiClient.post('/api/v1/gis/search-location', {
+
+      query
+
+    });
+
+    return res.data ?? [];
+
+  },
+
 };
 
 export const reportService = {
@@ -2300,5 +2325,151 @@ export const reportService = {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
+  },
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEW MODULE: STOCK OUT SERVICE (PHIẾU XUẤT KHO)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const stockOutService = {
+  /** GET /api/v1/farms/{farmId}/stock-outs */
+  getList: async (farmId: string, status?: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-outs`, {
+      params: status ? { status } : undefined,
+    });
+    return res.data;
+  },
+
+  /** GET /api/v1/farms/{farmId}/stock-outs/{id} */
+  getById: async (farmId: string, id: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-outs/${id}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/farms/{farmId}/stock-outs */
+  create: async (farmId: string, data: { zoneId?: string; notes?: string; details: { inventoryItemId: string; quantity: number; notes?: string }[] }) => {
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/stock-outs`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/farms/{farmId}/stock-outs/{id} */
+  update: async (farmId: string, id: string, data: { zoneId?: string; notes?: string; details: { inventoryItemId: string; quantity: number; notes?: string }[] }) => {
+    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/farms/{farmId}/stock-outs/{id}/status */
+  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => {
+    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}/status`, { status, notes });
+    return res.data;
+  },
+
+  /** DELETE /api/v1/farms/{farmId}/stock-outs/{id} */
+  delete: async (farmId: string, id: string) => {
+    const res = await apiClient.delete(`/api/v1/farms/${farmId}/stock-outs/${id}`);
+    return res.data;
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEW MODULE: BILL SERVICE (HÓA ĐƠN ĐỘC LẬP)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const billService = {
+  /** GET /api/v1/bills */
+  getAll: async (params?: { contractId?: string; status?: string; fromDate?: string; toDate?: string }) => {
+    const res = await apiClient.get('/api/v1/bills', { params });
+    return res.data;
+  },
+
+  /** GET /api/v1/bills/{id} */
+  getById: async (id: string) => {
+    const res = await apiClient.get(`/api/v1/bills/${id}`);
+    return res.data;
+  },
+
+  /** GET /api/v1/contracts/{contractId}/bills */
+  getByContract: async (contractId: string) => {
+    const res = await apiClient.get(`/api/v1/contracts/${contractId}/bills`);
+    return res.data;
+  },
+
+  /** POST /api/v1/bills (tạo từ contract) */
+  createFromContract: async (data: { contractId: string; amount?: number; dueDate: string; paymentMethod?: string; notes?: string }) => {
+    const res = await apiClient.post('/api/v1/bills', data);
+    return res.data;
+  },
+
+  /** POST /api/v1/bills/{id}/payments */
+  recordPayment: async (id: string, data: { paymentAmount: number; paymentMethod?: string; notes?: string }) => {
+    const res = await apiClient.post(`/api/v1/bills/${id}/payments`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/bills/{id}/status */
+  updateStatus: async (id: string, status: string | number, notes?: string) => {
+    const res = await apiClient.put(`/api/v1/bills/${id}/status`, { status, notes });
+    return res.data;
+  },
+
+  /** PUT /api/v1/bills/{id} */
+  update: async (id: string, data: { amount: number; dueDate: string; paymentMethod?: string; notes?: string }) => {
+    const res = await apiClient.put(`/api/v1/bills/${id}`, data);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/bills/{id} */
+  delete: async (id: string) => {
+    const res = await apiClient.delete(`/api/v1/bills/${id}`);
+    return res.data;
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEW MODULE: CONTRACT PACKAGE SERVICE (GÓI HỢP ĐỒNG)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const contractPackageService = {
+  /** GET /api/v1/contract-packages */
+  getAll: async (activeOnly?: boolean, isCustom: boolean = false) => {
+    const res = await apiClient.get('/api/v1/contract-packages', {
+      params: {
+        ...(activeOnly !== undefined ? { activeOnly } : {}),
+        isCustom
+      },
+    });
+    return res.data;
+  },
+
+  /** GET /api/v1/contract-packages/{id} */
+  getById: async (id: string) => {
+    const res = await apiClient.get(`/api/v1/contract-packages/${id}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/contract-packages */
+  create: async (data: { packageName: string; description?: string; durationMonths: number; maxZones: number; price: number; currency?: string }) => {
+    const res = await apiClient.post('/api/v1/contract-packages', data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/contract-packages/{id} */
+  update: async (id: string, data: { packageName: string; description?: string; durationMonths: number; maxZones: number; price: number; currency?: string; status?: string | number }) => {
+    const res = await apiClient.put(`/api/v1/contract-packages/${id}`, data);
+    return res.data;
+  },
+
+  /** PATCH /api/v1/contract-packages/{id}/toggle-status */
+  toggleStatus: async (id: string) => {
+    const res = await apiClient.patch(`/api/v1/contract-packages/${id}/toggle-status`);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/contract-packages/{id} */
+  delete: async (id: string) => {
+    const res = await apiClient.delete(`/api/v1/contract-packages/${id}`);
+    return res.data;
   },
 };

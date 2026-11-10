@@ -1,0 +1,6 @@
+ALTER TABLE "ContractPackages"
+ADD COLUMN IF NOT EXISTS "IsCustom" boolean NOT NULL DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS "TenantId" uuid NULL,
+ADD COLUMN IF NOT EXISTS "CustomerName" character varying(200) NULL,
+ADD COLUMN IF NOT EXISTS "ContractId" uuid NULL;
+

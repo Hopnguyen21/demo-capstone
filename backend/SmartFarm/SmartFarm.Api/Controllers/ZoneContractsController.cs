@@ -11,13 +11,13 @@ public sealed class ZoneContractsController(IZoneContractService contractService
 {
     private Guid? GetEnforcedTenantId()
     {
-        var isPlatformAdmin = User.IsInRole("PlatformAdmin");
+        var isPlatformStaff = User.IsInRole("PlatformAdmin") || User.IsInRole("PlatformTechnician");
         var tenantId = User.GetOptionalTenantId();
-        if (!isPlatformAdmin && (!tenantId.HasValue || tenantId.Value == Guid.Empty))
+        if (!isPlatformStaff && (!tenantId.HasValue || tenantId.Value == Guid.Empty))
         {
             throw new UnauthorizedAccessException("Tài khoản yêu cầu TenantId hợp lệ để truy cập tài nguyên tài chính hợp đồng.");
         }
-        return isPlatformAdmin ? tenantId : tenantId!.Value;
+        return isPlatformStaff ? tenantId : tenantId!.Value;
     }
 
     /// <summary>Danh sách tất cả hợp đồng Zone</summary>

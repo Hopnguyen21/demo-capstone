@@ -67,7 +67,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
         var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var farm = await dbContext.Farms.AsNoTracking().SingleOrDefaultAsync(
-            x => x.Id == farmId && (caller != null && caller.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), cancellationToken)
+            x => x.Id == farmId && (caller != null && (caller.Role == UserRole.PlatformAdmin || caller.Role == UserRole.PlatformTechnician) || x.TenantId == tenantId), cancellationToken)
             ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
         var fields = await dbContext.Fields.CountAsync(x => x.FarmId == farmId && x.ArchivedAtUtc == null, cancellationToken);
         var zones = await dbContext.Zones.CountAsync(
@@ -145,7 +145,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         await EnsureOwnerScopeAsync(ownerUserId, tenantId, cancellationToken);
         var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var farm = await dbContext.Farms.AsNoTracking().SingleOrDefaultAsync(
-            x => x.Id == farmId && (caller != null && caller.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), cancellationToken)
+            x => x.Id == farmId && (caller != null && (caller.Role == UserRole.PlatformAdmin || caller.Role == UserRole.PlatformTechnician) || x.TenantId == tenantId), cancellationToken)
             ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
         var fields = await dbContext.Fields.AsNoTracking().Where(x => x.FarmId == farmId && x.ArchivedAtUtc == null)
             .OrderBy(x => x.Name).Select(x => new FieldStructureView(

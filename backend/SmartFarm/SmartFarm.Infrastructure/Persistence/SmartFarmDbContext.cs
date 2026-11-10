@@ -73,6 +73,12 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<ZoneContractRenewal> ZoneContractRenewals => Set<ZoneContractRenewal>();
     public DbSet<DeviceDepreciation> DeviceDepreciations => Set<DeviceDepreciation>();
 
+    // New Modules: StockOut, Bill, ContractPackage
+    public DbSet<StockOut> StockOuts => Set<StockOut>();
+    public DbSet<StockOutDetail> StockOutDetails => Set<StockOutDetail>();
+    public DbSet<Bill> Bills => Set<Bill>();
+    public DbSet<ContractPackage> ContractPackages => Set<ContractPackage>();
+
     // ─── RAG Knowledge Base ──────────────────────────────────────────────────
     public DbSet<AgricultureDocument> AgricultureDocuments => Set<AgricultureDocument>();
     public DbSet<AgricultureKnowledgeChunk> AgricultureKnowledgeChunks => Set<AgricultureKnowledgeChunk>();

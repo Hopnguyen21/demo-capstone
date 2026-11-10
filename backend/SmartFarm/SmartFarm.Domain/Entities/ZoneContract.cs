@@ -40,6 +40,8 @@ public sealed class ZoneContract : AuditableEntity
     public DateTime? SignedAtUtc { get; set; }
     public DateTime? TerminatedAtUtc { get; set; }
     public string? TerminationReason { get; set; }
+    public Guid? ContractPackageId { get; set; }
+    public ContractPackage? ContractPackage { get; set; }
 
     public ICollection<ZoneContractRenewal> Renewals { get; } = new List<ZoneContractRenewal>();
 }

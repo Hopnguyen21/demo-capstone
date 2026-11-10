@@ -11,6 +11,40 @@ namespace SmartFarm.Infrastructure.Identity;
 
 internal sealed partial class TenantService(SmartFarmDbContext dbContext, TimeProvider timeProvider) : ITenantService
 {
+    public async Task<TenantView> CreateByAdminAsync(
+        RegisterTenantCommand command,
+        CancellationToken cancellationToken)
+    {
+        var subdomain = command.Subdomain.Trim().ToLowerInvariant();
+        if (!SubdomainPattern().IsMatch(subdomain))
+        {
+            throw new RequestValidationException(nameof(command.Subdomain),
+                "Subdomain must be 3-30 lower-case letters, digits or hyphens and cannot start or end with a hyphen.");
+        }
+
+        if (await dbContext.Tenants.AnyAsync(x => x.Subdomain == subdomain, cancellationToken))
+        {
+            throw new ResourceConflictException("The subdomain is already registered.");
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var tenant = new Tenant
+        {
+            CompanyName = AuthService.RequireText(command.CompanyName, nameof(command.CompanyName), 200),
+            Subdomain = subdomain,
+            TaxCode = AuthService.NormalizeOptional(command.TaxCode, 30),
+            Address = AuthService.NormalizeOptional(command.Address, 500),
+            LogoUrl = ValidateLogoUrl(command.LogoUrl),
+            Status = TenantStatus.Active,
+            CreatedAtUtc = now
+        };
+
+        dbContext.Tenants.Add(tenant);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToView(tenant, new TenantStatsView(0, 0, 0));
+    }
+
     public async Task<TenantView> RegisterAsync(
         Guid ownerUserId,
         RegisterTenantCommand command,

@@ -3,7 +3,7 @@ import { Modal, Button } from '../ui/BaseUI';
 import { ZoneContract } from '../../types';
 import {
   FileText, Calendar, DollarSign, ShieldCheck, Clock, CheckCircle2,
-  AlertTriangle, RefreshCw, User, Phone, MapPin, Tag, PlusCircle, History
+  AlertTriangle, RefreshCw, User, Phone, MapPin, Tag, PlusCircle, History, Sparkles
 } from 'lucide-react';
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -130,6 +130,21 @@ export const ZoneContractDetailsModal: React.FC<ZoneContractDetailsModalProps> =
                 <span className="text-slate-500">Phân khu (Zone):</span>
                 <strong className="text-slate-800">{contract.zoneName || 'Zone'}</strong>
               </div>
+              {contract.contractPackageName && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Gói hợp đồng:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {contract.contractPackageName}
+                    </span>
+                    {contract.isCustomPackage && (
+                      <span className="text-purple-700 font-bold bg-purple-50 text-[10px] px-1.5 py-0.5 rounded border border-purple-200 flex items-center gap-1">
+                        <Sparkles size={11} className="text-purple-600" /> Riêng khách hàng
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">Cây trồng áp dụng:</span>
                 <strong className="text-[#119653] font-bold">{contract.cropType || 'Rau màu'}</strong>

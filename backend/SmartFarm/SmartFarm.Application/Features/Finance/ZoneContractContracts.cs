@@ -36,7 +36,19 @@ public sealed record ZoneContractView(
     decimal DiscountVnd = 0,
     decimal VatPercent = 0,
     decimal VatAmountVnd = 0,
-    IReadOnlyList<ZoneContractEquipmentView>? Equipment = null);
+    IReadOnlyList<ZoneContractEquipmentView>? Equipment = null,
+    Guid? ContractPackageId = null,
+    string? ContractPackageName = null,
+    bool? IsCustomPackage = null);
+
+/// <summary>Yêu cầu tạo gói hợp đồng tùy chỉnh riêng cho khách hàng.</summary>
+public sealed record CustomPackageRequest(
+    string PackageName,
+    string? Description = null,
+    int DurationMonths = 12,
+    int MaxZones = 1,
+    decimal Price = 0,
+    string Currency = "VND");
 
 /// <summary>Một dòng thiết bị trong hợp đồng.</summary>
 public sealed record ZoneContractEquipmentView(string Code, string Name, string Category, string Unit, int Quantity, decimal UnitPrice);
@@ -68,7 +80,9 @@ public sealed record CreateZoneContractCommand(
     string? LesseeIdentityNumber = null,
     string? LesseeAddress = null,
     string? SpecialTerms = null,
-    string? Notes = null);
+    string? Notes = null,
+    Guid? ContractPackageId = null,
+    CustomPackageRequest? CustomPackage = null);
 
 public sealed record RenewZoneContractCommand(
     string DurationPreset = "1_YEAR", // "6_MONTHS", "1_YEAR", "3_YEARS", "CUSTOM"
