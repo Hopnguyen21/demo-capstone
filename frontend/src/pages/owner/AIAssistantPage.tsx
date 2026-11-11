@@ -328,6 +328,8 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
   const title = typeof source === 'string' ? source : (source.title || source.name || 'Tài liệu VietGAP');
   const org = typeof source === 'object' ? (source.organization || source.authorOrganization) : undefined;
   const category = typeof source === 'object' ? source.category : undefined;
+  const version = typeof source === 'object' ? (source.version || source.Version) : undefined;
+  const standardCode = typeof source === 'object' ? (source.standardCode || source.StandardCode) : undefined;
   const similarity = typeof source === 'object' && source.similarity != null ? Math.round(source.similarity * 100) : undefined;
   const docId = typeof source === 'object' ? (source.documentId || source.DocumentId) : undefined;
   const snippet = typeof source === 'object' ? (source.contentSnippet || source.content) : undefined;
@@ -346,8 +348,18 @@ const RagSourceCard: React.FC<RagSourceCardProps> = ({ source, index }) => {
         className="p-3 cursor-pointer hover:bg-emerald-50/60 flex flex-col gap-2 transition-colors"
       >
         <div className="flex items-start justify-between gap-3 text-xs md:text-sm">
-          <span className="font-bold text-slate-800 flex items-center gap-2 leading-snug">
+          <span className="font-bold text-slate-800 flex items-center gap-2 leading-snug flex-wrap">
             <span className="text-emerald-700 font-mono font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">#{index + 1}</span>
+            {standardCode && (
+              <span className="text-blue-800 font-mono font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-xs">
+                {standardCode}
+              </span>
+            )}
+            {version && (
+              <span className="text-cyan-800 font-mono font-bold bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200 text-xs">
+                {version}
+              </span>
+            )}
             <span className="text-slate-900">{title}</span>
           </span>
           {similarity != null && (

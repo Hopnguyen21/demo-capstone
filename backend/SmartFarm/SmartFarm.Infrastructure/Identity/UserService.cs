@@ -60,6 +60,45 @@ internal sealed class UserService(SmartFarmDbContext dbContext, TimeProvider tim
             : ToDetailView(user);
     }
 
+    public async Task<UserDetailView> UpdateCurrentUserProfileAsync(
+        Guid userId,
+        UpdateUserProfileCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(command.FullName))
+        {
+            throw new RequestValidationException(nameof(command.FullName), "Họ và tên không được để trống.");
+        }
+
+        var trimmedName = command.FullName.Trim();
+        if (trimmedName.Length is < 2 or > 100)
+        {
+            throw new RequestValidationException(nameof(command.FullName), "Họ và tên phải từ 2 đến 100 ký tự.");
+        }
+
+        string? trimmedPhone = null;
+        if (!string.IsNullOrWhiteSpace(command.Phone))
+        {
+            trimmedPhone = command.Phone.Trim();
+            if (trimmedPhone.Length > 20)
+            {
+                throw new RequestValidationException(nameof(command.Phone), "Số điện thoại không được vượt quá 20 ký tự.");
+            }
+        }
+
+        var user = await dbContext.AppUsers
+            .Include(x => x.ZoneAccesses)
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)
+            ?? throw new ResourceNotFoundException("Không tìm thấy thông tin tài khoản người dùng.");
+
+        // Strictly only allow updating FullName and Phone
+        user.FullName = trimmedName;
+        user.Phone = trimmedPhone;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDetailView(user);
+    }
+
     public async Task<ZoneAccessView> ReplaceZoneAccessAsync(
         Guid ownerUserId,
         Guid farmerUserId,

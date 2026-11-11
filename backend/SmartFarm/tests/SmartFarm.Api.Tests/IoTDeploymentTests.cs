@@ -37,7 +37,7 @@ public sealed class IoTDeploymentTests
     [Fact]
     public async Task Device_cannot_be_assigned_twice_or_to_wrong_zone()
     {
-        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); var setup = await PrepareInstallation(client, seed.ZoneAId, seed.FarmAId);
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); var setup = await PrepareInstallation(factory, client, seed.ZoneAId, seed.FarmAId);
         var wrongZone = await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneBId}/devices/{setup.DeviceId}/assign", new { installationNotes = "wrong tenant" }); Assert.Equal(HttpStatusCode.NotFound, wrongZone.StatusCode);
         var assigned = await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/devices/{setup.DeviceId}/assign", new { installationNotes = "north west", gpsLatitude = 11.95m, gpsLongitude = 108.44m }); assigned.EnsureSuccessStatusCode();
         var duplicate = await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/devices/{setup.DeviceId}/assign", new { installationNotes = "again" }); Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
@@ -46,16 +46,16 @@ public sealed class IoTDeploymentTests
     [Fact]
     public async Task Failed_deployment_creates_maintenance_handoff_and_marks_device()
     {
-        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); var setup = await PrepareInstallation(client, seed.ZoneAId, seed.FarmAId); await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/devices/{setup.DeviceId}/assign", new { installationNotes = "installed" });
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); var setup = await PrepareInstallation(factory, client, seed.ZoneAId, seed.FarmAId); await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/devices/{setup.DeviceId}/assign", new { installationNotes = "installed" });
         var test = await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{setup.RequestId}/connection-tests", new { deviceId = setup.DeviceId, succeeded = false, observedAtUtc = DateTime.UtcNow, errorCode = "NO_ACK", errorMessage = "No LoRa acknowledgement" }); test.EnsureSuccessStatusCode();
         var failed = await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{setup.RequestId}/fail", new { failureCode = "INSTALL_NO_ACK", description = "Device failed connectivity check", deviceId = setup.DeviceId }); failed.EnsureSuccessStatusCode();
-        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>(); Assert.Equal(DeploymentRequestStatus.MaintenanceRequired, (await db.DeploymentRequests.SingleAsync(x => x.Id == setup.RequestId)).Status); Assert.Equal(DeviceStatus.MaintenanceRequired, (await db.Devices.SingleAsync(x => x.Id == setup.DeviceId)).Status); Assert.Equal(ServiceRequestStatus.Open, (await db.ServiceRequests.SingleAsync(x => x.DeploymentRequestId == setup.RequestId)).Status);
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>(); Assert.Equal(DeploymentRequestStatus.MaintenanceRequired, (await db.DeploymentRequests.SingleAsync(x => x.Id == setup.RequestId)).Status); Assert.Equal(DeviceStatus.MaintenanceRequired, (await db.Devices.SingleAsync(x => x.Id == setup.DeviceId)).Status); Assert.Equal(ServiceRequestStatus.Open, (await db.ServiceRequests.SingleAsync(x => x.DeploymentRequestId == setup.RequestId && x.Source == "DeploymentFailure")).Status);
     }
 
     [Fact]
     public async Task Successful_installation_configuration_connection_test_and_completion_are_audited()
     {
-        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); var setup = await PrepareInstallation(client, seed.ZoneAId, seed.FarmAId);
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); var setup = await PrepareInstallation(factory, client, seed.ZoneAId, seed.FarmAId);
         var configured = await client.PutAsJsonAsync($"/api/v1/devices/{setup.DeviceId}/sensors", new { sensors = new[] { new { sensorType = "SoilMoisture", pin = "A0", unit = "%", minValue = 0, maxValue = 100, samplingIntervalSec = 60 } } }); configured.EnsureSuccessStatusCode();
         (await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/devices/{setup.DeviceId}/assign", new { installationNotes = "installed" })).EnsureSuccessStatusCode();
         (await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{setup.RequestId}/connection-tests", new { deviceId = setup.DeviceId, succeeded = true, observedAtUtc = DateTime.UtcNow, rssi = -68m, snr = 9.2m, roundTripLatencyMs = 85 })).EnsureSuccessStatusCode();
@@ -68,10 +68,30 @@ public sealed class IoTDeploymentTests
         using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient(); await Login(client, "owner-a@example.com"); await CreateSeason(client, seed.ZoneAId); var create = await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var id = await Id(create, "requestId"); await Login(client, "owner-b@example.com"); Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/deployment-requests/{id}")).StatusCode);
     }
 
-    private static async Task<Setup> PrepareInstallation(HttpClient client, Guid zoneId, Guid farmId)
+    private static async Task<Setup> PrepareInstallation(TestApplicationFactory factory, HttpClient client, Guid zoneId, Guid farmId)
     {
         await Login(client, "owner-a@example.com"); await CreateSeason(client, zoneId); var create = await client.PostAsJsonAsync($"/api/v1/zones/{zoneId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var requestId = await Id(create, "requestId"); (await client.PostAsync($"/api/v1/deployment-requests/{requestId}/submit", null)).EnsureSuccessStatusCode(); await Login(client, "technician@example.com"); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).EnsureSuccessStatusCode(); (await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{requestId}/survey", new { isFeasible = true, siteConditions = "Power and mounting available", notes = "Plan is feasible" })).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/confirm", null)).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/installation/start", null)).EnsureSuccessStatusCode();
-        var gateway = await client.PostAsJsonAsync("/api/v1/gateways", new { deploymentRequestId = requestId, farmId, macAddress = "94:B9:7E:11:22:33", gatewaySerial = $"GW-{requestId:N}", frequencyBand = "433MHz", firmwareVersion = "v1.0.0", mqttClientId = $"gw-{requestId:N}", clientCertificateFingerprint = $"{requestId:N}{requestId:N}" }); gateway.EnsureSuccessStatusCode(); var gatewayId = await Id(gateway, "gatewayId");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var dep = await db.DeploymentRequests.SingleAsync(x => x.Id == requestId);
+            db.ServiceRequests.Add(new SmartFarm.Domain.Entities.ServiceRequest
+            {
+                TenantId = dep.TenantId,
+                FarmId = farmId,
+                ZoneId = zoneId,
+                DeploymentRequestId = requestId,
+                CreatedByOwnerId = dep.OwnerUserId,
+                Status = ServiceRequestStatus.InProgress,
+                FailureCode = "NEW_INSTALL",
+                Description = "Service request for deployment deposit",
+                IsDepositPaid = true
+            });
+            await db.SaveChangesAsync();
+        }
+        var macSuffix = $"{Guid.NewGuid():N}"[..6].ToUpperInvariant();
+        var mac = $"94:B9:7E:{macSuffix[0..2]}:{macSuffix[2..4]}:{macSuffix[4..6]}";
+        var gateway = await client.PostAsJsonAsync("/api/v1/gateways", new { deploymentRequestId = requestId, farmId, macAddress = mac, gatewaySerial = $"GW-{requestId:N}", frequencyBand = "433MHz", firmwareVersion = "v1.0.0", mqttClientId = $"gw-{requestId:N}", clientCertificateFingerprint = $"{requestId:N}{requestId:N}" }); gateway.EnsureSuccessStatusCode(); var gatewayId = await Id(gateway, "gatewayId");
         var provision = await client.PostAsJsonAsync("/api/v1/devices/provision", new { deploymentRequestId = requestId, gatewayId, farmId, nodes = new[] { new { hardwareAddress = $"NODE-{requestId:N}", deviceType = "SensorNode", deviceModelId = Model } } }); provision.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await provision.Content.ReadAsStringAsync()); return new(requestId, json.RootElement.GetProperty("devices")[0].GetProperty("deviceId").GetGuid());
     }
     private static object PlanBody() => new { items = new[] { new { deviceModelId = Model, quantity = 1, installationNotes = "one node" } }, notes = "Owner approved" };

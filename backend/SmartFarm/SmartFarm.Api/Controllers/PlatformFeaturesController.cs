@@ -11,6 +11,7 @@ namespace SmartFarm.Api.Controllers;
 [Authorize]
 public sealed class PlatformFeaturesController(
     IPlatformAdminService adminService,
+    IBackupService backupService,
     IQuotationService quotationService,
     IGisService gisService,
     IFarmWizardService farmWizardService,
@@ -20,6 +21,53 @@ public sealed class PlatformFeaturesController(
     IControlAutomationService controlAutomationService,
     IGeocodingService geocodingService) : ControllerBase
 {
+    // ─── 0. Platform Backup & Restore ─────────────────────────────────────────
+    [HttpGet("api/v1/platform/backups")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<IReadOnlyList<BackupMetadataView>>> ListBackups(CancellationToken ct)
+    {
+        return Ok(await backupService.ListBackupsAsync(ct));
+    }
+
+    [HttpGet("api/v1/platform/backups/status")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<BackupSystemStatusView>> GetBackupSystemStatus(CancellationToken ct)
+    {
+        return Ok(await backupService.GetSystemStatusAsync(ct));
+    }
+
+    [HttpPost("api/v1/platform/backups")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<CreateBackupResult>> CreateBackup(CancellationToken ct)
+    {
+        return Ok(await backupService.CreateBackupAsync(User.GetUserId(), ct));
+    }
+
+    [HttpGet("api/v1/platform/backups/{fileName}/download")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<IActionResult> DownloadBackup(string fileName, CancellationToken ct)
+    {
+        var result = await backupService.DownloadBackupAsync(fileName, User.GetUserId(), ct);
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
+    [HttpPost("api/v1/platform/backups/{fileName}/verify")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<VerifyBackupResult>> VerifyBackup(string fileName, CancellationToken ct)
+    {
+        return Ok(await backupService.VerifyBackupAsync(fileName, User.GetUserId(), ct));
+    }
+
+    [HttpPost("api/v1/platform/backups/{fileName}/restore")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<RestoreBackupResult>> RestoreBackup(
+        string fileName,
+        [FromBody] RestoreBackupRequest request,
+        CancellationToken ct)
+    {
+        return Ok(await backupService.RestoreBackupAsync(fileName, request, User.GetUserId(), ct));
+    }
+
     // ─── 1. Audit Logs ────────────────────────────────────────────────────────
     [HttpGet("api/v1/audit-logs")]
     [Authorize(Roles = "PlatformAdmin")]

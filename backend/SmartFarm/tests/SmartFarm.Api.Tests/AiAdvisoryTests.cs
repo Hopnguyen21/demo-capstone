@@ -1448,7 +1448,7 @@ public sealed class AiAdvisoryTests
         db.AddRange(season, deployment, gateway, device, pump);
         await db.SaveChangesAsync();
         db.DeviceConnectionTests.Add(new DeviceConnectionTest { DeviceId = device.Id, DeploymentRequestId = deployment.Id, TechnicianUserId = seed.TechnicianId, Succeeded = true, ObservedAtUtc = DateTime.UtcNow });
-        db.TelemetryReadings.Add(new TelemetryReading { TenantId = farm.TenantId, FarmId = farm.Id, ZoneId = seed.ZoneAId, DeviceId = device.Id, GatewayId = gateway.Id, MessageId = $"ai-{Guid.NewGuid():N}", ParameterCode = EnvironmentalParameterCode.SoilMoisture, Value = 35, Unit = "%", CapturedAtUtc = DateTime.UtcNow, ReceivedAtUtc = DateTime.UtcNow });
+        db.TelemetryReadings.Add(new TelemetryReading { TenantId = farm.TenantId, FarmId = farm.Id, ZoneId = seed.ZoneAId, DeviceId = device.Id, GatewayId = gateway.Id, MessageId = $"ai-{Guid.NewGuid():N}", ParameterCode = EnvironmentalParameterCode.SoilMoisture, Value = 35, Unit = "%", CapturedAtUtc = DateTime.UtcNow.AddSeconds(-30), ReceivedAtUtc = DateTime.UtcNow.AddSeconds(-30) });
         await db.SaveChangesAsync();
         factory.AiProvider.Result = new AiProviderResult("FakeAgronomist", "Soil is dry", "Irrigation may restore the current stage target.", 0.92m, ["Based on the latest available sample."], new AiProposedControlAction(pump.Id, ActuatorCommandAction.TurnOn, 300));
         return new AiFixture(seed.ZoneAId, pump.Id);

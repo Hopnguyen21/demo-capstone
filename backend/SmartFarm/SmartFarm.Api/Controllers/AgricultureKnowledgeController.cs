@@ -1,3 +1,4 @@
+using SmartFarm.Application.Common.Exceptions;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -194,24 +195,26 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(DocumentTextExtractor.MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = DocumentTextExtractor.MaxRequestBytes)]
-    public async Task<IActionResult> UpdateDocument(
+    public async Task<ActionResult<DocumentUpdateResult>> UpdateDocument(
         Guid documentId,
         [FromForm] UpdateKnowledgeDocumentRequest request,
         CancellationToken cancellationToken)
     {
         var isPlatformAdmin = User.IsInRole("PlatformAdmin");
         var tenantId = isPlatformAdmin ? (Guid?)null : User.GetTenantId();
+        Guid? actorUserId = null;
+        try { actorUserId = User.GetUserId(); } catch { actorUserId = null; }
 
         byte[]? fileBytes = null;
         string? ext = null;
         if (request.File is { Length: > 0 })
         {
             if (request.File.Length > DocumentTextExtractor.MaxFileBytes)
-                return BadRequest($"File size exceeds maximum allowed size of {DocumentTextExtractor.MaxFileBytes / (1024 * 1024)}MB.");
+                return BadRequest(new { message = $"File size exceeds maximum allowed size of {DocumentTextExtractor.MaxFileBytes / (1024 * 1024)}MB." });
 
             ext = Path.GetExtension(request.File.FileName).TrimStart('.').ToLowerInvariant();
             if (ext is not ("pdf" or "docx" or "txt"))
-                return BadRequest($"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, TXT.");
+                return BadRequest(new { message = $"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, TXT." });
 
             using var ms = new MemoryStream();
             await request.File.CopyToAsync(ms, cancellationToken);
@@ -224,7 +227,7 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
             {
                 DocumentTextExtractor.ValidateFileSignature(fileBytes, ext);
             }
-            var updated = await documentService.UpdateDocumentAsync(
+            var result = await documentService.UpdateDocumentAsync(
                 documentId,
                 request.Title,
                 request.File?.FileName,
@@ -235,17 +238,109 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
                 request.Category ?? "general",
                 request.CropScope ?? string.Empty,
                 request.Version,
+                request.StandardCode,
+                request.IssuedDate,
+                request.EffectiveDate,
+                request.ExpirationDate,
+                request.DocumentType,
+                request.ForceNewVersion,
+                request.Notes,
+                actorUserId,
                 tenantId,
                 isPlatformAdmin,
                 cancellationToken);
 
-            if (!updated) return NotFound();
-            return Ok(new { message = "Đã cập nhật toàn văn và chunks. Embedding sẽ được xử lý nền.", documentId });
+            return Ok(result);
+        }
+        catch (RequestValidationException ex)
+        {
+            return BadRequest(new { message = ex.Message, errors = ex.Errors });
         }
         catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException or IOException)
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Xem trước thông tin nhận diện metadata và nội dung trích xuất từ file hoặc văn bản trước khi xác nhận cập nhật.
+    /// </summary>
+    [HttpPost("api/v1/ai/knowledge/documents/preview")]
+    [Authorize(Roles = "PlatformAdmin")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(DocumentTextExtractor.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = DocumentTextExtractor.MaxRequestBytes)]
+    public async Task<ActionResult<DocumentPreviewResult>> PreviewDocument(
+        [FromForm] PreviewKnowledgeDocumentRequest request,
+        CancellationToken cancellationToken)
+    {
+        byte[]? fileBytes = null;
+        string? ext = null;
+        if (request.File is { Length: > 0 })
+        {
+            if (request.File.Length > DocumentTextExtractor.MaxFileBytes)
+                return BadRequest(new { message = $"File size exceeds maximum allowed size of {DocumentTextExtractor.MaxFileBytes / (1024 * 1024)}MB." });
+
+            ext = Path.GetExtension(request.File.FileName).TrimStart('.').ToLowerInvariant();
+            if (ext is not ("pdf" or "docx" or "txt"))
+                return BadRequest(new { message = $"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, TXT." });
+
+            using var ms = new MemoryStream();
+            await request.File.CopyToAsync(ms, cancellationToken);
+            fileBytes = ms.ToArray();
+            DocumentTextExtractor.ValidateFileSignature(fileBytes, ext);
+        }
+
+        try
+        {
+            var result = await documentService.PreviewDocumentAsync(
+                fileBytes, ext, request.File?.FileName, request.ContentText, cancellationToken);
+            return Ok(result);
+        }
+        catch (RequestValidationException ex)
+        {
+            return BadRequest(new { message = ex.Message, errors = ex.Errors });
+        }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or ArgumentException or IOException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Lấy danh sách lịch sử tất cả các phiên bản của tài liệu trong chuỗi phiên bản (lineage).
+    /// </summary>
+    [HttpGet("api/v1/ai/knowledge/documents/{documentId:guid}/versions")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<IReadOnlyList<DocumentVersionView>>> GetDocumentVersions(
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = User.IsInRole("PlatformAdmin") ? (Guid?)null : User.GetTenantId();
+        var versions = await documentService.GetDocumentVersionsAsync(documentId, tenantId, cancellationToken);
+        return Ok(versions);
+    }
+
+    /// <summary>
+    /// Lưu trữ tài liệu nông học (ngừng kích hoạt trong RAG nhưng lưu giữ lịch sử kiểm toán).
+    /// </summary>
+    [HttpPost("api/v1/ai/knowledge/documents/{documentId:guid}/archive")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<IActionResult> ArchiveDocument(
+        Guid documentId,
+        [FromBody] ArchiveKnowledgeDocumentDto? dto,
+        CancellationToken cancellationToken)
+    {
+        var isPlatformAdmin = User.IsInRole("PlatformAdmin");
+        var tenantId = isPlatformAdmin ? (Guid?)null : User.GetTenantId();
+        Guid? actorUserId = null;
+        try { actorUserId = User.GetUserId(); } catch { actorUserId = null; }
+
+        var success = await documentService.ArchiveDocumentAsync(
+            documentId, dto?.Reason, actorUserId, tenantId, isPlatformAdmin, cancellationToken);
+        if (!success) return NotFound();
+
+        return Ok(new { message = "Đã lưu trữ tài liệu thành công. Tài liệu không còn được dùng cho tư vấn AI RAG." });
     }
 
     /// <summary>Tải file gốc trong phạm vi quyền tenant để đối chiếu nội dung OCR.</summary>
@@ -270,11 +365,13 @@ public sealed class AgricultureKnowledgeController(IAgricultureDocumentService d
     {
         var isPlatformAdmin = User.IsInRole("PlatformAdmin");
         var tenantId = isPlatformAdmin ? (Guid?)null : User.GetTenantId();
+        var actorUserId = User.GetUserId();
         var reviewed = await documentService.ReviewDocumentAsync(
             documentId, request.ContentText, request.Approve, request.ReviewNotes,
-            tenantId, isPlatformAdmin,
+            actorUserId, tenantId, isPlatformAdmin,
             new DocumentMetadataOverrides(request.Title, request.CropScope, request.AuthorOrganization, request.Version,
-                request.DocumentType, request.ConfirmGeneralScope),
+                request.DocumentType, request.ConfirmGeneralScope,
+                request.StandardCode, request.IssuedDate, request.EffectiveDate, request.ExpirationDate),
             cancellationToken);
         if (!reviewed) return NotFound();
         return Ok(new
@@ -465,6 +562,10 @@ public sealed class ReviewKnowledgeDocumentDto
     [StringLength(500)] public string? CropScope { get; init; }
     [StringLength(200)] public string? AuthorOrganization { get; init; }
     [StringLength(50)] public string? Version { get; init; }
+    [StringLength(100)] public string? StandardCode { get; init; }
+    public DateTime? IssuedDate { get; init; }
+    public DateTime? EffectiveDate { get; init; }
+    public DateTime? ExpirationDate { get; init; }
     public AgricultureDocumentType? DocumentType { get; init; }
 
     /// <summary>Xác nhận tài liệu áp dụng chung (không ghi cây) sau khi đối chiếu file gốc.</summary>
@@ -576,4 +677,32 @@ public sealed class UpdateKnowledgeDocumentRequest
 
     [StringLength(50)]
     public string? Version { get; init; }
+
+    [StringLength(100)]
+    public string? StandardCode { get; init; }
+
+    public DateTime? IssuedDate { get; init; }
+
+    public DateTime? EffectiveDate { get; init; }
+
+    public DateTime? ExpirationDate { get; init; }
+
+    public AgricultureDocumentType? DocumentType { get; init; }
+
+    public bool? ForceNewVersion { get; init; }
+
+    [StringLength(2000)]
+    public string? Notes { get; init; }
+}
+
+public sealed class PreviewKnowledgeDocumentRequest
+{
+    public IFormFile? File { get; init; }
+    public string? ContentText { get; init; }
+}
+
+public sealed class ArchiveKnowledgeDocumentDto
+{
+    [StringLength(1000)]
+    public string? Reason { get; init; }
 }

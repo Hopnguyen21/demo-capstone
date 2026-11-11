@@ -7,8 +7,18 @@ public sealed class SmartFarmDbContextFactory : IDesignTimeDbContextFactory<Smar
 {
     public SmartFarmDbContext CreateDbContext(string[] args)
     {
+        // Read strictly from environment variable during design-time migrations.
+        // Hardcoded passwords or connection strings are strictly forbidden.
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__SmartFarmDb")
-            ?? "Host=localhost;Port=5432;Database=SmartFarmDB01;Username=postgres;Password=12345";
+            ?? Environment.GetEnvironmentVariable("SMARTFARM_CONNECTION_STRING");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Không tìm thấy chuỗi kết nối cơ sở dữ liệu lúc design-time (EF Core Migrations). " +
+                "Vui lòng thiết lập biến môi trường 'ConnectionStrings__SmartFarmDb' hoặc 'SMARTFARM_CONNECTION_STRING' " +
+                "để thực thi các lệnh EF Core Tools an toàn mà không lưu mật khẩu cứng trong mã nguồn.");
+        }
 
         var options = new DbContextOptionsBuilder<SmartFarmDbContext>()
             .UseNpgsql(connectionString, npgsql =>

@@ -10,7 +10,7 @@ public static class IoTDeploymentMapping
     public static DeviceView ToView(this Device x)
     {
         var test = x.ConnectionTests.OrderByDescending(t => t.ObservedAtUtc).FirstOrDefault();
-        return new(x.Id, x.FarmId, x.GatewayId, x.DeploymentRequestId, x.ZoneId, x.DeviceModelDefinitionId, x.HardwareAddress, x.DeviceType, x.Status, x.InstallationNotes, x.Sensors.Select(s => s.SensorType).ToList(), x.Actuators.Select(a => a.ActuatorType).ToList(), test is null ? null : new(test.Id, test.Succeeded, test.Rssi, test.Snr, test.RoundTripLatencyMs, test.ObservedAtUtc, test.ErrorCode, test.ErrorMessage));
+        return new(x.Id, x.FarmId, x.GatewayId, x.DeploymentRequestId, x.ZoneId, x.DeviceModelDefinitionId, x.HardwareAddress, x.DeviceType, x.Status, x.InstallationNotes, x.Sensors.Select(s => s.SensorType).ToList(), x.Actuators.Select(a => a.ActuatorType).ToList(), test is null ? null : new(test.Id, test.Succeeded, test.Rssi, test.Snr, test.RoundTripLatencyMs, test.ObservedAtUtc, test.ErrorCode, test.ErrorMessage), x.LastSeenAtUtc, x.HeartbeatIntervalSeconds);
     }
     private static IReadOnlyList<EnvironmentalParameterCode> ParseParameters(string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Enum.Parse<EnvironmentalParameterCode>).ToList();
     private static IReadOnlyList<Guid> ParseIds(string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(x => Guid.TryParse(x, out _)).Select(Guid.Parse).ToList();

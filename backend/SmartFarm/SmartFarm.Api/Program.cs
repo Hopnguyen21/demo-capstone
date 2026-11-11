@@ -79,6 +79,7 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddHostedService<ControlAutomationWorker>();
 builder.Services.AddHostedService<MqttBrokerHost>(sp => sp.GetRequiredService<MqttBrokerHost>());
 builder.Services.AddHostedService<GatewayLivenessWorker>();
+builder.Services.AddHostedService<DeviceLivenessWorker>();
 builder.Services.AddHostedService<SimulatedIotTelemetryWorker>();
 builder.Services.AddHostedService<KnowledgeEmbeddingWorker>();
 

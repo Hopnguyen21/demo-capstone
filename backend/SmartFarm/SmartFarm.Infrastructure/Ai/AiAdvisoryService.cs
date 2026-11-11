@@ -419,7 +419,7 @@ public sealed class AiAdvisoryService(
                     .Select(i => passages![i - 1])
                     .Where(p => p.SimilarityScore >= MinDisplayedSourceScore)
                     .GroupBy(p => p.DocumentId).Select(g => g.OrderByDescending(p => p.SimilarityScore).First())
-                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content, p.PageNumber, p.SectionTitle))
+                    .Select(p => new AiSourceView(p.DocumentId, p.DocumentTitle, p.AuthorOrganization, p.Category, p.SimilarityScore, p.Content, p.PageNumber, p.SectionTitle, p.Version, p.StandardCode))
                     .ToList();
 
                 // Chỉ hiển thị tài liệu mà model đã trích dẫn bằng chỉ mục passage; không tự gán nguồn theo điểm tương đồng.
@@ -714,7 +714,7 @@ public sealed class AiAdvisoryService(
         if (zoneDeviceIds.Count > 0)
         {
             latestDeviceReadings = await db.TelemetryReadings.AsNoTracking()
-                .Where(x => zoneDeviceIds.Contains(x.DeviceId) && x.CapturedAtUtc <= now)
+                .Where(x => zoneDeviceIds.Contains(x.DeviceId) && x.CapturedAtUtc <= now.AddSeconds(5))
                 .GroupBy(x => new { x.DeviceId, x.ParameterCode })
                 .Select(g => g.OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).First())
                 .ToListAsync(cancellationToken);

@@ -25,10 +25,10 @@ public sealed record ProvisionNodeInput(string HardwareAddress, DeviceType Devic
 public sealed record ProvisionDevicesCommand(Guid DeploymentRequestId, Guid GatewayId, Guid FarmId, IReadOnlyList<ProvisionNodeInput> Nodes);
 public sealed record SensorInput(string SensorType, string? Pin, string? Model, string? Interface, string Unit, decimal? MinValue, decimal? MaxValue, int SamplingIntervalSec);
 public sealed record ActuatorInput(string ActuatorType, int RelayChannel, decimal? RatedPowerWatt, int MaxDurationMinutes, decimal? FlowRateLitersPerMinute = null);
-public sealed record AssignDeviceCommand(string? InstallationNotes, decimal? GpsLatitude, decimal? GpsLongitude);
+public sealed record AssignDeviceCommand(string? InstallationNotes, decimal? GpsLatitude, decimal? GpsLongitude, int? HeartbeatIntervalSeconds = null);
 public sealed record UnassignDeviceCommand(string Reason);
 public sealed record DeviceConnectionTestView(Guid TestId, bool Succeeded, decimal? Rssi, decimal? Snr, int? RoundTripLatencyMs, DateTime ObservedAtUtc, string? ErrorCode, string? ErrorMessage);
-public sealed record DeviceView(Guid DeviceId, Guid FarmId, Guid GatewayId, Guid DeploymentRequestId, Guid? ZoneId, Guid? DeviceModelId, string HardwareAddress, DeviceType DeviceType, DeviceStatus Status, string? InstallationNotes, IReadOnlyList<string> Sensors, IReadOnlyList<string> Actuators, DeviceConnectionTestView? LatestConnectionTest);
+public sealed record DeviceView(Guid DeviceId, Guid FarmId, Guid GatewayId, Guid DeploymentRequestId, Guid? ZoneId, Guid? DeviceModelId, string HardwareAddress, DeviceType DeviceType, DeviceStatus Status, string? InstallationNotes, IReadOnlyList<string> Sensors, IReadOnlyList<string> Actuators, DeviceConnectionTestView? LatestConnectionTest, DateTime? LastSeenAtUtc = null, int? HeartbeatIntervalSeconds = null);
 public sealed record ProvisionDevicesView(int TotalProvisioned, IReadOnlyList<DeviceView> Devices);
 public sealed record DiagnoseCommand(string Action, decimal? NewFrequencyChannel, int? IncreaseTxPowerDbm);
 public sealed record DiagnosticJobView(Guid DiagnosticJobId, Guid DeviceId, string Action, DiagnosticJobStatus Status, DateTime CreatedAtUtc);

@@ -132,7 +132,7 @@ public sealed class ContractSigningTests
     public async Task Final_acceptance_requires_signed_deposit_and_completed_deployment_and_is_single_use()
     {
         using var f = new TestApplicationFactory(); using var c = f.CreateClient();
-        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.PlanConfirmed);
         await Login(c, "owner-a@example.com");
         Assert.Equal(HttpStatusCode.Conflict, (await Final(c, x.ServiceRequestId)).StatusCode); // chưa ký cọc
         (await Deposit(c, x.ServiceRequestId)).EnsureSuccessStatusCode();

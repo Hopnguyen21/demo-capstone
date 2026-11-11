@@ -6,10 +6,10 @@ import {
   Sparkles, Layers, BookOpen, AlertCircle, RefreshCw, Droplets,
   Sprout, Beaker, ShieldAlert, Clock, ChevronDown, ChevronUp,
   FileCheck2, CheckSquare, Bookmark, HeartPulse, Microscope,
-  QrCode, PackageCheck, Loader2, Thermometer, Zap
+  QrCode, PackageCheck, Loader2, Thermometer, Zap, History, Archive, Eye, X
 } from 'lucide-react';
 import { cropService, knowledgeService } from '../../services';
-import { Crop, VietGapStructuredExtraction } from '../../types';
+import { Crop, VietGapStructuredExtraction, DocumentVersionView, DocumentPreviewResult } from '../../types';
 import { checkVietGapCompleteness, detectTextCorruption, MIN_NOTES_FOR_INCOMPLETE_APPROVAL, DOCUMENT_TYPE_INFO, AgricultureDocumentType } from './vietGapCompleteness';
 import { canonicalCrop } from './cropNames';
 import { foldVietnamese } from './vietGapCompleteness';
@@ -36,9 +36,16 @@ export interface VietGapRegulationDetail {
   isThematicStandard?: boolean;
   chunks?: { id: string; chunkIndex: number; content: string; cropTags: string; keywords: string; hasEmbedding: boolean }[];
   contentText?: string;
-  reviewStatus: 'PendingReview' | 'Approved' | 'NeedsCorrection' | string;
+  reviewStatus: 'PendingReview' | 'Approved' | 'NeedsCorrection' | 'Superseded' | 'Archived' | 'Draft' | 'Rejected' | string;
   reviewNotes?: string;
   hasOriginalFile: boolean;
+  standardCode?: string;
+  issuedDate?: string;
+  effectiveDate?: string;
+  expirationDate?: string;
+  previousVersionId?: string;
+  supersededByDocumentId?: string;
+  isActiveInRag?: boolean;
 
   // 1. Quản lý Đất & Giá thể
   soilManagement: {
@@ -359,13 +366,34 @@ export const VietGapStandardsPage: React.FC = () => {
   const [updateFormData, setUpdateFormData] = useState({
     title: '',
     version: 'V2.0',
+    standardCode: '',
     author: '',
     category: 'general',
     cropScope: '',
-    contentText: ''
+    documentType: 'OfficialStandard' as AgricultureDocumentType,
+    issuedDate: '',
+    effectiveDate: '',
+    expirationDate: '',
+    reviewNotes: '',
+    contentText: '',
+    forceNewVersion: true,
   });
+  const [updateEditorTab, setUpdateEditorTab] = useState<'FILE' | 'CONTENT'>('FILE');
   const [selectedUpdateFile, setSelectedUpdateFile] = useState<File | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<DocumentPreviewResult | null>(null);
+
+  // Quản lý Lịch sử phiên bản (Version Lineage)
+  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
+  const [versionLineage, setVersionLineage] = useState<DocumentVersionView[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+
+  // Quản lý Lưu trữ (Archive)
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [archiveDoc, setArchiveDoc] = useState<VietGapRegulationDetail | null>(null);
+  const [archiveNotes, setArchiveNotes] = useState('');
+  const [isArchiving, setIsArchiving] = useState(false);
 
   // Quản lý Soạn Thảo Tài Liệu Bằng AI (AI Document Drafting & Review)
   const [isAiDraftModalOpen, setIsAiDraftModalOpen] = useState(false);
@@ -442,7 +470,7 @@ export const VietGapStandardsPage: React.FC = () => {
   const [reviewNotes, setReviewNotes] = useState('');
   // Metadata người duyệt có thể chỉnh sau khi đối chiếu file gốc (khởi tạo từ giá trị hệ thống đã nhận diện).
   const [reviewMeta, setReviewMeta] = useState({
-    title: '', cropScope: '', author: '', version: '', documentType: 'Unspecified' as AgricultureDocumentType, confirmGeneral: false,
+    title: '', cropScope: '', author: '', version: '', standardCode: '', issuedDate: '', effectiveDate: '', documentType: 'Unspecified' as AgricultureDocumentType, confirmGeneral: false,
   });
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [isSavingReview, setIsSavingReview] = useState(false);
@@ -589,6 +617,7 @@ export const VietGapStandardsPage: React.FC = () => {
     return {
       id: d.id,
       code: d.standardCode || fullText.match(/TCVN\s*\d+[-–]\d+:\d{4}/i)?.[0] || 'Chưa xác định',
+      standardCode: d.standardCode || undefined,
       version: d.version || undefined, // không điền phiên bản mặc định khi file không ghi
       title: d.title,
       fileName: d.fileName || undefined,
@@ -598,9 +627,15 @@ export const VietGapStandardsPage: React.FC = () => {
       fileType: (d.fileType?.toUpperCase() === 'DOCX' ? 'DOCX' : d.fileType?.toUpperCase() === 'TXT' ? 'TXT' : 'PDF') as 'PDF' | 'DOCX' | 'TXT',
       fileSize: `${chunks.length || d.chunkCount || 1} đoạn RAG`,
       uploadDate: d.createdAtUtc ? new Date(d.createdAtUtc).toLocaleDateString('vi-VN') : 'Mặc định',
+      issuedDate: d.issuedDate ? d.issuedDate.split('T')[0] : undefined,
+      effectiveDate: d.effectiveDate ? d.effectiveDate.split('T')[0] : undefined,
+      expirationDate: d.expirationDate ? d.expirationDate.split('T')[0] : undefined,
+      previousVersionId: d.previousVersionId || undefined,
+      supersededByDocumentId: d.supersededByDocumentId || undefined,
+      isActiveInRag: typeof d.isActiveInRag === 'boolean' ? d.isActiveInRag : (d.reviewStatus === 'Approved'),
       author: d.authorOrganization || 'Chưa xác định nguồn ban hành',
       issuingAuthority: d.authorOrganization || 'Chưa xác định nguồn ban hành',
-      validityPeriod: d.validityPeriod || 'Chưa xác định',
+      validityPeriod: d.validityPeriod || (d.effectiveDate ? `Từ ${new Date(d.effectiveDate).toLocaleDateString('vi-VN')}` : 'Chưa xác định'),
       status: (d.status === 'VALIDATED' ? 'VALIDATED' : 'DRAFT') as 'VALIDATED' | 'DRAFT',
       reviewStatus: d.reviewStatus || 'PendingReview',
       documentType: (d.documentType || 'Unspecified') as AgricultureDocumentType,
@@ -1163,38 +1198,95 @@ export const VietGapStandardsPage: React.FC = () => {
     setUpdateFormData({
       title: doc.title,
       version: suggestedVersion,
-      author: doc.author || doc.issuingAuthority || '',
-      category: doc.category === 'Tưới tiêu' ? 'irrigation' : doc.category === 'Sâu bệnh (IPM)' ? 'pest' : doc.category === 'Dinh dưỡng' ? 'nutrition' : doc.category === 'Vi khí hậu' ? 'climate' : doc.category === 'Thu hoạch' ? 'harvest' : 'general',
-      cropScope: doc.cropName === 'Áp dụng chung' ? '' : (doc.cropName || ''),
-      contentText: doc.contentText || ''
+      standardCode: doc.standardCode || (doc.code !== 'Chưa xác định' ? doc.code : ''),
+      author: doc.author && !doc.author.includes('Chưa xác định') ? doc.author : '',
+      category: doc.rawCategory || (doc.category === 'Tưới tiêu' ? 'irrigation' : doc.category === 'Sâu bệnh (IPM)' ? 'pest' : doc.category === 'Dinh dưỡng' ? 'nutrition' : doc.category === 'Vi khí hậu' ? 'climate' : doc.category === 'Thu hoạch' ? 'harvest' : 'general'),
+      cropScope: doc.cropName === 'Áp dụng chung' ? '' : (doc.cropScope || doc.cropName || ''),
+      documentType: doc.documentType || 'OfficialStandard',
+      issuedDate: doc.issuedDate || '',
+      effectiveDate: doc.effectiveDate || '',
+      expirationDate: doc.expirationDate || '',
+      reviewNotes: '',
+      contentText: doc.contentText || '',
+      forceNewVersion: doc.reviewStatus === 'Approved'
     });
     setSelectedUpdateFile(null);
+    setPreviewResult(null);
+    setUpdateEditorTab('FILE');
     setIsUpdateModalOpen(true);
+  };
+
+  const handlePreviewUpdate = async () => {
+    setIsPreviewing(true);
+    try {
+      const fd = new FormData();
+      if (selectedUpdateFile && updateEditorTab === 'FILE') {
+        fd.append('File', selectedUpdateFile);
+      } else if (updateFormData.contentText.trim().length >= 50) {
+        fd.append('ContentText', updateFormData.contentText.trim());
+      } else {
+        setNotification({
+          type: 'error',
+          message: 'Vui lòng đính kèm tệp (.pdf, .docx, .txt) hoặc nhập nội dung văn bản tối thiểu 50 ký tự để xem trước.'
+        });
+        setIsPreviewing(false);
+        return;
+      }
+      const preview = await knowledgeService.previewDocument(fd);
+      setPreviewResult(preview);
+      if (preview.cropScope && !updateFormData.cropScope.trim()) {
+        setUpdateFormData(prev => ({ ...prev, cropScope: preview.cropScope }));
+      }
+      if (preview.standardCode && !updateFormData.standardCode.trim()) {
+        setUpdateFormData(prev => ({ ...prev, standardCode: preview.standardCode || '' }));
+      }
+      setNotification({
+        type: 'success',
+        message: `Đã tạo bản xem trước: ${preview.contentPreview.length} ký tự, ước tính ${preview.estimatedChunkCount} đoạn chunk.`
+      });
+    } catch (err: any) {
+      console.error('Preview doc error:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Lỗi xem trước tài liệu';
+      setNotification({ type: 'error', message: `Xem trước thất bại: ${msg}` });
+    } finally {
+      setIsPreviewing(false);
+    }
   };
 
   const handleUpdateDocumentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!updatingDoc) return;
+    if (!updateFormData.title.trim()) {
+      setNotification({ type: 'error', message: 'Vui lòng nhập tên tài liệu / quy chuẩn.' });
+      return;
+    }
     setIsUpdating(true);
     try {
       const fd = new FormData();
       fd.append('Title', updateFormData.title.trim());
-      fd.append('Version', updateFormData.version.trim());
+      if (updateFormData.version.trim()) fd.append('Version', updateFormData.version.trim());
+      if (updateFormData.standardCode.trim()) fd.append('StandardCode', updateFormData.standardCode.trim());
       if (updateFormData.author.trim()) fd.append('AuthorOrganization', updateFormData.author.trim());
       if (updateFormData.category) fd.append('Category', updateFormData.category);
       if (updateFormData.cropScope.trim()) fd.append('CropScope', updateFormData.cropScope.trim());
+      if (updateFormData.documentType) fd.append('DocumentType', updateFormData.documentType);
+      if (updateFormData.issuedDate) fd.append('IssuedDate', updateFormData.issuedDate);
+      if (updateFormData.effectiveDate) fd.append('EffectiveDate', updateFormData.effectiveDate);
+      if (updateFormData.expirationDate) fd.append('ExpirationDate', updateFormData.expirationDate);
+      if (updateFormData.reviewNotes.trim()) fd.append('ReviewNotes', updateFormData.reviewNotes.trim());
+      fd.append('ForceNewVersion', updateFormData.forceNewVersion ? 'true' : 'false');
 
-      if (selectedUpdateFile) {
+      if (updateEditorTab === 'FILE' && selectedUpdateFile) {
         fd.append('File', selectedUpdateFile);
       } else if (updateFormData.contentText.trim().length >= 50) {
         fd.append('ContentText', updateFormData.contentText.trim());
       }
 
-      await knowledgeService.updateDocument(updatingDoc.id, fd);
+      const result = await knowledgeService.updateDocument(updatingDoc.id, fd);
 
       setNotification({
         type: 'success',
-        message: `Đã cập nhật tài liệu lên phiên bản ${updateFormData.version}. Tài liệu trở về trạng thái chờ đối chiếu; chỉ được đưa vào RAG sau khi được duyệt.`
+        message: result.message || `Đã cập nhật tài liệu phiên bản ${result.version}.`
       });
       setIsReviewPanelOpen(false);
       setIsUpdateModalOpen(false);
@@ -1205,6 +1297,43 @@ export const VietGapStandardsPage: React.FC = () => {
       setNotification({ type: 'error', message: `Cập nhật tài liệu thất bại: ${msg}` });
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleViewVersions = async (doc: VietGapRegulationDetail) => {
+    setIsLoadingVersions(true);
+    setIsVersionModalOpen(true);
+    try {
+      const versions = await knowledgeService.getDocumentVersions(doc.id);
+      setVersionLineage(versions);
+    } catch (err: any) {
+      console.error('Fetch versions error:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Không thể tải lịch sử phiên bản';
+      setNotification({ type: 'error', message: msg });
+    } finally {
+      setIsLoadingVersions(false);
+    }
+  };
+
+  const handleArchiveConfirm = async () => {
+    if (!archiveDoc) return;
+    setIsArchiving(true);
+    try {
+      await knowledgeService.archiveDocument(archiveDoc.id, archiveNotes.trim() || undefined);
+      setNotification({
+        type: 'success',
+        message: `Đã lưu trữ tài liệu "${archiveDoc.title}". Tài liệu đã được gỡ khỏi AI RAG.`
+      });
+      setIsArchiveModalOpen(false);
+      setArchiveDoc(null);
+      setArchiveNotes('');
+      await loadBackendDocuments();
+    } catch (err: any) {
+      console.error('Archive error:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Lỗi lưu trữ tài liệu';
+      setNotification({ type: 'error', message: msg });
+    } finally {
+      setIsArchiving(false);
     }
   };
 
@@ -1286,7 +1415,10 @@ export const VietGapStandardsPage: React.FC = () => {
       cropScope: selectedDoc.cropScope || '',
       author: selectedDoc.author && !selectedDoc.author.includes('Chưa xác định') ? selectedDoc.author : '',
       version: selectedDoc.version || '',
+      standardCode: selectedDoc.standardCode || (selectedDoc.code !== 'Chưa xác định' ? selectedDoc.code : ''),
       documentType: selectedDoc.documentType,
+      issuedDate: selectedDoc.issuedDate || '',
+      effectiveDate: selectedDoc.effectiveDate || '',
       confirmGeneral: Boolean(selectedDoc.metadataDetection?.generalScopeConfirmed),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1361,6 +1493,9 @@ export const VietGapStandardsPage: React.FC = () => {
         cropScope: reviewMeta.cropScope.trim() !== (selectedDoc.cropScope || '') ? reviewMeta.cropScope.trim() : undefined,
         authorOrganization: reviewMeta.author.trim() !== authorBefore ? reviewMeta.author.trim() : undefined,
         version: reviewMeta.version.trim() !== (selectedDoc.version || '') ? reviewMeta.version.trim() : undefined,
+        standardCode: reviewMeta.standardCode.trim() !== (selectedDoc.standardCode || '') ? reviewMeta.standardCode.trim() : undefined,
+        issuedDate: reviewMeta.issuedDate ? new Date(reviewMeta.issuedDate).toISOString() : undefined,
+        effectiveDate: reviewMeta.effectiveDate ? new Date(reviewMeta.effectiveDate).toISOString() : undefined,
         documentType: reviewMeta.documentType !== selectedDoc.documentType ? reviewMeta.documentType : undefined,
         confirmGeneralScope: reviewMeta.confirmGeneral || undefined,
       });
@@ -1733,6 +1868,16 @@ export const VietGapStandardsPage: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            handleViewVersions(doc);
+                          }}
+                          className="p-1 rounded-lg text-slate-400 hover:text-violet-600 transition-colors cursor-pointer"
+                          title="Lịch sử phiên bản"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleDeleteDocument(doc.id);
                           }}
                           className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
@@ -1769,39 +1914,96 @@ export const VietGapStandardsPage: React.FC = () => {
                       <button
                         onClick={() => triggerUpdateModal(selectedDoc)}
                         className="px-3 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                        title="Cập nhật nội dung hoặc tải file V2 đè lên"
+                        title="Cập nhật thông tin hoặc tải phiên bản mới (V2)"
                       >
-                        <Edit3 className="w-3.5 h-3.5 text-cyan-600" /> Cập Nhật / Đổi File V2
+                        <Edit3 className="w-3.5 h-3.5 text-cyan-600" /> Cập Nhật / Bản Mới
                       </button>
+                      <button
+                        onClick={() => handleViewVersions(selectedDoc)}
+                        className="px-3 py-1.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                        title="Xem toàn bộ lịch sử các phiên bản tiền nhiệm và kế nhiệm"
+                      >
+                        <History className="w-3.5 h-3.5 text-violet-600" /> Lịch Sử Bản
+                      </button>
+                      {selectedDoc.reviewStatus !== 'Archived' && (
+                        <button
+                          onClick={() => {
+                            setArchiveDoc(selectedDoc);
+                            setArchiveNotes('');
+                            setIsArchiveModalOpen(true);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          title="Lưu trữ tài liệu và ngừng phục vụ AI RAG"
+                        >
+                          <Archive className="w-3.5 h-3.5 text-slate-600" /> Lưu Trữ
+                        </button>
+                      )}
                       <span className="text-xs text-slate-500">Hiệu lực: {selectedDoc.validityPeriod}</span>
                     </div>
                   </div>
                   <h3 className="text-lg font-bold text-slate-900 leading-snug">{selectedDoc.title}</h3>
                   <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-3">
+                    <span>Mã tiêu chuẩn: <strong className="text-slate-800 font-mono">{selectedDoc.standardCode || selectedDoc.code}</strong></span>
+                    <span>•</span>
                     <span>Đơn vị ban hành: <strong className="text-slate-800">{selectedDoc.issuingAuthority}</strong></span>
                     <span>•</span>
                     <span>Tác giả: <strong className="text-slate-800">{selectedDoc.author}</strong></span>
+                    {selectedDoc.issuedDate && (
+                      <>
+                        <span>•</span>
+                        <span>Ban hành: <strong className="text-slate-800">{selectedDoc.issuedDate}</strong></span>
+                      </>
+                    )}
+                    {selectedDoc.effectiveDate && (
+                      <>
+                        <span>•</span>
+                        <span>Hiệu lực từ: <strong className="text-slate-800">{selectedDoc.effectiveDate}</strong></span>
+                      </>
+                    )}
                     <span className="px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold" title={DOCUMENT_TYPE_INFO[selectedDoc.documentType]?.requirement}>
                       {DOCUMENT_TYPE_INFO[selectedDoc.documentType]?.label ?? selectedDoc.documentType}
                     </span>
                   </div>
-                  <div className={`mt-3 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${selectedDoc.reviewStatus === 'Approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : selectedDoc.reviewStatus === 'NeedsCorrection' ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                  <div className={`mt-3 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    selectedDoc.reviewStatus === 'Approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
+                    selectedDoc.reviewStatus === 'Superseded' ? 'bg-slate-100 border-slate-300 text-slate-700' :
+                    selectedDoc.reviewStatus === 'Archived' ? 'bg-slate-100 border-slate-300 text-slate-700' :
+                    selectedDoc.reviewStatus === 'NeedsCorrection' || selectedDoc.reviewStatus === 'Rejected' ? 'bg-rose-50 border-rose-200 text-rose-900' :
+                    'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}>
                     <div className="flex items-center gap-2 font-semibold">
-                      {selectedDoc.reviewStatus === 'Approved' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                      {selectedDoc.reviewStatus === 'Approved' ? 'Đã đối chiếu với tài liệu gốc' : selectedDoc.reviewStatus === 'Superseded' ? 'Đã có phiên bản mới được duyệt thay thế · không còn dùng cho RAG' : selectedDoc.reviewStatus === 'NeedsCorrection' ? 'Cần chỉnh sửa · bị loại khỏi RAG' : 'Chờ đối chiếu · chưa được dùng cho RAG'}
+                      {selectedDoc.reviewStatus === 'Approved' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> :
+                       selectedDoc.reviewStatus === 'Superseded' ? <Clock className="w-4 h-4 text-slate-500" /> :
+                       selectedDoc.reviewStatus === 'Archived' ? <Archive className="w-4 h-4 text-slate-500" /> :
+                       <AlertCircle className="w-4 h-4 text-amber-600" />}
+                      <span>
+                        {selectedDoc.reviewStatus === 'Approved' ? 'Đã đối chiếu & duyệt · Đang phục vụ tư vấn AI RAG' :
+                         selectedDoc.reviewStatus === 'Superseded' ? 'Đã có phiên bản mới được duyệt thay thế · Không còn dùng cho RAG' :
+                         selectedDoc.reviewStatus === 'Archived' ? 'Đã lưu trữ · Không dùng cho RAG' :
+                         selectedDoc.reviewStatus === 'NeedsCorrection' ? 'Cần chỉnh sửa · Bị loại khỏi RAG' :
+                         selectedDoc.reviewStatus === 'Rejected' ? 'Bị từ chối · Bị loại khỏi RAG' :
+                         'Chờ đối chiếu & duyệt · Chưa được dùng cho RAG'}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReviewText(selectedDoc.contentText || '');
-                        setReviewNotes(selectedDoc.reviewNotes || '');
-                        setReviewConfirmed(false);
-                        setIsReviewPanelOpen(v => !v);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-white border border-current/20 font-bold hover:bg-white/80"
-                    >
-                      {isReviewPanelOpen ? 'Đóng rà soát' : selectedDoc.reviewStatus === 'Approved' ? 'Rà soát lại' : 'Rà soát / duyệt tài liệu'}
-                    </button>
+                    {selectedDoc.isActiveInRag && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Đang dùng cho RAG
+                      </span>
+                    )}
+                    {selectedDoc.reviewStatus !== 'Archived' && selectedDoc.reviewStatus !== 'Superseded' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReviewText(selectedDoc.contentText || '');
+                          setReviewNotes(selectedDoc.reviewNotes || '');
+                          setReviewConfirmed(false);
+                          setIsReviewPanelOpen(v => !v);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-current/20 font-bold hover:bg-white/80"
+                      >
+                        {isReviewPanelOpen ? 'Đóng rà soát' : selectedDoc.reviewStatus === 'Approved' ? 'Rà soát lại' : 'Rà soát / duyệt tài liệu'}
+                      </button>
+                    )}
                   </div>
                   {selectedDoc.reviewNotes && selectedDoc.reviewStatus !== 'Approved' && (
                     <div className="mt-2 text-xs text-rose-700">Ghi chú rà soát: {selectedDoc.reviewNotes}</div>
@@ -1893,11 +2095,20 @@ export const VietGapStandardsPage: React.FC = () => {
                           {(Object.keys(DOCUMENT_TYPE_INFO) as AgricultureDocumentType[]).map(t => <option key={t} value={t}>{DOCUMENT_TYPE_INFO[t].label}</option>)}
                         </select>
                       </label>
-                      <label className="font-semibold text-slate-700">Đơn vị ban hành
-                        <input value={reviewMeta.author} onChange={e => setReviewMeta(m => ({ ...m, author: e.target.value }))} maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      <label className="font-semibold text-slate-700">Mã tiêu chuẩn / Quy chuẩn
+                        <input value={reviewMeta.standardCode} onChange={e => setReviewMeta(m => ({ ...m, standardCode: e.target.value }))} maxLength={100} placeholder="VD: TCVN 11892-1:2017" className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal font-mono" />
                       </label>
-                      <label className="font-semibold text-slate-700">Phiên bản / hiệu lực
+                      <label className="font-semibold text-slate-700">Phiên bản
                         <input value={reviewMeta.version} onChange={e => setReviewMeta(m => ({ ...m, version: e.target.value }))} maxLength={50} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      </label>
+                      <label className="font-semibold text-slate-700">Ngày ban hành
+                        <input type="date" value={reviewMeta.issuedDate} onChange={e => setReviewMeta(m => ({ ...m, issuedDate: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      </label>
+                      <label className="font-semibold text-slate-700">Ngày có hiệu lực
+                        <input type="date" value={reviewMeta.effectiveDate} onChange={e => setReviewMeta(m => ({ ...m, effectiveDate: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
+                      </label>
+                      <label className="font-semibold text-slate-700 sm:col-span-2">Đơn vị ban hành
+                        <input value={reviewMeta.author} onChange={e => setReviewMeta(m => ({ ...m, author: e.target.value }))} maxLength={200} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal" />
                       </label>
                       {!reviewMeta.cropScope.trim() && (
                         <label className="flex items-start gap-2 sm:col-span-2 text-slate-800">
@@ -2568,6 +2779,491 @@ export const VietGapStandardsPage: React.FC = () => {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cập Nhật / Tạo Phiên Bản Mới (V2) */}
+      {isUpdateModalOpen && updatingDoc && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 my-8">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-cyan-50 to-blue-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Cập Nhật / Nâng Cấp Phiên Bản Tài Liệu</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Đang thao tác trên: <strong className="text-slate-700">{updatingDoc.title}</strong> ({updatingDoc.version || 'V1.0'})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-white/60 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateDocumentSubmit} className="p-6 space-y-5 max-h-[75vh] overflow-y-auto text-xs">
+              {/* Force New Version Alert / Toggle */}
+              <div className={`p-4 rounded-xl border ${updateFormData.forceNewVersion ? 'bg-sky-50 border-sky-200 text-sky-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={updateFormData.forceNewVersion}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, forceNewVersion: e.target.checked }))}
+                    className="mt-0.5 rounded text-cyan-600 focus:ring-cyan-500 h-4 w-4"
+                  />
+                  <div>
+                    <span className="font-bold text-sm block">Tạo phiên bản mới riêng biệt (Khuyến nghị cho tài liệu đã duyệt)</span>
+                    <p className="text-[11px] mt-1 text-slate-600 leading-relaxed">
+                      {updateFormData.forceNewVersion
+                        ? `Hệ thống sẽ tạo bản ghi mới (${updateFormData.version}) ở trạng thái Chờ duyệt. Phiên bản hiện tại (${updatingDoc.version || 'V1.0'}) VẪN TIẾP TỤC HOẠT ĐỘNG và phục vụ tư vấn AI RAG bình thường cho đến khi phiên bản mới được thẩm định và duyệt chính thức.`
+                        : `Cập nhật trực tiếp nội dung vào bản ghi hiện tại. Lưu ý: Nếu tài liệu đã được duyệt, việc sửa đổi trực tiếp có thể ảnh hưởng tức thì đến căn cứ tư vấn RAG của nông dân.`}
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Basic Metadata Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="font-semibold text-slate-700">Tên Tài Liệu / Quy Chuẩn <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={updateFormData.title}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, title: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Mã Quy Chuẩn / Tiêu Chuẩn</label>
+                  <input
+                    type="text"
+                    placeholder="VD: TCVN 11892-1:2017"
+                    value={updateFormData.standardCode}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, standardCode: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Phiên Bản Mới</label>
+                  <input
+                    type="text"
+                    value={updateFormData.version}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, version: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono font-bold text-cyan-700 focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Cơ Quan Ban Hành / Tác Giả</label>
+                  <input
+                    type="text"
+                    placeholder="VD: Bộ Nông nghiệp & PTNT"
+                    value={updateFormData.author}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, author: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Loại Tài Liệu</label>
+                  <select
+                    value={updateFormData.documentType}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, documentType: e.target.value as AgricultureDocumentType }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="OfficialStandard">Tiêu chuẩn / quy chuẩn chính thức (TCVN, QCVN, VietGAP)</option>
+                    <option value="TechnicalGuide">Hướng dẫn / quy trình kỹ thuật</option>
+                    <option value="Thematic">Quy chuẩn chuyên đề nông học</option>
+                    <option value="Unspecified">Chưa xác định</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Danh Mục Chuyên Môn</label>
+                  <select
+                    value={updateFormData.category}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="general">Quy chuẩn VietGAP chung</option>
+                    <option value="irrigation">Tưới tiêu & Nguồn nước</option>
+                    <option value="pest">Quản lý sâu bệnh & IPM</option>
+                    <option value="nutrition">Dinh dưỡng & Phân bón</option>
+                    <option value="climate">Vi khí hậu & Môi trường</option>
+                    <option value="harvest">Thu hoạch & Bảo quản</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Phạm Vi Cây Trồng Áp Dụng</label>
+                  <input
+                    type="text"
+                    placeholder="VD: Dưa lưới, Dưa leo hoặc để trống nếu chung"
+                    value={updateFormData.cropScope}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, cropScope: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Ngày Ban Hành</label>
+                  <input
+                    type="date"
+                    value={updateFormData.issuedDate}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, issuedDate: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Ngày Có Hiệu Lực</label>
+                  <input
+                    type="date"
+                    value={updateFormData.effectiveDate}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, effectiveDate: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="font-semibold text-slate-700">Ghi Chú Lý Do Cập Nhật / Thay Đổi</label>
+                  <input
+                    type="text"
+                    placeholder="VD: Cập nhật ngưỡng PHI thuốc BVTV sinh học theo quy định mới 2026..."
+                    value={updateFormData.reviewNotes}
+                    onChange={(e) => setUpdateFormData(prev => ({ ...prev, reviewNotes: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              {/* Content Source Selection: File or Direct Text */}
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800">Phương Thức Cung Cấp Nội Dung Mới</span>
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setUpdateEditorTab('FILE')}
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${updateEditorTab === 'FILE' ? 'bg-white text-cyan-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      Tải Tệp Lên (.pdf, .docx, .txt)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUpdateEditorTab('CONTENT')}
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${updateEditorTab === 'CONTENT' ? 'bg-white text-cyan-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      Chỉnh Sửa Văn Bản Trực Tiếp
+                    </button>
+                  </div>
+                </div>
+
+                {updateEditorTab === 'FILE' ? (
+                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-5 text-center bg-slate-50 hover:bg-cyan-50/30 transition-colors">
+                    <input
+                      type="file"
+                      id="update-file-input"
+                      accept=".pdf,.docx,.txt"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) setSelectedUpdateFile(f);
+                      }}
+                      className="hidden"
+                    />
+                    <label htmlFor="update-file-input" className="cursor-pointer block">
+                      <UploadCloud className="w-8 h-8 text-cyan-600 mx-auto mb-2" />
+                      <span className="font-bold text-slate-800 block text-xs">
+                        {selectedUpdateFile ? selectedUpdateFile.name : 'Chọn tệp mới để trích xuất nội dung'}
+                      </span>
+                      <span className="text-[11px] text-slate-500 mt-1 block">
+                        {selectedUpdateFile ? `${(selectedUpdateFile.size / (1024 * 1024)).toFixed(2)} MB • Nhấn để đổi tệp khác` : 'Hỗ trợ .PDF, .DOCX, .TXT (Tối đa 50MB)'}
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <textarea
+                      rows={10}
+                      value={updateFormData.contentText}
+                      onChange={(e) => setUpdateFormData(prev => ({ ...prev, contentText: e.target.value }))}
+                      placeholder="Nhập hoặc dán nội dung văn bản quy chuẩn (tối thiểu 50 ký tự)..."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-800 font-mono leading-relaxed focus:bg-white focus:outline-none focus:border-cyan-500"
+                    />
+                    <div className="text-[11px] text-slate-500 text-right">
+                      {updateFormData.contentText.length} ký tự
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Action & Card */}
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-slate-800 block">Xem Trước Nội Dung & Trích Xuất RAG</span>
+                    <span className="text-[11px] text-slate-500">Kiểm tra trích xuất văn bản trước khi lưu vào hệ thống</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isPreviewing || (updateEditorTab === 'FILE' && !selectedUpdateFile && updateFormData.contentText.length < 50)}
+                    onClick={handlePreviewUpdate}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isPreviewing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                    {isPreviewing ? 'Đang trích xuất...' : 'Xem Trước'}
+                  </button>
+                </div>
+
+                {previewResult && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                      <div className="p-2 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-500 block">Số ký tự:</span>
+                        <strong className="text-slate-900 font-mono">{previewResult.contentPreview?.length || 0}</strong>
+                      </div>
+                      <div className="p-2 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-500 block">Đoạn chunk dự kiến:</span>
+                        <strong className="text-cyan-700 font-mono">{previewResult.estimatedChunkCount} đoạn</strong>
+                      </div>
+                      <div className="p-2 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-500 block">Mã nhận diện:</span>
+                        <strong className="text-slate-900 font-mono">{previewResult.standardCode || 'Không'}</strong>
+                      </div>
+                      <div className="p-2 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-500 block">Cây nhận diện:</span>
+                        <strong className="text-slate-900">{previewResult.cropScope || 'Chung'}</strong>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 text-[11px] block mb-1">Đoạn trích nội dung mẫu:</span>
+                      <p className="p-2.5 bg-white rounded-lg border border-slate-200 font-mono text-[11px] text-slate-700 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {previewResult.contentPreview}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setIsUpdateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                >
+                  Hủy Bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {isUpdating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {isUpdating ? 'Đang lưu & tạo chunks...' : (updateFormData.forceNewVersion ? 'Xác Nhận Tạo Phiên Bản Mới' : 'Lưu Cập Nhật Trực Tiếp')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Lịch Sử Phiên Bản (Version Lineage) */}
+      {isVersionModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 my-8">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-violet-50 to-indigo-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center font-bold">
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Lịch Sử Phiên Bản Quy Chuẩn</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Cây phả hệ phiên bản và trạng thái phục vụ RAG của tài liệu</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsVersionModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-white/60 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
+              {isLoadingVersions ? (
+                <div className="py-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-violet-600" />
+                  <span className="text-xs">Đang tải cây phả hệ phiên bản...</span>
+                </div>
+              ) : versionLineage.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 text-xs">
+                  Chưa có thông tin phiên bản liên quan.
+                </div>
+              ) : (
+                <div className="space-y-3 relative before:absolute before:inset-0 before:left-5 before:w-0.5 before:bg-slate-200">
+                  {versionLineage.map((v) => {
+                    const isCurrent = selectedDoc?.id === v.id;
+                    return (
+                      <div key={v.id} className={`relative flex items-start gap-4 p-4 rounded-xl border transition-all ${
+                        isCurrent ? 'bg-violet-50/50 border-violet-300 ring-1 ring-violet-200' : 'bg-white border-slate-200'
+                      }`}>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold font-mono text-xs flex-shrink-0 z-10 ${
+                          v.isActiveInRag ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                          v.reviewStatus === 'Approved' ? 'bg-teal-100 text-teal-800' :
+                          v.reviewStatus === 'Superseded' ? 'bg-slate-100 text-slate-600' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          {v.version || 'V1.0'}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-slate-900 text-sm">{v.title}</h4>
+                              {isCurrent && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-800">
+                                  Đang xem
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {v.isActiveInRag && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Đang dùng cho RAG
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                v.reviewStatus === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
+                                v.reviewStatus === 'Superseded' ? 'bg-slate-100 text-slate-600' :
+                                v.reviewStatus === 'Archived' ? 'bg-slate-100 text-slate-600' :
+                                v.reviewStatus === 'NeedsCorrection' ? 'bg-rose-100 text-rose-800' :
+                                'bg-amber-100 text-amber-800'
+                              }`}>
+                                {v.reviewStatus === 'Approved' ? 'Đã duyệt' :
+                                 v.reviewStatus === 'Superseded' ? 'Đã thay thế' :
+                                 v.reviewStatus === 'Archived' ? 'Đã lưu trữ' :
+                                 v.reviewStatus === 'NeedsCorrection' ? 'Cần sửa' :
+                                 v.reviewStatus === 'Rejected' ? 'Từ chối' : 'Chờ duyệt'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                            {v.standardCode && <span>Mã: <strong className="text-slate-700 font-mono">{v.standardCode}</strong></span>}
+                            {v.authorOrganization && <span>Cơ quan: <strong className="text-slate-700">{v.authorOrganization}</strong></span>}
+                            <span>Ngày tạo: {new Date(v.createdAtUtc).toLocaleDateString('vi-VN')}</span>
+                            {v.reviewedAtUtc && <span>Duyệt: {new Date(v.reviewedAtUtc).toLocaleDateString('vi-VN')}</span>}
+                          </div>
+
+                          {!isCurrent && (
+                            <div className="mt-3">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setIsVersionModalOpen(false);
+                                  const targetDoc = documents.find(d => d.id === v.id);
+                                  if (targetDoc) {
+                                    await handleSelectDocument(targetDoc);
+                                  } else {
+                                    const detail = await knowledgeService.getDocument(v.id);
+                                    const mapped = deriveVietGapDetails(detail, detail, crops, growthProfiles);
+                                    setSelectedDoc(mapped);
+                                  }
+                                }}
+                                className="text-xs font-semibold text-violet-700 hover:text-violet-900 inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                Chuyển sang xem phiên bản này <ArrowRight className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 text-right">
+              <button
+                type="button"
+                onClick={() => setIsVersionModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác Nhận Lưu Trữ (Archive) */}
+      {isArchiveModalOpen && archiveDoc && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-rose-50">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                <Archive className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Lưu Trữ Tài Liệu</h3>
+                <p className="text-xs text-rose-700 mt-0.5">Tài liệu sẽ bị gỡ khỏi AI RAG</p>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-3 text-xs text-slate-700">
+              <p>
+                Bạn có chắc chắn muốn lưu trữ tài liệu <strong className="text-slate-900">"{archiveDoc.title}"</strong> ({archiveDoc.version || 'V1.0'}) không?
+              </p>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Sau khi lưu trữ, tài liệu sẽ chuyển sang trạng thái <strong>Archived</strong> và sẽ không còn được hệ thống AI trích xuất để tư vấn nông học cho người dùng.
+              </p>
+
+              <div className="space-y-1 pt-2">
+                <label className="font-semibold text-slate-700">Lý do lưu trữ (tùy chọn):</label>
+                <input
+                  type="text"
+                  placeholder="VD: Hết hiệu lực áp dụng, thay thế bằng quy chuẩn quốc gia mới..."
+                  value={archiveNotes}
+                  onChange={(e) => setArchiveNotes(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:bg-white focus:outline-none focus:border-rose-500"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsArchiveModalOpen(false);
+                  setArchiveDoc(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isArchiving}
+                onClick={handleArchiveConfirm}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {isArchiving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
+                {isArchiving ? 'Đang lưu trữ...' : 'Xác Nhận Lưu Trữ'}
+              </button>
             </div>
           </div>
         </div>

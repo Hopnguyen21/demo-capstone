@@ -403,6 +403,16 @@ public sealed class SimulatedIotTelemetryWorker(
                 gateway.LastSeenAtUtc = now;
                 gateway.Status = GatewayStatus.Online;
             }
+
+            var sendingDeviceIds = readingsToAdd.Select(r => r.DeviceId).Distinct().ToList();
+            foreach (var dev in await db.Devices.Where(d => sendingDeviceIds.Contains(d.Id)).ToListAsync(ct))
+            {
+                if (dev.Status != DeviceStatus.MaintenanceRequired && dev.Status != DeviceStatus.Decommissioned && dev.Status != DeviceStatus.Unassigned)
+                {
+                    dev.Status = DeviceStatus.Online;
+                }
+                dev.LastSeenAtUtc = now;
+            }
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Generated {Count} simulated IoT telemetry readings across {Zones} zones.", readingsToAdd.Count, zones.Count);
 

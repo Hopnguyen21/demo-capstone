@@ -47,7 +47,16 @@ public sealed class TelemetryAlertService(
         // physical Node is online. The old flow only updated the Gateway, which
         // left GIS cards red even after the Node replied over LoRa.
         var liveDevice = await db.Devices.SingleAsync(x => x.Id == device.Id, ct);
-        liveDevice.Status = DeviceStatus.Online;
+        if (liveDevice.Status != DeviceStatus.MaintenanceRequired &&
+            liveDevice.Status != DeviceStatus.Decommissioned &&
+            liveDevice.Status != DeviceStatus.Unassigned)
+        {
+            if (envelope.CapturedAtUtc >= now - FreshnessWindow)
+            {
+                liveDevice.Status = DeviceStatus.Online;
+            }
+        }
+        liveDevice.LastSeenAtUtc = now;
 
         var season = await db.PlantingSeasons
             .Include(x => x.Zone)
@@ -269,19 +278,18 @@ public sealed class TelemetryAlertService(
 
     private static DeviceStatus ResolveLiveStatus(Device device, IReadOnlyDictionary<Guid, DateTime> latestByDevice, DateTime now)
     {
-        if (device.Status == DeviceStatus.Decommissioned)
+        if (device.Status is DeviceStatus.Decommissioned or DeviceStatus.MaintenanceRequired or DeviceStatus.Unassigned)
             return device.Status;
 
-        // The UI heartbeat follows the Gateway configuration. A packet is
-        // considered live for one complete configured cycle plus one sample
-        // cycle as grace, so a 30s/1-sample gateway is not shown offline at
-        // the exact boundary while the next poll is in flight.
-        var intervalSeconds = Math.Max(1, device.Gateway.TelemetryIntervalSec);
-        var samplesPerInterval = Math.Max(1, device.Gateway.SamplesPerInterval);
+        // Per-device heartbeat interval with fallback to gateway interval
+        var intervalSeconds = device.HeartbeatIntervalSeconds ?? (device.Gateway != null ? Math.Max(1, device.Gateway.TelemetryIntervalSec) : 60);
+        var samplesPerInterval = device.Gateway != null ? Math.Max(1, device.Gateway.SamplesPerInterval) : 1;
         var freshness = TimeSpan.FromSeconds((intervalSeconds * samplesPerInterval) + intervalSeconds);
 
-        return latestByDevice.TryGetValue(device.Id, out var lastCapturedAt) &&
-               lastCapturedAt >= now - freshness
+        var isRecentFromTelemetry = latestByDevice.TryGetValue(device.Id, out var lastCapturedAt) && lastCapturedAt >= now - freshness;
+        var isRecentFromHeartbeat = device.LastSeenAtUtc.HasValue && device.LastSeenAtUtc.Value >= now - freshness;
+
+        return (isRecentFromTelemetry || isRecentFromHeartbeat)
             ? DeviceStatus.Online
             : DeviceStatus.Offline;
     }

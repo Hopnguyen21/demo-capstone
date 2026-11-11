@@ -26,11 +26,6 @@ export const ProvisioningPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // QR Provisioning tool state
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [mac, setMac] = useState('24:DC:C3:98:A1:04');
-  const [deviceCode, setDeviceCode] = useState('GW-ESP32-DL03');
-
   const toggleExpand = (id: string) => {
     setExpandedRequestIds(prev => ({
       ...prev,
@@ -158,9 +153,6 @@ export const ProvisioningPage: React.FC = () => {
           </p>
         </div>
 
-        <Button onClick={() => setIsQrModalOpen(true)} className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shrink-0 shadow-sm cursor-pointer">
-          <QrCode size={16} className="mr-1.5" /> Quét QR Cấp phát Nhanh
-        </Button>
       </div>
 
       {successMsg && (
@@ -553,42 +545,6 @@ export const ProvisioningPage: React.FC = () => {
         />
       )}
 
-      {/* QR Provisioning Modal */}
-      <Modal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} title="Cấp phát & Whitelist Nhanh Thiết Bị bằng QR Code">
-        <div className="space-y-4 text-xs">
-          <div className="p-4 bg-slate-900 text-white rounded-xl text-center space-y-2 border border-slate-800">
-            <div className="w-16 h-16 mx-auto bg-emerald-500/20 border border-emerald-500/40 rounded-xl flex items-center justify-center text-emerald-400">
-              <QrCode size={32} />
-            </div>
-            <p className="font-bold text-sm text-emerald-300">Quét mã QR trên thân mạch phần cứng</p>
-            <p className="text-[11px] text-slate-400">Hoặc nhập thủ công địa chỉ MAC bên dưới để ghi đè danh sách thiết bị</p>
-          </div>
-
-          <div>
-            <label className="block text-slate-700 font-bold mb-1">Địa chỉ MAC Thiết bị (Hardware MAC)</label>
-            <Input value={mac} onChange={e => setMac(e.target.value)} placeholder="24:DC:C3:XX:XX:XX" className="font-mono" />
-          </div>
-
-          <div>
-            <label className="block text-slate-700 font-bold mb-1">Mã hiệu Thiết bị (Device Code)</label>
-            <Input value={deviceCode} onChange={e => setDeviceCode(e.target.value)} placeholder="GW-ESP32-DL03" className="font-mono" />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="ghost" onClick={() => setIsQrModalOpen(false)}>Đóng</Button>
-            <Button
-              onClick={async () => {
-                setIsQrModalOpen(false);
-                setSuccessMsg(`✅ Đã cấp phát thiết bị [${deviceCode} - MAC: ${mac}] thành công vào hệ thống!`);
-                setTimeout(() => setSuccessMsg(null), 4000);
-              }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-            >
-              <CheckCircle2 size={15} className="mr-1.5" /> Xác nhận Cấp phát
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 };

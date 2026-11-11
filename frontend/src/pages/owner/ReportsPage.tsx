@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, Download, Droplets, Zap, CheckCircle2, AlertTriangle, Info, FileSpreadsheet } from 'lucide-react';
+import { FileText, Download, Droplets, Zap, CheckCircle2, AlertTriangle, Info, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { Button } from '../../components/ui/BaseUI';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area } from 'recharts';
 import { useAuth } from '../../app/providers/AuthContext';
@@ -47,6 +47,7 @@ export const ReportsPage: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [showExcelMenu, setShowExcelMenu] = useState(false);
   const [excelSuccessMsg, setExcelSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,15 +112,45 @@ export const ReportsPage: React.FC = () => {
 
   };
 
-  const handleExportExcel = async () => {
+  type ExportType = 'full' | 'overview' | 'water' | 'electricity' | 'tasks' | 'inventory' | 'maintenance';
+
+  const handleExportExcel = async (type: ExportType = 'full') => {
     if (!selectedFarmId || isExportingExcel) return;
     try {
       setIsExportingExcel(true);
+      setShowExcelMenu(false);
       setError(null);
       const toUtc = new Date();
       const fromUtc = new Date(toUtc.getTime() - RANGE_DAYS[timeRange] * 24 * 3600 * 1000);
       const range = { fromUtc: fromUtc.toISOString(), toUtc: toUtc.toISOString() };
-      const { blob, fileName } = await reportService.exportExcel(selectedFarmId, range);
+
+      let exportPromise: Promise<{ blob: Blob; fileName: string }>;
+      switch (type) {
+        case 'overview':
+          exportPromise = reportService.exportOverviewExcel(selectedFarmId);
+          break;
+        case 'water':
+          exportPromise = reportService.exportWaterExcel(selectedFarmId, range);
+          break;
+        case 'electricity':
+          exportPromise = reportService.exportElectricityExcel(selectedFarmId, range);
+          break;
+        case 'tasks':
+          exportPromise = reportService.exportTasksExcel(selectedFarmId, range);
+          break;
+        case 'inventory':
+          exportPromise = reportService.exportInventoryExcel(selectedFarmId, range);
+          break;
+        case 'maintenance':
+          exportPromise = reportService.exportMaintenanceExcel(selectedFarmId, range);
+          break;
+        case 'full':
+        default:
+          exportPromise = reportService.exportExcel(selectedFarmId, range);
+          break;
+      }
+
+      const { blob, fileName } = await exportPromise;
       reportService.downloadBlob(blob, fileName);
       setExcelSuccessMsg(`Đã tải xuống file báo cáo: ${fileName}`);
       setTimeout(() => setExcelSuccessMsg(null), 5000);
@@ -128,7 +159,6 @@ export const ReportsPage: React.FC = () => {
     } finally {
       setIsExportingExcel(false);
     }
-
   };
 
   return (
@@ -160,14 +190,94 @@ export const ReportsPage: React.FC = () => {
               </button>
             ))}
           </div>
-          <Button
-            onClick={handleExportExcel}
-            disabled={isExportingExcel || loading || !selectedFarmId}
-            className="bg-[#107c41] hover:bg-[#0b5c30] text-white flex items-center gap-2 shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <FileSpreadsheet size={15} />
-            <span>{isExportingExcel ? 'Đang xuất Excel...' : 'Xuất Excel'}</span>
-          </Button>
+          <div className="relative">
+            <div className="inline-flex rounded-xl shadow-xs overflow-hidden">
+              <Button
+                onClick={() => handleExportExcel('full')}
+                disabled={isExportingExcel || loading || !selectedFarmId}
+                className="bg-[#107c41] hover:bg-[#0b5c30] text-white flex items-center gap-2 transition-all rounded-r-none disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2"
+              >
+                <FileSpreadsheet size={15} />
+                <span>{isExportingExcel ? 'Đang xuất...' : 'Xuất Excel (.xlsx)'}</span>
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowExcelMenu(prev => !prev)}
+                disabled={isExportingExcel || loading || !selectedFarmId}
+                className="bg-[#0e6e39] hover:bg-[#0b5c30] text-white px-2 py-2 border-l border-emerald-600/40 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                title="Tùy chọn xuất báo cáo Excel"
+              >
+                <ChevronDown size={14} />
+              </button>
+            </div>
+
+            {showExcelMenu && (
+              <div
+                className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in slide-in-from-top-1"
+                onMouseLeave={() => setShowExcelMenu(false)}
+              >
+                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                  Chọn loại báo cáo Excel
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('full')}
+                  className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 flex items-center gap-2 font-medium"
+                >
+                  <FileSpreadsheet size={13} className="text-[#107c41]" />
+                  <span>Báo cáo Tổng hợp (Full 6 Sheets)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('water')}
+                  className="w-full text-left px-3 py-2 hover:bg-blue-50 text-slate-700 hover:text-blue-800 flex items-center gap-2"
+                >
+                  <Droplets size={13} className="text-blue-600" />
+                  <span>Báo cáo Tiêu thụ Nước</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('electricity')}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-50 text-slate-700 hover:text-amber-800 flex items-center gap-2"
+                >
+                  <Zap size={13} className="text-amber-600" />
+                  <span>Báo cáo Điện năng Tiêu thụ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('overview')}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2"
+                >
+                  <FileText size={13} className="text-slate-600" />
+                  <span>Báo cáo Tổng quan Nông trại</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('tasks')}
+                  className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-slate-700 flex items-center gap-2"
+                >
+                  <CheckCircle2 size={13} className="text-emerald-600" />
+                  <span>Báo cáo Phân công & Tiến độ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('inventory')}
+                  className="w-full text-left px-3 py-2 hover:bg-purple-50 text-slate-700 flex items-center gap-2"
+                >
+                  <Info size={13} className="text-purple-600" />
+                  <span>Báo cáo Tồn kho & Vật tư</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('maintenance')}
+                  className="w-full text-left px-3 py-2 hover:bg-rose-50 text-slate-700 flex items-center gap-2 border-t border-slate-100"
+                >
+                  <AlertTriangle size={13} className="text-rose-600" />
+                  <span>Báo cáo Bảo trì Thiết bị</span>
+                </button>
+              </div>
+            )}
+          </div>
           <Button onClick={handleExportPdf} className="bg-[#119653] hover:bg-[#0e8046] text-white flex items-center gap-2">
             <Download size={15} />
             <span>{isExporting ? 'Đang xuất PDF...' : 'Xuất Báo Cáo PDF'}</span>

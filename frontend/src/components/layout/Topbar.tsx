@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthContext';
+import { UserProfileModal } from '../profile/UserProfileModal';
 import { UserRole, Alert } from '../../types';
 import { alertService, supportService, notificationService, NotificationItem, isAuthenticated, zoneContractService } from '../../services';
 import {
@@ -13,6 +14,7 @@ export const Topbar: React.FC = () => {
   const navigate = useNavigate();
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -358,6 +360,7 @@ export const Topbar: React.FC = () => {
           </button>
         </div>
       </div>
+      <UserProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
     </header>
   );
 };

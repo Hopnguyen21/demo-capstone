@@ -132,6 +132,8 @@ public sealed class Device : AuditableEntity
     public int? BatteryLevel { get; set; }
     public decimal? Rssi { get; set; }
     public DateTime? DecommissionedAtUtc { get; set; }
+    public DateTime? LastSeenAtUtc { get; set; }
+    public int? HeartbeatIntervalSeconds { get; set; }
     public ICollection<DeviceSensor> Sensors { get; } = new List<DeviceSensor>();
     public ICollection<DeviceActuator> Actuators { get; } = new List<DeviceActuator>();
     public ICollection<DeviceAssignmentHistory> AssignmentHistory { get; } = new List<DeviceAssignmentHistory>();

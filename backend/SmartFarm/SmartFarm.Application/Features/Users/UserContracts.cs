@@ -18,3 +18,6 @@ public sealed record ZonePermissionCommand(Guid ZoneId, bool CanControl);
 public sealed record ReplaceZoneAccessCommand(IReadOnlyList<ZonePermissionCommand> Access);
 public sealed record ZonePermissionView(Guid ZoneId, bool CanControl);
 public sealed record ZoneAccessView(Guid UserId, Guid FarmId, IReadOnlyList<ZonePermissionView> Access, DateTime UpdatedAtUtc);
+
+public sealed record UpdateUserProfileRequest(string FullName, string? Phone);
+public sealed record UpdateUserProfileCommand(string FullName, string? Phone);
