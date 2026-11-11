@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Button, Input } from '../ui/BaseUI';
 import { ServiceRequest, QuotationItem } from '../../types';
-import { supportService } from '../../services';
+import { supportService, adminService } from '../../services';
 import {
   FileText, Send, CheckCircle2, ShieldCheck, Info,
-  Package, DollarSign, Calculator, Cpu, Sparkles, Building2, User, Lock
+  Package, DollarSign, Calculator, Cpu, Sparkles, Building2, User, Lock,
+  Plus, Search, Warehouse, Boxes, Check, ArrowRight
 } from 'lucide-react';
 
 export interface HardwareItem {
@@ -122,6 +123,87 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
     }
   }, [request]);
 
+  // Warehouse Hardware Catalog
+  const [warehouseItems, setWarehouseItems] = useState<any[]>([]);
+  const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
+  const [warehouseSearch, setWarehouseSearch] = useState('');
+  const [warehouseCategory, setWarehouseCategory] = useState('ALL');
+  const [loadingWarehouse, setLoadingWarehouse] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLoadingWarehouse(true);
+      adminService.getHardwareItems()
+        .then((items: any[]) => {
+          if (Array.isArray(items)) setWarehouseItems(items);
+        })
+        .catch(err => console.warn('Could not fetch warehouse hardware items', err))
+        .finally(() => setLoadingWarehouse(false));
+    }
+  }, [isOpen]);
+
+  const filteredWarehouseItems = useMemo(() => {
+    return warehouseItems.filter(item => {
+      const q = warehouseSearch.toLowerCase().trim();
+      const matchesSearch = !q ||
+        (item.code && item.code.toLowerCase().includes(q)) ||
+        (item.name && item.name.toLowerCase().includes(q)) ||
+        (item.model && item.model.toLowerCase().includes(q)) ||
+        (item.category && item.category.toLowerCase().includes(q));
+
+      const matchesCat = warehouseCategory === 'ALL' ||
+        String(item.category || '').toUpperCase().includes(warehouseCategory.toUpperCase());
+
+      return matchesSearch && matchesCat;
+    });
+  }, [warehouseItems, warehouseSearch, warehouseCategory]);
+
+  const addWarehouseItemToQuotation = (whItem: any) => {
+    if (isLocked) return;
+
+    const existingIndex = quotationItems.findIndex(
+      q => (q.code && whItem.code && q.code.toLowerCase() === whItem.code.toLowerCase()) || q.id === whItem.id
+    );
+
+    const price = Number(whItem.unitPrice || 0) || 1200000;
+    const vat = 8;
+    const cat = String(whItem.category || '').toUpperCase();
+    const unit = whItem.unit || (cat === 'GATEWAY' ? 'Trạm' : (cat.includes('SENSOR') || cat === 'NODE') ? 'Node' : 'Bộ');
+    const noteText = whItem.model
+      ? `Model: ${whItem.model}${whItem.manufacturer ? ` (${whItem.manufacturer})` : ''}`
+      : (whItem.specification || 'Lấy từ Kho vật tư nền tảng');
+
+    if (existingIndex >= 0) {
+      setQuotationItems(prev => prev.map((item, idx) => {
+        if (idx === existingIndex) {
+          const newQty = item.quantity + 1;
+          const rawPrice = item.unitPrice * newQty;
+          return {
+            ...item,
+            quantity: newQty,
+            totalAmount: Math.round(rawPrice * (1 + item.vatPercent / 100)),
+            isSelected: true,
+          };
+        }
+        return item;
+      }));
+    } else {
+      const newItem: QuotationItem = {
+        id: `item-wh-${whItem.id || Date.now()}`,
+        code: whItem.code || 'HW-ITEM',
+        name: whItem.name || 'Thiết bị IoT',
+        unit,
+        unitPrice: price,
+        vatPercent: vat,
+        quantity: 1,
+        totalAmount: Math.round(price * 1.08),
+        notes: noteText,
+        isSelected: true,
+      };
+      setQuotationItems(prev => [...prev, newItem]);
+    }
+  };
+
   const toggleSelectItem = (id: string) => {
     if (isLocked) return;
     setQuotationItems(prev =>
@@ -230,7 +312,8 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={isLocked ? "🔒 Hợp Đồng Triển Khai IoT (Đã Ký & Thanh Toán Cọc - Khóa Chỉnh Sửa)" : "📄 Bảng Dự Toán Thiết Bị & Hợp Đồng Triển Khai IoT"}
@@ -293,16 +376,26 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
             <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
               <Package size={15} className="text-[#119653]" /> Bảng Báo giá Thiết bị & Vật tư IoT ({selectedItems.length}/{quotationItems.length})
             </h4>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {!isLocked ? (
                 <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setIsWarehouseModalOpen(true)}
+                    className="bg-[#119653] hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1.5 py-1 px-3 shadow-2xs"
+                  >
+                    <Warehouse size={13} /> + Thêm thiết bị từ kho
+                  </Button>
                   <button
                     type="button"
                     onClick={addNewItem}
-                    className="text-[11px] text-sky-600 hover:text-sky-800 font-bold hover:underline flex items-center gap-1"
+                    className="text-[11px] text-sky-600 hover:text-sky-800 font-semibold hover:underline flex items-center gap-1 ml-1"
+                    title="Nhập thiết bị ngoài danh mục kho"
                   >
-                    + Thêm thiết bị ngoài
+                    + Nhập ngoài
                   </button>
+                  <span className="text-slate-300">|</span>
                   <button
                     type="button"
                     onClick={() => setQuotationItems(prev => prev.map(item => ({ ...item, isSelected: true })))}
@@ -557,5 +650,115 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         </div>
       </form>
     </Modal>
+
+    {/* Modal Chọn Thiết Bị Từ Kho */}
+    <Modal
+      isOpen={isWarehouseModalOpen}
+      onClose={() => setIsWarehouseModalOpen(false)}
+      title="📦 Chọn Thiết Bị & Vật Tư Từ Kho Nền Tảng (Hardware Inventory)"
+      size="lg"
+    >
+      <div className="space-y-3 text-xs">
+        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] flex items-center gap-2">
+          <Info size={15} className="text-emerald-700 shrink-0" />
+          <span>
+            Chọn các thiết bị (Gateway, Sensor Node, Van, Bơm) sẵn có trong kho để đưa trực tiếp vào Bảng báo giá & Hợp đồng.
+          </span>
+        </div>
+
+        {/* Search & Category Filter */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Tìm theo mã hàng, tên thiết bị, model..."
+              value={warehouseSearch}
+              onChange={e => setWarehouseSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#119653]"
+            />
+          </div>
+          <select
+            value={warehouseCategory}
+            onChange={e => setWarehouseCategory(e.target.value)}
+            className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:border-[#119653]"
+          >
+            <option value="ALL">Tất cả chủng loại</option>
+            <option value="GATEWAY">Trạm Gateway</option>
+            <option value="SENSOR">Cảm biến (Sensor Node)</option>
+            <option value="VALVE">Van điều khiển (Valve)</option>
+            <option value="PUMP">Bơm định lượng (Pump)</option>
+          </select>
+        </div>
+
+        {/* Warehouse Items List */}
+        <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-white shadow-2xs">
+          {loadingWarehouse ? (
+            <div className="p-8 text-center text-slate-400">Đang tải danh mục kho vật tư...</div>
+          ) : filteredWarehouseItems.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              Không tìm thấy thiết bị nào phù hợp trong kho.
+            </div>
+          ) : (
+            filteredWarehouseItems.map(item => {
+              const alreadyInQuotation = quotationItems.find(
+                q => q.code?.toLowerCase() === item.code?.toLowerCase()
+              );
+              return (
+                <div
+                  key={item.id}
+                  className="p-3 hover:bg-slate-50 flex items-center justify-between gap-3 transition-colors"
+                >
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <strong className="text-slate-900 font-mono text-xs">{item.code}</strong>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                        {item.category || 'THIẾT BỊ'}
+                      </span>
+                      {item.quantityInStock !== undefined && (
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                          item.quantityInStock > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'
+                        }`}>
+                          Tồn kho: {item.quantityInStock}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-slate-800 truncate">{item.name}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {item.model && <span>Model: {item.model} • </span>}
+                      Đơn giá: <strong className="text-emerald-700 font-mono">{Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ</strong>
+                      {item.locationRack && <span className="text-slate-400 ml-2 font-mono">({item.locationRack})</span>}
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => addWarehouseItemToQuotation(item)}
+                    className="bg-[#119653] hover:bg-emerald-700 text-white shrink-0 font-bold text-xs flex items-center gap-1 shadow-2xs"
+                  >
+                    <Plus size={13} /> {alreadyInQuotation ? `Thêm (+1)` : 'Chọn thiết bị'}
+                  </Button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+          <span className="text-slate-500 text-[11px]">
+            Đã có <strong>{quotationItems.length}</strong> thiết bị trong bảng báo giá
+          </span>
+          <Button
+            type="button"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold"
+            onClick={() => setIsWarehouseModalOpen(false)}
+          >
+            Hoàn tất chọn
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  </>
   );
 };

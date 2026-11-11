@@ -1542,16 +1542,19 @@ export const supportService = {
     const rawList: any[] = res.data?.value ?? res.data ?? [];
     if (!Array.isArray(rawList)) return [];
 
-    // Lookup zones & farms map to enrich accurate names
+    // Lookup zones, farms & users map to enrich accurate names
     let allZonesMap: Record<string, any> = {};
     let allFarmsMap: Record<string, any> = {};
+    let allUsersMap: Record<string, any> = {};
     try {
-      const [zRes, fRes] = await Promise.all([
+      const [zRes, fRes, uRes] = await Promise.all([
         apiClient.get('/api/v1/zones').catch(() => null),
         apiClient.get('/api/v1/farms').catch(() => null),
+        apiClient.get('/api/v1/users').catch(() => null),
       ]);
       const zList = zRes?.data?.value ?? zRes?.data ?? [];
       const fList = fRes?.data?.value ?? fRes?.data ?? [];
+      const uList = uRes?.data?.value ?? uRes?.data ?? [];
       if (Array.isArray(zList)) {
         zList.forEach((z: any) => {
           const zid = z.zoneId || z.id;
@@ -1562,6 +1565,12 @@ export const supportService = {
         fList.forEach((f: any) => {
           const fid = f.farmId || f.id;
           if (fid) allFarmsMap[fid] = f;
+        });
+      }
+      if (Array.isArray(uList)) {
+        uList.forEach((u: any) => {
+          const uid = u.userId || u.id;
+          if (uid) allUsersMap[uid] = u;
         });
       }
     } catch { }
@@ -1682,6 +1691,23 @@ export const supportService = {
 
         const resolvedFarmName = farmObj?.name || sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao';
 
+        const techId = sr.assignedTechnicianId || sr.assignedTechnician;
+        let resolvedTechName: string | undefined = undefined;
+        if (techId) {
+          const matchedTech = allUsersMap[techId];
+          if (matchedTech) {
+            resolvedTechName = matchedTech.fullName || matchedTech.name || matchedTech.email;
+          } else if (sr.assignedTechnicianName && sr.assignedTechnicianName !== 'Trần Minh Trí (Kỹ thuật viên IoT)') {
+            resolvedTechName = sr.assignedTechnicianName;
+          } else {
+            resolvedTechName = 'Kỹ thuật viên Platform';
+          }
+        }
+
+        const creatorId = sr.history?.[0]?.actorUserId;
+        const creator = creatorId ? allUsersMap[creatorId] : null;
+        const resolvedRequestedBy = creator?.fullName || farmObj?.ownerName || sr.requestedBy || 'Chủ trang trại (Owner)';
+
         return {
           serviceRequestId: id,
           deploymentRequestId: sr.deploymentRequestId,
@@ -1697,8 +1723,9 @@ export const supportService = {
           priority: sr.priority || 'HIGH',
           status: derivedStatus,
           requestType: (sr.failureCode === 'NEW_INSTALL' ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
-          requestedBy: 'Lê Văn An (Owner)',
-          assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
+          requestedBy: resolvedRequestedBy,
+          assignedTechnician: techId || undefined,
+          assignedTechnicianName: resolvedTechName,
           createdAt: sr.createdAtUtc || sr.createdAt || new Date().toISOString(),
           mappedNodesCount,
           isAcceptedByOwner: isAccepted,

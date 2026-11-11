@@ -45,7 +45,7 @@ export const ServiceRequestsPage: React.FC = () => {
     description: '',
     priority: 'HIGH' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
     assignedOwnerName: 'Chủ Trang Trại (Owner)',
-    assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
+    assignedTechnicianName: '',
   });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -116,7 +116,7 @@ export const ServiceRequestsPage: React.FC = () => {
       description: '',
       priority: 'HIGH',
       assignedOwnerName: 'Chủ Trang Trại (Owner)',
-      assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
+      assignedTechnicianName: '',
     });
     setSuccessMsg(`Đã khởi tạo thành công Yêu cầu [${newRequest.title}] thay cho Owner!`);
     setTimeout(() => setSuccessMsg(null), 3000);
@@ -260,7 +260,7 @@ export const ServiceRequestsPage: React.FC = () => {
                 {/* Admin Assignment Control Panel */}
                 <div className="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <Wrench size={16} className="text-emerald-400 shrink-0" />
+                    <Wrench size={16} className={req.assignedTechnicianName ? "text-emerald-400 shrink-0" : "text-amber-400 shrink-0"} />
                     <div>
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">Trạng thái Phân công Kỹ thuật viên</span>
                       {req.assignedTechnicianName ? (
@@ -268,23 +268,26 @@ export const ServiceRequestsPage: React.FC = () => {
                           <CheckCircle2 size={14} /> Đã phân công: {req.assignedTechnicianName}
                         </strong>
                       ) : (
-                        <span className="text-amber-400 font-bold">Chưa có Kỹ thuật viên tiếp nhận</span>
+                        <span className="text-amber-400 font-bold flex items-center gap-1">
+                          <Clock size={14} /> Chưa có Kỹ thuật viên tiếp nhận
+                        </span>
                       )}
                     </div>
                   </div>
 
-                  {isPending && (
+                  {req.status !== 'ACCEPTED_BY_OWNER' && req.status !== 'RESOLVED' && req.status !== 'CLOSED' && (
                     <div className="flex items-center gap-2">
                       <select
+                        value={assignedTechMap[req.serviceRequestId] || req.assignedTechnician || technicians[0]?.userId || ''}
                         onChange={e => setAssignedTechMap({ ...assignedTechMap, [req.serviceRequestId]: e.target.value })}
-                        className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg p-1.5 focus:outline-none"
+                        className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg p-1.5 focus:outline-none cursor-pointer"
                       >
                         {technicians.map(t => (
                           <option key={t.userId} value={t.userId}>{t.fullName}</option>
                         ))}
                       </select>
                       <Button size="sm" onClick={() => handleAssignTechnician(req.serviceRequestId)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold">
-                        <UserCheck size={14} className="mr-1" /> Phân công ngay
+                        <UserCheck size={14} className="mr-1" /> {req.assignedTechnicianName ? 'Đổi Kỹ thuật viên' : 'Phân công ngay'}
                       </Button>
                     </div>
                   )}

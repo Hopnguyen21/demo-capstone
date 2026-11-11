@@ -245,7 +245,6 @@ export const SupportPage: React.FC = () => {
         priority: newReq.priority,
         requestedBy: `${currentOwnerName} (Owner)`,
         assignedOwnerName: currentOwnerName,
-        assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
       });
 
       await loadRequests();
@@ -548,7 +547,7 @@ export const SupportPage: React.FC = () => {
                             <ArrowUpRight size={13} className="text-emerald-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
                           </button>
                           <span>•</span>
-                          <span>Kỹ thuật viên: <strong>{req.assignedTechnicianName || 'Trần Minh Trí'}</strong></span>
+                          <span>Kỹ thuật viên: <strong className={req.assignedTechnicianName ? "text-slate-800" : "text-amber-600"}>{req.assignedTechnicianName || 'Chờ phân công'}</strong></span>
                           <span>•</span>
                           <span className="text-slate-400 font-mono">Ngày gửi: {new Date(req.createdAt).toLocaleDateString('vi-VN')}</span>
                         </div>
