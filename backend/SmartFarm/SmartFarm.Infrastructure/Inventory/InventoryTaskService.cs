@@ -7,6 +7,7 @@ using SmartFarm.Application.Features.Inventory;
 using SmartFarm.Application.Features.Notifications;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
+using SmartFarm.Infrastructure.Identity;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Inventory;
@@ -15,9 +16,18 @@ public sealed class InventoryTaskService(SmartFarmDbContext db, TimeProvider clo
 {
     public async Task<IReadOnlyList<InventoryItemView>> ListInventoryAsync(Guid userId, Guid tenantId, Guid farmId, CancellationToken ct)
     {
-        var farm = await db.Farms.AsNoTracking().FirstOrDefaultAsync(x => x.Id == farmId && x.ArchivedAtUtc == null, ct)
-            ?? throw new ResourceNotFoundException("Farm was not found.");
-        tenantId = farm.TenantId;
+        // Tenant của chủ trại/nông dân lấy từ token: trang trại của tenant khác trả 404, không lộ sự tồn tại.
+        // Nhân viên nền tảng không thuộc tenant: admin đọc mọi trang trại; kỹ thuật viên chỉ đọc trang trại có yêu cầu được giao.
+        var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId && x.Status == AccountStatus.Active, ct)
+            ?? throw new AuthorizationException();
+        if (caller.Role is UserRole.PlatformAdmin or UserRole.PlatformTechnician)
+        {
+            var farm = await db.Farms.AsNoTracking().FirstOrDefaultAsync(x => x.Id == farmId && x.ArchivedAtUtc == null, ct)
+                ?? throw new ResourceNotFoundException("Farm was not found.");
+            if (caller.Role == UserRole.PlatformTechnician && !(await TechnicianFarmScope.LoadAsync(db, caller.Id, ct)).Contains(farmId))
+                throw new ResourceNotFoundException("Farm was not found.");
+            tenantId = farm.TenantId;
+        }
         await EnsureFarmAccess(userId, tenantId, farmId, false, ct);
         return (await db.InventoryItems.AsNoTracking().Include(x => x.Requirements)
             .Where(x => x.TenantId == tenantId && x.FarmId == farmId && x.ArchivedAtUtc == null)

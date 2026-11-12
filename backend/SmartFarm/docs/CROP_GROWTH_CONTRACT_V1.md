@@ -32,3 +32,10 @@ Closing #45 changes an `InProgress` season to `Completed`, records the actual en
 All Zone and Season endpoints resolve Zone → Field → Farm → Tenant. FarmOwner may write. Farmer may read only a Zone explicitly assigned through `user_zone_accesses`.
 
 Season read responses also include `cropName`, nullable `varietyName`, `growthProfileName` and `currentGrowthStageName`, resolved from the persisted Crop, Variety, Profile and current Stage relations. Clients must display these returned values and must not substitute guessed crop or stage labels when the database value is missing.
+
+## Zone profile and profile irrigation schedule (2026-11-10)
+
+- `ZoneView` adds `growthProfileId`, `growthProfileName`, `growthProfileIsSystemDefined` (null when no profile is attached). Create/Update Zone accept `growthProfileId`; Update also accepts `clearGrowthProfile`.
+- `GET /api/v1/growth-profiles/{profileId}/irrigation-schedule` → `{ profileId, profileName, isSystemDefined, isEditable, repeatType: "DAILY", timeZone, stages: [{ stageId, stageName, stageOrder, durationDays, source, sessions: [{ sessionId, title, startTime "HH:mm", durationSeconds, enabled, method?, waterPerPlantMl? }] }] }`.
+- `PUT` the same path with `{ stages: [{ stageId, sessions: [...] }] }` (max 8 sessions per stage, distinct start times, 1..1800 seconds, optional `method` ≤100 chars, `waterPerPlantMl` 0..100000 ml per plant). Unlisted stages are unchanged; an empty list clears the stage.
+- `POST /api/v1/zones/{zoneId}/schedules/sync-from-profile` with `{ actuatorId, growthStageId? }` → `{ profileId, profileName, stageId, stageName, source, actuatorId, schedules[] }`; 409 when the Zone has no profile, the actuator is not in the Zone, the Zone has no pump/valve, or there is no schedule source.

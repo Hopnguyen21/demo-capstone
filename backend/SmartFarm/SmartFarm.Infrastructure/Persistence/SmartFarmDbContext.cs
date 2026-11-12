@@ -18,6 +18,10 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<CropVariety> CropVarieties => Set<CropVariety>();
     public DbSet<GrowthProfile> GrowthProfiles => Set<GrowthProfile>();
     public DbSet<GrowthStage> GrowthStages => Set<GrowthStage>();
+    public DbSet<GrowthStageIrrigationSession> GrowthStageIrrigationSessions => Set<GrowthStageIrrigationSession>();
+    public DbSet<SeasonIrrigationPlan> SeasonIrrigationPlans => Set<SeasonIrrigationPlan>();
+    public DbSet<SeasonIrrigationDay> SeasonIrrigationDays => Set<SeasonIrrigationDay>();
+    public DbSet<SeasonIrrigationSession> SeasonIrrigationSessions => Set<SeasonIrrigationSession>();
     public DbSet<EnvironmentalRequirement> EnvironmentalRequirements => Set<EnvironmentalRequirement>();
     public DbSet<PlantingSeason> PlantingSeasons => Set<PlantingSeason>();
     public DbSet<FarmingSeason> FarmingSeasons => Set<FarmingSeason>();
@@ -27,6 +31,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<DeviceModelCapability> DeviceModelCapabilities => Set<DeviceModelCapability>();
     public DbSet<DeploymentRequest> DeploymentRequests => Set<DeploymentRequest>();
     public DbSet<DeploymentPlanItem> DeploymentPlanItems => Set<DeploymentPlanItem>();
+    public DbSet<DeploymentEstimateItem> DeploymentEstimateItems => Set<DeploymentEstimateItem>();
     public DbSet<DeploymentSurvey> DeploymentSurveys => Set<DeploymentSurvey>();
     public DbSet<DeploymentDecisionHistory> DeploymentDecisionHistory => Set<DeploymentDecisionHistory>();
     public DbSet<Gateway> Gateways => Set<Gateway>();

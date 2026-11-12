@@ -36,9 +36,12 @@ public sealed class OpenMeteoWeatherProvider(
         if (location is null)
             return new(false, null, null, null, null, "Tọa độ vị trí chưa được cấu hình (Zone/Field/Farm).");
 
-        // Cache theo tọa độ hiệu lực làm tròn 3 chữ số thập phân (~110m).
+        // Cache theo tọa độ hiệu lực đã làm tròn.
         // Khi người dùng thay đổi vị trí Farm/Field/Zone, tọa độ mới sẽ sinh cache key mới, tránh trộn dữ liệu.
-        var cacheKey = FormattableString.Invariant($"weather_eff_{location.Latitude:F3}_{location.Longitude:F3}");
+        // Toạ độ gửi ra dịch vụ bên thứ ba bị làm tròn 2 chữ số thập phân (~1 km): đủ cho dự báo, không lộ vị trí chính xác.
+        var lat = Math.Round(location.Latitude, 2);
+        var lng = Math.Round(location.Longitude, 2);
+        var cacheKey = FormattableString.Invariant($"weather_eff_{lat:F2}_{lng:F2}");
         if (cache != null && cache.TryGetValue(cacheKey, out AiWeatherResult? cached) && cached is not null)
         {
             return cached;
@@ -46,7 +49,7 @@ public sealed class OpenMeteoWeatherProvider(
 
         // Chỉ gửi tọa độ tối thiểu cần thiết tới Open-Meteo; tuyệt đối KHÔNG đính kèm tên Farm, tên người dùng, hợp đồng hay ID.
         var url = string.Create(CultureInfo.InvariantCulture,
-            $"{settings.BaseUrl}?latitude={location.Latitude}&longitude={location.Longitude}&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=6&timezone=UTC");
+            $"{settings.BaseUrl}?latitude={lat}&longitude={lng}&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=6&timezone=UTC");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
         using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);

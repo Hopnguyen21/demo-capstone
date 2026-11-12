@@ -142,7 +142,7 @@ public interface IZoneContractService
     Task<ZoneContractView> GetContractByIdAsync(Guid ownerId, Guid? tenantId, Guid contractId, CancellationToken ct);
     Task<ZoneContractView> CreateContractAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateZoneContractCommand command, CancellationToken ct);
     Task<ZoneContractView> RenewContractAsync(Guid ownerId, Guid? tenantId, Guid contractId, RenewZoneContractCommand command, CancellationToken ct);
-    Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct);
+    Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct, Guid? zoneId = null);
     Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByZoneAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CancellationToken ct);
     Task<IReadOnlyList<DeviceDepreciationView>> GetDepreciationsByFarmAsync(Guid ownerId, Guid? tenantId, Guid farmId, CancellationToken ct);
     Task<DeviceDepreciationView> CreateDepreciationAsync(Guid ownerId, Guid? tenantId, Guid zoneId, CreateDeviceDepreciationCommand command, CancellationToken ct);

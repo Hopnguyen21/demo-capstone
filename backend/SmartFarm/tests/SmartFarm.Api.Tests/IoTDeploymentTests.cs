@@ -70,7 +70,15 @@ public sealed class IoTDeploymentTests
 
     private static async Task<Setup> PrepareInstallation(TestApplicationFactory factory, HttpClient client, Guid zoneId, Guid farmId)
     {
-        await Login(client, "owner-a@example.com"); await CreateSeason(client, zoneId); var create = await client.PostAsJsonAsync($"/api/v1/zones/{zoneId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var requestId = await Id(create, "requestId"); (await client.PostAsync($"/api/v1/deployment-requests/{requestId}/submit", null)).EnsureSuccessStatusCode(); await Login(client, "technician@example.com"); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).EnsureSuccessStatusCode(); (await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{requestId}/survey", new { isFeasible = true, siteConditions = "Power and mounting available", notes = "Plan is feasible" })).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/confirm", null)).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/installation/start", null)).EnsureSuccessStatusCode();
+        await Login(client, "owner-a@example.com"); await CreateSeason(client, zoneId); var create = await client.PostAsJsonAsync($"/api/v1/zones/{zoneId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var requestId = await Id(create, "requestId"); (await client.PostAsync($"/api/v1/deployment-requests/{requestId}/submit", null)).EnsureSuccessStatusCode(); await Login(client, "technician@example.com"); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).EnsureSuccessStatusCode(); (await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{requestId}/survey", new { isFeasible = true, siteConditions = "Power and mounting available", notes = "Plan is feasible" })).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/confirm", null)).EnsureSuccessStatusCode(); 
+        // Bắt đầu lắp đặt chỉ được khi chủ trại đã ký hợp đồng và đóng cọc (cờ trên yêu cầu dịch vụ do bước gửi yêu cầu tạo ra).
+        using (var contractScope = factory.Services.CreateScope())
+        {
+            var contractDb = contractScope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            foreach (var sr in await contractDb.ServiceRequests.Where(x => x.DeploymentRequestId == requestId).ToListAsync()) { sr.IsContractSigned = true; sr.IsDepositPaid = true; }
+            await contractDb.SaveChangesAsync();
+        }
+        (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/installation/start", null)).EnsureSuccessStatusCode();
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();

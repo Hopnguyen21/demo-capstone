@@ -1651,6 +1651,81 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("deployment_decision_history", (string)null);
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentEstimateItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("DeploymentRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deployment_request_id");
+
+                    b.Property<Guid?>("HardwareItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hardware_item_id");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("role");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("unit_price");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeploymentRequestId");
+
+                    b.ToTable("deployment_estimate_items", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_deployment_estimate_price", "unit_price >= 0");
+
+                            t.HasCheckConstraint("ck_deployment_estimate_quantity", "quantity > 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentPlanItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3950,6 +4025,7 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.PlatformHardwareItem", b =>
                 {
+                    b.Property<Guid?>("DeviceModelDefinitionId").HasColumnType("uuid");
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
@@ -3968,6 +4044,12 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("EstimateRole")
+                        .HasColumnType("text");
+
+                    b.Property<int>("EstimateUnits")
+                        .HasColumnType("integer");
+
                     b.Property<string>("LocationRack")
                         .HasColumnType("text");
 
@@ -3975,6 +4057,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Manufacturer")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MeasuredParametersCsv")
                         .HasColumnType("text");
 
                     b.Property<string>("Model")
@@ -4097,6 +4182,1826 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.HasIndex("AppUserId", "RevokedAtUtc");
 
                     b.ToTable("refresh_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_number");
+
+                    b.Property<Guid>("SeasonIrrigationPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_plan_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_days", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("GrowthProfileIdSnapshot")
+                        .HasColumnType("uuid")
+                        .HasColumnName("growth_profile_id_snapshot");
+
+                    b.Property<Guid>("PlantingSeasonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("planting_season_id");
+
+                    b.Property<DateOnly>("StartDateSnapshot")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date_snapshot");
+
+                    b.Property<int>("TotalDaysSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_days_snapshot");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlantingSeasonId")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_plans");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid>("SeasonIrrigationDayId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("season_irrigation_day_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<int?>("WaterPerPlantMl")
+                        .HasColumnType("integer")
+                        .HasColumnName("water_per_plant_ml");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("season_irrigation_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+
+                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
+                        });
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonAppliedRequirement", b =>
@@ -5394,6 +7299,17 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("DeploymentRequest");
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentEstimateItem", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.DeploymentRequest", "DeploymentRequest")
+                        .WithMany("EstimateItems")
+                        .HasForeignKey("DeploymentRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DeploymentRequest");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentPlanItem", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.DeploymentRequest", "DeploymentRequest")
@@ -6128,6 +8044,435 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("AppUser");
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
+                        .WithMany("Days")
+                        .HasForeignKey("SeasonIrrigationPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
+                        .WithMany()
+                        .HasForeignKey("PlantingSeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlantingSeason");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
+                        .WithMany("Sessions")
+                        .HasForeignKey("SeasonIrrigationDayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Day");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonAppliedRequirement", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
@@ -6501,6 +8846,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Decisions");
 
+                    b.Navigation("EstimateItems");
+
                     b.Navigation("PlanItems");
 
                     b.Navigation("Surveys");
@@ -6607,6 +8954,136 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Renewals");
                 });
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
+                {
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
+                {
+                    b.Navigation("Days");
+                });
+
 #pragma warning restore 612, 618
         }
     }

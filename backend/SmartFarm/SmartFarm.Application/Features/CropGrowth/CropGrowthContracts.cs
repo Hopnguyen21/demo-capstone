@@ -69,6 +69,27 @@ public sealed record GrowthStageView(Guid StageId, string Name, int StageOrder, 
 public sealed record GrowthProfileView(Guid ProfileId, Guid CropId, string CropName, Guid? VarietyId, string? VarietyName, string Name, string? Description, bool IsDefault, bool IsSystemDefined, Guid? TenantId, Guid? SourceProfileId, IReadOnlyList<GrowthStageView> Stages);
 public sealed record RequirementUpdateView(Guid EffectiveProfileId, Guid EffectiveStageId, bool ClonedFromSystem, IReadOnlyList<RequirementView> Requirements);
 
+// ── Lịch tưới thuộc Growth Profile (theo giai đoạn) ──
+// StartTime: "HH:mm" giờ ĐỊA PHƯƠNG theo múi giờ Farm. DurationSeconds: 1..1800. Mọi ngày trong giai đoạn lặp hằng ngày.
+public sealed record IrrigationSessionInput(string Title, string StartTime, int DurationSeconds, bool Enabled = true, string? Method = null, int? WaterPerPlantMl = null);
+public sealed record StageIrrigationInput(Guid StageId, IReadOnlyList<IrrigationSessionInput> Sessions);
+/// <summary>Thay toàn bộ các ca tưới của những giai đoạn được liệt kê (giai đoạn không liệt kê giữ nguyên). Danh sách rỗng = xóa hết ca của giai đoạn.</summary>
+public sealed record UpdateProfileIrrigationCommand(IReadOnlyList<StageIrrigationInput> Stages);
+public sealed record IrrigationSessionView(Guid SessionId, string Title, string StartTime, int DurationSeconds, bool Enabled, string? Method, int? WaterPerPlantMl);
+/// <summary>Source: Profile (ca đã lưu trong profile) | Crop (profile chưa có ca; hiển thị lịch mẫu của cây, chỉ đọc) | None.</summary>
+public sealed record StageIrrigationView(Guid StageId, string StageName, int StageOrder, int DurationDays, string Source, IReadOnlyList<IrrigationSessionView> Sessions);
+public sealed record ProfileIrrigationView(Guid ProfileId, string ProfileName, bool IsSystemDefined, bool IsEditable, string RepeatType, string TimeZone, IReadOnlyList<StageIrrigationView> Stages);
+
+// ── Lịch tưới tùy chỉnh THEO NGÀY của vụ trồng (Zone + mùa vụ) ──
+// Chỉ các ngày bị sửa mới được lưu (override, khóa theo số ngày canh tác, 1 = ngày bắt đầu vụ). Ngày không override dùng lịch theo giai đoạn của profile.
+// Source mỗi ngày: Override (lịch tùy chỉnh của vụ) | Profile (ca đã lưu trong profile) | Crop (profile chưa có ca; lịch mẫu của cây, chỉ tham khảo) | None.
+// Status: NoOverrides | Current | Stale (vụ đổi ngày bắt đầu/số ngày/profile sau lần lưu cuối, hoặc có ngày nằm ngoài vụ; dữ liệu KHÔNG bị xóa).
+public sealed record SeasonIrrigationDayView(int DayNumber, DateOnly Date, Guid? StageId, string? StageName, string Source, bool IsOverride, bool OutOfRange, IReadOnlyList<IrrigationSessionView> Sessions);
+public sealed record SeasonIrrigationCalendarView(Guid SeasonId, Guid ZoneId, string SeasonName, string SeasonStatus, Guid GrowthProfileId, string GrowthProfileName, DateOnly StartDate, int TotalDays, int? TodayDayNumber, string TimeZone, string RepeatType, string Status, IReadOnlyList<string> StaleReasons, bool HasOverrides, int OverrideDayCount, bool IsEditable, DateTime? UpdatedAtUtc, Guid? UpdatedByUserId, DateOnly? SnapshotStartDate, int? SnapshotTotalDays, IReadOnlyList<SeasonIrrigationDayView> Days);
+public sealed record DayIrrigationInput(int DayNumber, IReadOnlyList<IrrigationSessionInput> Sessions);
+/// <summary>Ghi đè (upsert) các ngày được liệt kê; ngày không liệt kê giữ nguyên. Danh sách ca rỗng = ngày đó cố ý không tưới.</summary>
+public sealed record UpdateSeasonIrrigationCommand(IReadOnlyList<DayIrrigationInput> Days);
+
 public sealed record CreatePlantingSeasonCommand(Guid CropId, Guid? VarietyId, Guid GrowthProfileId, string Name, DateOnly StartDate, DateOnly ExpectedEndDate, Guid? FarmingSeasonId = null, bool SetZoneCrop = false);
 /// <summary>Một Zone trong thao tác tạo vụ hàng loạt; ngày để trống thì dùng ngày chung. SetZoneCrop là xác nhận riêng của Owner cho Zone này.</summary>
 public sealed record BulkSeasonZoneItem(Guid ZoneId, DateOnly? StartDate, DateOnly? ExpectedEndDate, bool SetZoneCrop);

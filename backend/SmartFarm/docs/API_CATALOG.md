@@ -159,3 +159,11 @@ Server-built context, explicit uncertainty, persisted Owner decisions, rate limi
 | PLATFORM-V1-01 | GET | `/api/v1/platform/technicians` | PlatformAdmin | List PlatformTechnician accounts |
 | PLATFORM-V1-02 | POST | `/api/v1/platform/technicians` | PlatformAdmin | Create a PlatformTechnician account without returning password material |
 | PLATFORM-V1-03 | PUT | `/api/v1/platform/technicians/{userId}` | PlatformAdmin | Update or disable a PlatformTechnician account |
+
+| ext | GET | `/api/v1/growth-profiles/{profileId}/irrigation-schedule` | ProfileIrrigation | All roles (profile visible to Tenant) |
+| ext | PUT | `/api/v1/growth-profiles/{profileId}/irrigation-schedule` | ProfileIrrigation | FarmOwner (own copy) / Admin |
+| ext | GET | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/irrigation-calendar` | SeasonIrrigationCalendar | FarmOwner / Farmer (zone access) / Admin |
+| ext | PUT | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/irrigation-calendar` | SeasonIrrigationCalendar | FarmOwner (Planned/InProgress season) |
+| ext | DELETE | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/irrigation-calendar[/days/{dayNumber}]` | SeasonIrrigationCalendar | FarmOwner (restore whole season / one day) |
+| ext | GET | `/api/v1/zone-contracts/expiring?farmId=&zoneId=&daysThreshold=` | ExpiringContractAlert | FarmOwner / Technician / Admin (zoneId lọc theo một Zone, vẫn trong Tenant) |
+| ext | POST | `/api/v1/zones/{zoneId}/schedules/sync-from-profile` | ProfileScheduleSyncResult | FarmOwner |

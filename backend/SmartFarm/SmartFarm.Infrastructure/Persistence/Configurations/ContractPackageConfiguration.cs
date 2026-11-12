@@ -18,8 +18,12 @@ internal sealed class ContractPackageConfiguration : IEntityTypeConfiguration<Co
         b.Property(x => x.IsCustom).HasDefaultValue(false);
         b.Property(x => x.CustomerName).HasMaxLength(200);
 
+        // ContractId là soft-reference tới ZoneContract — không phải FK thực,
+        // chỉ lưu Guid để tra cứu. Khai báo tường minh là column thường để EF
+        // không tự infer một FK ngược lại ZoneContracts và sinh JOIN sai.
+        b.Property(x => x.ContractId);
+
         b.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.SetNull);
     }
 }
-

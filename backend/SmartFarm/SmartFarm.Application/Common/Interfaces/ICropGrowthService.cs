@@ -4,6 +4,7 @@ namespace SmartFarm.Application.Common.Interfaces;
 
 public interface ICropGrowthService
 {
+    Task<PlantingSeasonView> StartSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CancellationToken cancellationToken);
     Task<IReadOnlyList<CropView>> ListCropsAsync(Guid userId, Guid? tenantId, bool? systemDefined, CancellationToken cancellationToken);
     Task<CropView> CreateCropAsync(Guid userId, Guid? tenantId, CreateCropCommand command, CancellationToken cancellationToken);
     Task<CropView> UpdateCropAsync(Guid userId, Guid? tenantId, Guid cropId, UpdateCropCommand command, CancellationToken cancellationToken);
@@ -16,6 +17,11 @@ public interface ICropGrowthService
     Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenantId, CreateGrowthProfileCommand command, CancellationToken cancellationToken);
     Task<GrowthProfileView> GetProfileAsync(Guid userId, Guid? tenantId, Guid profileId, CancellationToken cancellationToken);
     Task<GrowthProfileView> UpdateProfileAsync(Guid userId, Guid? tenantId, Guid profileId, UpdateGrowthProfileCommand command, CancellationToken cancellationToken);
+    Task<ProfileIrrigationView> GetProfileIrrigationAsync(Guid userId, Guid? tenantId, Guid profileId, CancellationToken cancellationToken);
+    Task<ProfileIrrigationView> UpdateProfileIrrigationAsync(Guid userId, Guid? tenantId, Guid profileId, UpdateProfileIrrigationCommand command, CancellationToken cancellationToken);
+    Task<SeasonIrrigationCalendarView> GetSeasonIrrigationAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CancellationToken cancellationToken);
+    Task<SeasonIrrigationCalendarView> UpdateSeasonIrrigationAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, UpdateSeasonIrrigationCommand command, CancellationToken cancellationToken);
+    Task<SeasonIrrigationCalendarView> ResetSeasonIrrigationAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, int? dayNumber, CancellationToken cancellationToken);
     Task<StageDurationView> UpdateStageDurationAsync(Guid userId, Guid? tenantId, Guid stageId, int durationDays, CancellationToken cancellationToken);
     Task<GrowthStageView> AddStageAsync(Guid userId, Guid? tenantId, Guid profileId, AddStageCommand command, CancellationToken cancellationToken);
     Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken cancellationToken);

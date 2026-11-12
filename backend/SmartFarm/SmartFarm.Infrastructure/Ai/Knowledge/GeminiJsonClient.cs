@@ -21,7 +21,8 @@ internal static class GeminiJsonClient
         var body = new
         {
             systemInstruction = new { parts = new[] { new { text = systemInstruction } } },
-            contents = new[] { new { role = "user", parts = new[] { new { text = userText } } } },
+            // Mọi văn bản gửi Gemini (kể cả nội dung tài liệu người dùng tải lên) đi qua bộ che dữ liệu định danh.
+            contents = new[] { new { role = "user", parts = new[] { new { text = SmartFarm.Infrastructure.Ai.Location.AiPrivacySanitizer.SanitizeDocumentText(userText) } } } },
             generationConfig = new { temperature = 0, maxOutputTokens, responseMimeType = "application/json" }
         };
 

@@ -16,6 +16,12 @@ public sealed class GeminiOptions
 {
     public const string SectionName = "Gemini";
     public string ApiKey { get; set; } = string.Empty;
+    /// <summary>
+    /// Bật để ghi nhật ký TOÀN BỘ prompt đã được che dữ liệu mà backend gửi cho Gemini (phục vụ kiểm tra/đối soát).
+    /// Mặc định tắt: prompt có thể chứa số liệu vận hành của trang trại. Chỉ bật khi cần, kiểm soát quyền đọc nhật ký.
+    /// Cấu hình: Gemini:LogSanitizedPrompt=true (hoặc biến môi trường Gemini__LogSanitizedPrompt).
+    /// </summary>
+    public bool LogSanitizedPrompt { get; set; }
     /// <summary>Danh sách nhiều API key (mỗi key thuộc project khác nhau để cộng dồn quota). Dùng chung với ApiKey.</summary>
     public List<string> ApiKeys { get; set; } = [];
     public string Model { get; set; } = "gemini-3.5-flash-lite";
@@ -59,6 +65,8 @@ public sealed partial class GeminiAiAdvisoryProvider(
             throw new InvalidOperationException("Gemini model name is invalid.");
 
         var promptText = AiPromptBuilder.Build(request);
+        if (settings.LogSanitizedPrompt)
+            logger.LogInformation("[AI Prompt Sent] Model={Model}\n{Prompt}", settings.Model, promptText);
 
         logger.LogInformation(
             "[AI Request Payload] Model={Model}, PromptLength={PromptLength}, HasWeather={HasWeather}, TelemetryCount={TelemetryCount}, ActuatorCount={ActuatorCount}, RagPassagesCount={RagCount}, AlertsCount={AlertsCount}, SchedulesCount={SchedulesCount}, AutoRulesCount={AutoRulesCount}, IsPureKnowledge={IsPureKnowledge}",

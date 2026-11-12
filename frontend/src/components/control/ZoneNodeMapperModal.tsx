@@ -462,7 +462,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     const fetchZoneGISData = async () => {
       try {
         setIsLoading(true);
-        const zoneId = request.zoneId || '32000000-0000-0000-0000-000000000001';
+        const zoneId = request.zoneId;
+        if (!zoneId || request.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
 
         // 1. Fetch Zone details from backend
         let loadedZonePts: [number, number][] = [];
@@ -594,24 +595,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           deviceService.getFarmDevices(request.farmId).catch(() => []),
           deviceService.getTechnicianDeploymentRequests().catch(() => []),
         ]);
-        const requestIdsForThisService = new Set(
-          (Array.isArray(deploymentRequests) ? deploymentRequests : [])
-            .filter((item: any) => String(item.serviceRequestId || item.serviceRequest?.id || '') === String(request.serviceRequestId || ''))
-            .map((item: any) => item.requestId || item.deploymentRequestId || item.id)
-            .filter(Boolean)
-            .map(String)
-        );
-        if (requestIdsForThisService.size === 0) {
-          (Array.isArray(deploymentRequests) ? deploymentRequests : [])
-            .filter((item: any) => String(item.farmId || '') === String(request.farmId || '') && String(item.zoneId || '') === String(request.zoneId || ''))
-            .map((item: any) => item.requestId || item.deploymentRequestId || item.id)
-            .filter(Boolean)
-            .forEach((id: any) => requestIdsForThisService.add(String(id)));
-        }
-        // Some API versions expose the deployment request itself as the
-        // serviceRequestId prop. Keep both shapes compatible.
-        requestIdsForThisService.add(String(request.serviceRequestId || ''));
-        const realNodeDevices = (Array.isArray(realDevices) ? realDevices : []).filter((d: any) =>
+        const linkedDeployments = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) =>
+          String(item.requestId || item.deploymentRequestId || item.id) === String(request.deploymentRequestId || '') &&
+          String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId));
+        const requestIdsForThisService = new Set(linkedDeployments.map((item: any) => String(item.requestId || item.deploymentRequestId || item.id)));        const realNodeDevices = (Array.isArray(realDevices) ? realDevices : []).filter((d: any) =>
           !String(d.hardwareAddress || d.macAddress || '').toUpperCase().startsWith('SIM-') &&
           requestIdsForThisService.has(String(d.deploymentRequestId || d.requestId || d.deployment?.id || '')) &&
           ['SensorNode', 'ActuatorNode'].includes(String(d.deviceType || ''))
@@ -728,7 +715,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         deviceService.getGateways(request.farmId).catch(() => []),
         deviceService.getTechnicianDeploymentRequests().catch(() => [])
       ]);
-      const validDeploymentRequests = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) => String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId) && !['Draft', 'Completed', 'MaintenanceRequired'].includes(String(item.status)));
+      const validDeploymentRequests = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) => String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId) && String(item.requestId || item.deploymentRequestId) === String(request.deploymentRequestId || '') && item.status === 'Installing');
       const validRequestIds = new Set(validDeploymentRequests.map((item: any) => item.requestId || item.deploymentRequestId).filter(Boolean).map(String));
       const matchedRequest = validDeploymentRequests[0];
       const matchedRequestId = matchedRequest?.requestId || matchedRequest?.deploymentRequestId || '';
@@ -1113,7 +1100,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      const zoneId = request.zoneId || currentZoneData?.id || currentZoneData?.zoneId || '32000000-0000-0000-0000-000000000001';
+      const zoneId = request.zoneId;
+      if (!zoneId || request.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
 
       // 1. If polygon was adjusted, save updated boundary to Zone entity
       if (zonePolygon.length >= 3 && zoneId && currentZoneData) {
@@ -1127,17 +1115,16 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           });
         } catch (zErr) {
           console.warn('Could not update zone GIS boundary:', zErr);
+          throw zErr;
         }
       }
 
       // 2. Persist mapped nodes to database
-      if (zoneId) {
-        await supportService.updateMappedNodes(zoneId, nodes, request.serviceRequestId);
-      }
-
-      // 3. Callback if provided
+      // Parent callback owns persistence when supplied; never submit twice.
       if (onSaveMapping) {
         await onSaveMapping(nodes, nodes.length);
+      } else {
+        await supportService.updateMappedNodes(zoneId, nodes, request.serviceRequestId, request.deploymentRequestId);
       }
       onClose();
     } catch (err: any) {

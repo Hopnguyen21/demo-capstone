@@ -50,6 +50,17 @@ timestamps. Amounts must be positive. Records with reporting history are archive
   represents a passing hardware test.
 
 Lifecycle: `Open -> Assigned -> InProgress -> Diagnosed -> WorkCompleted -> Verified -> Closed`.
+`Resolved` remains a legacy enum value for existing records; it is not evidence of
+a successful connection test and does not permit closure. Web and Mobile must
+present service, deployment and quotation states independently. In particular,
+`Closed` and `Resolved` do not prove Owner acceptance or full payment.
+
+Quotation flow is `Draft -> SentToOwner -> SignedByOwner -> Completed`.
+Final acceptance requires the linked deployment to be `Completed` and to match
+the service request's Tenant, Farm and Zone. This follows the completed-installation
+sequence in Report 3; its broader `Installing or Completed` wording is not used.
+`NEW_INSTALL` is the installation failure/type code, not a workflow status.
+
 Replacement may occur only after diagnosis selected `Replacement`. Tenant, Farm, Zone, old
 Device, replacement Device, assigned Technician and connection-test parent chains are validated
 server-side. Existing deployment-failure requests remain valid entry points at `Open`.

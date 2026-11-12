@@ -25,10 +25,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quy trình tưới nhỏ giọt và quản lý nước tưới VietGAP cho rau màu nhà màng",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017))",
                 Category = "irrigation",
                 CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Quy trình tưới nhỏ giọt VietGAP cho nhà màng."
             };
@@ -78,10 +79,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Bệnh hại phổ biến và quản lý dịch hại tổng hợp IPM cho cà chua VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Cục Bảo vệ Thực vật - Viện Khoa học Nông nghiệp Việt Nam (VAAS)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Cục Bảo vệ Thực vật - Viện Khoa học Nông nghiệp Việt Nam (VAAS))",
                 Category = "pest",
                 CropScope = "cà chua,ớt",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Bệnh hại và IPM cà chua."
             };
@@ -137,10 +139,12 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác và phòng trị bệnh dâu tây VietGAP nhà màng",
                 FileType = "seed",
-                AuthorOrganization = "Trung tâm Khuyến nông Quốc gia - Sở NN&PTNT Lâm Đồng",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Trung tâm Khuyến nông Quốc gia - Sở NN&PTNT Lâm Đồng)",
                 Category = "general",
                 CropScope = "dâu tây",
+                RegionScope = "highlands",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Kỹ thuật canh tác dâu tây VietGAP."
             };
@@ -188,10 +192,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác dưa lưới (Cucumis melo) nhà màng theo tiêu chuẩn VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017))",
                 Category = "general",
                 CropScope = "dưa lưới",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Kỹ thuật canh tác dưa lưới VietGAP."
             };
@@ -239,10 +244,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quản lý vi khí hậu và hệ thống thông gió nhà màng VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Viện Khoa học Nông nghiệp Việt Nam (VAAS)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Viện Khoa học Nông nghiệp Việt Nam (VAAS))",
                 Category = "climate",
                 CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Quản lý vi khí hậu và thông gió nhà màng."
             };
@@ -289,10 +295,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác ớt ngọt (Capsicum annuum) nhà màng theo VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017))",
                 Category = "general",
                 CropScope = "ớt,ớt ngọt,ớt chuông,sweet pepper,capsicum",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Kỹ thuật canh tác ớt ngọt VietGAP."
             };
@@ -329,10 +336,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác và dinh dưỡng xà lách (Lactuca sativa) theo tiêu chuẩn VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Bộ Nông nghiệp & PTNT - Cục Trồng trọt (TCVN 11892-1:2017))",
                 Category = "general",
                 CropScope = "xà lách,xa lach,lettuce,batavia,rau ăn lá",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Kỹ thuật canh tác và dinh dưỡng xà lách VietGAP."
             };
@@ -379,10 +387,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quy trình kỹ thuật canh tác và phòng trừ sâu bệnh dưa leo (Cucumis sativus) nhà màng VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Cục Trồng trọt & Cục Bảo vệ Thực vật (TCVN 11892-1:2017)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Cục Trồng trọt & Cục Bảo vệ Thực vật (TCVN 11892-1:2017))",
                 Category = "general",
                 CropScope = "dưa leo,dua leo,dưa chuột,dua chuot,cucumber",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Quy trình kỹ thuật canh tác và phòng trừ sâu bệnh dưa leo VietGAP."
             };
@@ -428,10 +437,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quy trình thu hoạch và an toàn vệ sinh sản phẩm theo VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Cục Quản lý Chất lượng Nông lâm sản và Thủy sản (NAFIQAD)",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Cục Quản lý Chất lượng Nông lâm sản và Thủy sản (NAFIQAD))",
                 Category = "harvest",
                 CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Quy trình thu hoạch và an toàn vệ sinh sản phẩm theo VietGAP."
             };
@@ -458,10 +468,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Ghi chép nhật ký điện tử và truy xuất nguồn gốc VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Nông nghiệp & PTNT - Hệ thống Truy xuất Nguồn gốc Quốc gia",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Bộ Nông nghiệp & PTNT - Hệ thống Truy xuất Nguồn gốc Quốc gia)",
                 Category = "record",
                 CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Ghi chép nhật ký điện tử và truy xuất nguồn gốc VietGAP."
             };
@@ -487,10 +498,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Kỹ thuật canh tác và quản lý vi khí hậu chuyên sâu cho cà chua nhà màng VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Viện Nghiên cứu Rau quả (FAVRI) - VAAS",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Viện Nghiên cứu Rau quả (FAVRI) - VAAS)",
                 Category = "general",
                 CropScope = "cà chua",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Kỹ thuật canh tác và quản lý vi khí hậu cà chua VietGAP."
             };
@@ -536,10 +548,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quản lý dinh dưỡng cây trồng và kỹ thuật châm phân Fertigation theo tiêu chuẩn VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Viện Thổ nhưỡng Nông hóa (SFRI) - Bộ Nông nghiệp & PTNT",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Viện Thổ nhưỡng Nông hóa (SFRI) - Bộ Nông nghiệp & PTNT)",
                 Category = "nutrition",
                 CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Quản lý dinh dưỡng và kỹ thuật châm phân Fertigation VietGAP."
             };
@@ -586,10 +599,11 @@ public static class KnowledgeBaseSeedData
             {
                 Title = "Quy chuẩn an toàn chất lượng nguồn nước tưới nông nghiệp công nghệ cao theo QCVN 08-MT và VietGAP",
                 FileType = "seed",
-                AuthorOrganization = "Bộ Tài nguyên & Môi trường - QCVN 08-MT:2015/BTNMT",
+                AuthorOrganization = "SmartFarm - tổng hợp nội bộ (tham chiếu: Bộ Tài nguyên & Môi trường - QCVN 08-MT:2015/BTNMT)",
                 Category = "irrigation",
                 CropScope = "cà chua,dưa lưới,dưa leo,ớt,dâu tây,xà lách,dưa chuột,cucumber,lettuce",
                 IsPublic = true,
+                ReviewNotes = "Tài liệu khởi tạo do nhóm phát triển tổng hợp từ các hướng dẫn công khai; chưa phải văn bản chính thức của cơ quan được tham chiếu. Cần chuyên gia nông học rà soát trước khi dùng cho tư vấn thực tế.",
                 Version = "2024",
                 ContentText = "Quy chuẩn an toàn nguồn nước tưới nông nghiệp công nghệ cao QCVN 08-MT và VietGAP."
             };

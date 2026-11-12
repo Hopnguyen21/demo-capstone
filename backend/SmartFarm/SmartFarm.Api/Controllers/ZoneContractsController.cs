@@ -54,7 +54,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
 
     /// <summary>Tạo hợp đồng mới cho Zone (hỗ trợ liên kết ParentContractId cho khách hàng cũ kèm chiết khấu)</summary>
     [HttpPost("api/v1/zones/{zoneId:guid}/contracts")]
-    [Authorize(Roles = "FarmOwner,PlatformAdmin")]
+    [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<ZoneContractView>> Create(
         Guid zoneId,
         [FromBody] CreateZoneContractCommand command,
@@ -71,7 +71,7 @@ public sealed class ZoneContractsController(IZoneContractService contractService
 
     /// <summary>Gia hạn hợp đồng (Renew Contract: 6 tháng, 1 năm, 3 năm hoặc tùy chỉnh)</summary>
     [HttpPost("api/v1/zone-contracts/{id:guid}/renew")]
-    [Authorize(Roles = "FarmOwner,PlatformAdmin")]
+    [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<ZoneContractView>> Renew(
         Guid id,
         [FromBody] RenewZoneContractCommand command,
@@ -86,9 +86,10 @@ public sealed class ZoneContractsController(IZoneContractService contractService
     public async Task<ActionResult<IReadOnlyList<ExpiringContractAlertView>>> GetExpiring(
         [FromQuery] Guid? farmId = null,
         [FromQuery] int daysThreshold = 30,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [FromQuery] Guid? zoneId = null)
     {
-        return Ok(await contractService.GetExpiringContractsAsync(User.GetUserId(), GetEnforcedTenantId(), farmId, daysThreshold, ct));
+        return Ok(await contractService.GetExpiringContractsAsync(User.GetUserId(), GetEnforcedTenantId(), farmId, daysThreshold, ct, zoneId));
     }
 
     /// <summary>Danh sách khấu hao thiết bị theo Zone</summary>

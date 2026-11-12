@@ -57,12 +57,12 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         Device? d = null;
         if (c.DeviceId.HasValue && c.DeviceId.Value != Guid.Empty)
         {
-            d = await db.Devices.FirstOrDefaultAsync(x => x.Id == c.DeviceId.Value && x.FarmId == farm && x.Status != DeviceStatus.Decommissioned, ct);
+            d = await db.Devices.FirstOrDefaultAsync(x => x.Id == c.DeviceId.Value && x.FarmId == farm && x.ZoneId == zoneId && x.Status != DeviceStatus.Decommissioned, ct)
+                ?? throw new ResourceNotFoundException("Device was not found in the requested Farm and Zone.");
         }
         if (d == null)
         {
-            d = await db.Devices.FirstOrDefaultAsync(x => x.ZoneId == zoneId && x.FarmId == farm && x.Status != DeviceStatus.Decommissioned, ct)
-                ?? await db.Devices.FirstOrDefaultAsync(x => x.FarmId == farm && x.Status != DeviceStatus.Decommissioned, ct);
+            d = await db.Devices.FirstOrDefaultAsync(x => x.ZoneId == zoneId && x.FarmId == farm && x.Status != DeviceStatus.Decommissioned, ct);
         }
 
         // Liên kết tường minh với yêu cầu triển khai (cùng Tenant/Farm/Zone) để hợp đồng nghiệm thu bám đúng đợt lắp đặt.
@@ -75,30 +75,47 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         }
         else if (d != null)
         {
+            if (!await db.DeploymentRequests.AnyAsync(x => x.Id == d.DeploymentRequestId && x.TenantId == tenant && x.FarmId == farm && x.ZoneId == zoneId, ct))
+                throw new ResourceConflictException("Device deployment does not match the requested Farm and Zone. Repair the deployment link before creating service work.");
             deploymentRequestId = d.DeploymentRequestId;
             d.Status = DeviceStatus.MaintenanceRequired;
         }
         else
         {
             // Chỉ tìm trong Tenant của Owner; trước đây fallback cuối có thể lấy yêu cầu triển khai của Tenant khác.
-            var dep = await db.DeploymentRequests.FirstOrDefaultAsync(x => x.TenantId == tenant && x.ZoneId == zoneId, ct)
-                   ?? await db.DeploymentRequests.FirstOrDefaultAsync(x => x.TenantId == tenant && x.FarmId == farm, ct);
-            if (dep != null)
+            // Ưu tiên đợt triển khai đang chạy (mỗi Zone chỉ có một). Không bao giờ gắn phiếu lắp mới vào đợt đã Completed/Cancelled.
+            var active = await db.DeploymentRequests
+                .Where(x => x.TenantId == tenant && x.FarmId == farm && x.ZoneId == zoneId && SmartFarm.Infrastructure.IoTDeployment.DeploymentSupport.ActiveStatuses.Contains(x.Status))
+                .OrderByDescending(x => x.CreatedAtUtc).FirstOrDefaultAsync(ct);
+            if (active != null)
             {
-                deploymentRequestId = dep.Id;
+                deploymentRequestId = active.Id;
+            }
+            else if (!SmartFarm.Infrastructure.IoTDeployment.DeploymentSupport.IsInstallationCode(c.FailureCode))
+            {
+                // Bảo trì: bám đợt triển khai đã lắp xong (hoặc đã chuyển bảo trì) gần nhất của Zone.
+                var installed = await db.DeploymentRequests
+                    .Where(x => x.TenantId == tenant && x.FarmId == farm && x.ZoneId == zoneId
+                        && (x.Status == DeploymentRequestStatus.Completed || x.Status == DeploymentRequestStatus.MaintenanceRequired))
+                    .OrderByDescending(x => x.CreatedAtUtc).FirstOrDefaultAsync(ct);
+                deploymentRequestId = installed?.Id
+                    ?? throw new ResourceConflictException("Zone has no deployed IoT system yet; submit an installation request instead of a maintenance request.");
             }
             else
             {
-                var season = await db.PlantingSeasons.FirstOrDefaultAsync(s => s.ZoneId == zoneId, ct);
-                var seasonId = season?.Id ?? Guid.Empty;
+                // Lắp mới và Zone chưa có đợt nào đang chạy: tạo đợt mới với vụ trồng thật của Zone (không dùng Guid.Empty).
+                var season = await db.PlantingSeasons.Where(s => s.ZoneId == zoneId && s.Status != PlantingSeasonStatus.Cancelled)
+                    .OrderByDescending(s => s.Status == PlantingSeasonStatus.InProgress).ThenByDescending(s => s.CreatedAtUtc).FirstOrDefaultAsync(ct)
+                    ?? throw new ResourceConflictException("Zone has no planting season; create a season before requesting an installation.");
                 var newDep = new DeploymentRequest
                 {
                     TenantId = tenant,
                     FarmId = farm,
                     ZoneId = zoneId,
-                    PlantingSeasonId = seasonId,
+                    PlantingSeasonId = season.Id,
                     OwnerUserId = owner,
                     Status = DeploymentRequestStatus.Submitted,
+                    SubmittedAtUtc = DateTime.UtcNow,
                     OwnerNotes = $"Yêu cầu lắp đặt mới cho Zone {zoneId}"
                 };
                 db.DeploymentRequests.Add(newDep);

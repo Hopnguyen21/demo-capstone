@@ -20,6 +20,12 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
 {
     private const decimal MaximumFarmAreaM2 = 1_000_000m;
 
+    // Phạm vi đọc của kỹ thuật viên nền tảng. Kỹ thuật viên không thuộc tenant nào nên chỉ đọc được trang trại có yêu cầu
+    // đang xử lý được giao cho chính họ (yêu cầu lắp đặt đã tiếp nhận, yêu cầu dịch vụ/bảo trì chưa đóng). null = không giới hạn
+    // theo yêu cầu (admin: toàn hệ thống; chủ trại/nông dân: đã giới hạn theo tenant). Service là scoped theo request và mỗi
+    // thao tác gọi EnsureOwnerScopeAsync trước nên giá trị luôn ứng với người gọi hiện tại.
+    private List<Guid>? technicianFarmScope;
+
     public async Task<IReadOnlyList<FarmSummaryView>> ListAsync(
         Guid ownerUserId, Guid tenantId, FarmStatus? status, CancellationToken cancellationToken)
     {
@@ -29,6 +35,10 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         if (caller?.Role != UserRole.PlatformAdmin && caller?.Role != UserRole.PlatformTechnician)
         {
             query = query.Where(x => x.TenantId == tenantId);
+        }
+        if (technicianFarmScope is { } scopedFarmIds)
+        {
+            query = query.Where(x => scopedFarmIds.Contains(x.Id));
         }
         query = status.HasValue ? query.Where(x => x.Status == status) : query.Where(x => x.Status != FarmStatus.Archived);
         return await query.OrderBy(x => x.Name).Select(x => new FarmSummaryView(
@@ -69,6 +79,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         var farm = await dbContext.Farms.AsNoTracking().SingleOrDefaultAsync(
             x => x.Id == farmId && (caller != null && (caller.Role == UserRole.PlatformAdmin || caller.Role == UserRole.PlatformTechnician) || x.TenantId == tenantId), cancellationToken)
             ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
+        EnsureFarmInTechnicianScope(farm.Id);
         var fields = await dbContext.Fields.CountAsync(x => x.FarmId == farmId && x.ArchivedAtUtc == null, cancellationToken);
         var zones = await dbContext.Zones.CountAsync(
             x => x.Field.FarmId == farmId && x.Status != ZoneStatus.Archived, cancellationToken);
@@ -147,6 +158,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         var farm = await dbContext.Farms.AsNoTracking().SingleOrDefaultAsync(
             x => x.Id == farmId && (caller != null && (caller.Role == UserRole.PlatformAdmin || caller.Role == UserRole.PlatformTechnician) || x.TenantId == tenantId), cancellationToken)
             ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
+        EnsureFarmInTechnicianScope(farm.Id);
         var fields = await dbContext.Fields.AsNoTracking().Where(x => x.FarmId == farmId && x.ArchivedAtUtc == null)
             .OrderBy(x => x.Name).Select(x => new FieldStructureView(
                 x.Id, x.Name, x.AreaM2, x.AvailableAreaM2,
@@ -180,6 +192,10 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         if (caller?.Role != UserRole.PlatformAdmin && caller?.Role != UserRole.PlatformTechnician)
         {
             query = query.Where(x => x.Farm.TenantId == tenantId);
+        }
+        if (technicianFarmScope is { } scopedFarmIds)
+        {
+            query = query.Where(x => scopedFarmIds.Contains(x.FarmId));
         }
         if (farmId.HasValue) query = query.Where(x => x.FarmId == farmId.Value);
         var fields = await query.OrderBy(x => x.Name).ToListAsync(cancellationToken);
@@ -283,7 +299,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         await GetFieldEntityAsync(tenantId, fieldId, tracking: false, cancellationToken);
         var query = dbContext.Zones.AsNoTracking()
             .Include(x => x.Field)
-            .Include(x => x.Crop).Include(x => x.Variety)
+            .Include(x => x.Crop).Include(x => x.Variety).Include(x => x.GrowthProfile)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
@@ -300,7 +316,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         var caller = await dbContext.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == ownerUserId, cancellationToken);
         var query = dbContext.Zones.AsNoTracking()
             .Include(x => x.Field).ThenInclude(f => f.Farm)
-            .Include(x => x.Crop).Include(x => x.Variety)
+            .Include(x => x.Crop).Include(x => x.Variety).Include(x => x.GrowthProfile)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
@@ -308,6 +324,10 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         if (caller?.Role != UserRole.PlatformAdmin && caller?.Role != UserRole.PlatformTechnician)
         {
             query = query.Where(x => x.Field.Farm.TenantId == tenantId);
+        }
+        if (technicianFarmScope is { } scopedFarmIds)
+        {
+            query = query.Where(x => scopedFarmIds.Contains(x.Field.FarmId));
         }
         if (fieldId.HasValue) query = query.Where(x => x.FieldId == fieldId.Value);
         if (status.HasValue) query = query.Where(x => x.Status == status.Value);
@@ -364,17 +384,19 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             }
         }
 
-        var (cropId, varietyId) = await ResolveZoneCropAsync(tenantId, command.CropId, command.VarietyId, cancellationToken);
+        var (cropId, varietyId, profile) = await ResolveZoneSelectionAsync(tenantId, command.GrowthProfileId, command.CropId, command.VarietyId, cancellationToken);
         var zone = (command with { Name = name, ZoneType = zoneType, Notes = NormalizeOptional(command.Notes, 1000) })
             .ToEntity(fieldId, boundary);
         zone.CropId = cropId;
         zone.CropVarietyId = varietyId;
+        zone.GrowthProfileId = profile?.Id;
         field.AvailableAreaM2 -= zone.AreaM2;
         dbContext.Zones.Add(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await dbContext.Entry(zone).Reference(x => x.Crop).LoadAsync(cancellationToken);
         await dbContext.Entry(zone).Reference(x => x.Variety).LoadAsync(cancellationToken);
+        await dbContext.Entry(zone).Reference(x => x.GrowthProfile).LoadAsync(cancellationToken);
         return ToZoneView(zone, field.FarmId);
     }
 
@@ -464,10 +486,36 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             {
                 throw new ResourceConflictException("Zone đang có vụ mùa InProgress với cây/giống khác. Hãy kết thúc hoặc hủy vụ đó trước khi đổi cây của Zone.");
             }
+            // Đổi sang cây khác thì hồ sơ cũ (của cây cũ) không còn hợp lệ.
+            if (newCropId != zone.CropId) { zone.GrowthProfileId = null; zone.GrowthProfile = null; }
             zone.CropId = newCropId;
             zone.CropVarietyId = newVarietyId;
             zone.Crop = null;
             zone.Variety = null;
+        }
+
+        // Hồ sơ canh tác gắn TRỰC TIẾP với Zone, không tạo PlantingSeason; vụ mùa (kể cả InProgress) giữ nguyên hồ sơ riêng của nó.
+        if (command.GrowthProfileId.HasValue && command.ClearGrowthProfile)
+            throw new RequestValidationException("GrowthProfileId", "Không thể vừa gắn vừa gỡ hồ sơ trong cùng một yêu cầu.");
+        if (command.GrowthProfileId.HasValue)
+        {
+            var (profileCropId, profileVarietyId, profile) = await ResolveZoneSelectionAsync(tenantId, command.GrowthProfileId, null, null, cancellationToken);
+            if ((profileCropId != zone.CropId || profileVarietyId != zone.CropVarietyId) &&
+                zone.PlantingSeasons.Any(s => s.Status == PlantingSeasonStatus.InProgress && (s.CropId != profileCropId || (profileVarietyId.HasValue && s.VarietyId != profileVarietyId))))
+            {
+                throw new ResourceConflictException("Zone đang có vụ mùa InProgress với cây/giống khác hồ sơ này. Hãy kết thúc hoặc hủy vụ đó trước khi đổi hồ sơ của Zone.");
+            }
+            zone.CropId = profileCropId;
+            zone.CropVarietyId = profileVarietyId;
+            zone.GrowthProfileId = profile!.Id;
+            zone.GrowthProfile = null;
+            zone.Crop = null;
+            zone.Variety = null;
+        }
+        else if (command.ClearGrowthProfile)
+        {
+            zone.GrowthProfileId = null;
+            zone.GrowthProfile = null;
         }
 
         zone.Field.AvailableAreaM2 = capacity - requestedArea;
@@ -481,7 +529,31 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         await transaction.CommitAsync(cancellationToken);
         await dbContext.Entry(zone).Reference(x => x.Crop).LoadAsync(cancellationToken);
         await dbContext.Entry(zone).Reference(x => x.Variety).LoadAsync(cancellationToken);
+        await dbContext.Entry(zone).Reference(x => x.GrowthProfile).LoadAsync(cancellationToken);
         return ToZoneView(zone, zone.Field.FarmId);
+    }
+
+    /// <summary>
+    /// Hồ sơ phải là hồ sơ hệ thống hoặc bản sao của đúng Tenant (profile Tenant khác coi như không tồn tại). Có hồ sơ thì cây/giống của Zone
+    /// lấy từ hồ sơ; CropId/VarietyId gửi kèm (nếu có) phải trùng hồ sơ. Không có hồ sơ thì rơi về chọn cây/giống như cũ.
+    /// </summary>
+    private async Task<(Guid? CropId, Guid? VarietyId, GrowthProfile? Profile)> ResolveZoneSelectionAsync(
+        Guid tenantId, Guid? profileId, Guid? cropId, Guid? varietyId, CancellationToken cancellationToken)
+    {
+        if (!profileId.HasValue)
+        {
+            var (c, v) = await ResolveZoneCropAsync(tenantId, cropId, varietyId, cancellationToken);
+            return (c, v, null);
+        }
+        var visibleTenant = tenantId == Guid.Empty ? (Guid?)null : tenantId;
+        var profile = await dbContext.GrowthProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == profileId && (x.TenantId == null || x.TenantId == visibleTenant), cancellationToken)
+            ?? throw new RequestValidationException("GrowthProfileId", "Hồ sơ canh tác không tồn tại hoặc không thuộc danh mục của bạn.");
+        if (cropId.HasValue && cropId != profile.CropId)
+            throw new RequestValidationException("CropId", "Cây trồng không khớp với hồ sơ canh tác đã chọn.");
+        if (varietyId.HasValue && varietyId != profile.VarietyId)
+            throw new RequestValidationException("VarietyId", "Giống không khớp với hồ sơ canh tác đã chọn.");
+        return (profile.CropId, profile.VarietyId, profile);
     }
 
     /// <summary>Cây phải thuộc danh mục hiển thị cho Tenant (hệ thống hoặc của Tenant); giống phải thuộc đúng cây đó. Cả hai đều có thể để trống.</summary>
@@ -528,8 +600,15 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             throw new AuthorizationException("The user account is inactive or not found.");
         }
 
-        if (user.Role is UserRole.PlatformAdmin or UserRole.PlatformTechnician)
+        technicianFarmScope = null;
+        if (user.Role == UserRole.PlatformAdmin)
         {
+            return;
+        }
+
+        if (user.Role == UserRole.PlatformTechnician)
+        {
+            technicianFarmScope = await LoadTechnicianFarmScopeAsync(user.Id, cancellationToken);
             return;
         }
 
@@ -546,30 +625,60 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         throw new AuthorizationException("The user does not have permission to access farm structure in this scope.");
     }
 
-    private async Task<Farm> GetFarmEntityAsync(Guid tenantId, Guid farmId, CancellationToken cancellationToken) =>
-        await dbContext.Farms.SingleOrDefaultAsync(x => x.Id == farmId && (tenantId == Guid.Empty || x.TenantId == tenantId), cancellationToken)
-        ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
+    /// <summary>
+    /// Trang trại mà kỹ thuật viên được phép đọc: có yêu cầu lắp đặt đã tiếp nhận (chưa hoàn tất) hoặc yêu cầu dịch vụ/bảo trì
+    /// chưa đóng được giao cho họ. Yêu cầu mới chỉ ở trạng thái Submitted (chưa ai tiếp nhận) chưa cho đọc cấu trúc trang trại:
+    /// thông tin cần để quyết định tiếp nhận đã có trong chi tiết yêu cầu.
+    /// </summary>
+    private Task<List<Guid>> LoadTechnicianFarmScopeAsync(Guid technicianUserId, CancellationToken cancellationToken) =>
+        TechnicianFarmScope.LoadAsync(dbContext, technicianUserId, cancellationToken);
+
+    /// <summary>Kỹ thuật viên chỉ truy cập trang trại trong phạm vi được giao; ngoài phạm vi trả "không tìm thấy" (không lộ sự tồn tại).</summary>
+    private void EnsureFarmInTechnicianScope(Guid farmId)
+    {
+        if (technicianFarmScope is { } scope && !scope.Contains(farmId))
+        {
+            throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
+        }
+    }
+
+    private async Task<Farm> GetFarmEntityAsync(Guid tenantId, Guid farmId, CancellationToken cancellationToken)
+    {
+        EnsureFarmInTechnicianScope(farmId);
+        return await dbContext.Farms.SingleOrDefaultAsync(x => x.Id == farmId && (tenantId == Guid.Empty || x.TenantId == tenantId), cancellationToken)
+            ?? throw new ResourceNotFoundException("Farm was not found in the current Tenant.");
+    }
 
     private async Task<Field> GetFieldEntityAsync(Guid tenantId, Guid fieldId, bool tracking, CancellationToken cancellationToken)
     {
         var query = dbContext.Fields.Include(x => x.Farm).Where(x => x.Id == fieldId && (tenantId == Guid.Empty || x.Farm.TenantId == tenantId));
         if (!tracking) query = query.AsNoTracking();
-        return await query.SingleOrDefaultAsync(cancellationToken)
+        var field = await query.SingleOrDefaultAsync(cancellationToken)
             ?? throw new ResourceNotFoundException("Field was not found in the current Tenant.");
+        if (technicianFarmScope is { } scope && !scope.Contains(field.FarmId))
+        {
+            throw new ResourceNotFoundException("Field was not found in the current Tenant.");
+        }
+        return field;
     }
 
     private async Task<Zone> GetZoneEntityAsync(Guid tenantId, Guid zoneId, bool tracking, CancellationToken cancellationToken)
     {
         var query = dbContext.Zones
             .Include(x => x.Field).ThenInclude(x => x.Farm)
-            .Include(x => x.Crop).Include(x => x.Variety)
+            .Include(x => x.Crop).Include(x => x.Variety).Include(x => x.GrowthProfile)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Crop)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.Variety)
             .Include(x => x.PlantingSeasons).ThenInclude(ps => ps.CurrentGrowthStage)
             .Where(x => x.Id == zoneId && (tenantId == Guid.Empty || x.Field.Farm.TenantId == tenantId));
         if (!tracking) query = query.AsNoTracking();
-        return await query.SingleOrDefaultAsync(cancellationToken)
+        var zone = await query.SingleOrDefaultAsync(cancellationToken)
             ?? throw new ResourceNotFoundException("Zone was not found in the current Tenant.");
+        if (technicianFarmScope is { } scope && !scope.Contains(zone.Field.FarmId))
+        {
+            throw new ResourceNotFoundException("Zone was not found in the current Tenant.");
+        }
+        return zone;
     }
 
     private async Task<IReadOnlyList<ZoneSummaryView>> LoadZoneSummariesAsync(Guid fieldId, CancellationToken cancellationToken) =>
@@ -606,7 +715,8 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             zone.Id, zone.FieldId, farmId, zone.Name, zone.AreaM2, zone.ZoneType, zone.Notes, zone.Status,
             ParseJson(zone.BoundaryGeoJson), zone.CreatedAtUtc, zone.UpdatedAtUtc, zone.ArchivedAtUtc,
             currentCrop, currentStage, zone.CropId, zone.CropVarietyId, cropName, varietyName,
-            seasonStatus, inProgress?.Name, inProgress?.Crop?.Name, planned?.Crop?.Name);
+            seasonStatus, inProgress?.Name, inProgress?.Crop?.Name, planned?.Crop?.Name,
+            zone.GrowthProfileId, zone.GrowthProfile?.Name, zone.GrowthProfile?.IsSystemDefined);
     }
 
     private static JsonElement? ParseJson(string? value)

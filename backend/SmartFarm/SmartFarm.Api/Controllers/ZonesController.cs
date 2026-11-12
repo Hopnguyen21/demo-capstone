@@ -64,8 +64,10 @@ public sealed class CreateZoneRequest
     [Required] public JsonElement PolygonGeoJson { get; init; }
     [Required, StringLength(50)] public string ZoneType { get; init; } = string.Empty;
     [StringLength(1000)] public string? Notes { get; init; }
+    // Hồ sơ canh tác gắn trực tiếp với Zone (không tạo vụ mùa). Bỏ trống = Zone chưa gắn hồ sơ.
+    public Guid? GrowthProfileId { get; init; }
 
-    internal CreateZoneCommand ToCommand() => new(Name, AreaM2, PolygonGeoJson, ZoneType, Notes);
+    internal CreateZoneCommand ToCommand() => new(Name, AreaM2, PolygonGeoJson, ZoneType, Notes, null, null, GrowthProfileId);
 }
 
 public sealed class UpdateZoneRequest
@@ -76,8 +78,11 @@ public sealed class UpdateZoneRequest
     [StringLength(50)] public string? ZoneType { get; init; }
     [StringLength(1000)] public string? Notes { get; init; }
     public ZoneStatus? Status { get; init; }
-    // Cây của Zone chỉ được gán khi tạo vụ mùa; ở đây chỉ cho gỡ cây (bị chặn nếu đang có vụ InProgress).
+    // Gỡ cây (bị chặn nếu đang có vụ InProgress); đồng thời gỡ hồ sơ vì hồ sơ thuộc về cây.
     public bool ClearCrop { get; init; }
+    // Gắn/đổi hồ sơ canh tác trực tiếp cho Zone (không tạo vụ mùa); bỏ trống thì giữ nguyên. ClearGrowthProfile = true để gỡ hồ sơ.
+    public Guid? GrowthProfileId { get; init; }
+    public bool ClearGrowthProfile { get; init; }
 
-    internal UpdateZoneCommand ToCommand() => new(Name, AreaM2, PolygonGeoJson, ZoneType, Notes, Status, null, null, ClearCrop);
+    internal UpdateZoneCommand ToCommand() => new(Name, AreaM2, PolygonGeoJson, ZoneType, Notes, Status, null, null, ClearCrop, GrowthProfileId, ClearGrowthProfile);
 }

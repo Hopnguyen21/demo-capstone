@@ -1,6 +1,6 @@
 namespace SmartFarm.Domain.Enums;
 
-public enum DeploymentRequestStatus { Draft, Submitted, Accepted, Surveyed, PlanConfirmed, Installing, Completed, MaintenanceRequired }
+public enum DeploymentRequestStatus { Draft, Submitted, Accepted, Surveyed, PlanConfirmed, Installing, Completed, MaintenanceRequired, Cancelled }
 public enum DeviceType { SensorNode, ActuatorNode }
 public enum DeviceStatus { Unassigned, Assigned, SensorsConfigured, ActuatorsConfigured, Online, Offline, MaintenanceRequired, Decommissioned }
 public enum GatewayStatus { Provisioned, Online, Offline }

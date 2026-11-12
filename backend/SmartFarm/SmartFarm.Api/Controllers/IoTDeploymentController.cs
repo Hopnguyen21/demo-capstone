@@ -21,6 +21,9 @@ public sealed class IoTPlanningController(IIoTDeploymentService service) : Contr
     // IOT-V1-03
     [HttpPost("api/v1/zones/{zoneId:guid}/deployment-requests")]
     public async Task<ActionResult<DeploymentRequestView>> Create(Guid zoneId, DeploymentPlanRequest body, CancellationToken ct) { var result = await service.CreateRequestAsync(User.GetUserId(), User.GetTenantId(), zoneId, new(body.Items.Select(x => x.ToInput()).ToList(), body.Notes), ct); return CreatedAtAction(nameof(Get), new { requestId = result.RequestId }, result); }
+    // IOT-V1-03b: Owner xem thông tin Zone + nội dung yêu cầu rồi xác nhận gửi (trạng thái Submitted ngay, kèm dự toán thiết bị)
+    [HttpPost("api/v1/zones/{zoneId:guid}/deployment-requests/submit")]
+    public async Task<ActionResult<DeploymentRequestView>> SubmitDirect(Guid zoneId, [FromBody] SubmitDeploymentRequestCommand body, CancellationToken ct) { var result = await service.SubmitWithEstimateAsync(User.GetUserId(), User.GetTenantId(), zoneId, body, ct); return CreatedAtAction(nameof(Get), new { requestId = result.RequestId }, result); }
     // IOT-V1-03a: danh sách yêu cầu của Tenant trong JWT (tuỳ chọn lọc theo Zone)
     [HttpGet("api/v1/deployment-requests")]
     public async Task<ActionResult<IReadOnlyList<DeploymentRequestView>>> ListMine([FromQuery] Guid? zoneId, CancellationToken ct) => Ok(await service.ListOwnerRequestsAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
@@ -30,6 +33,9 @@ public sealed class IoTPlanningController(IIoTDeploymentService service) : Contr
     // IOT-V1-05
     [HttpPost("api/v1/deployment-requests/{requestId:guid}/submit")]
     public async Task<ActionResult<DeploymentRequestView>> Submit(Guid requestId, CancellationToken ct) => Ok(await service.SubmitAsync(User.GetUserId(), User.GetTenantId(), requestId, ct));
+    // IOT-V1-05b: chủ trại hủy yêu cầu triển khai khi chưa bắt đầu lắp đặt (chưa ký hợp đồng/đóng cọc)
+    [HttpPost("api/v1/deployment-requests/{requestId:guid}/cancel")]
+    public async Task<ActionResult<DeploymentRequestView>> Cancel(Guid requestId, [FromBody] CancelDeploymentRequest? body, CancellationToken ct) => Ok(await service.CancelAsync(User.GetUserId(), User.GetTenantId(), requestId, body?.Reason, ct));
     // IOT-V1-06
     [HttpGet("api/v1/deployment-requests/{requestId:guid}")]
     public async Task<ActionResult<DeploymentRequestView>> Get(Guid requestId, CancellationToken ct) => Ok(await service.GetRequestAsync(User.GetUserId(), User.GetTenantId(), requestId, ct));
@@ -38,6 +44,9 @@ public sealed class IoTPlanningController(IIoTDeploymentService service) : Contr
 [ApiController, Authorize(Roles = "PlatformTechnician")]
 public sealed class TechnicianDeploymentController(IIoTDeploymentService service) : ControllerBase
 {
+    // IOT-V1-10a: model catalogue for the assigned technician's deployment plan.
+    [HttpGet("api/v1/platform/deployment-requests/{requestId:guid}/models")]
+    public async Task<ActionResult<IReadOnlyList<DeviceRecommendationView>>> Models(Guid requestId, CancellationToken ct) => Ok(await service.ListPlanModelsAsync(User.GetUserId(), requestId, ct));
     // IOT-V1-07
     [HttpGet("api/v1/platform/deployment-requests")]
     public async Task<ActionResult<IReadOnlyList<DeploymentRequestView>>> List(CancellationToken ct) => Ok(await service.ListTechnicianRequestsAsync(User.GetUserId(), ct));
@@ -140,6 +149,7 @@ public sealed class PlanItemRequest { public Guid DeviceModelId { get; init; } [
 public sealed class DeploymentPlanRequest { [Required, MinLength(1)] public List<PlanItemRequest> Items { get; init; } = []; [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class SurveyRequest { public bool IsFeasible { get; init; } [Required, StringLength(2000)] public string SiteConditions { get; init; } = ""; [Required, StringLength(2000)] public string Notes { get; init; } = ""; }
 public sealed class ConnectionTestRequest { public Guid DeviceId { get; init; } public bool Succeeded { get; init; } public decimal? Rssi { get; init; } public decimal? Snr { get; init; } public int? RoundTripLatencyMs { get; init; } public DateTime ObservedAtUtc { get; init; } [StringLength(100)] public string? ErrorCode { get; init; } [StringLength(1000)] public string? ErrorMessage { get; init; } internal ConnectionTestCommand ToCommand() => new(DeviceId, Succeeded, Rssi, Snr, RoundTripLatencyMs, ObservedAtUtc, ErrorCode, ErrorMessage); }
+public sealed class CancelDeploymentRequest { [StringLength(1000)] public string? Reason { get; init; } }
 public sealed class FailDeploymentRequest { [Required, StringLength(100)] public string FailureCode { get; init; } = ""; [Required, StringLength(2000)] public string Description { get; init; } = ""; public Guid? DeviceId { get; init; } }
 public sealed class ProvisionGatewayRequest { public Guid DeploymentRequestId { get; init; } public Guid FarmId { get; init; } [Required] public string MacAddress { get; init; } = ""; [Required] public string GatewaySerial { get; init; } = ""; [Required] public string FrequencyBand { get; init; } = ""; [Required] public string FirmwareVersion { get; init; } = ""; [Required] public string MqttClientId { get; init; } = ""; [Required] public string ClientCertificateFingerprint { get; init; } = ""; internal ProvisionGatewayCommand ToCommand() => new(DeploymentRequestId, FarmId, MacAddress, GatewaySerial, FrequencyBand, FirmwareVersion, MqttClientId, ClientCertificateFingerprint); }
 public sealed class GatewayConfigurationRequest { public List<Guid> NodeIds { get; init; } = []; [Range(10, 86400)] public int TelemetryIntervalSec { get; init; } = 60; [Range(1, 60)] public int SamplesPerInterval { get; init; } = 1; [StringLength(500)] public string? InstallationLocation { get; init; } }

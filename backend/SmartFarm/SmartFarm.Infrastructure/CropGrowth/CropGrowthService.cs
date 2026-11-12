@@ -181,7 +181,7 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
             throw new RequestValidationException("sourceProfileId", "Chủ trang trại chỉ có thể sao chép một profile hệ thống để chỉnh sửa.");
         if (command.SourceProfileId.HasValue)
         {
-            var source = await ProfileQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.SourceProfileId && x.TenantId == null, ct)
+            var source = await ProfileWithScheduleQuery().AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.SourceProfileId && x.TenantId == null, ct)
                 ?? throw new ResourceNotFoundException("System Growth Profile was not found.");
             if (source.CropId != command.CropId || source.VarietyId != command.VarietyId) throw new RequestValidationException("sourceProfileId", "Source Profile does not match Crop and Variety.");
             profile = Clone(source, userId, isSystemDefined ? Guid.Empty : tenantId!.Value, name, command.Description, command.IsDefault);
@@ -291,7 +291,7 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
             }
             else
             {
-                var source = await ProfileQuery().AsNoTracking().SingleAsync(x => x.Id == stage.GrowthProfileId, ct);
+                var source = await ProfileWithScheduleQuery().AsNoTracking().SingleAsync(x => x.Id == stage.GrowthProfileId, ct);
                 var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SourceProfileId == source.Id, ct);
                 if (profile is null) { profile = Clone(source, userId, tenantId!.Value, source.Name + " - Custom", source.Description, false); dbContext.GrowthProfiles.Add(profile); await dbContext.SaveChangesAsync(ct); cloned = true; }
                 stage = profile.Stages.Single(x => x.StageOrder == stage.StageOrder);
@@ -318,15 +318,16 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
     {
         await EnsureUserAsync(userId, tenantId, true, ct); await EnsureZoneOwnerAsync(tenantId, zoneId, ct);
         var name = Required(command.Name, nameof(command.Name), 200);
-        if (command.ExpectedEndDate < command.StartDate.AddDays(20)) throw new RequestValidationException(nameof(command.ExpectedEndDate), "Expected end date must be at least 20 days after start date.");
+        if (command.ExpectedEndDate < command.StartDate.AddDays(20)) throw new RequestValidationException(nameof(command.ExpectedEndDate), "Ngày kết thúc dự kiến phải sau ngày bắt đầu ít nhất 20 ngày.");
         // Vụ tạo ra là InProgress ngay nên ngày bắt đầu không được ở tương lai (cho lệch múi giờ tối đa 1 ngày so với UTC).
-        if (command.StartDate > DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)) throw new RequestValidationException(nameof(command.StartDate), "Start date cannot be in the future.");
+        if (command.StartDate > DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)) throw new RequestValidationException(nameof(command.StartDate), "Ngày bắt đầu không được ở tương lai: vụ tạo ra ở trạng thái đang canh tác ngay (chưa hỗ trợ tạo vụ dự kiến). Hãy chọn ngày bắt đầu là hôm nay hoặc trước đó.");
         await VisibleCropAsync(command.CropId, tenantId, ct); if (command.VarietyId.HasValue) await VisibleVarietyAsync(command.VarietyId.Value, command.CropId, tenantId, ct);
-        var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.Id == command.GrowthProfileId && (x.TenantId == null || x.TenantId == tenantId), ct) ?? throw new ResourceNotFoundException("Growth Profile was not found.");
-        if (profile.CropId != command.CropId || profile.VarietyId != command.VarietyId) throw new RequestValidationException(nameof(command.GrowthProfileId), "Growth Profile does not match Crop and Variety.");
+        var profile = await ProfileWithScheduleQuery().SingleOrDefaultAsync(x => x.Id == command.GrowthProfileId && (x.TenantId == null || x.TenantId == tenantId), ct) ?? throw new ResourceNotFoundException("Growth Profile was not found.");
+        if (profile.CropId != command.CropId || profile.VarietyId != command.VarietyId) throw new RequestValidationException(nameof(command.GrowthProfileId), "Hồ sơ canh tác không khớp cây/giống đã chọn: hồ sơ riêng của một giống chỉ dùng với đúng giống đó, hồ sơ chung (không nêu giống) chỉ dùng khi không chọn giống. Hãy chọn lại hồ sơ cho cây/giống này.");
         var first = profile.Stages.OrderBy(x => x.StageOrder).FirstOrDefault() ?? throw new ResourceConflictException("Growth Profile has no stages.");
         await using var tx = await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        if (await dbContext.PlantingSeasons.AnyAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct)) throw new ResourceConflictException("Zone already has an InProgress Planting Season.");
+        var running = await dbContext.PlantingSeasons.AsNoTracking().Where(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress).Select(x => new { x.Name, x.StartDate }).FirstOrDefaultAsync(ct);
+        if (running is not null) throw new ResourceConflictException($"Zone đang có vụ “{running.Name}” đang canh tác (từ {running.StartDate:dd/MM/yyyy}). Hệ thống không tự đóng vụ đang chạy: hãy kết thúc vụ đó (Zone → Vụ trồng → Kết thúc) rồi tạo vụ mới.");
         // Cây của Zone là thuộc tính riêng: vụ InProgress phải cùng cây với Zone. Đổi (hoặc gán) cây Zone chỉ khi Owner xác nhận rõ ràng (SetZoneCrop), trong cùng giao dịch.
         // Mỗi Zone chỉ có một vụ trong một mùa vụ.
         if (command.FarmingSeasonId.HasValue && await dbContext.PlantingSeasons.AnyAsync(x => x.ZoneId == zoneId && x.FarmingSeasonId == command.FarmingSeasonId && x.Status != PlantingSeasonStatus.Cancelled, ct))
@@ -338,6 +339,10 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
         if (zone.CropId.HasValue && conflicts && !command.SetZoneCrop)
             throw new ResourceConflictException("Cây/giống của vụ khác cây/giống hiện tại của Zone. Hãy xác nhận đổi cây của Zone (setZoneCrop) hoặc chọn đúng cây của Zone.");
         if (!zone.CropId.HasValue || fillsVariety || (conflicts && command.SetZoneCrop)) { zone.CropId = command.CropId; zone.CropVarietyId = command.VarietyId; }
+        profile = Clone(profile, userId, tenantId, $"{profile.Name[..Math.Min(profile.Name.Length, 100)]} · {zone.Name[..Math.Min(zone.Name.Length, 40)]} · {Guid.NewGuid():N}", profile.Description, false);
+        dbContext.GrowthProfiles.Add(profile);
+        first = profile.Stages.OrderBy(x => x.StageOrder).First();
+        zone.GrowthProfileId = profile.Id;
         var season = new PlantingSeason { ZoneId = zoneId, CropId = command.CropId, VarietyId = command.VarietyId, GrowthProfileId = profile.Id, CurrentGrowthStageId = first.Id, Name = name, StartDate = command.StartDate, ExpectedEndDate = command.ExpectedEndDate, FarmingSeasonId = command.FarmingSeasonId };
         ApplyRequirements(season, first); dbContext.PlantingSeasons.Add(season); await dbContext.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         return (await SeasonQuery().AsNoTracking().SingleAsync(x => x.Id == season.Id, ct)).ToView();
@@ -353,8 +358,8 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
         _ = await dbContext.FarmingSeasons.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.FarmingSeasonId && (x.TenantId == null || x.TenantId == tenantId), ct)
             ?? throw new ResourceNotFoundException("Mùa vụ không tồn tại.");
         await VisibleCropAsync(command.CropId, tenantId, ct); if (command.VarietyId.HasValue) await VisibleVarietyAsync(command.VarietyId.Value, command.CropId, tenantId, ct);
-        var profile = await ProfileQuery().SingleOrDefaultAsync(x => x.Id == command.GrowthProfileId && (x.TenantId == null || x.TenantId == tenantId), ct) ?? throw new ResourceNotFoundException("Growth Profile was not found.");
-        if (profile.CropId != command.CropId || profile.VarietyId != command.VarietyId) throw new RequestValidationException(nameof(command.GrowthProfileId), "Growth Profile does not match Crop and Variety.");
+        var profile = await ProfileWithScheduleQuery().SingleOrDefaultAsync(x => x.Id == command.GrowthProfileId && (x.TenantId == null || x.TenantId == tenantId), ct) ?? throw new ResourceNotFoundException("Growth Profile was not found.");
+        if (profile.CropId != command.CropId || profile.VarietyId != command.VarietyId) throw new RequestValidationException(nameof(command.GrowthProfileId), "Hồ sơ canh tác không khớp cây/giống đã chọn: hồ sơ riêng của một giống chỉ dùng với đúng giống đó, hồ sơ chung (không nêu giống) chỉ dùng khi không chọn giống. Hãy chọn lại hồ sơ cho cây/giống này.");
         var first = profile.Stages.OrderBy(x => x.StageOrder).FirstOrDefault() ?? throw new ResourceConflictException("Growth Profile has no stages.");
 
         // Kiểm tra và tạo trong cùng một giao dịch để hai Owner không tạo trùng cùng lúc cho một Zone.
@@ -467,6 +472,8 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
         return season.ToView();
     }
 
+    private IQueryable<GrowthProfile> ProfileWithScheduleQuery() => ProfileQuery().Include(x => x.Stages).ThenInclude(x => x.IrrigationSessions);
+
     private IQueryable<GrowthProfile> ProfileQuery() => dbContext.GrowthProfiles.Include(x => x.Crop).Include(x => x.Variety).Include(x => x.Stages).ThenInclude(x => x.Requirements);
     private IQueryable<PlantingSeason> SeasonQuery() => dbContext.PlantingSeasons
         .AsSplitQuery()
@@ -502,10 +509,12 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
     }
     private async Task<Crop> VisibleCropAsync(Guid id, Guid? tenant, CancellationToken ct) => await dbContext.Crops.SingleOrDefaultAsync(x => x.Id == id && (x.TenantId == null || x.TenantId == tenant), ct) ?? throw new ResourceNotFoundException("Crop was not found in the visible catalog.");
     private async Task<CropVariety> VisibleVarietyAsync(Guid id, Guid crop, Guid? tenant, CancellationToken ct) => await dbContext.CropVarieties.SingleOrDefaultAsync(x => x.Id == id && x.CropId == crop && (x.TenantId == null || x.TenantId == tenant), ct) ?? throw new ResourceNotFoundException("Variety was not found for this Crop.");
-    private static GrowthProfile Clone(GrowthProfile source, Guid user, Guid tenant, string name, string? description, bool isDefault)
+    internal static GrowthProfile Clone(GrowthProfile source, Guid user, Guid tenant, string name, string? description, bool isDefault)
     {
         var result = new GrowthProfile { CropId = source.CropId, VarietyId = source.VarietyId, TenantId = tenant, SourceProfileId = source.Id, CreatedByUserId = user, Name = name, NormalizedName = Normalize(name), Description = Optional(description, 4000), IsDefault = isDefault };
-        foreach (var s in source.Stages.OrderBy(x => x.StageOrder)) { var target = new GrowthStage { Name = s.Name, StageOrder = s.StageOrder, DurationDays = s.DurationDays, Description = s.Description, FertilizerAction = s.FertilizerAction, IpmAction = s.IpmAction }; foreach (var r in s.Requirements) target.Requirements.Add(new EnvironmentalRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit }); result.Stages.Add(target); } return result;
+        foreach (var s in source.Stages.OrderBy(x => x.StageOrder)) { var target = new GrowthStage { Name = s.Name, StageOrder = s.StageOrder, DurationDays = s.DurationDays, Description = s.Description, FertilizerAction = s.FertilizerAction, IpmAction = s.IpmAction }; foreach (var r in s.Requirements) target.Requirements.Add(new EnvironmentalRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit }); result.Stages.Add(target); }
+        CloneIrrigation(source, result);
+        return result;
     }
     private static void AddStages(GrowthProfile profile, IEnumerable<StageInput> stages) { foreach (var s in stages.OrderBy(x => x.StageOrder)) { var stage = new GrowthStage { Name = s.Name.Trim(), StageOrder = s.StageOrder, DurationDays = s.DurationDays, Description = Optional(s.Description, 4000), FertilizerAction = Optional(s.FertilizerAction, 2000), IpmAction = Optional(s.IpmAction, 2000) }; foreach (var r in s.Requirements) stage.Requirements.Add(new EnvironmentalRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit.Trim() }); profile.Stages.Add(stage); } }
     private static void ValidateStages(IReadOnlyList<StageInput> stages) { if (stages.Count == 0 || stages.Select(x => x.StageOrder).Order().Where((x, i) => x != i + 1).Any()) throw new RequestValidationException("stages", "Stage orders must be contiguous and start at 1."); if (stages.Select(x => Normalize(x.Name)).Distinct().Count() != stages.Count) throw new RequestValidationException("stages", "Stage names must be unique."); foreach (var s in stages) { Required(s.Name, "stage.name", 150); if (s.DurationDays <= 0) throw new RequestValidationException("durationDays", "Duration must be positive."); ValidateRequirements(s.Requirements, true); } }

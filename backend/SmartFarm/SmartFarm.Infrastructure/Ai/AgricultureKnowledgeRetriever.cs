@@ -75,13 +75,14 @@ public sealed class AgricultureKnowledgeRetriever(
         int topK,
         bool generalOnlyWhenCropUnknown,
         CancellationToken cancellationToken,
-        IReadOnlyList<string>? expansionTerms = null)
+        IReadOnlyList<string>? expansionTerms = null,
+        string? climateRegion = null)
     {
         if (string.IsNullOrWhiteSpace(question)) return [];
         question = question.Normalize(NormalizationForm.FormC).Trim();
         if (topK <= 0) topK = 5;
 
-        var scope = await ResolveDocumentScopeAsync(cropName, tenantId, generalOnlyWhenCropUnknown, cancellationToken);
+        var scope = await ResolveDocumentScopeAsync(cropName, tenantId, generalOnlyWhenCropUnknown, cancellationToken, climateRegion);
         if (scope.Allowed is { Count: 0 }) return [];
 
         // Lấy dư ứng viên rồi mới chọn: ưu tiên chủ đề câu hỏi, tài liệu đúng cây, và giới hạn số đoạn mỗi tài liệu.
@@ -117,7 +118,7 @@ public sealed class AgricultureKnowledgeRetriever(
     /// mở rộng sang tài liệu chuyên biệt của cây khác. Không có cây: mọi tài liệu, hoặc chỉ tài liệu chung nếu yêu cầu.
     /// </summary>
     private async Task<(HashSet<Guid>? Allowed, HashSet<Guid> CropSpecific)> ResolveDocumentScopeAsync(
-        string? cropName, Guid? tenantId, bool generalOnlyWhenCropUnknown, CancellationToken ct)
+        string? cropName, Guid? tenantId, bool generalOnlyWhenCropUnknown, CancellationToken ct, string? climateRegion = null)
     {
         var hasCrop = !string.IsNullOrWhiteSpace(cropName);
         var nowUtc = NowUtc;
@@ -128,8 +129,10 @@ public sealed class AgricultureKnowledgeRetriever(
             .Where(d => d.EffectiveDate == null || d.EffectiveDate <= nowUtc)
             .Where(d => d.ExpirationDate == null || d.ExpirationDate > nowUtc)
             .Where(d => d.IsPublic || d.TenantId == tenantId)
-            .Select(d => new { d.Id, d.CropScope })
+            .Select(d => new { d.Id, d.CropScope, d.RegionScope })
             .ToListAsync(ct);
+        // Tài liệu ghi rõ vùng khí hậu khác vùng của nông trại thì không dùng (cùng cây, khác vùng, khác ngưỡng).
+        docs = docs.Where(d => SmartFarm.Infrastructure.Ai.Location.ClimateRegionMapper.Matches(d.RegionScope, climateRegion)).ToList();
 
         var general = docs.Where(d => string.IsNullOrWhiteSpace(d.CropScope)).Select(d => d.Id);
         if (!hasCrop)

@@ -100,3 +100,29 @@ internal sealed class ServiceRequestConfiguration : IEntityTypeConfiguration<Ser
 {
     public void Configure(EntityTypeBuilder<ServiceRequest> b) { b.ToTable("service_requests"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b); b.Property(x => x.TenantId).HasColumnName("tenant_id"); b.Property(x => x.FarmId).HasColumnName("farm_id"); b.Property(x => x.ZoneId).HasColumnName("zone_id"); b.Property(x => x.DeploymentRequestId).HasColumnName("deployment_request_id"); b.Property(x => x.DeviceId).HasColumnName("device_id"); b.Property(x => x.Source).HasColumnName("source").HasMaxLength(50); b.Property(x => x.FailureCode).HasColumnName("failure_code").HasMaxLength(100); b.Property(x => x.Description).HasColumnName("description").HasMaxLength(2000); b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(30); b.HasIndex(x => new { x.DeploymentRequestId, x.Status }); b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.Farm).WithMany().HasForeignKey(x => x.FarmId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.Zone).WithMany().HasForeignKey(x => x.ZoneId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.DeploymentRequest).WithMany().HasForeignKey(x => x.DeploymentRequestId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.Device).WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Restrict); }
 }
+
+internal sealed class DeploymentEstimateItemConfiguration : IEntityTypeConfiguration<DeploymentEstimateItem>
+{
+    public void Configure(EntityTypeBuilder<DeploymentEstimateItem> b)
+    {
+        b.ToTable("deployment_estimate_items", t =>
+        {
+            t.HasCheckConstraint("ck_deployment_estimate_quantity", "quantity > 0");
+            t.HasCheckConstraint("ck_deployment_estimate_price", "unit_price >= 0");
+        });
+        b.HasKey(x => x.Id);
+        DeploymentRequestConfiguration.IdAudit(b);
+        b.Property(x => x.DeploymentRequestId).HasColumnName("deployment_request_id");
+        b.Property(x => x.HardwareItemId).HasColumnName("hardware_item_id");
+        b.Property(x => x.SortOrder).HasColumnName("sort_order");
+        b.Property(x => x.Code).HasColumnName("code").HasMaxLength(100).IsRequired();
+        b.Property(x => x.Name).HasColumnName("name").HasMaxLength(300).IsRequired();
+        b.Property(x => x.Model).HasColumnName("model").HasMaxLength(200);
+        b.Property(x => x.Role).HasColumnName("role").HasMaxLength(30).IsRequired();
+        b.Property(x => x.Quantity).HasColumnName("quantity");
+        b.Property(x => x.UnitPrice).HasColumnName("unit_price").HasColumnType("numeric(18,2)");
+        b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(1000);
+        b.HasIndex(x => x.DeploymentRequestId);
+        b.HasOne(x => x.DeploymentRequest).WithMany(x => x.EstimateItems).HasForeignKey(x => x.DeploymentRequestId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

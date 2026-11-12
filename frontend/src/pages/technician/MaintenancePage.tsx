@@ -1,3 +1,4 @@
+import { ServiceRequestStatus, serviceStatusLabels } from '../../components/ui/ServiceRequestStatus';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
 import { supportService, deviceService } from '../../services';
@@ -30,6 +31,9 @@ export const MaintenancePage: React.FC = () => {
 
   useEffect(() => {
     loadRequests();
+    const refresh = () => { void loadRequests(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
   }, []);
 
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -41,8 +45,8 @@ export const MaintenancePage: React.FC = () => {
 
   const displayedRequests = maintenanceRequests.filter(r => {
     if (statusFilter === 'ALL') return true;
-    if (statusFilter === 'ACCEPTED') return Boolean(r.isAcceptedByOwner) && r.status !== 'RESOLVED' && r.status !== 'CLOSED';
-    if (statusFilter === 'WAITING_ACCEPTANCE') return !r.isAcceptedByOwner && r.status !== 'RESOLVED' && r.status !== 'CLOSED';
+    if (statusFilter === 'ACCEPTED') return r.status === 'VERIFIED';
+    if (statusFilter === 'WAITING_ACCEPTANCE') return r.status !== 'VERIFIED' && r.status !== 'RESOLVED' && r.status !== 'CLOSED';
     if (statusFilter === 'COMPLETED') return r.status === 'RESOLVED' || r.status === 'CLOSED';
     return r.status === statusFilter;
   });
@@ -54,28 +58,28 @@ export const MaintenancePage: React.FC = () => {
     }
     setIsSubmittingHotSwap(true);
     try {
-      const targetReqId = hotSwapTargetReq || (maintenanceRequests[0]?.serviceRequestId ?? '80000000-0000-0000-0000-000000000002');
-      const req = requests.find(r => r.serviceRequestId === targetReqId);
-      const zoneId = req?.zoneId || '32000000-0000-0000-0000-000000000001';
-      const oldDev = hotSwapOldNode || nodes[0]?.deviceId || nodes[0]?.id || '52000000-0000-0000-0000-000000000003';
-
-      try {
-        await supportService.replaceDevice(targetReqId, oldDev, `Hot-swap 1-đổi-1 cho thiết bị mới serial ${hotSwapNewSerial}`);
-      } catch {
-        await supportService.hotSwapDevice(zoneId, oldDev, oldDev, targetReqId, `Hot-swap SN: ${hotSwapNewSerial}`);
+      const req = requests.find(r => r.serviceRequestId === hotSwapTargetReq);
+      if (!req?.farmId || !req.zoneId || req.status !== 'DIAGNOSED') {
+        throw new Error('Chọn yêu cầu đã chẩn đoán và có farm/zone hợp lệ.');
       }
-
+      const candidates = await deviceService.getFarmDevices(req.farmId);
+      const replacement = candidates.find((d: any) =>
+        String(d.hardwareAddress || d.serialNumber || '').toLowerCase() === hotSwapNewSerial.trim().toLowerCase());
+      if (!replacement || replacement.zoneId || replacement.status === 'Decommissioned') {
+        throw new Error('Không tìm thấy thiết bị thay thế chưa gán Zone trong trang trại này.');
+      }
+      const replacementId = replacement.deviceId || replacement.id;
+      const detail = await supportService.getServiceRequestById(req.serviceRequestId);
+      if (!replacementId || replacementId === (detail.currentDeviceId || detail.originalDeviceId)) throw new Error('Thiết bị thay thế phải khác thiết bị cũ.');
+      await supportService.replaceDevice(req.serviceRequestId, replacementId, `Thay thiết bị: ${hotSwapNewSerial}`);
       await loadRequests();
       setIsHotSwapOpen(false);
       setHotSwapNewSerial('');
       setSuccessMsg(`✅ Đã thực hiện quy trình Hot-Swap 1-đổi-1 thành công cho thiết bị [${hotSwapNewSerial}]!`);
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
-      console.error('Hot-swap failed:', err);
-      setIsHotSwapOpen(false);
-      setSuccessMsg(`✅ Đã ghi nhận quy trình Hot-Swap 1-đổi-1 cho thiết bị [${hotSwapNewSerial}]!`);
-      setTimeout(() => setSuccessMsg(null), 4000);
-    } finally {
+      setSuccessMsg(null);
+      alert(err?.response?.data?.detail || err?.response?.data?.message || err?.message || 'Thay thiết bị thất bại.');    } finally {
       setIsSubmittingHotSwap(false);
     }
   };
@@ -83,24 +87,21 @@ export const MaintenancePage: React.FC = () => {
   const handleSaveMapping = async (requestId: string, nodes: any[], mappedCount: number) => {
     try {
       const req = requests.find(r => r.serviceRequestId === requestId);
-      const zoneId = req?.zoneId || '32000000-0000-0000-0000-000000000001';
+      const zoneId = req?.zoneId;
+      if (!zoneId || req?.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
       await supportService.updateMappedNodes(zoneId, nodes, requestId);
       await loadRequests();
       setSuccessMsg(`✅ Đã cập nhật biểu đồ GIS và lưu vị trí ${mappedCount} Nodes cho Phân khu Bảo trì!`);
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
       console.error('Failed to update mapped nodes in maintenance:', err);
-      alert('Lỗi lưu biểu đồ GIS: ' + (err?.response?.data?.message || err?.message || 'Vui lòng thử lại.'));
+      throw err;
     }
   };
 
   const handleCompleteRequest = async (req: ServiceRequest) => {
-    if (req.isAcceptedByOwner || req.status === 'ACCEPTED_BY_OWNER' || req.status === 'CLOSED' || req.status === 'RESOLVED') {
-      alert('✅ Công trình này đã hoàn tất nghiệm thu. Không cần thao tác lại.');
-      return;
-    }
-    if (!req.isAcceptedByOwner) {
-      alert('⚠️ Bạn chỉ có thể Xác nhận Hoàn thành sau khi Chủ trang trại (Owner) đã bấm "Đã nghiệm thu"!');
+    if (req.status !== 'VERIFIED') {
+      alert('Chỉ đóng dịch vụ sau khi kiểm tra kết nối thành công (Verified).');
       return;
     }
     try {
@@ -110,7 +111,7 @@ export const MaintenancePage: React.FC = () => {
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
       if (err?.response?.status === 409) {
-        alert('ℹ️ Yêu cầu này đã được hoàn thành trước đó.');
+        alert(err?.response?.data?.detail || err?.response?.data?.message || 'Chưa đủ điều kiện đóng dịch vụ.');
         await loadRequests();
       } else {
         alert('Lỗi: ' + (err?.response?.data?.message || err?.message || 'Không thể hoàn thành yêu cầu.'));
@@ -169,7 +170,7 @@ export const MaintenancePage: React.FC = () => {
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
               statusFilter === 'WAITING_ACCEPTANCE' ? 'bg-amber-700 text-white' : 'bg-slate-200 text-slate-700'
             }`}>
-              {maintenanceRequests.filter(r => !r.isAcceptedByOwner && r.status !== 'RESOLVED' && r.status !== 'CLOSED').length}
+              {maintenanceRequests.filter(r => r.status !== 'VERIFIED' && r.status !== 'RESOLVED' && r.status !== 'CLOSED').length}
             </span>
           </button>
           <button
@@ -183,7 +184,7 @@ export const MaintenancePage: React.FC = () => {
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
               statusFilter === 'ACCEPTED' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
             }`}>
-              {maintenanceRequests.filter(r => Boolean(r.isAcceptedByOwner) && r.status !== 'RESOLVED' && r.status !== 'CLOSED').length}
+              {maintenanceRequests.filter(r => r.status === 'VERIFIED').length}
             </span>
           </button>
           <button
@@ -215,8 +216,8 @@ export const MaintenancePage: React.FC = () => {
           </div>
         ) : (
           displayedRequests.map(req => {
-            const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || req.status === 'ACCEPTED_BY_OWNER');
-            const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED' || isAccepted;
+            const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
+            const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED';
 
             return (
               <div key={req.serviceRequestId} className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4 hover:border-slate-300 transition-all">
@@ -226,7 +227,7 @@ export const MaintenancePage: React.FC = () => {
                       <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px]">
                         🛠️ YÊU CẦU BẢO TRÌ / HOT-SWAP NODE
                       </span>
-                      <StatusBadge status={req.status} />
+                      <ServiceRequestStatus request={req} />
                       {isAccepted ? (
                         <span className="px-2.5 py-0.5 rounded-full bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1">
                           <CheckSquare size={12} /> OWNER ĐÃ NGHIỆM THU
@@ -251,7 +252,7 @@ export const MaintenancePage: React.FC = () => {
 
                   <div className="text-right text-xs shrink-0 font-mono">
                     <span className="text-slate-400 block text-[10px]">Tiến độ Node</span>
-                    <strong className="text-amber-700 font-bold">{req.mappedNodesCount || 0} Nodes đã chấm</strong>
+                    <strong className="text-amber-700 font-bold">{req.mappedNodesCount ?? 'Chưa tải'} Nodes đã chấm</strong>
                   </div>
                 </div>
 
@@ -292,18 +293,20 @@ export const MaintenancePage: React.FC = () => {
                     {/* Button 2: Trạng thái hoàn thành */}
                     {isCompleted ? (
                       <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1.5 select-none">
-                        <CheckCircle2 size={14} className="text-emerald-400" /> Đã hoàn thành (Owner đã nghiệm thu)
+                        <CheckCircle2 size={14} className="text-emerald-400" /> Dịch vụ đã kết thúc
                       </span>
+                    ) : req.status === 'VERIFIED' ? (
+                      <Button onClick={() => handleCompleteRequest(req)}>Đóng dịch vụ</Button>
                     ) : (
                       <div className="relative group">
                         <Button
                           disabled
                           className="bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed text-xs"
                         >
-                          <Lock size={14} className="mr-1.5 text-slate-500" /> Chờ Owner nghiệm thu
+                          <Lock size={14} className="mr-1.5 text-slate-500" /> Chờ kiểm tra kết nối
                         </Button>
                         <div className="absolute right-0 bottom-full mb-1 hidden group-hover:block w-56 p-2 bg-slate-800 text-amber-300 text-[10px] rounded shadow-lg border border-slate-700">
-                          Chờ Chủ trang trại (Owner) bấm "Đã nghiệm thu" để hoàn tất công việc!
+                          Cần trạng thái Verified trước khi đóng dịch vụ.
                         </div>
                       </div>
                     )}
@@ -337,28 +340,15 @@ export const MaintenancePage: React.FC = () => {
               onChange={(e) => setHotSwapTargetReq(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
             >
-              {maintenanceRequests.map(r => (
+              <option value="">Chọn yêu cầu đã chẩn đoán</option>
+              {maintenanceRequests.filter(r => r.status === 'DIAGNOSED').map(r => (
                 <option key={r.serviceRequestId} value={r.serviceRequestId}>{r.title} ({r.farmName})</option>
               ))}
             </select>
           </div>
 
-          <div>
-            <label className="block text-slate-700 font-medium mb-1">Node cần thay thế (Old Node)</label>
-            <select
-              value={hotSwapOldNode}
-              onChange={(e) => setHotSwapOldNode(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#119653]"
-            >
-              {nodes.length > 0 ? nodes.map((n: any) => (
-                <option key={n.nodeId || n.id} value={n.nodeId || n.id}>{n.name || n.nodeCode || n.hardwareAddress || 'Node'} - Pin {n.batteryLevel ?? 85}%</option>
-              )) : (
-                <option value="52000000-0000-0000-0000-000000000003">Node Cảm biến Lô A (SN-NODE-001) - Pin 85%</option>
-              )}
-            </select>
-          </div>
-
-          <div>
+          <p>Thiết bị cũ là thiết bị hiện tại của yêu cầu được chọn.</p>
+      <div>
             <label className="block text-slate-700 font-medium mb-1">Mã Serial Number Node mới (Replacement Node)</label>
             <input
               value={hotSwapNewSerial}

@@ -1,3 +1,4 @@
+import { ServiceRequestStatus, serviceStatusLabels } from '../../components/ui/ServiceRequestStatus';
 import React, { useState, useEffect } from 'react';
 import { MetricCard, StatusBadge, Button } from '../../components/ui/BaseUI';
 import { supportService, deviceService } from '../../services';
@@ -59,8 +60,8 @@ export const TechnicianDashboard: React.FC = () => {
         <MetricCard
           title="Owner Đã Nghiệm Thu"
           value={`${acceptedByOwnerCount} Request`}
-          unit="Sẵn sàng Hoàn tất"
-          subtext="Sẵn sàng bấm Xác nhận Hoàn thành"
+          unit="Đã ký nghiệm thu"
+          subtext="Theo dữ liệu nghiệm thu hợp đồng"
           icon={<CheckSquare size={20} />}
           status="normal"
         />
@@ -112,7 +113,7 @@ export const TechnicianDashboard: React.FC = () => {
                     }`}>
                       {isInst ? '⚡ LẮP ĐẶT MỚI' : '🛠️ BẢO TRÌ'}
                     </span>
-                    <StatusBadge status={sr.status} />
+                    <ServiceRequestStatus request={sr} />
                     {sr.isAcceptedByOwner ? (
                       <span className="px-2 py-0.5 rounded bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1">
                         <CheckSquare size={11} /> OWNER ĐÃ NGHIỆM THU
@@ -126,7 +127,7 @@ export const TechnicianDashboard: React.FC = () => {
                   <h4 className="text-sm font-bold text-slate-900">{sr.title}</h4>
                   <p className="text-xs text-slate-600">{sr.description}</p>
                   <div className="text-[11px] text-slate-500 pt-1">
-                    Nông trang: <strong className="text-slate-800">{sr.farmName} ({sr.zoneName})</strong> | Tiến độ: <strong className="text-emerald-700 font-bold">{sr.mappedNodesCount || 0} Nodes đã chấm</strong>
+                    Nông trang: <strong className="text-slate-800">{sr.farmName} ({sr.zoneName})</strong> | Tiến độ: <strong className="text-emerald-700 font-bold">{sr.mappedNodesCount ?? 'Chưa tải'} Nodes đã chấm</strong>
                   </div>
                 </div>
 

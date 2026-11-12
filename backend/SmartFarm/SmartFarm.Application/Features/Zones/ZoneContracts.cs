@@ -10,7 +10,9 @@ public sealed record CreateZoneCommand(
     string ZoneType,
     string? Notes,
     Guid? CropId = null,
-    Guid? VarietyId = null);
+    Guid? VarietyId = null,
+    // Hồ sơ canh tác gắn trực tiếp với Zone (không tạo vụ mùa). Có hồ sơ thì cây/giống của Zone lấy từ hồ sơ.
+    Guid? GrowthProfileId = null);
 
 public sealed record UpdateZoneCommand(
     string Name,
@@ -22,7 +24,10 @@ public sealed record UpdateZoneCommand(
     // Cây/giống hiện tại của Zone: bỏ trống CropId thì giữ nguyên; ClearCrop = true để chuyển Zone về trạng thái chưa gán cây.
     Guid? CropId = null,
     Guid? VarietyId = null,
-    bool ClearCrop = false);
+    bool ClearCrop = false,
+    // Bỏ trống GrowthProfileId thì giữ nguyên hồ sơ hiện có; ClearGrowthProfile = true để gỡ hồ sơ (không đổi cây).
+    Guid? GrowthProfileId = null,
+    bool ClearGrowthProfile = false);
 
 public sealed record ZoneSummaryView(
     Guid ZoneId,
@@ -55,4 +60,8 @@ public sealed record ZoneView(
     string SeasonStatus = "None",
     string? SeasonName = null,
     string? SeasonCropName = null,
-    string? PlannedCrop = null);
+    string? PlannedCrop = null,
+    // Hồ sơ canh tác đang gắn trực tiếp với Zone (null = chưa gắn).
+    Guid? GrowthProfileId = null,
+    string? GrowthProfileName = null,
+    bool? GrowthProfileIsSystemDefined = null);

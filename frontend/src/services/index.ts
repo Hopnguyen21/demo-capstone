@@ -3,6 +3,7 @@
 
 import { apiClient, setTokens, clearTokens, extractApiError } from './api';
 import type {
+  ServiceRequest,
   FarmingSeason,
   PlantingSeason,
   CropVariety,
@@ -1606,16 +1607,31 @@ export const supportService = {
     } catch { }
 
     // Parallel lookup for quotation & zone devices
+    const viewer = await apiClient.get('/api/v1/users/me').then(r => r.data).catch(() => null);
+    const deploymentPrefix = viewer?.role === 'PlatformTechnician'
+      ? '/api/v1/platform/deployment-requests/'
+      : viewer?.role === 'FarmOwner' ? '/api/v1/deployment-requests/' : null;
     const enriched = await Promise.all(
       rawList.map(async (sr: any) => {
         const id = sr.id || sr.serviceRequestId;
         let contractDetails: any = null;
         let acceptanceDetails: any = null;
-        let mappedNodesCount = 4;
+        let mappedNodesCount: number | undefined;
+        let quotationStatus: string | undefined;
+        let deploymentStatus: string | undefined;
+        let deploymentLinkInvalid = false;
+        if (sr.deploymentRequestId && deploymentPrefix) {
+          try {
+            const { data: deployment } = await apiClient.get(deploymentPrefix + sr.deploymentRequestId);
+            deploymentLinkInvalid = deployment.farmId !== sr.farmId || deployment.zoneId !== sr.zoneId;
+            if (!deploymentLinkInvalid) deploymentStatus = deployment.status;
+          } catch { /* Unavailable deployment must not imply completion. */ }
+        }
 
         try {
           const qRes = await apiClient.get(`/api/v1/service-requests/${id}/quotation`);
           const q = qRes.data;
+          quotationStatus = q?.status;
           if (q && q.id) {
             const isSigned = Boolean(sr.isContractSigned || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
             const isDepositPaid = Boolean(sr.isDepositPaid || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
@@ -1672,28 +1688,15 @@ export const supportService = {
           try {
             const locRes = await apiClient.get(`/api/v1/zones/${sr.zoneId}/devices/map-locations`);
             const locs = locRes.data?.value ?? locRes.data ?? [];
-            if (Array.isArray(locs) && locs.length > 0) {
+            if (Array.isArray(locs)) {
               mappedNodesCount = locs.length;
             }
           } catch { }
         }
 
-        const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned || sr.status === 'Closed' || sr.status === 'Resolved');
-        const isContractSigned = Boolean(contractDetails?.isSignedByOwner && contractDetails?.is30PercentPaid);
-
-        let derivedStatus: 'OPEN' | 'IN_PROGRESS' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER' | 'RESOLVED' | 'CLOSED' = 'OPEN';
-        if (isAccepted) {
-          derivedStatus = 'ACCEPTED_BY_OWNER';
-        } else if (isContractSigned) {
-          derivedStatus = 'CONTRACT_SIGNED_30PAID';
-        } else if (contractDetails) {
-          derivedStatus = 'CONTRACT_SENT';
-        } else if (sr.status === 'Assigned' || sr.status === 'InProgress') {
-          derivedStatus = 'IN_PROGRESS';
-        } else if (sr.status === 'Closed') {
-          derivedStatus = 'CLOSED';
-        }
-
+        const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned);
+        const derivedStatus = String(sr.status ?? 'Open')
+          .replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase() as ServiceRequest['status'];
         // Resolve accurate zone name & farm name
         const zoneObj = sr.zoneId ? allZonesMap[sr.zoneId] : null;
         const farmObj = sr.farmId ? allFarmsMap[sr.farmId] : (zoneObj?.farmId ? allFarmsMap[zoneObj.farmId] : null);
@@ -1752,7 +1755,10 @@ export const supportService = {
           description: sr.description || 'Yêu cầu kiểm tra và bảo dưỡng phần cứng tại nông trang.',
           priority: sr.priority || 'HIGH',
           status: derivedStatus,
-          requestType: (sr.failureCode === 'NEW_INSTALL' ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
+          deploymentStatus,
+          quotationStatus,
+          deploymentLinkInvalid,
+          requestType: (['NEW_INSTALL', 'INSTALLATION'].includes(String(sr.failureCode ?? '').toUpperCase()) ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
           requestedBy: resolvedRequestedBy,
           assignedTechnician: techId || undefined,
           assignedTechnicianName: resolvedTechName,
@@ -2644,4 +2650,4 @@ export const backupService = {
   /** POST /api/v1/platform/backups/{fileName}/restore (PlatformAdmin) */
   restore: async (fileName: string, confirm: boolean, overwriteConfirmation: string): Promise<RestoreBackupResult> =>
     (await apiClient.post(`/api/v1/platform/backups/${encodeURIComponent(fileName)}/restore`, { confirm, overwriteConfirmation })).data,
-};
+};

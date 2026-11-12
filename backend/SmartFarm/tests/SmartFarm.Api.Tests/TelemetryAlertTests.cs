@@ -161,7 +161,13 @@ public sealed class TelemetryAlertTests
         using var client = factory.CreateClient(); await Login(client, "owner-a@example.com");
         var alerts = await client.GetFromJsonAsync<List<AlertView>>($"/api/v1/zones/{fixture.ZoneId}/alerts", ApiJson);
         (await client.PutAsJsonAsync($"/api/v1/alerts/{alerts![0].AlertId}/resolve", new { actionTaken = "Confirmed stage change" })).EnsureSuccessStatusCode();
-        (await client.PutAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/planting-seasons/{fixture.SeasonId}/stage", new { growthStageId = VegetativeStage, notes = "Vegetative started" })).EnsureSuccessStatusCode();
+        // Vụ dùng bản sao hồ sơ của trang trại (mã giai đoạn riêng): lấy giai đoạn thứ 2 từ chính hồ sơ của vụ.
+        var seasonDetail = await client.GetAsync($"/api/v1/zones/{fixture.ZoneId}/planting-seasons/{fixture.SeasonId}"); seasonDetail.EnsureSuccessStatusCode();
+        using var seasonDetailJson = JsonDocument.Parse(await seasonDetail.Content.ReadAsStringAsync());
+        var stagesResponse = await client.GetAsync($"/api/v1/growth-profiles/{seasonDetailJson.RootElement.GetProperty("growthProfileId").GetGuid()}/stages"); stagesResponse.EnsureSuccessStatusCode();
+        using var stagesJson = JsonDocument.Parse(await stagesResponse.Content.ReadAsStringAsync());
+        var vegetativeOfSeason = stagesJson.RootElement.EnumerateArray().Single(x => x.GetProperty("stageOrder").GetInt32() == 2).GetProperty("stageId").GetGuid();
+        (await client.PutAsJsonAsync($"/api/v1/zones/{fixture.ZoneId}/planting-seasons/{fixture.SeasonId}/stage", new { growthStageId = vegetativeOfSeason, notes = "Vegetative started" })).EnsureSuccessStatusCode();
         Assert.Equal(0, (await SendAsync(factory, fixture, fixture.Fingerprint, 29, "C", "veg-1", captured.AddSeconds(2), EnvironmentalParameterCode.Temperature)).AlertsCreated);
         Assert.Equal(0, (await SendAsync(factory, fixture, fixture.Fingerprint, 29, "C", "veg-2", captured.AddSeconds(3), EnvironmentalParameterCode.Temperature)).AlertsCreated);
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>(); Assert.Single(await db.Alerts.ToListAsync());

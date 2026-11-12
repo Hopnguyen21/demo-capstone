@@ -79,6 +79,7 @@ public static class AiPromptBuilder
     41. BẢO VỆ VỊ TRÍ VÀ DỮ LIỆU KHÁCH HÀNG: <zone_context> chỉ chứa nhãn khu vực tổng quát (general_region) khi có; tuyệt đối không chứa địa chỉ đầy đủ, số nhà, ngõ ngách, tọa độ GPS chính xác, thông tin liên hệ hay dữ liệu hợp đồng khách hàng.
     42. NGUYÊN TẮC BỐI CẢNH KHU VỰC VÀ NGƯỠNG CANH TÁC:
         - general_region (nếu có trong <zone>) chỉ cung cấp bối cảnh khí hậu/thời tiết địa phương khi câu hỏi đề cập đến thời tiết, khí hậu hoặc tính mùa vụ khu vực.
+        - climate_region (north = Bắc Bộ có mùa đông lạnh, central = Trung Bộ ven biển, highlands = Tây Nguyên/cao nguyên, south = Nam Bộ hai mùa mưa-khô) chỉ là bối cảnh khí hậu theo địa chỉ nông trại để giải thích mùa vụ, rét hại, nắng nóng, mưa; ngưỡng canh tác vẫn chỉ lấy từ hồ sơ sinh trưởng trong cơ sở dữ liệu.
         - TUYỆT ĐỐI KHÔNG tự suy đoán, bịa đặt hay điều chỉnh ngưỡng nhiệt độ, độ ẩm, pH, EC hoặc quy trình canh tác chỉ dựa trên tên vùng miền.
         - Mọi ngưỡng tư vấn bắt buộc phải truy xuất từ <requirements> của Growth Profile hoặc <agriculture_knowledge> từ tài liệu VietGAP đã duyệt.
         - Nếu câu hỏi hỏi về kỹ thuật canh tác hoặc ngưỡng đặc thù vùng miền mà tài liệu đã duyệt và hồ sơ sinh trưởng KHÔNG có dữ liệu: BẮT BUỘC phải nêu rõ trong câu trả lời và limitations là "chưa có tài liệu quy chuẩn cho vùng này", tuyệt đối không tự tạo số liệu.
@@ -146,6 +147,9 @@ public static class AiPromptBuilder
     private static readonly System.Text.RegularExpressions.Regex UnitPattern = new(
         @"(?i)\b(°c|c|%|ph|ec|ms/cm|ds/m|ppm|mg/l|kg/ha|tấn/ha|kg|g|tấn|cây/m2|cây/sào|cây/ha|ngày|giờ|phút)\b",
         System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Làm tròn diện tích gửi ra ngoài (100 m² gần nhất khi từ 100 m² trở lên) để giảm khả năng nhận dạng một trang trại cụ thể.</summary>
+    internal static decimal CoarseArea(decimal areaM2) => areaM2 >= 100m ? Math.Round(areaM2 / 100m, 0, MidpointRounding.AwayFromZero) * 100m : areaM2;
 
     public static bool NeedsRegionalContext(string? question) =>
         !string.IsNullOrWhiteSpace(question) && RegionalContextKeywords.IsMatch(question);
@@ -390,15 +394,17 @@ public static class AiPromptBuilder
         var includeRegion = !string.IsNullOrWhiteSpace(c.GeneralRegion) && NeedsRegionalContext(sanitizedQuestion);
         var regionAttr = includeRegion ? $" general_region=\"{Escape(c.GeneralRegion)}\"" : string.Empty;
         var levelAttr = includeRegion && !string.IsNullOrWhiteSpace(c.LocationLevel) ? $" location_level=\"{Escape(c.LocationLevel)}\"" : string.Empty;
+        // Vùng khí hậu thô (north/central/highlands/south) luôn kèm theo khi biết: không chứa địa chỉ hay toạ độ.
+        var climateAttr = !string.IsNullOrWhiteSpace(c.ClimateRegion) ? $" climate_region=\"{Escape(c.ClimateRegion)}\"" : string.Empty;
 
         if (isPureKnowledge || isSoilOrAgronomy || isSoil)
         {
             // Không gửi tên Zone cụ thể khi hỏi kiến thức nông học/đất để bảo vệ dữ liệu khách hàng
-            sb.AppendLine($"    <zone type=\"{Escape(c.ZoneType)}\" area_m2=\"{N(c.ZoneAreaM2)}\" timezone=\"{Escape(c.FarmTimeZone)}\"{regionAttr}{levelAttr} />");
+            sb.AppendLine($"    <zone type=\"{Escape(c.ZoneType)}\" area_m2=\"{N(CoarseArea(c.ZoneAreaM2))}\" timezone=\"{Escape(c.FarmTimeZone)}\"{regionAttr}{levelAttr}{climateAttr} />");
         }
         else
         {
-            sb.AppendLine($"    <zone name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(c.ZoneName))}\" area_m2=\"{N(c.ZoneAreaM2)}\" timezone=\"{Escape(c.FarmTimeZone)}\"{regionAttr}{levelAttr} />");
+            sb.AppendLine($"    <zone name=\"{Escape(AiPrivacySanitizer.SanitizeFreeText(c.ZoneName))}\" area_m2=\"{N(CoarseArea(c.ZoneAreaM2))}\" timezone=\"{Escape(c.FarmTimeZone)}\"{regionAttr}{levelAttr}{climateAttr} />");
         }
 
         sb.AppendLine($"    <crop name=\"{Escape(c.CropName)}\" variety=\"{Escape(c.VarietyName)}\" stage=\"{Escape(c.GrowthStageName)}\" season_age_days=\"{c.SeasonAgeDays}\" />");
@@ -615,7 +621,7 @@ public static class AiPromptBuilder
                     var section = string.IsNullOrWhiteSpace(p.SectionTitle) ? string.Empty : $" section=\"{Escape(p.SectionTitle)}\"";
                     var version = string.IsNullOrWhiteSpace(p.Version) ? "" : $" version=\"{Escape(p.Version)}\"";
                     sb.AppendLine($"    <passage index=\"{i++}\" author=\"{Escape(p.AuthorOrganization)}\" category=\"{Escape(p.Category)}\"{version}{page}{section} similarity=\"{simStr}\">");
-                    sb.AppendLine($"      {Escape(p.Content)}");
+                    sb.AppendLine($"      {Escape(AiPrivacySanitizer.SanitizeDocumentText(p.Content))}");
                     sb.AppendLine("    </passage>");
                 }
                 sb.AppendLine("  </agriculture_knowledge>");

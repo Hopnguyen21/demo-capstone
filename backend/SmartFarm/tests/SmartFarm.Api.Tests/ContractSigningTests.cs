@@ -145,6 +145,11 @@ public sealed class ContractSigningTests
         }
         (await Final(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
         Assert.Equal(HttpStatusCode.Conflict, (await Final(c, x.ServiceRequestId)).StatusCode);
+        // Nghiệm thu xong thì phiếu lắp đặt được đóng và có lịch sử (không kẹt ở Assigned).
+        var closed = await Read<ServiceRequestView>(await c.GetAsync($"/api/v1/service-requests/{x.ServiceRequestId}"));
+        Assert.Equal(ServiceRequestStatus.Closed, closed.Status);
+        Assert.NotNull(closed.ClosedAtUtc);
+        Assert.Contains(closed.History, h => h.ToStatus == ServiceRequestStatus.Closed);
     }
 
     [Fact]

@@ -4,11 +4,14 @@ namespace SmartFarm.Application.Common.Interfaces;
 
 public interface IIoTDeploymentService
 {
+    Task<IReadOnlyList<DeviceRecommendationView>> ListPlanModelsAsync(Guid technicianId, Guid requestId, CancellationToken ct);
     Task<IoTRequirementsView> GetRequirementsAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken ct);
     Task<IReadOnlyList<DeviceRecommendationView>> RecommendAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken ct);
     Task<DeploymentRequestView> CreateRequestAsync(Guid ownerId, Guid tenantId, Guid zoneId, CreateDeploymentRequestCommand command, CancellationToken ct);
+    Task<DeploymentRequestView> SubmitWithEstimateAsync(Guid ownerId, Guid tenantId, Guid zoneId, SubmitDeploymentRequestCommand command, CancellationToken ct);
     Task<DeploymentRequestView> UpdateOwnerPlanAsync(Guid ownerId, Guid tenantId, Guid requestId, IReadOnlyList<PlanItemInput> items, CancellationToken ct);
     Task<DeploymentRequestView> SubmitAsync(Guid ownerId, Guid tenantId, Guid requestId, CancellationToken ct);
+    Task<DeploymentRequestView> CancelAsync(Guid ownerId, Guid tenantId, Guid requestId, string? reason, CancellationToken ct);
     Task<DeploymentRequestView> GetRequestAsync(Guid userId, Guid? tenantId, Guid requestId, CancellationToken ct);
     Task<IReadOnlyList<DeploymentRequestView>> ListOwnerRequestsAsync(Guid ownerId, Guid tenantId, Guid? zoneId, CancellationToken ct);
     Task<IReadOnlyList<DeploymentRequestView>> ListTechnicianRequestsAsync(Guid technicianId, CancellationToken ct);

@@ -1113,6 +1113,8 @@ public sealed class AgricultureDocumentService(
                 var changed = false;
                 if (existing.CropScope != doc.CropScope ||
                     existing.AuthorOrganization != doc.AuthorOrganization ||
+                    existing.RegionScope != doc.RegionScope ||
+                    existing.ReviewNotes != doc.ReviewNotes ||
                     existing.Category != doc.Category ||
                     existing.ContentText != doc.ContentText ||
                     existing.ChunkerVersion != doc.ChunkerVersion)
@@ -1120,6 +1122,8 @@ public sealed class AgricultureDocumentService(
                     existing.ChunkerVersion = doc.ChunkerVersion;
                     existing.CropScope = doc.CropScope;
                     existing.AuthorOrganization = doc.AuthorOrganization;
+                    existing.RegionScope = doc.RegionScope;
+                    existing.ReviewNotes = doc.ReviewNotes;
                     existing.Category = doc.Category;
                     existing.ContentText = doc.ContentText;
                     changed = true;

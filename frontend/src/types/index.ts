@@ -578,6 +578,9 @@ export interface AcceptanceDetails {
 }
 
 export interface ServiceRequest {
+  deploymentStatus?: string;
+  quotationStatus?: string;
+  deploymentLinkInvalid?: boolean;
   serviceRequestId: string;
   deploymentRequestId?: string;
   tenantId: string;
@@ -595,7 +598,7 @@ export interface ServiceRequest {
   title: string;
   description: string;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  status: 'OPEN' | 'IN_PROGRESS' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER' | 'RESOLVED' | 'CLOSED';
+  status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'DIAGNOSED' | 'WORK_COMPLETED' | 'VERIFIED' | 'RESOLVED' | 'CLOSED';
   requestType: 'INSTALLATION' | 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT' | 'INITIAL_SETUP';
   isAcceptedByOwner?: boolean;
   acceptedAtByOwner?: string;

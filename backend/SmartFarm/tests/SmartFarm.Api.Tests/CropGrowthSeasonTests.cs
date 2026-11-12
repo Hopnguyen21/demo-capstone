@@ -133,9 +133,12 @@ public sealed class CropGrowthSeasonTests
         var seasonId = await CreateSeasonAsync(client, seed.ZoneAId, "Season A");
         var wrong = await client.PutAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/planting-seasons/{seasonId}/stage", new { growthStageId = Guid.NewGuid() });
         Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
-        var valid = await client.PutAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/planting-seasons/{seasonId}/stage", new { growthStageId = VegetativeStage });
+        // Tạo vụ nhân bản hồ sơ hệ thống thành bản của trang trại (mã giai đoạn mới), nên giai đoạn hệ thống không còn thuộc hồ sơ của vụ.
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/planting-seasons/{seasonId}/stage", new { growthStageId = VegetativeStage })).StatusCode);
+        var vegetative = await SeasonStageAsync(client, seed.ZoneAId, seasonId, 2);
+        var valid = await client.PutAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/planting-seasons/{seasonId}/stage", new { growthStageId = vegetative });
         valid.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await valid.Content.ReadAsStringAsync());
-        Assert.Equal(VegetativeStage, json.RootElement.GetProperty("currentGrowthStageId").GetGuid());
+        Assert.Equal(vegetative, json.RootElement.GetProperty("currentGrowthStageId").GetGuid());
         Assert.Equal(21m, json.RootElement.GetProperty("appliedRequirements").EnumerateArray().Single(x => x.GetProperty("parameterCode").GetString() == "Temperature").GetProperty("minValue").GetDecimal());
     }
 
@@ -262,6 +265,17 @@ public sealed class CropGrowthSeasonTests
 
     private static object Requirement(string code, decimal min, decimal max, decimal target, string unit) => new { parameterCode = code, minValue = min, maxValue = max, targetValue = target, unit };
     private static Task<HttpResponseMessage> PostSeasonAsync(HttpClient client, Guid zoneId, string name) => client.PostAsJsonAsync($"/api/v1/zones/{zoneId}/planting-seasons", new { cropId = SystemCrop, varietyId = SystemVariety, growthProfileId = SystemProfile, name, startDate = "2026-09-24", expectedEndDate = "2026-12-01" });
+    /// <summary>Mã giai đoạn thứ [order] của hồ sơ MÀ VỤ đang dùng (bản sao của trang trại, không phải hồ sơ hệ thống).</summary>
+    private static async Task<Guid> SeasonStageAsync(HttpClient client, Guid zoneId, Guid seasonId, int order)
+    {
+        var season = await client.GetAsync($"/api/v1/zones/{zoneId}/planting-seasons/{seasonId}"); season.EnsureSuccessStatusCode();
+        using var seasonJson = JsonDocument.Parse(await season.Content.ReadAsStringAsync());
+        var profileId = seasonJson.RootElement.GetProperty("growthProfileId").GetGuid();
+        var stages = await client.GetAsync($"/api/v1/growth-profiles/{profileId}/stages"); stages.EnsureSuccessStatusCode();
+        using var stagesJson = JsonDocument.Parse(await stages.Content.ReadAsStringAsync());
+        return stagesJson.RootElement.EnumerateArray().Single(x => x.GetProperty("stageOrder").GetInt32() == order).GetProperty("stageId").GetGuid();
+    }
+
     private static async Task<Guid> CreateSeasonAsync(HttpClient client, Guid zoneId, string name) { var response = await PostSeasonAsync(client, zoneId, name); response.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); return json.RootElement.GetProperty("seasonId").GetGuid(); }
     private static async Task AuthenticateAsync(HttpClient client, string email) { var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = "ValidPassword1!" }); response.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", json.RootElement.GetProperty("accessToken").GetString()); }
 }

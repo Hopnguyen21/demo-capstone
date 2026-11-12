@@ -23,6 +23,8 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsSer
             DocumentInsufficientException => (StatusCodes.Status422UnprocessableEntity, "Document is insufficient"),
             DocumentVerificationUnavailableException => (StatusCodes.Status503ServiceUnavailable, "Document verification unavailable"),
             DuplicateDocumentException => (StatusCodes.Status409Conflict, "Duplicate document"),
+            // Vi phạm ràng buộc duy nhất của DB (vd. gửi lại wizard CF1 trùng tên farm) là xung đột dữ liệu, không phải lỗi máy chủ.
+            Microsoft.EntityFrameworkCore.DbUpdateException { InnerException: Npgsql.PostgresException { SqlState: "23505" } } => (StatusCodes.Status409Conflict, "Resource conflict"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred")
         };
 
@@ -47,7 +49,11 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetailsSer
             {
                 Status = status,
                 Title = title,
-                Detail = status == StatusCodes.Status500InternalServerError ? null : exception.Message
+                Detail = status == StatusCodes.Status500InternalServerError
+                    ? null
+                    : exception is Microsoft.EntityFrameworkCore.DbUpdateException
+                        ? "Dữ liệu bị trùng: đã tồn tại bản ghi cùng tên hoặc khóa. Hãy tải lại danh sách để kiểm tra trước khi tạo lại."
+                        : exception.Message
             };
         }
 

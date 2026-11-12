@@ -32,6 +32,9 @@ internal sealed class ZoneConfiguration : IEntityTypeConfiguration<Zone>
         builder.Property(x => x.CropVarietyId).HasColumnName("crop_variety_id");
         builder.HasOne(x => x.Crop).WithMany().HasForeignKey(x => x.CropId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Variety).WithMany().HasForeignKey(x => x.CropVarietyId).OnDelete(DeleteBehavior.Restrict);
+        builder.Property(x => x.GrowthProfileId).HasColumnName("growth_profile_id");
+        builder.HasOne(x => x.GrowthProfile).WithMany().HasForeignKey(x => x.GrowthProfileId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.GrowthProfileId);
         builder.HasIndex(x => x.CropId);
         builder.HasIndex(x => new { x.FieldId, x.Name }).IsUnique();
         builder.HasIndex(x => x.BoundaryGeoJson).HasDatabaseName("ix_zones_boundary_gist").HasMethod("gist");

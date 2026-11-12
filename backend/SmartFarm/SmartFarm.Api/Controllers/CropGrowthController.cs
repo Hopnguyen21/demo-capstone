@@ -72,6 +72,15 @@ public sealed class CropGrowthController(ICropGrowthService service) : Controlle
     [HttpGet("api/v1/growth-profiles/{profileId:guid}/stages")]
     public async Task<ActionResult<IReadOnlyList<GrowthStageView>>> Stages(Guid profileId, CancellationToken ct) => Ok((await service.GetProfileAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, ct)).Stages);
 
+    // Lịch tưới của profile (theo giai đoạn). Mọi vai trò xem được profile hiển thị với Tenant; chỉ Owner sửa bản sao của Tenant mình, profile hệ thống không sửa được.
+    [HttpGet("api/v1/growth-profiles/{profileId:guid}/irrigation-schedule")]
+    public async Task<ActionResult<ProfileIrrigationView>> ProfileIrrigation(Guid profileId, CancellationToken ct) =>
+        Ok(await service.GetProfileIrrigationAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, ct));
+
+    [HttpPut("api/v1/growth-profiles/{profileId:guid}/irrigation-schedule"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
+    public async Task<ActionResult<ProfileIrrigationView>> UpdateProfileIrrigation(Guid profileId, UpdateProfileIrrigationRequest request, CancellationToken ct) =>
+        Ok(await service.UpdateProfileIrrigationAsync(User.GetUserId(), User.GetOptionalTenantId(), profileId, request.ToCommand(), ct));
+
     // Đổi số ngày kế hoạch của một giai đoạn: PlatformAdmin cho profile hệ thống, FarmOwner chỉ cho bản sao của trang trại mình.
     [HttpPut("api/v1/growth-stages/{stageId:guid}"), Authorize(Roles = "PlatformAdmin,FarmOwner")]
     public async Task<ActionResult<StageDurationView>> StageDuration(Guid stageId, UpdateStageDurationRequest request, CancellationToken ct) =>
@@ -161,6 +170,9 @@ public sealed class UpdateRequirementsRequest { [Required, MinLength(1)] public 
 [ApiController, Authorize(Roles = "FarmOwner,Farmer,PlatformAdmin")]
 public sealed class PlantingSeasonsController(ICropGrowthService service) : ControllerBase
 {
+    // CF1 extension to catalog #41: explicitly activate a Zone's planned season.
+    [HttpPost("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/start"), Authorize(Roles = "FarmOwner")]
+    public async Task<ActionResult<PlantingSeasonView>> Start(Guid zoneId, Guid seasonId, CancellationToken ct) => Ok(await service.StartSeasonAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, ct));
     // API catalog #41
     [HttpGet("api/v1/zones/{zoneId:guid}/planting-seasons")]
     public async Task<ActionResult<IReadOnlyList<PlantingSeasonView>>> List(Guid zoneId, CancellationToken ct) => Ok(await service.ListSeasonsAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, ct));
@@ -180,6 +192,25 @@ public sealed class PlantingSeasonsController(ICropGrowthService service) : Cont
     // API catalog #45
     [HttpPut("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/close"), Authorize(Roles = "FarmOwner")]
     public async Task<ActionResult<PlantingSeasonView>> Close(Guid zoneId, Guid seasonId, CloseSeasonRequest request, CancellationToken ct) => Ok(await service.CloseSeasonAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, new(request.ActualEndDate, request.ActualYieldKg, request.Notes), ct));
+    // Lịch tưới tùy chỉnh theo ngày của vụ (Zone + mùa vụ). Mọi vai trò có quyền đọc Zone đều xem được; chỉ FarmOwner của Tenant sửa/khôi phục.
+    [HttpGet("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/irrigation-calendar")]
+    public async Task<ActionResult<SeasonIrrigationCalendarView>> IrrigationCalendar(Guid zoneId, Guid seasonId, CancellationToken ct) =>
+        Ok(await service.GetSeasonIrrigationAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, seasonId, ct));
+
+    [HttpPut("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/irrigation-calendar"), Authorize(Roles = "FarmOwner")]
+    public async Task<ActionResult<SeasonIrrigationCalendarView>> UpdateIrrigationCalendar(Guid zoneId, Guid seasonId, UpdateSeasonIrrigationRequest request, CancellationToken ct) =>
+        Ok(await service.UpdateSeasonIrrigationAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, request.ToCommand(), ct));
+
+    /// <summary>Khôi phục TOÀN BỘ mùa vụ về lịch mẫu của profile (xóa mọi ngày override của vụ này).</summary>
+    [HttpDelete("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/irrigation-calendar"), Authorize(Roles = "FarmOwner")]
+    public async Task<ActionResult<SeasonIrrigationCalendarView>> ResetIrrigationCalendar(Guid zoneId, Guid seasonId, CancellationToken ct) =>
+        Ok(await service.ResetSeasonIrrigationAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, null, ct));
+
+    /// <summary>Khôi phục RIÊNG một ngày về lịch mẫu của profile.</summary>
+    [HttpDelete("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/irrigation-calendar/days/{dayNumber:int}"), Authorize(Roles = "FarmOwner")]
+    public async Task<ActionResult<SeasonIrrigationCalendarView>> ResetIrrigationDay(Guid zoneId, Guid seasonId, int dayNumber, CancellationToken ct) =>
+        Ok(await service.ResetSeasonIrrigationAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, dayNumber, ct));
+
     // Yield entry endpoint
     [HttpPut("api/v1/zones/{zoneId:guid}/planting-seasons/{seasonId:guid}/yield"), Authorize(Roles = "FarmOwner,Farmer")]
     public async Task<ActionResult<PlantingSeasonView>> RecordYield(Guid zoneId, Guid seasonId, RecordYieldRequest request, CancellationToken ct) => Ok(await service.RecordSeasonYieldAsync(User.GetUserId(), User.GetTenantId(), zoneId, seasonId, new(request.ActualYieldKg, request.ActualEndDate, request.Notes, request.MarkCompleted), ct));
@@ -200,3 +231,44 @@ public sealed class CreateSeasonRequest { public Guid CropId { get; init; } publ
 public sealed class TransitionStageRequest { public Guid GrowthStageId { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class CloseSeasonRequest { public DateOnly ActualEndDate { get; init; } [Range(typeof(decimal), "0", "999999999")] public decimal? ActualYieldKg { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
 public sealed class RecordYieldRequest { [Range(typeof(decimal), "0", "999999999")] public decimal ActualYieldKg { get; init; } public DateOnly? ActualEndDate { get; init; } [StringLength(1000)] public string? Notes { get; init; } public bool MarkCompleted { get; init; } }
+
+public sealed class IrrigationSessionRequest
+{
+    [Required, StringLength(150, MinimumLength = 1)] public string Title { get; init; } = "";
+    /// <summary>"HH:mm", giờ địa phương theo múi giờ Farm.</summary>
+    [Required] public string StartTime { get; init; } = "";
+    /// <summary>Giây, 1..1800 (tối đa 30 phút).</summary>
+    [Range(1, 1800)] public int DurationSeconds { get; init; }
+    public bool Enabled { get; init; } = true;
+    [StringLength(100)] public string? Method { get; init; }
+    /// <summary>Lượng nước dự kiến mỗi gốc, ml.</summary>
+    [Range(0, 100000)] public int? WaterPerPlantMl { get; init; }
+    internal IrrigationSessionInput ToInput() => new(Title, StartTime, DurationSeconds, Enabled, Method, WaterPerPlantMl);
+}
+
+public sealed class StageIrrigationRequest
+{
+    [Required] public Guid StageId { get; init; }
+    [Required] public List<IrrigationSessionRequest> Sessions { get; init; } = [];
+    internal StageIrrigationInput ToInput() => new(StageId, Sessions.Select(x => x.ToInput()).ToList());
+}
+
+public sealed class DayIrrigationRequest
+{
+    /// <summary>Số ngày canh tác, 1 = ngày bắt đầu vụ.</summary>
+    [Range(1, 1000)] public int DayNumber { get; init; }
+    [Required] public List<IrrigationSessionRequest> Sessions { get; init; } = [];
+    internal DayIrrigationInput ToInput() => new(DayNumber, Sessions.Select(x => x.ToInput()).ToList());
+}
+
+public sealed class UpdateSeasonIrrigationRequest
+{
+    [Required, MinLength(1), MaxLength(400)] public List<DayIrrigationRequest> Days { get; init; } = [];
+    internal UpdateSeasonIrrigationCommand ToCommand() => new(Days.Select(x => x.ToInput()).ToList());
+}
+
+public sealed class UpdateProfileIrrigationRequest
+{
+    [Required, MinLength(1)] public List<StageIrrigationRequest> Stages { get; init; } = [];
+    internal UpdateProfileIrrigationCommand ToCommand() => new(Stages.Select(x => x.ToInput()).ToList());
+}

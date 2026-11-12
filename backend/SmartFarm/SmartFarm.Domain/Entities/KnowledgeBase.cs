@@ -35,6 +35,12 @@ public sealed class AgricultureDocument : AuditableEntity
     /// <summary>Phạm vi cây trồng, phân cách bởi dấu phẩy. Rỗng = áp dụng cho tất cả cây trồng.</summary>
     public string CropScope { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Vùng khí hậu tài liệu áp dụng, phân cách bởi dấu phẩy: north, central, highlands, south.
+    /// Rỗng = áp dụng mọi vùng. Tài liệu ghi rõ vùng khác vùng của nông trại sẽ không được dùng làm nguồn RAG.
+    /// </summary>
+    public string RegionScope { get; set; } = string.Empty;
+
     /// <summary>Phiên bản hoặc năm ban hành tài liệu.</summary>
     public string? Version { get; set; }
 

@@ -1,3 +1,4 @@
+import { ServiceRequestStatus, serviceStatusLabels } from '../../components/ui/ServiceRequestStatus';
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest, ZoneContract } from '../../types';
@@ -72,6 +73,9 @@ export const SupportPage: React.FC = () => {
 
   useEffect(() => {
     loadRequests();
+    const refresh = () => { void loadRequests(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
   }, []);
 
   useEffect(() => {
@@ -178,6 +182,11 @@ export const SupportPage: React.FC = () => {
   };
 
   const handleSignAcceptanceAndPay70 = async (requestId: string) => {
+    const request = requests.find(r => r.serviceRequestId === requestId);
+    if (request?.deploymentLinkInvalid || request?.deploymentStatus !== 'Completed') {
+      setErrorMsg('Chỉ nghiệm thu sau khi triển khai đúng farm/zone đã hoàn tất. Tải lại dữ liệu để kiểm tra trạng thái.');
+      return;
+    }
     const signature = acceptanceSignatures[requestId] || defaultSignatureName;
     const method = paymentMethods70[requestId] || 'BANK_TRANSFER';
     setIsProcessingId(requestId);
@@ -388,10 +397,7 @@ export const SupportPage: React.FC = () => {
             className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-semibold focus:outline-none focus:border-emerald-600"
           >
             <option value="ALL">Tất cả trạng thái</option>
-            <option value="OPEN">Chờ tiếp nhận (Open)</option>
-            <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
-            <option value="ACCEPTED_BY_OWNER">Đã nghiệm thu (Accepted)</option>
-            <option value="RESOLVED">Đã hoàn tất (Resolved)</option>
+            {Object.entries(serviceStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
       </div>
@@ -493,7 +499,7 @@ export const SupportPage: React.FC = () => {
                           }`}>
                             {isInstallation ? '⚡ LẮP ĐẶT THIẾT BỊ MỚI' : '🛠️ BẢO TRÌ & BẢO DƯỠNG'}
                           </span>
-                          <StatusBadge status={req.status} />
+                          <ServiceRequestStatus request={req} />
 
                           {isContractSigned ? (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center gap-1">
@@ -921,14 +927,14 @@ export const SupportPage: React.FC = () => {
                       <div className="flex items-center justify-between text-emerald-900 font-bold">
                         <span>Tiến độ chấm Node thực địa:</span>
                         <span className="font-mono bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded">
-                          {req.mappedNodesCount || 0} Nodes đã chấm trên GIS Map
+                          {req.mappedNodesCount ?? 'Chưa tải'} Nodes đã chấm trên GIS Map
                         </span>
                       </div>
 
                       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between font-bold text-slate-900">
                         <span>SỐ TIỀN 70% CÒN LẠI CẦN THANH TOÁN KHI NGHIỆM THU:</span>
                         <span className="font-mono text-emerald-950 text-sm">
-                          {(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ
+                          {(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ
                         </span>
                       </div>
 
@@ -974,6 +980,7 @@ export const SupportPage: React.FC = () => {
                       <Button
                         disabled={isProcessingId === req.serviceRequestId}
                         onClick={() => handleSignAcceptanceAndPay70(req.serviceRequestId)}
+                        title={req.deploymentStatus !== 'Completed' || req.deploymentLinkInvalid ? 'Cần hoàn tất triển khai đúng farm/zone trước khi nghiệm thu' : undefined}
                         className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
                       >
                         {isProcessingId === req.serviceRequestId ? (
@@ -984,7 +991,7 @@ export const SupportPage: React.FC = () => {
                         ) : (
                           <>
                             <CheckSquare size={16} />
-                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN 70% CÒN LẠI ({(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ)
+                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN 70% CÒN LẠI ({(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ)
                           </>
                         )}
                       </Button>

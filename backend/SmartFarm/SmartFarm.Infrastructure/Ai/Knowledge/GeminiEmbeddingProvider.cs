@@ -49,7 +49,7 @@ public sealed class GeminiEmbeddingProvider
 
     public async Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken ct = default)
     {
-        return await EmbedStrictAsync(text, "RETRIEVAL_DOCUMENT", ct);
+        return await EmbedStrictAsync(AiPrivacySanitizer.SanitizeDocumentText(text), "RETRIEVAL_DOCUMENT", ct);
     }
 
     public Task<float[]> GenerateDocumentEmbeddingAsync(string text, CancellationToken ct = default) =>
@@ -60,7 +60,7 @@ public sealed class GeminiEmbeddingProvider
 
     public async Task<float[]?> EmbedDocumentAsync(string text, CancellationToken ct = default)
     {
-        try { return await EmbedStrictAsync(text, "RETRIEVAL_DOCUMENT", ct); }
+        try { return await EmbedStrictAsync(AiPrivacySanitizer.SanitizeDocumentText(text), "RETRIEVAL_DOCUMENT", ct); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "[Embedding] Failed to embed document with model '{Model}'.", settings.Model);

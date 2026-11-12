@@ -9,6 +9,7 @@ using SmartFarm.Application.Features.Platform;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Ai;
+using SmartFarm.Infrastructure.CropGrowth;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Platform;
@@ -72,7 +73,12 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
     {
         if (await db.PlatformHardwareItems.AnyAsync(x => x.Code == c.Code, ct))
             throw new ResourceConflictException($"Hardware item with code '{c.Code}' already exists.");
-        var item = new PlatformHardwareItem { Code = c.Code, Name = c.Name, Category = c.Category, Model = c.Model, Manufacturer = c.Manufacturer, SerialNumber = c.SerialNumber, MacAddress = c.MacAddress, QuantityInStock = c.QuantityInStock, LocationRack = c.LocationRack, UnitPrice = c.UnitPrice, Status = c.Status ?? "Available" };
+        if (c.DeviceModelDefinitionId.HasValue && !await db.DeviceModelDefinitions.AnyAsync(x => x.Id == c.DeviceModelDefinitionId && x.IsActive, ct)) throw new RequestValidationException("deviceModelDefinitionId", "Model thiết bị không hợp lệ.");
+        ValidatePrice(c.UnitPrice);
+        var role = NormalizeEstimateRole(c.EstimateRole);
+        var units = ValidateEstimateUnits(c.EstimateUnits ?? 1);
+        var measured = NormalizeMeasured(c.MeasuredParameters, role);
+        var item = new PlatformHardwareItem { DeviceModelDefinitionId = c.DeviceModelDefinitionId, Code = c.Code, Name = c.Name, Category = c.Category, Model = c.Model, Manufacturer = c.Manufacturer, SerialNumber = c.SerialNumber, MacAddress = c.MacAddress, QuantityInStock = c.QuantityInStock, LocationRack = c.LocationRack, UnitPrice = c.UnitPrice, Status = c.Status ?? "Available", EstimateRole = role, EstimateUnits = units, MeasuredParametersCsv = measured };
         db.PlatformHardwareItems.Add(item);
         await db.SaveChangesAsync(ct);
         return ToView(item);
@@ -82,6 +88,11 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
     {
         var item = await db.PlatformHardwareItems.SingleOrDefaultAsync(x => x.Id == id, ct)
             ?? throw new ResourceNotFoundException("Hardware item not found.");
+        if (c.DeviceModelDefinitionId.HasValue)
+        {
+            if (c.DeviceModelDefinitionId != Guid.Empty && !await db.DeviceModelDefinitions.AnyAsync(x => x.Id == c.DeviceModelDefinitionId && x.IsActive, ct)) throw new RequestValidationException("deviceModelDefinitionId", "Model thiết bị không hợp lệ.");
+            item.DeviceModelDefinitionId = c.DeviceModelDefinitionId == Guid.Empty ? null : c.DeviceModelDefinitionId;
+        }
         item.Name = c.Name;
         item.Category = c.Category;
         item.Model = c.Model;
@@ -90,8 +101,11 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
         item.MacAddress = c.MacAddress;
         item.QuantityInStock = c.QuantityInStock;
         item.LocationRack = c.LocationRack;
-        item.UnitPrice = c.UnitPrice;
+        if (c.UnitPrice.HasValue) { ValidatePrice(c.UnitPrice.Value); item.UnitPrice = c.UnitPrice.Value; }
         item.Status = c.Status;
+        if (c.EstimateRole is not null) item.EstimateRole = NormalizeEstimateRole(c.EstimateRole);
+        if (c.EstimateUnits.HasValue) item.EstimateUnits = ValidateEstimateUnits(c.EstimateUnits.Value);
+        if (c.MeasuredParameters is not null || c.EstimateRole is not null) item.MeasuredParametersCsv = NormalizeMeasured(c.MeasuredParameters ?? ParseMeasured(item.MeasuredParametersCsv), item.EstimateRole);
         await db.SaveChangesAsync(ct);
         return ToView(item);
     }
@@ -128,6 +142,9 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
                 QuantityInStock = quantity,
                 LocationRack = "Kho Technician",
                 UnitPrice = item.UnitPrice,
+                EstimateRole = item.EstimateRole,
+                EstimateUnits = item.EstimateUnits,
+                MeasuredParametersCsv = item.MeasuredParametersCsv,
                 Status = "Issued",
                 AssignedTechnicianId = technician.Id
             };
@@ -187,7 +204,32 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
     }
 
     private static string MaskSecret(string value) => value.Length <= 8 ? "****" : value[..4] + new string('*', value.Length - 8) + value[^4..];
-    private static PlatformHardwareItemView ToView(PlatformHardwareItem x) => new(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc);
+    public static readonly string[] EstimateRoles = ["Gateway", "SensorNode", "ActuatorNode", "ValveNode", "PumpNode", "InstallKit"];
+    private static void ValidatePrice(decimal price)
+    {
+        if (price < 0 || price > 10_000_000_000m) throw new RequestValidationException("unitPrice", "Đơn giá phải từ 0 đến 10 tỷ đồng.");
+    }
+    private static string? NormalizeEstimateRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role)) return null;
+        var match = EstimateRoles.FirstOrDefault(r => string.Equals(r, role.Trim(), StringComparison.OrdinalIgnoreCase));
+        return match ?? throw new RequestValidationException("estimateRole", $"Vai trò dự toán phải là một trong: {string.Join(", ", EstimateRoles)}.");
+    }
+    private static int ValidateEstimateUnits(int units) => units is >= 1 and <= 100 ? units : throw new RequestValidationException("estimateUnits", "Số đơn vị dự toán mỗi bản ghi phải từ 1 đến 100.");
+    private static IReadOnlyList<string> ParseMeasured(string? csv) => string.IsNullOrWhiteSpace(csv) ? [] : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private static string? NormalizeMeasured(IReadOnlyList<string>? parameters, string? role)
+    {
+        if (parameters is null || parameters.Count == 0) return null;
+        if (role != "SensorNode") throw new RequestValidationException("measuredParameters", "Chỉ khai báo thông số đo cho thiết bị có vai trò SensorNode.");
+        var codes = new List<EnvironmentalParameterCode>();
+        foreach (var p in parameters)
+        {
+            if (!Enum.TryParse<EnvironmentalParameterCode>(p, true, out var code) || !Enum.IsDefined(code)) throw new RequestValidationException("measuredParameters", $"Thông số '{p}' không hợp lệ.");
+            codes.Add(code);
+        }
+        return string.Join(",", codes.Distinct().Order());
+    }
+    private static PlatformHardwareItemView ToView(PlatformHardwareItem x) => new(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc, x.EstimateRole, x.EstimateUnits, ParseMeasured(x.MeasuredParametersCsv), x.DeviceModelDefinitionId);
 }
 
 // ─── Quotation & Contract Signing Service ─────────────────────────────────────
@@ -195,6 +237,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
 {
     public async Task<QuotationView> CreateAsync(Guid technicianId, Guid serviceRequestId, CreateQuotationCommand command, CancellationToken ct)
     {
+        if (command.Items is null || command.Items.Count is < 1 or > 200 || command.Items.Any(i =>
+            string.IsNullOrWhiteSpace(i.Code) || string.IsNullOrWhiteSpace(i.Name) || string.IsNullOrWhiteSpace(i.Category) || string.IsNullOrWhiteSpace(i.Unit) ||
+            i.Quantity is < 1 or > 100000 || i.UnitPrice is <= 0 or > 1_000_000_000_000m || i.VatPercent is < 0 or > 100))
+            throw new RequestValidationException("items", "Báo giá cần hạng mục hợp lệ, số lượng và đơn giá dương, VAT từ 0 đến 100%.");
         var sr = await db.ServiceRequests.SingleOrDefaultAsync(x => x.Id == serviceRequestId, ct)
             ?? throw new ResourceNotFoundException("Service Request not found.");
         if (sr.AssignedTechnicianId != technicianId)
@@ -241,6 +287,41 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         db.ServiceRequestQuotations.Add(q);
         await db.SaveChangesAsync(ct);
         return ToView(q);
+    }
+
+    private static (string category, string unit) QuotationShapeOf(string role) => role switch
+    {
+        "Gateway" => ("GATEWAY", "Trạm"),
+        "SensorNode" => ("SENSOR_NODE", "Node"),
+        "ActuatorNode" => ("ACTUATOR_NODE", "Node"),
+        "InstallKit" => ("ACCESSORY", "Bộ"),
+        "Installation" => ("SERVICE", "Gói"),
+        _ => ("HARDWARE", "Cái"),
+    };
+
+    /// <summary>
+    /// Dựng bản nháp báo giá từ các dòng dự toán Owner đã lưu cùng Deployment Request mà yêu cầu hỗ trợ này liên kết
+    /// (ServiceRequest.DeploymentRequestId). Chỉ kỹ thuật viên được giao mới đọc được. Đơn giá là ảnh chụp lúc Owner lưu dự toán,
+    /// kỹ thuật viên chỉnh sửa số lượng/đơn giá/VAT rồi gửi bằng CreateAsync; Owner xem và ký theo luồng hợp đồng hiện có.
+    /// Chưa có dự toán thì trả danh sách rỗng (không bịa dòng).
+    /// </summary>
+    public async Task<QuotationEstimateDraftView> GetEstimateDraftAsync(Guid technicianId, Guid serviceRequestId, decimal vatPercent, CancellationToken ct)
+    {
+        if (vatPercent is < 0 or > 100) throw new RequestValidationException("vatPercent", "VAT phải từ 0 đến 100%.");
+        var sr = await db.ServiceRequests.AsNoTracking().SingleOrDefaultAsync(x => x.Id == serviceRequestId, ct)
+            ?? throw new ResourceNotFoundException("Service Request not found.");
+        if (sr.AssignedTechnicianId != technicianId)
+            throw new AuthorizationException("Only the assigned technician may read the estimate for this quotation.");
+        var estimate = await db.DeploymentEstimateItems.AsNoTracking()
+            .Where(x => x.DeploymentRequestId == sr.DeploymentRequestId).OrderBy(x => x.SortOrder).ToListAsync(ct);
+        var items = estimate.Select(i =>
+        {
+            var (category, unit) = QuotationShapeOf(i.Role);
+            var note = string.IsNullOrWhiteSpace(i.Notes) ? "Từ dự toán của Owner" : $"{i.Notes} · từ dự toán của Owner";
+            return new QuotationItemInput(i.Code, i.Name, category, unit, i.Quantity, i.UnitPrice, vatPercent, note.Length > 500 ? note[..500] : note);
+        }).ToList();
+        var subtotal = items.Sum(i => i.Quantity * i.UnitPrice);
+        return new QuotationEstimateDraftView(sr.Id, sr.DeploymentRequestId, vatPercent, items, subtotal, subtotal * (1 + vatPercent / 100m));
     }
 
     // Chủ trang trại chỉ thao tác service request thuộc Tenant của mình (Tenant lấy từ tài khoản, không từ client).
@@ -365,13 +446,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
         if (sr.IsAcceptanceSigned || sr.IsFullyPaid || quotation.Status != "SignedByOwner")
             throw new ResourceConflictException("Acceptance was already signed, or the contract is not in the signed-deposit state.");
-        // Owner nghiệm thu sau khi kỹ thuật viên đã triển khai thực địa.
-        // Không yêu cầu DeploymentRequest.Completed ở đây vì Technician's
-        // complete action lại yêu cầu Owner nghiệm thu trước; yêu cầu cũ tạo
-        // vòng lặp khiến cả hai nút không bao giờ có thể hoàn tất.
-        var deploymentStatus = await db.DeploymentRequests.AsNoTracking().Where(x => x.Id == sr.DeploymentRequestId).Select(x => (DeploymentRequestStatus?)x.Status).SingleOrDefaultAsync(ct);
-        if (deploymentStatus is not (DeploymentRequestStatus.Installing or DeploymentRequestStatus.Completed))
-            throw new ResourceConflictException("Final acceptance requires the linked deployment request to be Installing or Completed.");
+        // Nghiệm thu sau khi hoàn tất lắp đặt và kiểm tra kết nối.
+        var deploymentStatus = await db.DeploymentRequests.AsNoTracking().Where(x => x.Id == sr.DeploymentRequestId && x.TenantId == sr.TenantId && x.FarmId == sr.FarmId && x.ZoneId == sr.ZoneId).Select(x => (DeploymentRequestStatus?)x.Status).SingleOrDefaultAsync(ct);
+        if (deploymentStatus != DeploymentRequestStatus.Completed)
+            throw new ResourceConflictException("Final acceptance requires the linked deployment request to be Completed.");
         if (string.IsNullOrWhiteSpace(command.SignerFullName) || string.IsNullOrWhiteSpace(command.TransactionReference))
             throw new RequestValidationException("signerFullName", "Signer name and transaction reference are required.");
         var payment = new ServiceRequestPayment
@@ -384,6 +462,8 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         sr.IsAcceptanceSigned = true;
         sr.IsFullyPaid = true;
         quotation.Status = "Completed";
+        // Nghiệm thu xong là kết thúc luồng lắp đặt: đóng phiếu (có ghi lịch sử) để không kẹt ở Assigned/InProgress.
+        SmartFarm.Infrastructure.IoTDeployment.DeploymentSupport.CloseInstallationRequest(db, sr, ownerId, DateTime.UtcNow, "Chủ trang trại ký nghiệm thu.");
         db.ServiceRequestPayments.Add(payment);
         await db.SaveChangesAsync(ct);
         return new(payment.Id, payment.PaymentStage, payment.Amount, payment.PaymentMethod, payment.TransactionReference, payment.SignerFullName, payment.Status, payment.PaidAtUtc);
@@ -574,12 +654,16 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
                 if (command.Season is not null)
                 {
                     var profile = command.Season.GrowthProfileId.HasValue
-                        ? await db.GrowthProfiles.Include(x => x.Stages).SingleOrDefaultAsync(x => x.Id == command.Season.GrowthProfileId.Value, ct)
-                        : await db.GrowthProfiles.Include(x => x.Stages).FirstOrDefaultAsync(x => x.CropId == command.Season.CropId && x.IsDefault, ct)
-                          ?? await db.GrowthProfiles.Include(x => x.Stages).FirstOrDefaultAsync(x => x.CropId == command.Season.CropId, ct);
+                        ? await db.GrowthProfiles.Include(x => x.Crop).Include(x => x.Stages).ThenInclude(x => x.Requirements).Include(x => x.Stages).ThenInclude(x => x.IrrigationSessions).SingleOrDefaultAsync(x => x.Id == command.Season.GrowthProfileId.Value, ct)
+                        : await db.GrowthProfiles.Include(x => x.Crop).Include(x => x.Stages).ThenInclude(x => x.Requirements).Include(x => x.Stages).ThenInclude(x => x.IrrigationSessions).FirstOrDefaultAsync(x => x.CropId == command.Season.CropId && x.IsDefault, ct)
+                          ?? await db.GrowthProfiles.Include(x => x.Crop).Include(x => x.Stages).ThenInclude(x => x.Requirements).Include(x => x.Stages).ThenInclude(x => x.IrrigationSessions).FirstOrDefaultAsync(x => x.CropId == command.Season.CropId, ct);
 
+                    if (profile is null || (profile.TenantId != null && profile.TenantId != tenantId) || profile.CropId != command.Season.CropId || profile.VarietyId != command.Season.VarietyId || !profile.Stages.Any())
+                        throw new RequestValidationException("growthProfileId", "Hồ sơ không hợp lệ cho cây, giống hoặc trang trại này.");
                     if (profile is not null && profile.Stages.Any())
                     {
+                        profile = SmartFarm.Infrastructure.CropGrowth.CropGrowthService.Clone(profile, ownerId, tenantId, $"{profile.Name[..Math.Min(profile.Name.Length, 100)]} · {Guid.NewGuid():N}", profile.Description, false);
+                        db.GrowthProfiles.Add(profile);
                         var firstStage = profile.Stages.OrderBy(s => s.StageOrder).First();
                         var season = new PlantingSeason
                         {
@@ -593,6 +677,9 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
                             ExpectedEndDate = command.Season.ExpectedEndDate.HasValue ? DateOnly.FromDateTime(command.Season.ExpectedEndDate.Value) : DateOnly.FromDateTime(command.Season.StartDate).AddDays(90),
                             Status = PlantingSeasonStatus.Planned
                         };
+                        if (season.ExpectedEndDate < season.StartDate.AddDays(20)) throw new RequestValidationException("expectedEndDate", "Vụ trồng cần ít nhất 20 ngày.");
+                        foreach (var req in firstStage.Requirements)
+                            season.AppliedRequirements.Add(new SeasonAppliedRequirement { ParameterCode = req.ParameterCode, MinValue = req.MinValue, MaxValue = req.MaxValue, TargetValue = req.TargetValue, Unit = req.Unit });
                         db.PlantingSeasons.Add(season);
                         await db.SaveChangesAsync(ct);
                         seasonId = season.Id;
@@ -604,11 +691,13 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
                             {
                                 TenantId = tenantId, FarmId = farm.Id, ZoneId = zone.Id, PlantingSeasonId = season.Id,
                                 OwnerUserId = ownerId, Status = DeploymentRequestStatus.Submitted,
-                                RequiredParametersCsv = string.Join(",", command.InitialDeploymentRequest.RequiredParameters ?? []),
+                                RequiredParametersCsv = string.Join(",", firstStage.Requirements.Select(x => x.ParameterCode).Distinct()),
                                 OwnerNotes = command.InitialDeploymentRequest.OwnerNotes,
                                 SubmittedAtUtc = DateTime.UtcNow
                             };
+                            await AddEstimateItemsAsync(dr, command.InitialDeploymentRequest.EstimateItems, ct);
                             db.DeploymentRequests.Add(dr);
+                            await SmartFarm.Infrastructure.IoTDeployment.DeploymentSupport.EnsureAsync(db, dr, ct);
                             await db.SaveChangesAsync(ct);
                             deploymentId = dr.Id;
                         }
@@ -619,6 +708,11 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
 
         await tx.CommitAsync(ct);
         return new(farm.Id, fieldId, zoneId, seasonId, deploymentId);
+    }
+
+    private async Task AddEstimateItemsAsync(DeploymentRequest dr, IReadOnlyList<FarmWizardEstimateItemInput>? items, CancellationToken ct)
+    {
+        foreach (var item in await EstimateItemBuilder.BuildAsync(db, items, ct)) dr.EstimateItems.Add(item);
     }
 }
 
@@ -770,14 +864,14 @@ public sealed class FarmerService(SmartFarmDbContext db) : IFarmerService
     {
         var assigned = await db.PlatformHardwareItems.AsNoTracking().Where(x => x.AssignedTechnicianId == technicianId)
             .OrderBy(x => x.Code)
-            .Select(x => new PlatformHardwareItemView(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc))
+            .Select(x => new PlatformHardwareItemView(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc, x.EstimateRole, x.EstimateUnits, null, x.DeviceModelDefinitionId))
             .ToListAsync(ct);
 
         if (assigned.Count > 0) return assigned;
 
         return await db.PlatformHardwareItems.AsNoTracking()
             .OrderBy(x => x.Code)
-            .Select(x => new PlatformHardwareItemView(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc))
+            .Select(x => new PlatformHardwareItemView(x.Id, x.Code, x.Name, x.Category, x.Model, x.Manufacturer, x.SerialNumber, x.MacAddress, x.QuantityInStock, x.LocationRack, x.UnitPrice, x.Status, x.AssignedTechnicianId, x.CreatedAtUtc, x.EstimateRole, x.EstimateUnits, null, x.DeviceModelDefinitionId))
             .ToListAsync(ct);
     }
 }
@@ -808,7 +902,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
             ?? throw new ResourceNotFoundException("Không tìm thấy cây trồng yêu cầu đồng bộ.");
 
         // Tìm đúng Hồ sơ sinh trưởng của cây trồng này (ưu tiên theo tenant hoặc system profile) - KHÔNG fallback bừa cây khác
-        var profile = await db.GrowthProfiles.Include(x => x.Stages).AsNoTracking()
+        var profile = await db.GrowthProfiles.Include(x => x.Crop).Include(x => x.Stages).ThenInclude(x => x.Requirements).Include(x => x.Stages).ThenInclude(x => x.IrrigationSessions).AsNoTracking()
             .Where(x => x.CropId == cropId && (x.TenantId == tenantId || (x.TenantId == null && x.IsSystemDefined)))
             .OrderByDescending(x => x.TenantId == tenantId)
             .ThenByDescending(x => x.IsDefault)
@@ -870,6 +964,125 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
         }
         await db.SaveChangesAsync(ct);
         return created.Select(x => (object)new { x.Id, x.Name, x.CronExpression, x.DurationSeconds, x.IsActive }).ToList();
+    }
+
+    public async Task<ProfileScheduleSyncResult> SyncFromProfileAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid actuatorId, Guid? growthStageId, CancellationToken ct)
+    {
+        var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).SingleOrDefaultAsync(z => z.Id == zoneId, ct)
+            ?? throw new ResourceNotFoundException("Không tìm thấy Khu vực canh tác (Zone).");
+        var caller = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == ownerId, ct) ?? throw new AuthorizationException();
+        // Chỉ chủ trang trại của đúng Tenant; Zone của Tenant khác hoàn toàn không truy cập được.
+        if (caller.Role != UserRole.FarmOwner || tenantId == Guid.Empty || caller.TenantId != tenantId || zone.Field.Farm.TenantId != tenantId)
+            throw new AuthorizationException("Bạn không có quyền đồng bộ lịch tưới cho Khu vực canh tác này.");
+        if (!zone.GrowthProfileId.HasValue)
+            throw new ResourceConflictException("Zone chưa gắn hồ sơ canh tác. Hãy chọn hồ sơ cho Zone trước khi đồng bộ lịch tưới.");
+
+        var profile = await db.GrowthProfiles.AsNoTracking().AsSplitQuery()
+            .Include(x => x.Crop).Include(x => x.Stages).ThenInclude(x => x.IrrigationSessions)
+            .SingleAsync(x => x.Id == zone.GrowthProfileId, ct);
+        if (profile.TenantId != null && profile.TenantId != tenantId)
+            throw new AuthorizationException("Hồ sơ của Zone không thuộc trang trại của bạn.");
+        var stages = profile.Stages.OrderBy(x => x.StageOrder).ToList();
+        if (stages.Count == 0) throw new ResourceConflictException("Hồ sơ canh tác của Zone chưa có giai đoạn nào.");
+
+        // Ưu tiên 1: lịch TÙY CHỈNH của NGÀY HIỆN TẠI trong vụ đang chạy (khi người dùng không chỉ định giai đoạn).
+        // Ưu tiên 2: lịch theo giai đoạn của profile gắn trên Zone (rồi lịch mẫu của cây nếu profile chưa có ca).
+        SeasonIrrigationDay? dayOverride = null; PlantingSeason? daySeason = null; int? dayNumber = null; GrowthStage? dayStage = null;
+        if (!growthStageId.HasValue)
+        {
+            daySeason = await db.PlantingSeasons.AsNoTracking().Where(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress).FirstOrDefaultAsync(ct);
+            if (daySeason is not null)
+            {
+                int n;
+                try { n = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(zone.Field.Farm.TimeZone))).DayNumber - daySeason.StartDate.DayNumber + 1; }
+                catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { n = DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - daySeason.StartDate.DayNumber + 1; }
+                if (n >= 1 && n <= daySeason.ExpectedEndDate.DayNumber - daySeason.StartDate.DayNumber + 1)
+                {
+                    dayOverride = await db.SeasonIrrigationDays.AsNoTracking().Include(x => x.Sessions)
+                        .FirstOrDefaultAsync(x => x.Plan.PlantingSeasonId == daySeason.Id && x.DayNumber == n, ct);
+                    if (dayOverride is not null)
+                    {
+                        dayNumber = n;
+                        var seasonStages = await db.GrowthStages.AsNoTracking().Where(x => x.GrowthProfileId == daySeason.GrowthProfileId).ToListAsync(ct);
+                        dayStage = CropGrowthService.StageForDay(seasonStages, n) ?? seasonStages.FirstOrDefault(x => x.Id == daySeason.CurrentGrowthStageId);
+                    }
+                }
+            }
+        }
+
+        // Giai đoạn: người dùng chỉ định, hoặc giai đoạn của ngày override, hoặc giai đoạn hiện tại của vụ đang chạy dùng cùng hồ sơ, hoặc giai đoạn đầu tiên.
+        GrowthStage stage;
+        if (dayOverride is not null) stage = dayStage ?? stages[0];
+        else if (growthStageId.HasValue)
+            stage = stages.SingleOrDefault(x => x.Id == growthStageId) ?? throw new RequestValidationException("growthStageId", "Giai đoạn không thuộc hồ sơ của Zone.");
+        else
+        {
+            var currentStageId = await db.PlantingSeasons.AsNoTracking()
+                .Where(x => x.ZoneId == zoneId && x.GrowthProfileId == profile.Id && x.Status == PlantingSeasonStatus.InProgress)
+                .Select(x => (Guid?)x.CurrentGrowthStageId).FirstOrDefaultAsync(ct);
+            stage = stages.FirstOrDefault(x => x.Id == currentStageId) ?? stages[0];
+        }
+
+        // Thiết bị phải thuộc ĐÚNG Zone này (không rơi về thiết bị của Zone/Farm khác).
+        DeviceActuator? actuator;
+        if (actuatorId != Guid.Empty)
+        {
+            actuator = await db.DeviceActuators.Include(a => a.Device).SingleOrDefaultAsync(x => x.Id == actuatorId && x.Device.ZoneId == zoneId, ct)
+                ?? throw new ResourceConflictException("Thiết bị được chọn không thuộc Khu vực này.");
+        }
+        else
+        {
+            actuator = await db.DeviceActuators.Include(a => a.Device).FirstOrDefaultAsync(x => x.Device.ZoneId == zoneId && (
+                x.ActuatorType.Contains("pump") || x.ActuatorType.Contains("Pump") || x.ActuatorType.Contains("valve") || x.ActuatorType.Contains("Valve") ||
+                x.ActuatorType.Contains("water") || x.ActuatorType.Contains("Water") || x.ActuatorType.Contains("irrigation") || x.ActuatorType.Contains("Irrigation")), ct);
+        }
+        if (actuator is null)
+            throw new ResourceConflictException($"Khu vực '{zone.Name}' chưa có thiết bị van hoặc máy bơm tưới (Actuator). Vui lòng cấu hình thiết bị trước khi đồng bộ lịch.");
+
+        // Ca tưới: của giai đoạn trong hồ sơ; hồ sơ chưa có ca nào cho giai đoạn thì dùng lịch mẫu của cây (không bịa giờ nếu cây cũng chưa có).
+        List<CropIrrigationPlanReader.Session> sessions;
+        string source;
+        if (dayOverride is not null)
+        {
+            sessions = dayOverride.Sessions.Where(x => x.Enabled).OrderBy(x => x.SortOrder)
+                .Select(x => new CropIrrigationPlanReader.Session(x.Title, x.StartTime.Hour, x.StartTime.Minute, x.DurationSeconds)).ToList();
+            if (sessions.Count == 0) throw new ResourceConflictException($"Ngày {dayNumber} của vụ '{daySeason!.Name}' được tùy chỉnh là không tưới (không có ca nào được bật) nên không có lịch để đồng bộ. Hãy bật ca cho ngày này hoặc khôi phục ngày về lịch mẫu.");
+            source = "SeasonOverride";
+        }
+        else if (stage.IrrigationSessions.Count > 0)
+        {
+            sessions = stage.IrrigationSessions.Where(x => x.Enabled).OrderBy(x => x.SortOrder)
+                .Select(x => new CropIrrigationPlanReader.Session(x.Title, x.StartTime.Hour, x.StartTime.Minute, x.DurationSeconds)).ToList();
+            if (sessions.Count == 0) throw new ResourceConflictException($"Giai đoạn '{stage.Name}' của hồ sơ chưa có ca tưới nào được bật.");
+            source = "Profile";
+        }
+        else
+        {
+            sessions = CropIrrigationPlanReader.ReadDailySessions(profile.Crop.CalendarIrrigationPlan, profile.Crop.Name).ToList();
+            source = "Crop";
+        }
+
+        var existing = await db.ControlSchedules.Where(x => x.ZoneId == zoneId && x.ActuatorId == actuator.Id && x.Name.StartsWith("[AutoSync]")).ToListAsync(ct);
+        db.ControlSchedules.RemoveRange(existing);
+        var created = new List<ControlSchedule>();
+        foreach (var session in sessions)
+        {
+            var name = dayOverride is not null ? $"[AutoSync] {profile.Name} · Ngày {dayNumber} (tùy chỉnh) · {session.Title} {session.Hour:D2}:{session.Minute:D2}" : $"[AutoSync] {profile.Name} · {stage.Name} · {session.Title} {session.Hour:D2}:{session.Minute:D2}";
+            var cs = new ControlSchedule
+            {
+                TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, ZoneId = zoneId, ActuatorId = actuator.Id,
+                Name = name.Length > 200 ? name[..200] : name,
+                CronExpression = $"{session.Minute} {session.Hour} * * *",
+                DurationSeconds = session.DurationSeconds, EnableRainDelay = true, RainThresholdPercent = 70, IsActive = true,
+                NextRunAtUtc = NextDailyRunUtc(session.Hour, session.Minute, zone.Field.Farm.TimeZone)
+            };
+            created.Add(cs);
+            db.ControlSchedules.Add(cs);
+        }
+        await db.SaveChangesAsync(ct);
+        return new ProfileScheduleSyncResult(profile.Id, profile.Name, stage.Id, stage.Name, source, actuator.Id,
+            created.Select(x => new ProfileSyncedScheduleView(x.Id, x.Name, x.CronExpression, x.DurationSeconds, x.IsActive, x.NextRunAtUtc)).ToList(),
+            dayOverride is null ? null : daySeason!.Id, dayNumber);
     }
 
     /// <summary>Lần chạy kế tiếp (UTC) của lịch hằng ngày lúc giờ:phút theo múi giờ của Farm.</summary>

@@ -30,7 +30,31 @@ public static class AiPrivacySanitizer
 
     // Tự xưng danh tính cá nhân ("Tôi là Tuấn", "Tên tôi là Nguyễn Văn A")
     private static readonly Regex PersonalNameIntroPattern = new(
-        @"(?i)\b(tôi là|tên tôi là|mình là|chúng tôi là|em là)\s+([A-ZÀ-Ỹa-zà-ỹ]+(?:\s+[A-ZÀ-Ỹa-zà-ỹ]+){0,3})\b",
+        @"(?i)\b(tôi là|ôi là|toi la|tui là|tên tôi là|tên tui là|mình là|chúng tôi là|em là)\s+([A-ZÀ-Ỹa-zà-ỹ]+(?:\s+[A-ZÀ-Ỹa-zà-ỹ]+){0,3})\b",
+        RegexOptions.Compiled);
+
+    // Họ tên người Việt bắt đầu bằng họ phổ biến + 1-3 từ viết hoa ("Nguyễn Văn An"), kể cả khi người dùng gõ sai/không có cụm tự xưng.
+    private static readonly Regex SurnameNamePattern = new(
+        @"\b(?:Nguyễn|Trần|Lê|Phạm|Hoàng|Huỳnh|Phan|Vũ|Võ|Đặng|Bùi|Đỗ|Hồ|Ngô|Dương|Lý)(?:\s+[A-ZÀ-Ỹ][a-zà-ỹ]+){1,3}\b",
+        RegexOptions.Compiled);
+
+    // Xưng hô + họ tên ("ông Nguyễn Văn A", "chị Lan"), hoặc nhãn "họ tên:" / "tên:" / "liên hệ:"
+    private static readonly Regex HonorificNamePattern = new(
+        @"\b(ông|bà|anh|chị|cô|chú|bác|thầy|cậu)\s+([A-ZÀ-Ỹ][a-zà-ỹ]+(?:\s+[A-ZÀ-Ỹ][a-zà-ỹ]+){0,3})",
+        RegexOptions.Compiled);
+
+    private static readonly Regex LabeledNamePattern = new(
+        @"(?i)\b(họ\s*(?:và\s*)?tên|tên|liên hệ|người liên hệ)\s*:\s*([A-ZÀ-Ỹa-zà-ỹ]+(?:\s+[A-ZÀ-Ỹa-zà-ỹ]+){0,3})",
+        RegexOptions.Compiled);
+
+    // Địa chỉ có nhãn ("địa chỉ: ...") hoặc đơn vị hành chính cấp cơ sở (xã/phường/thôn/ấp/xóm/khu phố + tên)
+    private static readonly Regex LabeledAddressPattern = new(
+        @"(?i)\b(địa chỉ|đ/c|ở tại|sống tại)\s*:?\s*[^.;\n]{3,80}|\b(?:xã|phường|thị trấn|thôn|ấp|xóm|khu phố|tổ dân phố)\s+[A-ZÀ-Ỹa-zà-ỹ0-9]+(?:\s+[A-ZÀ-Ỹa-zà-ỹ0-9]+){0,2}",
+        RegexOptions.Compiled);
+
+    // Số điện thoại viết kèm nhãn ("sđt", "điện thoại", "zalo") với khoảng trắng/dấu chấm tuỳ ý
+    private static readonly Regex LabeledPhonePattern = new(
+        @"(?i)\b(?:sđt|sdt|điện thoại|dt|zalo|hotline)\s*:?\s*[+0-9][0-9 .\-]{6,16}[0-9]",
         RegexOptions.Compiled);
 
     // Địa chỉ nhà chi tiết (số nhà, ngõ ngách, tên đường cụ thể)
@@ -53,8 +77,35 @@ public static class AiPrivacySanitizer
         clean = PhonePattern.Replace(clean, "[sđt]");
         clean = ContractCodePattern.Replace(clean, "[hợp đồng]");
         clean = PersonalNameIntroPattern.Replace(clean, "$1 [tên]");
+        clean = LabeledPhonePattern.Replace(clean, "[sđt]");
+        clean = LabeledNamePattern.Replace(clean, "$1: [tên]");
+        clean = HonorificNamePattern.Replace(clean, "$1 [tên]");
+        clean = LabeledAddressPattern.Replace(clean, "[địa chỉ]");
         clean = SpecificAddressPattern.Replace(clean, "[địa chỉ]");
+        clean = SurnameNamePattern.Replace(clean, "[tên]");
 
+        return clean;
+    }
+
+    // Chỉ nhãn địa chỉ tường minh ("địa chỉ: ..."), không đụng các từ hành chính thường gặp trong tài liệu nông nghiệp (hợp tác xã...).
+    private static readonly Regex ExplicitAddressLabelPattern = new(
+        @"(?i)\b(địa chỉ|đ/c|ở tại|sống tại)\s*:\s*[^.;\n]{3,80}",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Làm sạch nội dung TÀI LIỆU (đoạn văn, văn bản trích) trước khi gửi ra dịch vụ AI bên thứ ba (embedding, kiểm tra, trích xuất).
+    /// Thận trọng hơn với câu hỏi: không che xưng hô + chữ hoa hay từ hành chính chung để không phá nội dung kỹ thuật
+    /// (vd. "Bà Rịa - Vũng Tàu", "hợp tác xã"). Chỉ che dữ liệu định danh rõ ràng: email, CCCD, điện thoại, họ tên/địa chỉ có nhãn.
+    /// </summary>
+    public static string SanitizeDocumentText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        var clean = EmailPattern.Replace(text, "[email]");
+        clean = NationalIdPattern.Replace(clean, "[cccd]");
+        clean = PhonePattern.Replace(clean, "[sđt]");
+        clean = LabeledPhonePattern.Replace(clean, "[sđt]");
+        clean = LabeledNamePattern.Replace(clean, "$1: [tên]");
+        clean = ExplicitAddressLabelPattern.Replace(clean, "[địa chỉ]");
         return clean;
     }
 
@@ -71,7 +122,12 @@ public static class AiPrivacySanitizer
         clean = NationalIdPattern.Replace(clean, "[cccd]");
         clean = PhonePattern.Replace(clean, "[sđt]");
         clean = ContractCodePattern.Replace(clean, "[hợp đồng]");
+        clean = LabeledPhonePattern.Replace(clean, "[sđt]");
+        clean = LabeledNamePattern.Replace(clean, "$1: [tên]");
+        clean = HonorificNamePattern.Replace(clean, "$1 [tên]");
+        clean = LabeledAddressPattern.Replace(clean, "[địa chỉ]");
         clean = SpecificAddressPattern.Replace(clean, "[địa chỉ]");
+        clean = SurnameNamePattern.Replace(clean, "[tên]");
 
         return clean.Trim();
     }

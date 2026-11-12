@@ -99,7 +99,10 @@ internal sealed class TestApplicationFactory : WebApplicationFactory<Program>
             Category = "Sensor",
             QuantityInStock = 10,
             Status = "Available",
-            AssignedTechnician = technician
+            AssignedTechnician = technician,
+            // Gợi ý thiết bị chỉ chọn model CÓ TRONG KHO: mặt hàng phải liên kết model đo môi trường mẫu (IoTSeed.EnvironmentalNodeModelId) và có giá.
+            DeviceModelDefinitionId = Guid.Parse("20000000-0000-0000-0000-000000000001"),
+            UnitPrice = 250_000m
         };
 
         dbContext.AddRange(tenantA, tenantB, farmA, farmB, fieldA, fieldB, zoneA, zoneB, ownerA, ownerB, farmer, tenantBUser, admin, technician, techSoilSensor);

@@ -24,6 +24,7 @@ internal sealed class AgricultureDocumentConfiguration : IEntityTypeConfiguratio
         b.Property(x => x.AuthorOrganization).HasColumnName("author_organization").HasMaxLength(200);
         b.Property(x => x.Category).HasColumnName("category").HasMaxLength(50).HasDefaultValue("general");
         b.Property(x => x.CropScope).HasColumnName("crop_scope").HasMaxLength(500).HasDefaultValue(string.Empty);
+        b.Property(x => x.RegionScope).HasColumnName("region_scope").HasMaxLength(200).HasDefaultValue(string.Empty);
         b.Property(x => x.Version).HasColumnName("version").HasMaxLength(50);
         b.Property(x => x.IsPublic).HasColumnName("is_public").HasDefaultValue(true);
         b.Property(x => x.ReviewStatus).HasColumnName("review_status")

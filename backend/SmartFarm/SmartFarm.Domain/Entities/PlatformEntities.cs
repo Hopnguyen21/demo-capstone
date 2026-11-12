@@ -38,6 +38,8 @@ public sealed class PlatformSetting
 /// <summary>Kho thiết bị & linh kiện phần cứng hệ thống (Platform Hardware Items)</summary>
 public sealed class PlatformHardwareItem : AuditableEntity
 {
+    /// <summary>Explicit link to the technical device model; never inferred from display names.</summary>
+    public Guid? DeviceModelDefinitionId { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
@@ -49,6 +51,12 @@ public sealed class PlatformHardwareItem : AuditableEntity
     public string? LocationRack { get; set; }
     public decimal UnitPrice { get; set; } = 0;
     public string Status { get; set; } = "Available";
+    /// <summary>Vai trò trong bảng dự toán IoT (Gateway | SensorNode | ActuatorNode | InstallKit). Null = không dùng để dự toán. Chỉ gán cho bản ghi là một bộ hoàn chỉnh lắp được, không gán cho linh kiện rời.</summary>
+    public string? EstimateRole { get; set; }
+    /// <summary>Số đơn vị dự toán mà MỘT bản ghi phục vụ (vd. hộp relay 4 kênh = 4 điểm van). Mặc định 1.</summary>
+    public int EstimateUnits { get; set; } = 1;
+    /// <summary>Thông số môi trường bộ này đo được (CSV EnvironmentalParameterCode), chỉ có nghĩa với SensorNode. Null = chưa khai báo.</summary>
+    public string? MeasuredParametersCsv { get; set; }
     public Guid? AssignedTechnicianId { get; set; }
     public AppUser? AssignedTechnician { get; set; }
 }

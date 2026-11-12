@@ -76,6 +76,25 @@ public sealed class FinanceServiceTests
         var next = new Device { FarmId = s.FarmAId, Gateway = gw, DeploymentRequest = dep, ZoneId = replacementAssignedElsewhere ? s.ZoneBId : null, HardwareAddress = Guid.NewGuid().ToString("N"), DeviceType = DeviceType.SensorNode, Status = replacementAssignedElsewhere ? DeviceStatus.Assigned : DeviceStatus.Unassigned };
         db.AddRange(tech2, dep, gw, old, next); await db.SaveChangesAsync(); return new(s, old.Id, next.Id, s.TechnicianId, tech2.Id);
     }
+    [Fact]
+    public async Task Service_creation_rejects_device_with_mismatched_deployment_zone()
+    {
+        using var f = new TestApplicationFactory();
+        var x = await Setup(f);
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var device = await db.Devices.Include(d => d.DeploymentRequest).SingleAsync(d => d.Id == x.OldDeviceId);
+            device.DeploymentRequest.ZoneId = x.Seed.ZoneBId;
+            await db.SaveChangesAsync();
+        }
+        using var c = f.CreateClient();
+        await Login(c, "owner-a@example.com");
+        var response = await c.PostAsJsonAsync($"/api/v1/farms/{x.Seed.FarmAId}/service-requests",
+            new { zoneId = x.Seed.ZoneAId, deviceId = x.OldDeviceId, failureCode = "NEW_INSTALL", description = "Wrong deployment link" });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
     private static async Task Login(HttpClient c, string email) { var r = await c.PostAsJsonAsync("/api/v1/auth/login", new { email, password = "ValidPassword1!" }); r.EnsureSuccessStatusCode(); var p = await r.Content.ReadFromJsonAsync<LoginPayload>(); c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", p!.AccessToken); }
     private static async Task<T> Read<T>(HttpResponseMessage r) { r.EnsureSuccessStatusCode(); return (await r.Content.ReadFromJsonAsync<T>(Json))!; }
     private sealed record LoginPayload(string AccessToken);

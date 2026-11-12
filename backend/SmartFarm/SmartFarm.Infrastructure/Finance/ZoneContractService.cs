@@ -9,6 +9,15 @@ namespace SmartFarm.Infrastructure.Finance;
 
 public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider clock) : IZoneContractService
 {
+    private async Task<List<Guid>?> VisibleZoneIdsAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId && x.Status == AccountStatus.Active, ct) ?? throw new AuthorizationException();
+        if (user.Role == UserRole.PlatformAdmin) return null;
+        if (user.Role == UserRole.FarmOwner) return await db.Zones.Where(x => x.Field.Farm.TenantId == user.TenantId).Select(x => x.Id).ToListAsync(ct);
+        if (user.Role == UserRole.PlatformTechnician) return await db.Zones.Where(x => db.ServiceRequests.Any(s => s.ZoneId == x.Id && s.AssignedTechnicianId == userId) || db.DeploymentRequests.Any(d => d.ZoneId == x.Id && d.TechnicianUserId == userId)).Select(x => x.Id).ToListAsync(ct);
+        throw new AuthorizationException();
+    }
+
     private static bool IsDevelopment() =>
         string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 
@@ -28,6 +37,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             query = query.Where(c => c.TenantId == tenantId.Value);
         }
 
+        var visible = await VisibleZoneIdsAsync(ownerId, ct);
+        if (visible != null) query = query.Where(c => visible.Contains(c.ZoneId));
         var contracts = await query
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
@@ -52,6 +63,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             query = query.Where(c => c.TenantId == tenantId.Value);
         }
 
+        var visible = await VisibleZoneIdsAsync(ownerId, ct);
+        if (visible != null) query = query.Where(c => visible.Contains(c.ZoneId));
         var contracts = await query
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
@@ -76,6 +89,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             query = query.Where(c => c.TenantId == tenantId.Value);
         }
 
+        var visible = await VisibleZoneIdsAsync(ownerId, ct);
+        if (visible != null) query = query.Where(c => visible.Contains(c.ZoneId));
         var contracts = await query
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
@@ -99,6 +114,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             query = query.Where(c => c.TenantId == tenantId.Value);
         }
 
+        var visible = await VisibleZoneIdsAsync(ownerId, ct);
+        if (visible != null) query = query.Where(c => visible.Contains(c.ZoneId));
         var contract = await query.FirstOrDefaultAsync(c => c.Id == contractId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy hợp đồng #{contractId}");
 
@@ -289,6 +306,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             query = query.Where(c => c.TenantId == tenantId.Value);
         }
 
+        var visible = await VisibleZoneIdsAsync(ownerId, ct);
+        if (visible != null) query = query.Where(c => visible.Contains(c.ZoneId));
         var contract = await query.FirstOrDefaultAsync(c => c.Id == contractId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy hợp đồng #{contractId} hoặc bạn không có quyền thao tác.");
 
@@ -353,7 +372,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         return await GetContractByIdAsync(ownerId, tenantId, contract.Id, ct);
     }
 
-    public async Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct)
+    public async Task<IReadOnlyList<ExpiringContractAlertView>> GetExpiringContractsAsync(Guid ownerId, Guid? tenantId, Guid? farmId, int daysThreshold, CancellationToken ct, Guid? zoneId = null)
     {
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var thresholdDate = today.AddDays(daysThreshold);
@@ -375,6 +394,12 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         if (farmId.HasValue && farmId.Value != Guid.Empty)
         {
             query = query.Where(c => c.FarmId == farmId.Value);
+        }
+
+        // Lọc theo Zone (màn hợp đồng mở từ Zone Detail): chỉ cảnh báo của đúng Zone, vẫn trong phạm vi Tenant ở trên.
+        if (zoneId.HasValue && zoneId.Value != Guid.Empty)
+        {
+            query = query.Where(c => c.ZoneId == zoneId.Value);
         }
 
         var list = await query.OrderBy(c => c.EndDate).ToListAsync(ct);

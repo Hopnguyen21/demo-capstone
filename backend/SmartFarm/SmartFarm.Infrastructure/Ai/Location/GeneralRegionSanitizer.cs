@@ -82,13 +82,8 @@ public static class GeneralRegionSanitizer
         {
             var precedingPart = parts[provinceIndex - 1];
             // Nếu có tiền tố hành chính (Quận, Huyện, Thị xã, Thành phố) hoặc tên địa danh cấp huyện phổ biến
-            if (DistrictPrefixPattern.IsMatch(precedingPart) ||
-                precedingPart.Contains("Đà Lạt", StringComparison.OrdinalIgnoreCase) ||
-                precedingPart.Contains("Củ Chi", StringComparison.OrdinalIgnoreCase) ||
-                precedingPart.Contains("Lạc Dương", StringComparison.OrdinalIgnoreCase) ||
-                precedingPart.Contains("Đơn Dương", StringComparison.OrdinalIgnoreCase) ||
-                precedingPart.Contains("Đức Trọng", StringComparison.OrdinalIgnoreCase) ||
-                precedingPart.Contains("Bảo Lộc", StringComparison.OrdinalIgnoreCase))
+            // Chỉ giữ cấp quận/huyện khi có tiền tố hành chính rõ ràng; tên địa danh trần không được coi là an toàn.
+            if (DistrictPrefixPattern.IsMatch(precedingPart))
             {
                 return $"{precedingPart}, {matchedProvince}";
             }
