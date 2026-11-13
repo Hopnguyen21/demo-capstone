@@ -91,27 +91,42 @@ export const FarmerTasksPage: React.FC = () => {
     .sort((a, b) => new Date(a.dueAtUtc ?? 0).getTime() - new Date(b.dueAtUtc ?? 0).getTime());
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <CheckSquare className="text-[#119653]" size={22} /> Công việc của tôi
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">Các công việc chủ trang trại giao cho bạn. Bạn chỉ thấy và cập nhật phần việc của chính mình.</p>
+    <div className="space-y-6 max-w-5xl mx-auto pb-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono">
+              FARM WORKER TASKS
+            </span>
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <CheckSquare className="text-[#119653]" size={22} /> Công việc Thực địa của Tôi
+            </h1>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">Các công việc chủ trang trại giao cho bạn. Bạn chỉ thấy và cập nhật phần việc của chính mình.</p>
+        </div>
+
+        {tasks.length > 0 && (
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-200 font-bold">
+              Tổng số: {tasks.length} việc
+            </span>
+          </div>
+        )}
       </div>
 
       {!farmId && <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">Bạn chưa thuộc trang trại nào. Hãy chấp nhận lời mời tham gia ở mục "Lời mời tham gia Farm".</div>}
       {loadError && <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">Không tải được công việc: {loadError}</div>}
       {loading && tasks.length === 0 && <p className="text-xs text-slate-500">Đang tải…</p>}
       {!loading && farmId && !loadError && tasks.length === 0 && (
-        <div className="text-center py-10 bg-white border border-dashed border-slate-200 rounded-xl text-xs text-slate-500">Bạn chưa được giao công việc nào.</div>
+        <div className="text-center py-12 bg-white border border-dashed border-slate-200 rounded-2xl text-xs text-slate-500">Bạn chưa được giao công việc nào.</div>
       )}
 
       {tasks.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {([['TODO', 'Cần làm'], ['REVIEW', 'Chờ duyệt'], ['DONE', 'Đã xong'], ['ALL', 'Tất cả']] as const).map(([key, text]) => {
             const n = tasks.filter(t => matchFilter(key, t.assignments[0]?.status)).length;
             return (
-              <button key={key} onClick={() => setFilter(key)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap ${filter === key ? 'bg-[#119653] text-white border-[#119653]' : 'bg-white text-slate-600 border-slate-200'}`}>
+              <button key={key} onClick={() => setFilter(key)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all whitespace-nowrap ${filter === key ? 'bg-[#119653] text-white border-[#119653] shadow-xs' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
                 {text} ({n})
               </button>
             );

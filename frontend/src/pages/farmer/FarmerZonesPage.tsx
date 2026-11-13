@@ -1,7 +1,7 @@
 import { zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/app/providers/AuthContext';
-import { alertService, zoneService, supportService } from '../../services';
+import { alertService, zoneService, supportService, telemetryService } from '../../services';
 import { Alert, Zone } from '../../types';
 import { 
   Sprout, ShieldAlert, CheckCircle2, Power, Activity, BookOpen, Layers, 
@@ -25,6 +25,8 @@ export const FarmerZonesPage: React.FC = () => {
   const [zoneCenter, setZoneCenter] = useState<[number, number]>([11.9404, 108.4583]);
   const [zoneNodes, setZoneNodes] = useState<any[]>([]);
   const [isLoadingGis, setIsLoadingGis] = useState(false);
+  const [zoneSearch, setZoneSearch] = useState('');
+  const [zoneTelemetry, setZoneTelemetry] = useState<any>(null);
 
   useEffect(() => {
     alertService.getAlerts().then(res => {
@@ -38,7 +40,7 @@ export const FarmerZonesPage: React.FC = () => {
     }
   }, [zones]);
 
-  // Load Zone GIS boundary and mapped nodes whenever farmer switches assigned zone
+  // Load Zone GIS boundary, mapped nodes, and telemetry whenever farmer switches assigned zone
   useEffect(() => {
     if (!selectedZoneId) return;
 
@@ -48,8 +50,15 @@ export const FarmerZonesPage: React.FC = () => {
     Promise.all([
       zoneService.getZoneById(selectedZoneId).catch(() => null),
       supportService.getMappedNodes(selectedZoneId).catch(() => []),
-    ]).then(([zoneData, nodesData]) => {
+      telemetryService.getRealtime(selectedZoneId).catch(() => null),
+    ]).then(([zoneData, nodesData, telemData]) => {
       if (!isMounted) return;
+
+      if (telemData) {
+        setZoneTelemetry(telemData);
+      } else {
+        setZoneTelemetry(null);
+      }
 
       if (zoneData) {
         setCurrentZoneGis(zoneData);
@@ -107,13 +116,20 @@ export const FarmerZonesPage: React.FC = () => {
               FARMER ZONE CONTROL HUB
             </span>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Sprout className="text-[#119653]" size={22} /> Điều khiển & Cảnh báo Nhà màng được Phân công
+              <Sprout className="text-[#119653]" size={22} /> Điều khiển & Cảnh báo Nhà màng được Phân công ({zones.length})
             </h1>
           </div>
           <p className="text-xs text-slate-600 mt-1">Danh sách khu vực nhà màng thuộc phạm vi phụ trách kỹ thuật & tích hợp Trung tâm Cảnh báo Nông nghiệp.</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            value={zoneSearch}
+            onChange={e => setZoneSearch(e.target.value)}
+            placeholder="Lọc khu vực..."
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#119653]"
+          />
           <Button
             size="sm"
             onClick={() => setActiveControlTab('ALERTS')}
@@ -124,8 +140,10 @@ export const FarmerZonesPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {zones.slice(0, 2).map(z => {
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {zones
+          .filter(z => !zoneSearch.trim() || (z.name || '').toLowerCase().includes(zoneSearch.toLowerCase()) || (z.currentCrop || '').toLowerCase().includes(zoneSearch.toLowerCase()))
+          .map(z => {
           const isSelected = selectedZoneId === z.zoneId;
           const zoneAlertsCount = alerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
 
@@ -313,7 +331,21 @@ export const FarmerZonesPage: React.FC = () => {
                         <div className="flex justify-between text-slate-500">
                           <span>Chỉ số đo:</span>
                           <strong className="text-slate-900">
-                            {isSoil ? 'Ẩm đất: 68.5% • EC: 1.2' : isActuator ? 'Rơ-le: BẬT • 4 Cổng' : 'Nhiệt: 26.2°C • Ẩm: 72%'}
+                            {(() => {
+                              const metrics = zoneTelemetry?.metrics || [];
+                              const soilM = metrics.find((m: any) => m.parameterCode === 'SoilMoisture');
+                              const tempM = metrics.find((m: any) => m.parameterCode === 'Temperature');
+                              const humM = metrics.find((m: any) => m.parameterCode === 'AirHumidity' || m.parameterCode === 'Humidity');
+                              const phM = metrics.find((m: any) => m.parameterCode === 'Ph' || m.parameterCode === 'SoilEC');
+
+                              if (isSoil) {
+                                return soilM ? `Ẩm đất: ${soilM.value}%` + (phM ? ` • ${phM.value} ${phM.unit || ''}` : '') : 'Cảm biến Độ ẩm & EC Đất';
+                              }
+                              if (isActuator) {
+                                return `Rơ-le ${n.status === 'ACTIVE' || n.status === 'ONLINE' ? 'SẴN SÀNG' : 'BẢO TRÌ'} • Kênh ${n.relayChannel || 1}`;
+                              }
+                              return tempM ? `Nhiệt: ${tempM.value}°C` + (humM ? ` • Ẩm: ${humM.value}%` : '') : 'Cảm biến Vi khí hậu Sensirion';
+                            })()}
                           </strong>
                         </div>
                       </div>
