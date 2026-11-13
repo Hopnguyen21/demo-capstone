@@ -10,6 +10,7 @@ using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Ai;
 using SmartFarm.Infrastructure.CropGrowth;
+using SmartFarm.Infrastructure.Inventory;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Platform;
@@ -432,6 +433,25 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                 }
 
                 db.ZoneContracts.Add(zoneContract);
+            }
+
+            // Tự động tạo Phiếu Xuất Kho Thiết Bị IoT khi Hợp đồng dịch vụ đã thanh toán cọc 30%
+            if (quotation.Items is { Count: > 0 })
+            {
+                var zone = await db.Zones.Include(z => z.Field).FirstOrDefaultAsync(z => z.Id == zoneId, ct);
+                var farmId = sr.FarmId != Guid.Empty ? sr.FarmId : (zone?.Field?.FarmId ?? Guid.Empty);
+                var effectiveTenantId = sr.TenantId != Guid.Empty ? sr.TenantId : (zone?.Field?.Farm?.TenantId ?? Guid.Empty);
+
+                await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+                    db,
+                    effectiveTenantId,
+                    farmId,
+                    zoneId,
+                    contractNum,
+                    sr.AssignedTechnicianId ?? quotation.TechnicianUserId,
+                    quotation.TechnicianUser?.FullName ?? "Kỹ thuật viên",
+                    quotation.Items.Select(i => (i.HardwareItemCode, i.HardwareItemName, (string?)i.Category, i.Quantity)),
+                    ct);
             }
         }
 

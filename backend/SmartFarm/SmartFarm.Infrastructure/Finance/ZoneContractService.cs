@@ -3,6 +3,7 @@ using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Features.Finance;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
+using SmartFarm.Infrastructure.Inventory;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Finance;
@@ -293,6 +294,30 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         }
 
         db.ZoneContracts.Add(contract);
+
+        // Tự động tạo Phiếu Xuất Kho Thiết Bị IoT nếu hợp đồng có thiết bị và đã thanh toán cọc 30%
+        if (contract.DepositVnd > 0 && !string.IsNullOrWhiteSpace(contract.EquipmentJson))
+        {
+            try
+            {
+                var equipments = ParseEquipment(contract.EquipmentJson);
+                if (equipments.Count > 0)
+                {
+                    await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+                        db,
+                        effectiveTenantId,
+                        farmId,
+                        zoneId,
+                        contractNumber,
+                        ownerId,
+                        command.LesseeName,
+                        equipments.Select(e => (e.Code, e.Name, (string?)e.Category, e.Quantity)),
+                        ct);
+                }
+            }
+            catch {}
+        }
+
         await db.SaveChangesAsync(ct);
 
         return await GetContractByIdAsync(ownerId, tenantId, contract.Id, ct);

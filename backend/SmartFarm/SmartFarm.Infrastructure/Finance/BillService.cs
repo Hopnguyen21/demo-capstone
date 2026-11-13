@@ -1,8 +1,10 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Features.Finance;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
+using SmartFarm.Infrastructure.Inventory;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Finance;
@@ -180,6 +182,29 @@ public sealed class BillService(SmartFarmDbContext db, TimeProvider clock) : IBi
         bill.Notes = string.IsNullOrWhiteSpace(bill.Notes) ? paymentLog : $"{bill.Notes} | {paymentLog}";
         bill.UpdatedAtUtc = now;
 
+        // Tự động tạo Phiếu Xuất Kho Thiết Bị IoT nếu đây là thanh toán cọc/hợp đồng có thiết bị
+        if (bill.Status == BillStatus.Paid && bill.Contract != null && !string.IsNullOrWhiteSpace(bill.Contract.EquipmentJson))
+        {
+            try
+            {
+                var equipments = JsonSerializer.Deserialize<List<ZoneContractEquipmentView>>(bill.Contract.EquipmentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                if (equipments != null && equipments.Count > 0)
+                {
+                    await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+                        db,
+                        bill.TenantId,
+                        bill.Contract.FarmId,
+                        bill.Contract.ZoneId,
+                        bill.Contract.ContractNumber,
+                        userId,
+                        bill.LesseeName,
+                        equipments.Select(e => (e.Code, e.Name, (string?)e.Category, e.Quantity)),
+                        ct);
+                }
+            }
+            catch {}
+        }
+
         await db.SaveChangesAsync(ct);
 
         return await GetBillByIdAsync(userId, tenantId, bill.Id, ct);
@@ -210,6 +235,30 @@ public sealed class BillService(SmartFarmDbContext db, TimeProvider clock) : IBi
         }
 
         bill.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
+
+        // Tự động tạo Phiếu Xuất Kho Thiết Bị IoT nếu hóa đơn cọc/hợp đồng thiết bị được chuyển trạng thái Đã thanh toán
+        if (bill.Status == BillStatus.Paid && bill.Contract != null && !string.IsNullOrWhiteSpace(bill.Contract.EquipmentJson))
+        {
+            try
+            {
+                var equipments = JsonSerializer.Deserialize<List<ZoneContractEquipmentView>>(bill.Contract.EquipmentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                if (equipments != null && equipments.Count > 0)
+                {
+                    await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+                        db,
+                        bill.TenantId,
+                        bill.Contract.FarmId,
+                        bill.Contract.ZoneId,
+                        bill.Contract.ContractNumber,
+                        userId,
+                        bill.LesseeName,
+                        equipments.Select(e => (e.Code, e.Name, (string?)e.Category, e.Quantity)),
+                        ct);
+                }
+            }
+            catch {}
+        }
+
         await db.SaveChangesAsync(ct);
 
         return await GetBillByIdAsync(userId, tenantId, bill.Id, ct);
@@ -243,6 +292,30 @@ public sealed class BillService(SmartFarmDbContext db, TimeProvider clock) : IBi
         if (!string.IsNullOrWhiteSpace(command.Notes)) bill.Notes = command.Notes.Trim();
 
         bill.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
+
+        // Tự động tạo Phiếu Xuất Kho Thiết Bị IoT nếu hóa đơn cọc/hợp đồng thiết bị được chuyển trạng thái Đã thanh toán
+        if (bill.Status == BillStatus.Paid && bill.Contract != null && !string.IsNullOrWhiteSpace(bill.Contract.EquipmentJson))
+        {
+            try
+            {
+                var equipments = JsonSerializer.Deserialize<List<ZoneContractEquipmentView>>(bill.Contract.EquipmentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                if (equipments != null && equipments.Count > 0)
+                {
+                    await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+                        db,
+                        bill.TenantId,
+                        bill.Contract.FarmId,
+                        bill.Contract.ZoneId,
+                        bill.Contract.ContractNumber,
+                        userId,
+                        bill.LesseeName,
+                        equipments.Select(e => (e.Code, e.Name, (string?)e.Category, e.Quantity)),
+                        ct);
+                }
+            }
+            catch {}
+        }
+
         await db.SaveChangesAsync(ct);
 
         return await GetBillByIdAsync(userId, tenantId, bill.Id, ct);
