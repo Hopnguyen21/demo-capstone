@@ -80,7 +80,9 @@ export const StatusBadge: React.FC<{ status?: string | null; label?: string }> =
   
   if (['ACTIVE', 'ONLINE', 'VALID', 'ACCEPTED', 'COMPLETED', 'RESOLVED', 'ON', 'OPERATING'].includes(upper)) {
     color = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-  } else if (['WARNING', 'PENDING', 'PROPOSED', 'IN_PROGRESS', 'ASSIGNED', 'ACKNOWLEDGED'].includes(upper)) {
+  } else if (['ASSIGNED'].includes(upper)) {
+    color = 'bg-sky-50 text-sky-800 border-sky-300';
+  } else if (['WARNING', 'PENDING', 'PROPOSED', 'IN_PROGRESS', 'ACKNOWLEDGED'].includes(upper)) {
     color = 'bg-amber-50 text-amber-800 border-amber-200';
   } else if (['CRITICAL', 'DANGER', 'OFFLINE', 'SUSPENDED', 'CANCELLED', 'ERROR', 'ANOMALY'].includes(upper)) {
     color = 'bg-rose-50 text-rose-800 border-rose-200';
@@ -90,6 +92,7 @@ export const StatusBadge: React.FC<{ status?: string | null; label?: string }> =
     <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-xs', color)}>
       <span className={cn('w-1.5 h-1.5 rounded-full mr-1.5',
         upper.includes('ACTIVE') || upper.includes('ONLINE') || upper.includes('ON') || upper.includes('OPERATING') ? 'bg-emerald-500 animate-pulse' :
+        upper.includes('ASSIGNED') ? 'bg-sky-500 animate-pulse' :
         upper.includes('WARNING') || upper.includes('PENDING') ? 'bg-amber-500 animate-ping' :
         upper.includes('CRITICAL') || upper.includes('OFFLINE') ? 'bg-rose-500' : 'bg-slate-400'
       )} />

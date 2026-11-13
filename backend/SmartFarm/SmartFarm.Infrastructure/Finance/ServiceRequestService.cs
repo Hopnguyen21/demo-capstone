@@ -158,6 +158,46 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
     }
     public async Task<ServiceRequestView> TestAsync(Guid tech, Guid id, ServiceConnectionTestCommand c, CancellationToken ct)
     { var r = await Assigned(tech, id, ct); if (r.Status is not (ServiceRequestStatus.WorkCompleted or ServiceRequestStatus.Verified)) throw new ResourceConflictException("Complete service work before testing."); if (c.ObservedAtUtc.Kind != DateTimeKind.Utc) throw new RequestValidationException("observedAtUtc", "Observed time must be UTC."); var device = r.CurrentDeviceId ?? r.DeviceId ?? throw new ResourceConflictException("Request has no current Device."); var test = new DeviceConnectionTest { DeviceId = device, DeploymentRequestId = r.DeploymentRequestId, TechnicianUserId = tech, Succeeded = c.Succeeded, Rssi = c.Rssi, Snr = c.Snr, RoundTripLatencyMs = c.RoundTripLatencyMs, ObservedAtUtc = c.ObservedAtUtc, ErrorCode = FinanceService.Optional(c.ErrorCode, 100), ErrorMessage = FinanceService.Optional(c.ErrorMessage, 1000) }; db.DeviceConnectionTests.Add(test); var from = r.Status; r.Status = c.Succeeded ? ServiceRequestStatus.Verified : ServiceRequestStatus.WorkCompleted; Add(r, tech, c.Succeeded ? ServiceHistoryEventType.TestPassed : ServiceHistoryEventType.TestFailed, from, r.Status, c.ErrorMessage); await db.SaveChangesAsync(ct); return await Load(id, ct); }
+    public async Task<ServiceRequestView> CancelAsync(Guid userId, Guid id, CancelServiceRequestCommand c, CancellationToken ct)
+    {
+        var u = await User(userId, ct);
+        var r = await Query().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Service Request was not found.");
+        if (u.Role == UserRole.FarmOwner)
+        {
+            if (r.TenantId != u.TenantId && r.CreatedByOwnerId != userId)
+                throw new AuthorizationException("Chỉ người tạo hoặc chủ trang trại mới có quyền hủy yêu cầu này.");
+        }
+        else if (u.Role != UserRole.PlatformAdmin)
+        {
+            throw new AuthorizationException("Chỉ Farm Owner hoặc Platform Admin mới có quyền hủy yêu cầu.");
+        }
+
+        if (r.Status is ServiceRequestStatus.Closed or ServiceRequestStatus.Resolved)
+            throw new ResourceConflictException("Yêu cầu đã hoàn tất hoặc đóng, không thể hủy.");
+
+        if (r.Status == ServiceRequestStatus.Cancelled)
+            throw new ResourceConflictException("Yêu cầu này đã được hủy trước đó.");
+
+        var from = r.Status;
+        r.Status = ServiceRequestStatus.Cancelled;
+        r.ClosedAtUtc = clock.GetUtcNow().UtcDateTime;
+
+        var reason = string.IsNullOrWhiteSpace(c.Reason) ? "Chủ động hủy yêu cầu" : c.Reason.Trim();
+        Add(r, userId, ServiceHistoryEventType.Cancelled, from, r.Status, $"Hủy bởi {u.Role}: {reason}");
+
+        if (r.DeploymentRequestId != Guid.Empty)
+        {
+            var dep = await db.DeploymentRequests.SingleOrDefaultAsync(x => x.Id == r.DeploymentRequestId, ct);
+            if (dep != null && dep.Status != DeploymentRequestStatus.Completed && dep.Status != DeploymentRequestStatus.Cancelled)
+            {
+                dep.Status = DeploymentRequestStatus.Cancelled;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return await Load(id, ct);
+    }
+
     public async Task<ServiceRequestView> CloseAsync(Guid tech, Guid id, CancellationToken ct)
     { var r = await Assigned(tech, id, ct); if (r.Status != ServiceRequestStatus.Verified) throw new ResourceConflictException("A successful current-Device connection test is required before closure."); var device = r.CurrentDeviceId ?? r.DeviceId!.Value; var latest = await db.DeviceConnectionTests.Where(x => x.DeviceId == device).OrderByDescending(x => x.ObservedAtUtc).FirstOrDefaultAsync(ct); if (latest?.Succeeded != true) throw new ResourceConflictException("The latest current-Device connection test did not pass."); var from = r.Status; r.Status = ServiceRequestStatus.Closed; r.ClosedAtUtc = clock.GetUtcNow().UtcDateTime; (await db.Devices.SingleAsync(x => x.Id == device, ct)).Status = DeviceStatus.Online; Add(r, tech, ServiceHistoryEventType.Closed, from, r.Status, null); await db.SaveChangesAsync(ct); return await Load(id, ct); }
     private IQueryable<ServiceRequest> Query() => db.ServiceRequests.Include(x => x.History).Include(x => x.Replacements);

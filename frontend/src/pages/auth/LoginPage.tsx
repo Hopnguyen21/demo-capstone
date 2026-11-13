@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { extractApiError } from '../../services';
+import { ForgotPasswordModal } from '../../components/auth/ForgotPasswordModal';
 
 export const LoginPage: React.FC = () => {
   const { login, switchRole } = useAuth();
@@ -20,6 +21,7 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   useEffect(() => {
     const state = location.state as { registeredEmail?: string; message?: string } | null;
@@ -183,11 +185,21 @@ export const LoginPage: React.FC = () => {
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" defaultChecked className="rounded bg-slate-100 border-slate-300 text-[#119653] focus:ring-0" />
-                  <span>Ghi nhớ đăng nhập</span>
+                  <span>Ghi nhớ</span>
                 </label>
-                <Link to="/register" className="text-[#119653] font-medium hover:underline">
-                  Tạo tài khoản mới?
-                </Link>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsForgotPasswordOpen(true)}
+                    className="text-amber-700 font-semibold hover:underline hover:text-amber-800"
+                  >
+                    Quên mật khẩu?
+                  </button>
+                  <span className="text-slate-300">•</span>
+                  <Link to="/register" className="text-[#119653] font-medium hover:underline">
+                    Đăng ký?
+                  </Link>
+                </div>
               </div>
 
               <Button type="submit" disabled={loading} className="w-full mt-2 bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 py-2.5 shadow-md shadow-emerald-700/20">
@@ -250,6 +262,15 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       </div>
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordOpen}
+        onClose={() => setIsForgotPasswordOpen(false)}
+        onSuccessReset={(resetEmail) => {
+          setEmail(resetEmail);
+          setPassword('');
+          setSuccessMessage('Đặt lại mật khẩu thành công! Hãy nhập mật khẩu mới để đăng nhập.');
+        }}
+      />
     </div>
   );
 };

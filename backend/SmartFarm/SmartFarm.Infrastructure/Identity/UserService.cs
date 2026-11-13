@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Common.Interfaces;
@@ -8,7 +9,10 @@ using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Identity;
 
-internal sealed class UserService(SmartFarmDbContext dbContext, TimeProvider timeProvider) : IUserService
+internal sealed class UserService(
+    SmartFarmDbContext dbContext,
+    TimeProvider timeProvider,
+    IPasswordHasher<AppUser> passwordHasher) : IUserService
 {
     public async Task<IReadOnlyList<UserDetailView>> ListTenantUsersAsync(
         Guid ownerUserId,
@@ -97,6 +101,39 @@ internal sealed class UserService(SmartFarmDbContext dbContext, TimeProvider tim
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDetailView(user);
+    }
+
+    public async Task ChangePasswordAsync(Guid userId, ChangePasswordCommand command, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(command.CurrentPassword))
+        {
+            throw new RequestValidationException(nameof(command.CurrentPassword), "Mật khẩu hiện tại không được để trống.");
+        }
+
+        if (string.IsNullOrWhiteSpace(command.NewPassword))
+        {
+            throw new RequestValidationException(nameof(command.NewPassword), "Mật khẩu mới không được để trống.");
+        }
+
+        AuthService.ValidatePassword(command.NewPassword);
+
+        var user = await dbContext.AppUsers
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)
+            ?? throw new ResourceNotFoundException("Tài khoản người dùng không tồn tại.");
+
+        var verify = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, command.CurrentPassword);
+        if (verify == PasswordVerificationResult.Failed)
+        {
+            throw new RequestValidationException(nameof(command.CurrentPassword), "Mật khẩu hiện tại không chính xác.");
+        }
+
+        if (command.CurrentPassword == command.NewPassword)
+        {
+            throw new RequestValidationException(nameof(command.NewPassword), "Mật khẩu mới không được trùng với mật khẩu hiện tại.");
+        }
+
+        user.PasswordHash = passwordHasher.HashPassword(user, command.NewPassword);
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<ZoneAccessView> ReplaceZoneAccessAsync(

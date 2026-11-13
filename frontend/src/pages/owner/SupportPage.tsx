@@ -1,4 +1,4 @@
-import { ServiceRequestStatus, serviceStatusLabels } from '../../components/ui/ServiceRequestStatus';
+import { ServiceRequestStatus, serviceStatusLabels, deploymentLabels } from '../../components/ui/ServiceRequestStatus';
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest, ZoneContract } from '../../types';
@@ -9,7 +9,7 @@ import {
   Headphones, Plus, CheckSquare, CheckCircle2, Clock, Wrench,
   Building2, User, AlertCircle, Info, Layers, FileText, DollarSign,
   QrCode, CreditCard, ShieldCheck, Lock, ChevronDown, ChevronUp, Package,
-  RefreshCw, Loader2, Sparkles, ArrowUpRight, ExternalLink, Sprout
+  RefreshCw, Loader2, Sparkles, ArrowUpRight, ExternalLink, Sprout, XCircle, Truck
 } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
@@ -24,6 +24,26 @@ export const SupportPage: React.FC = () => {
   const [expandedRequestIds, setExpandedRequestIds] = useState<Record<string, boolean>>({});
   // State for contract terms agreement checkbox per request
   const [agreedTerms, setAgreedTerms] = useState<Record<string, boolean>>({});
+  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const handleCancelRequest = async () => {
+    if (!cancellingRequestId) return;
+    setIsCancelling(true);
+    try {
+      await supportService.cancelServiceRequest(cancellingRequestId, cancelReason.trim() || 'Chủ trang trại chủ động hủy');
+      await loadRequests();
+      setSuccessMsg('Đã hủy phiếu yêu cầu dịch vụ thành công!');
+      setCancellingRequestId(null);
+      setCancelReason('');
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.response?.data?.message || 'Hủy yêu cầu thất bại.');
+    } finally {
+      setIsCancelling(false);
+      setTimeout(() => setSuccessMsg(null), 3500);
+    }
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedRequestIds(prev => ({
@@ -501,6 +521,13 @@ export const SupportPage: React.FC = () => {
                           </span>
                           <ServiceRequestStatus request={req} />
 
+                          {Boolean(req.assignedTechnicianName && ['ASSIGNED', 'Assigned'].includes(req.status)) && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 font-bold text-[10px] flex items-center gap-1 shadow-2xs animate-pulse">
+                              <Truck size={12} className="text-sky-600" />
+                              <span>Nhân viên kỹ thuật đang tới ({req.assignedTechnicianName})</span>
+                            </span>
+                          )}
+
                           {isContractSigned ? (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center gap-1">
                               <CheckCircle2 size={12} /> ĐÃ KÝ HĐ & CỌC 30%
@@ -553,7 +580,13 @@ export const SupportPage: React.FC = () => {
                             <ArrowUpRight size={13} className="text-emerald-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
                           </button>
                           <span>•</span>
-                          <span>Kỹ thuật viên: <strong className={req.assignedTechnicianName ? "text-slate-800" : "text-amber-600"}>{req.assignedTechnicianName || 'Chờ phân công'}</strong></span>
+                          <span>Kỹ thuật viên: <strong className={req.assignedTechnicianName ? "text-sky-800 font-bold" : "text-amber-600"}>
+                            {req.assignedTechnicianName
+                              ? ['ASSIGNED', 'Assigned'].includes(req.status)
+                                ? `${req.assignedTechnicianName} (Nhân viên kỹ thuật đang tới)`
+                                : req.assignedTechnicianName
+                              : 'Chờ phân công'}
+                          </strong></span>
                           <span>•</span>
                           <span className="text-slate-400 font-mono">Ngày gửi: {new Date(req.createdAt).toLocaleDateString('vi-VN')}</span>
                         </div>
@@ -561,6 +594,28 @@ export const SupportPage: React.FC = () => {
 
                       {/* Right Action Button */}
                       <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+                        {!['RESOLVED', 'CLOSED', 'CANCELLED', 'Cancelled'].includes(req.status) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCancellingRequestId(req.serviceRequestId);
+                              setCancelReason('');
+                            }}
+                            className="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            title="Hủy phiếu yêu cầu dịch vụ này"
+                          >
+                            <XCircle size={14} />
+                            <span className="hidden sm:inline">Hủy Yêu Cầu</span>
+                          </button>
+                        )}
+
+                        {['CANCELLED', 'Cancelled'].includes(req.status) && (
+                          <span className="px-2.5 py-1 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 flex items-center gap-1">
+                            <XCircle size={13} /> Đã Hủy
+                          </span>
+                        )}
+
                         <button
                           type="button"
                           onClick={(e) => {
@@ -598,6 +653,24 @@ export const SupportPage: React.FC = () => {
                         <p className="text-xs text-slate-700 p-3 bg-slate-50 border border-slate-100 rounded-xl leading-relaxed">
                           <strong>Mô tả yêu cầu:</strong> {req.description}
                         </p>
+
+                        {/* Alert: Technician on the way to the farm */}
+                        {Boolean(req.assignedTechnicianName && ['ASSIGNED', 'Assigned'].includes(req.status)) && (
+                          <div className="p-3.5 bg-sky-50 border border-sky-200 rounded-xl flex items-start gap-3 text-sky-950 shadow-2xs">
+                            <div className="p-2 bg-sky-100 rounded-lg text-sky-700 shrink-0 mt-0.5">
+                              <Truck size={20} className="animate-pulse" />
+                            </div>
+                            <div className="space-y-1 text-xs">
+                              <div className="font-bold text-sky-950 flex items-center gap-2">
+                                <span>🚀 Nhân viên kỹ thuật đang tới trang trại của bạn!</span>
+                                <span className="px-2 py-0.5 rounded-full bg-sky-200 text-sky-800 text-[10px] font-bold">Đang di chuyển</span>
+                              </div>
+                              <p className="text-sky-800 leading-relaxed">
+                                Admin đã phân công yêu cầu này cho kỹ thuật viên <strong className="text-sky-950 font-bold">{req.assignedTechnicianName}</strong>. Nhân viên kỹ thuật đang trên đường di chuyển đến thực địa nông trại của bạn để tiếp nhận và triển khai công việc. Quý khách vui lòng giữ liên lạc điện thoại để kỹ thuật viên liên hệ khi tới nơi!
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="space-y-4 pt-2">
                 {/* ========================================================================= */}
@@ -977,11 +1050,24 @@ export const SupportPage: React.FC = () => {
                         </div>
                       </div>
 
+                      {req.deploymentStatus && req.deploymentStatus !== 'Completed' && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-center gap-2">
+                          <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                          <span>
+                            Tiến độ triển khai hiện tại: <strong>{deploymentLabels[req.deploymentStatus] || req.deploymentStatus}</strong>. Biên bản nghiệm thu sẽ mở sau khi Kỹ thuật viên hoàn tất lắp đặt & đo kiểm tra kết nối thiết bị.
+                          </span>
+                        </div>
+                      )}
+
                       <Button
-                        disabled={isProcessingId === req.serviceRequestId}
+                        disabled={isProcessingId === req.serviceRequestId || (Boolean(req.deploymentStatus) && req.deploymentStatus !== 'Completed')}
                         onClick={() => handleSignAcceptanceAndPay70(req.serviceRequestId)}
                         title={req.deploymentStatus !== 'Completed' || req.deploymentLinkInvalid ? 'Cần hoàn tất triển khai đúng farm/zone trước khi nghiệm thu' : undefined}
-                        className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
+                        className={`w-full font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2 ${
+                          Boolean(req.deploymentStatus) && req.deploymentStatus !== 'Completed'
+                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                            : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                        }`}
                       >
                         {isProcessingId === req.serviceRequestId ? (
                           <>
@@ -1285,6 +1371,43 @@ export const SupportPage: React.FC = () => {
           </div>
         </Modal>
       )}
+      {/* Modal Owner Cancel Request */}
+      <Modal isOpen={!!cancellingRequestId} onClose={() => setCancellingRequestId(null)} title="Hủy Phiếu Yêu Cầu Dịch Vụ">
+        <div className="space-y-4 text-xs">
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 flex items-start gap-2">
+            <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <strong>Xác nhận hủy yêu cầu dịch vụ #{cancellingRequestId?.substring(0, 8)}</strong>
+              <p className="mt-1 text-rose-700">Sau khi xác nhận hủy, yêu cầu sẽ chuyển sang trạng thái ĐÃ HỦY và kỹ thuật viên sẽ không thực hiện yêu cầu này nữa.</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Lý do hủy yêu cầu (tùy chọn)</label>
+            <textarea
+              rows={3}
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="VD: Đã khắc phục được sự cố, thay đổi kế hoạch sản xuất..."
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-rose-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="ghost" onClick={() => setCancellingRequestId(null)} disabled={isCancelling}>
+              Đóng
+            </Button>
+            <Button
+              onClick={handleCancelRequest}
+              disabled={isCancelling}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1.5"
+            >
+              <XCircle size={15} />
+              <span>{isCancelling ? 'Đang xử lý...' : 'Xác Nhận Hủy Yêu Cầu'}</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

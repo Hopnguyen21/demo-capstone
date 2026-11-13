@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartFarm.Api.Extensions;
+using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Users;
 using SmartFarm.Domain.Enums;
@@ -39,6 +40,26 @@ public sealed class UsersController(IUserService userService, IFarmInvitationSer
             User.GetUserId(),
             new UpdateUserProfileCommand(request.FullName, request.Phone),
             cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPost("me/change-password")]
+    [HttpPut("me/password")]
+    public async Task<IActionResult> ChangePassword(
+        [FromBody] ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ConfirmPassword) && request.NewPassword != request.ConfirmPassword)
+        {
+            throw new RequestValidationException(nameof(request.ConfirmPassword), "Xác nhận mật khẩu mới không khớp.");
+        }
+
+        await userService.ChangePasswordAsync(
+            User.GetUserId(),
+            new ChangePasswordCommand(request.CurrentPassword, request.NewPassword),
+            cancellationToken);
+
+        return Ok(new { message = "Đổi mật khẩu thành công!" });
     }
 
     // API catalog #7

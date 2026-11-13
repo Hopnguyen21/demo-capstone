@@ -5,7 +5,6 @@ using SmartFarm.Api.Extensions;
 using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Auth;
 using SmartFarm.Domain.Enums;
-
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace SmartFarm.Api.Controllers;
@@ -54,6 +53,25 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
     {
         return Ok(await authService.RefreshAsync(request.RefreshToken, cancellationToken));
     }
+
+    [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    public async Task<ActionResult<ForgotPasswordResponse>> ForgotPassword(
+        [FromBody] ForgotPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await authService.ForgotPasswordAsync(new ForgotPasswordCommand(request.Email), cancellationToken));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] ResetPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        await authService.ResetPasswordAsync(new ResetPasswordCommand(request.Email, request.Otp, request.NewPassword), cancellationToken);
+        return Ok(new { message = "Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới." });
+    }
 }
 
 public sealed class RegisterRequest
@@ -93,4 +111,22 @@ public sealed class LogoutRequest
 {
     public string? RefreshToken { get; init; }
     public bool RevokeAllDevices { get; init; }
+}
+
+public sealed class ForgotPasswordRequest
+{
+    [Required, EmailAddress]
+    public string Email { get; init; } = string.Empty;
+}
+
+public sealed class ResetPasswordRequest
+{
+    [Required, EmailAddress]
+    public string Email { get; init; } = string.Empty;
+
+    [Required]
+    public string Otp { get; init; } = string.Empty;
+
+    [Required, StringLength(100, MinimumLength = 8)]
+    public string NewPassword { get; init; } = string.Empty;
 }

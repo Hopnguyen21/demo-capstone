@@ -7,7 +7,7 @@ import { supportService, userService } from '../../services';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
   ClipboardList, UserCheck, Wrench, Building2, Cpu, CheckCircle2,
-  Clock, AlertCircle, ArrowUpRight, Search, Filter, ShieldCheck, User, Plus, CheckSquare
+  Clock, AlertCircle, ArrowUpRight, Search, Filter, ShieldCheck, User, Plus, CheckSquare, XCircle
 } from 'lucide-react';
 
 export const ServiceRequestsPage: React.FC = () => {
@@ -52,6 +52,26 @@ export const ServiceRequestsPage: React.FC = () => {
     assignedTechnicianName: '',
   });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const handleCancelRequest = async () => {
+    if (!cancellingRequestId) return;
+    setIsCancelling(true);
+    try {
+      await supportService.cancelServiceRequest(cancellingRequestId, cancelReason.trim() || 'Admin chủ động hủy yêu cầu');
+      await loadRequests();
+      setSuccessMsg('Đã hủy yêu cầu dịch vụ thành công!');
+      setCancellingRequestId(null);
+      setCancelReason('');
+    } catch (error: any) {
+      alert(error?.response?.data?.detail || error?.response?.data?.message || 'Hủy yêu cầu thất bại.');
+    } finally {
+      setIsCancelling(false);
+      setTimeout(() => setSuccessMsg(null), 3500);
+    }
+  };
 
   const filteredRequests = (requests || []).filter(r => {
     if (!r) return false;
@@ -75,7 +95,7 @@ export const ServiceRequestsPage: React.FC = () => {
         await supportService.assignServiceRequest(requestId, tech.userId, `Admin phân công cho ${techName}`);
       }
       await loadRequests();
-      setSuccessMsg(`Đã phân công công việc cho ${techName} thành công!`);
+      setSuccessMsg(`Đã phân công công việc cho ${techName} thành công! Phía Chủ trang trại (Owner) sẽ thấy trạng thái "Nhân viên kỹ thuật đang tới".`);
     } catch (error: any) {
       setSuccessMsg(null);
       alert(error?.response?.data?.detail || error?.response?.data?.message || 'Phân công thất bại. Vui lòng thử lại.');
@@ -271,22 +291,45 @@ export const ServiceRequestsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {['OPEN', 'ASSIGNED'].includes(req.status) && (
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={assignedTechMap[req.serviceRequestId] || req.assignedTechnician || technicians[0]?.userId || ''}
-                        onChange={e => setAssignedTechMap({ ...assignedTechMap, [req.serviceRequestId]: e.target.value })}
-                        className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg p-1.5 focus:outline-none cursor-pointer"
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {['OPEN', 'ASSIGNED'].includes(req.status) && (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={assignedTechMap[req.serviceRequestId] || req.assignedTechnician || technicians[0]?.userId || ''}
+                          onChange={e => setAssignedTechMap({ ...assignedTechMap, [req.serviceRequestId]: e.target.value })}
+                          className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg p-1.5 focus:outline-none cursor-pointer"
+                        >
+                          {technicians.map(t => (
+                            <option key={t.userId} value={t.userId}>{t.fullName}</option>
+                          ))}
+                        </select>
+                        <Button size="sm" onClick={() => handleAssignTechnician(req.serviceRequestId)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold">
+                          <UserCheck size={14} className="mr-1" /> {req.assignedTechnicianName ? 'Đổi Kỹ thuật viên' : 'Phân công ngay'}
+                        </Button>
+                      </div>
+                    )}
+
+                    {!['RESOLVED', 'CLOSED', 'CANCELLED', 'Cancelled'].includes(req.status) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setCancellingRequestId(req.serviceRequestId);
+                          setCancelReason('');
+                        }}
+                        className="border-rose-500/60 text-rose-400 hover:bg-rose-950/80 font-bold"
+                        title="Hủy request này từ phía Admin"
                       >
-                        {technicians.map(t => (
-                          <option key={t.userId} value={t.userId}>{t.fullName}</option>
-                        ))}
-                      </select>
-                      <Button size="sm" onClick={() => handleAssignTechnician(req.serviceRequestId)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold">
-                        <UserCheck size={14} className="mr-1" /> {req.assignedTechnicianName ? 'Đổi Kỹ thuật viên' : 'Phân công ngay'}
+                        <XCircle size={14} className="mr-1" /> Hủy Request
                       </Button>
-                    </div>
-                  )}
+                    )}
+
+                    {['CANCELLED', 'Cancelled'].includes(req.status) && (
+                      <span className="px-2.5 py-1 rounded-lg bg-rose-950/60 border border-rose-800/60 text-rose-300 font-bold text-xs flex items-center gap-1">
+                        <XCircle size={13} /> Đã Hủy Yêu Cầu
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -384,6 +427,44 @@ export const ServiceRequestsPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Admin Cancel Request */}
+      <Modal isOpen={!!cancellingRequestId} onClose={() => setCancellingRequestId(null)} title="Hủy Yêu Cầu Hỗ Trợ Kỹ Thuật (Admin)">
+        <div className="space-y-4 text-xs">
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 flex items-start gap-2">
+            <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <strong>Xác nhận hủy yêu cầu dịch vụ #{cancellingRequestId?.substring(0, 8)}</strong>
+              <p className="mt-1 text-rose-700">Sau khi hủy, yêu cầu sẽ chuyển sang trạng thái ĐÃ HỦY và kỹ thuật viên sẽ không thể tiếp tục thực hiện.</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-bold mb-1">Lý do hủy yêu cầu *</label>
+            <textarea
+              rows={3}
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="VD: Chủ trang trại yêu cầu tạm hoãn, thiết bị không phù hợp..."
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-rose-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="ghost" onClick={() => setCancellingRequestId(null)} disabled={isCancelling}>
+              Đóng
+            </Button>
+            <Button
+              onClick={handleCancelRequest}
+              disabled={isCancelling}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1.5"
+            >
+              <XCircle size={15} />
+              <span>{isCancelling ? 'Đang hủy...' : 'Xác Nhận Hủy Request'}</span>
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

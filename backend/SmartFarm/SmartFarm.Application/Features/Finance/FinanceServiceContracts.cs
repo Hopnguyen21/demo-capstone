@@ -12,6 +12,8 @@ public sealed record AssignServiceRequestCommand(Guid TechnicianUserId, string? 
 public sealed record DiagnoseServiceRequestCommand(string InspectionNotes, string Diagnosis, ServiceResolutionAction ResolutionAction);
 public sealed record RecordServiceWorkCommand(string WorkPerformed);
 public sealed record ReplaceServiceDeviceCommand(Guid NewDeviceId, string? Notes);
+public sealed record CancelServiceRequestCommand(string? Reason);
+public sealed record CancelServiceRequestRequest(string? Reason);
 public sealed record ServiceConnectionTestCommand(bool Succeeded, decimal? Rssi, decimal? Snr, int? RoundTripLatencyMs, DateTime ObservedAtUtc, string? ErrorCode, string? ErrorMessage);
 public sealed record ServiceHistoryView(Guid Id, ServiceHistoryEventType EventType, ServiceRequestStatus FromStatus, ServiceRequestStatus ToStatus, Guid ActorUserId, string? Notes, DateTime CreatedAtUtc);
 public sealed record DeviceReplacementView(Guid Id, Guid OldDeviceId, Guid NewDeviceId, Guid ZoneId, DateTime CreatedAtUtc);
@@ -39,4 +41,5 @@ public interface IServiceRequestService
     Task<ServiceRequestView> HotSwapAsync(Guid technicianId, Guid zoneId, Guid oldDeviceId, Guid requestId, ReplaceServiceDeviceCommand command, CancellationToken ct);
     Task<ServiceRequestView> TestAsync(Guid technicianId, Guid requestId, ServiceConnectionTestCommand command, CancellationToken ct);
     Task<ServiceRequestView> CloseAsync(Guid technicianId, Guid requestId, CancellationToken ct);
+    Task<ServiceRequestView> CancelAsync(Guid userId, Guid requestId, CancelServiceRequestCommand command, CancellationToken ct);
 }

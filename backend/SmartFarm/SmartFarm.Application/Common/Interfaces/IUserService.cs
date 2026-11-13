@@ -10,4 +10,5 @@ public interface IUserService
     Task<UserDetailView> GetCurrentUserAsync(Guid userId, CancellationToken cancellationToken);
     Task<ZoneAccessView> ReplaceZoneAccessAsync(Guid ownerUserId, Guid farmerUserId, ReplaceZoneAccessCommand command, CancellationToken cancellationToken);
     Task<UserDetailView> UpdateCurrentUserProfileAsync(Guid userId, UpdateUserProfileCommand command, CancellationToken cancellationToken);
+    Task ChangePasswordAsync(Guid userId, ChangePasswordCommand command, CancellationToken cancellationToken);
 }

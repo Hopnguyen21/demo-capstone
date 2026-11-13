@@ -8,4 +8,6 @@ public interface IAuthService
     Task<AuthTokenView> LoginAsync(LoginCommand command, CancellationToken cancellationToken);
     Task<AuthTokenView> RefreshAsync(string refreshToken, CancellationToken cancellationToken);
     Task<LogoutView> LogoutAsync(Guid userId, string accessTokenJti, LogoutCommand command, CancellationToken cancellationToken);
+    Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordCommand command, CancellationToken cancellationToken);
+    Task ResetPasswordAsync(ResetPasswordCommand command, CancellationToken cancellationToken);
 }

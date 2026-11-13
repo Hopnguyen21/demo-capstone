@@ -32,6 +32,8 @@ public sealed class ServiceRequestsController(IServiceRequestService service) : 
     public async Task<ActionResult<ServiceRequestView>> Test(Guid id, ServiceConnectionTestRequest r, CancellationToken ct) => Ok(await service.TestAsync(User.GetUserId(), id, new(r.Succeeded, r.Rssi, r.Snr, r.RoundTripLatencyMs, r.ObservedAtUtc, r.ErrorCode, r.ErrorMessage), ct));
     [HttpPost("api/v1/service-requests/{id:guid}/close"), Authorize(Roles = "PlatformTechnician")] // SERVICE-V1-09
     public async Task<ActionResult<ServiceRequestView>> Close(Guid id, CancellationToken ct) => Ok(await service.CloseAsync(User.GetUserId(), id, ct));
+    [HttpPost("api/v1/service-requests/{id:guid}/cancel"), Authorize(Roles = "FarmOwner,PlatformAdmin")]
+    public async Task<ActionResult<ServiceRequestView>> Cancel(Guid id, [FromBody] CancelServiceRequestRequest r, CancellationToken ct) => Ok(await service.CancelAsync(User.GetUserId(), id, new(r.Reason), ct));
 }
 
 public sealed class CreateServiceRequest { public Guid ZoneId { get; init; } public Guid? DeviceId { get; init; } public Guid? DeploymentRequestId { get; init; } [Required, StringLength(100)] public string FailureCode { get; init; } = ""; [Required, StringLength(2000)] public string Description { get; init; } = ""; }

@@ -21,3 +21,6 @@ public sealed record ZoneAccessView(Guid UserId, Guid FarmId, IReadOnlyList<Zone
 
 public sealed record UpdateUserProfileRequest(string FullName, string? Phone);
 public sealed record UpdateUserProfileCommand(string FullName, string? Phone);
+
+public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword, string? ConfirmPassword = null);
+public sealed record ChangePasswordCommand(string CurrentPassword, string NewPassword);

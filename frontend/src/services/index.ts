@@ -74,6 +74,18 @@ export const authService = {
     setTokens(data.accessToken, data.refreshToken);
     return data.accessToken;
   },
+
+  /** POST /api/v1/auth/forgot-password */
+  forgotPassword: async (email: string) => {
+    const res = await apiClient.post('/api/v1/auth/forgot-password', { email });
+    return res.data as { message: string; demoOtp?: string; expiresAtUtc: string };
+  },
+
+  /** POST /api/v1/auth/reset-password */
+  resetPassword: async (payload: { email: string; otp: string; newPassword: string }) => {
+    const res = await apiClient.post('/api/v1/auth/reset-password', payload);
+    return res.data as { message: string };
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -104,6 +116,8 @@ export const userService = {
     const res = await apiClient.put('/api/v1/users/me', data);
     return res.data;
   },
+
+
 
   /** GET /api/v1/users/me */
   getMe: async () => {
@@ -165,9 +179,27 @@ export const userService = {
       });
   },
 
-  /** PUT /api/v1/users/me/password */
-  changePassword: async (currentPassword: string, newPassword: string) => {
-    const res = await apiClient.put('/api/v1/users/me/password', { currentPassword, newPassword });
+  /** PUT /api/v1/users/me/password & POST /api/v1/users/me/change-password */
+  changePassword: async (
+    currentPasswordOrData: string | { currentPassword: string; newPassword: string; confirmPassword?: string },
+    newPassword?: string,
+    confirmPassword?: string
+  ) => {
+    let payload;
+    if (typeof currentPasswordOrData === 'object') {
+      payload = {
+        currentPassword: currentPasswordOrData.currentPassword,
+        newPassword: currentPasswordOrData.newPassword,
+        confirmPassword: currentPasswordOrData.confirmPassword || currentPasswordOrData.newPassword,
+      };
+    } else {
+      payload = {
+        currentPassword: currentPasswordOrData,
+        newPassword: newPassword || '',
+        confirmPassword: confirmPassword || newPassword || '',
+      };
+    }
+    const res = await apiClient.put('/api/v1/users/me/password', payload);
     return res.data;
   },
 
@@ -1831,6 +1863,12 @@ export const supportService = {
   /** POST /api/v1/service-requests/{id}/close  (Technician only) */
   completeByTechnician: async (id: string) => {
     const res = await apiClient.post(`/api/v1/service-requests/${id}/close`);
+    return res.data;
+  },
+
+  /** POST /api/v1/service-requests/{id}/cancel (FarmOwner or PlatformAdmin) */
+  cancelServiceRequest: async (id: string, reason?: string) => {
+    const res = await apiClient.post(`/api/v1/service-requests/${id}/cancel`, { reason });
     return res.data;
   },
 

@@ -442,9 +442,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
     public async Task<ServiceRequestPaymentView> SignAcceptanceFinalAsync(Guid ownerId, Guid serviceRequestId, SignAcceptanceFinalCommand command, CancellationToken ct)
     {
         var sr = await OwnedRequestAsync(ownerId, serviceRequestId, ct);
-        if (!sr.IsDepositPaid) throw new ResourceConflictException("Deposit must be paid before final acceptance.");
         var quotation = sr.Quotations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault() ?? throw new ResourceConflictException("No quotation exists.");
-        if (sr.IsAcceptanceSigned || sr.IsFullyPaid || quotation.Status != "SignedByOwner")
+        if (!sr.IsDepositPaid && quotation.Status != "SignedByOwner" && quotation.Status != "DepositPaid")
+            throw new ResourceConflictException("Deposit must be paid before final acceptance.");
+        if (sr.IsAcceptanceSigned || sr.IsFullyPaid || (quotation.Status != "SignedByOwner" && quotation.Status != "DepositPaid"))
             throw new ResourceConflictException("Acceptance was already signed, or the contract is not in the signed-deposit state.");
         // Nghiệm thu sau khi hoàn tất lắp đặt và kiểm tra kết nối.
         var deploymentStatus = await db.DeploymentRequests.AsNoTracking().Where(x => x.Id == sr.DeploymentRequestId && x.TenantId == sr.TenantId && x.FarmId == sr.FarmId && x.ZoneId == sr.ZoneId).Select(x => (DeploymentRequestStatus?)x.Status).SingleOrDefaultAsync(ct);
@@ -459,6 +460,7 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
             TransactionReference = command.TransactionReference, SignerFullName = command.SignerFullName,
             SignatureHash = Guid.NewGuid().ToString("N"), Status = "Confirmed", PaidAtUtc = DateTime.UtcNow
         };
+        sr.IsDepositPaid = true;
         sr.IsAcceptanceSigned = true;
         sr.IsFullyPaid = true;
         quotation.Status = "Completed";
