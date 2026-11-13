@@ -316,16 +316,16 @@ VALUES (
     '20000000-0000-0000-0000-000000000004', -- Technician
     '20000000-0000-0000-0000-000000000003', -- Admin
     '2026-10-26 14:00:00+07',
-    'Xuất vật tư dinh dưỡng thủy canh và hạt giống dưa leo theo Hợp đồng canh tác HD-SR-A9694818',
+    'Xuất trọn bộ thiết bị IoT: Gateway trạm phụ + Node cảm biến vi khí hậu + Pin Solar theo Hợp đồng canh tác HD-SR-A9694818',
     '2026-10-26 09:00:00+07',
     '2026-10-26 14:00:00+07'
 );
 
 INSERT INTO "StockOutDetails" ("Id", "StockOutId", "InventoryItemId", "Quantity", "Notes", "CreatedAtUtc")
 VALUES
-('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000002', 20.0000, 'Dung dịch dinh dưỡng Thủy canh Hydro Umat V pha bồn tuần hoàn', NOW()),
-('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000004', 5.0000, 'Hạt giống Dưa leo F1 Green Valley xuống bầu ươm đợt 1', NOW()),
-('b1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000003', 10.0000, 'Giá thể xơ dừa vi sinh lót khay', NOW());
+('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000002', 1.0000, 'Gateway Trạm Phụ ESP32-LoRa Outdoor IP67', NOW()),
+('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000004', 2.0000, 'Node Cảm biến Nhiệt độ - Độ ẩm Không khí Sensirion', NOW()),
+('b1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', '75000000-0000-0000-0000-000000000007', 4.0000, 'Pin Lithium 3.7V 5000mAh Solar Grade', NOW());
 
 -- 4.2 StockOut 2: Farm 30000000-0000-0000-0000-000000000001 (Demo Hydroponic Farm)
 -- Zone: 32000000-0000-0000-0000-000000000002 (Demo Open Air Zone)
@@ -341,14 +341,14 @@ VALUES (
     '20000000-0000-0000-0000-000000000004', -- Technician
     '20000000-0000-0000-0000-000000000003', -- Admin
     NULL,
-    'Cấp phát phân bón NPK Haifa phục vụ đợt bón thúc thời kỳ ra hoa kết trái',
+    'Cấp phát Node điều khiển van solenoid tưới nhỏ giọt phục vụ nâng cấp hệ thống tưới tự động',
     '2026-11-02 10:15:00+07',
     '2026-11-03 08:30:00+07'
 );
 
 INSERT INTO "StockOutDetails" ("Id", "StockOutId", "InventoryItemId", "Quantity", "Notes", "CreatedAtUtc")
 VALUES
-('b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000001', 15.0000, 'Demo NPK Fertilizer Haifa bón gốc', NOW());
+('b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000002', '75000000-0000-0000-0000-000000000005', 2.0000, 'Node Điều khiển Van Solenoid Tưới nhỏ giọt 4 Cổng', NOW());
 
 -- 4.3 StockOut 3: Farm 30000000-0000-0000-0000-000000000001 (Demo Hydroponic Farm)
 -- Zone: d22ad0d3-200a-47ad-86c0-6ab02511f84a (sz)
@@ -364,10 +364,14 @@ VALUES (
     '20000000-0000-0000-0000-000000000004', -- Technician
     NULL,
     NULL,
-    'Yêu cầu cấp phát phân hữu cơ Bio-Organic bổ sung cho vụ thu đông (Chờ Admin duyệt)',
+    'Xuất thiết bị Node điều khiển bơm châm dinh dưỡng tự động theo gói hợp đồng canh tác',
     '2026-11-08 14:00:00+07',
     NULL
 );
+
+INSERT INTO "StockOutDetails" ("Id", "StockOutId", "InventoryItemId", "Quantity", "Notes", "CreatedAtUtc")
+VALUES
+('b1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000003', '75000000-0000-0000-0000-000000000006', 1.0000, 'Node Điều khiển Bơm Phân Dinh dưỡng Châm tự động', NOW());
 
 INSERT INTO "StockOutDetails" ("Id", "StockOutId", "InventoryItemId", "Quantity", "Notes", "CreatedAtUtc")
 VALUES

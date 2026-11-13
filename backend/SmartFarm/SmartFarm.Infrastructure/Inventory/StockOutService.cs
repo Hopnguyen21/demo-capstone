@@ -379,9 +379,9 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             s.CreatedAtUtc,
             s.Details.Select(d => {
                 var hw = hardwareMap != null && hardwareMap.TryGetValue(d.InventoryItemId, out var h) ? h : null;
-                var itemName = d.InventoryItem?.Name ?? (hw != null ? $"[{hw.Code}] {hw.Name}" : "Thiết bị");
-                var unit = d.InventoryItem?.Unit ?? "Cái";
-                var currentStock = d.InventoryItem?.QuantityOnHand ?? (hw != null ? (decimal)hw.QuantityInStock : 0m);
+                var itemName = hw != null ? $"[{hw.Code}] {hw.Name}" : (d.InventoryItem?.Name ?? "Thiết bị");
+                var unit = hw != null ? "Cái" : (d.InventoryItem?.Unit ?? "Cái");
+                var currentStock = hw != null ? (decimal)hw.QuantityInStock : (d.InventoryItem?.QuantityOnHand ?? 0m);
 
                 return new StockOutDetailView(
                     d.Id,
