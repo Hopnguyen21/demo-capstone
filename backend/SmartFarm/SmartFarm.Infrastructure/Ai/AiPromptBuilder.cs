@@ -630,4 +630,26 @@ public static class AiPromptBuilder
         sb.AppendLine("</consultation_request>");
         return sb.ToString();
     }
+
+    public static bool TryResolveActuator(IReadOnlyList<AiActuatorContextItem>? actuators, string? token, out Guid id)
+    {
+        id = Guid.Empty;
+        if (actuators == null || string.IsNullOrWhiteSpace(token)) return false;
+        token = token.Trim();
+        if (Guid.TryParse(token, out var guid))
+        {
+            var match = actuators.FirstOrDefault(a => a.ActuatorId == guid);
+            if (match != null)
+            {
+                id = match.ActuatorId;
+                return true;
+            }
+        }
+        if (token.StartsWith("V", StringComparison.OrdinalIgnoreCase) && int.TryParse(token[1..], out var idx) && idx >= 1 && idx <= actuators.Count)
+        {
+            id = actuators[idx - 1].ActuatorId;
+            return true;
+        }
+        return false;
+    }
 }

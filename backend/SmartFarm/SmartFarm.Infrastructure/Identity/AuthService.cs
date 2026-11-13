@@ -19,7 +19,6 @@ internal sealed class AuthService(
     TimeProvider timeProvider) : IAuthService
 {
     private static readonly ConcurrentDictionary<string, (string Otp, DateTime ExpiresAtUtc)> ResetOtps = new();
-    private static readonly ConcurrentDictionary<string, (string Otp, DateTime ExpiresAtUtc)> ResetOtps = new();
 
     public async Task<UserView> RegisterAsync(RegisterUserCommand command, CancellationToken cancellationToken)
     {
@@ -102,156 +101,68 @@ internal sealed class AuthService(
         user.FailedLoginAttempts = 0;
         user.LockedUntilUtc = null;
         user.LastLoginAtUtc = now;
-
-        var access = tokenGenerator.GenerateAccessToken(user);
-        var rawRefreshToken = tokenGenerator.GenerateRefreshToken();
-        var hashedRefreshToken = TokenHash.Create(rawRefreshToken);
-
-        dbContext.RefreshTokens.Add(new RefreshToken
-        {
-            AppUserId = user.Id,
-            TokenHash = hashedRefreshToken,
-            AccessTokenJti = access.Jti,
-            AccessTokenExpiresAtUtc = access.ExpiresAtUtc,
-            ExpiresAtUtc = now.AddDays(jwtOptions.Value.RefreshTokenDays),
-            CreatedAtUtc = now
-        });
-
+        var result = CreateSession(user, now);
         await dbContext.SaveChangesAsync(cancellationToken);
-
-        var expiresIn = Math.Max(0, (int)(access.ExpiresAtUtc - now).TotalSeconds);
-        return new AuthTokenView(access.Token, rawRefreshToken, expiresIn, "Bearer", ToView(user));
-    }
-
-    public async Task<LogoutView> LogoutAsync(Guid userId, string accessTokenJti, LogoutCommand command, CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var query = dbContext.RefreshTokens
-            .Where(x => x.AppUserId == userId && !x.IsRevoked && x.ExpiresAtUtc > now);
-
-        if (!command.RevokeAllDevices)
-        {
-            if (string.IsNullOrWhiteSpace(command.RefreshToken))
-            {
-                throw new RequestValidationException(nameof(command.RefreshToken), "RefreshToken is required when revokeAllDevices is false.");
-            }
-
-            var hashed = TokenHash.Create(command.RefreshToken);
-            query = query.Where(x => x.TokenHash == hashed || x.AccessTokenJti == accessTokenJti);
-        }
-
-        var tokens = await query.ToListAsync(cancellationToken);
-        foreach (var token in tokens)
-        {
-            token.IsRevoked = true;
-            token.RevokedAtUtc = now;
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return new LogoutView(now, tokens.Count);
+        return result;
     }
 
     public async Task<AuthTokenView> RefreshAsync(string refreshToken, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(refreshToken))
         {
-            throw new RequestValidationException(nameof(refreshToken), "RefreshToken is required.");
+            throw new RequestValidationException(nameof(refreshToken), "Refresh token is required.");
         }
 
-        var hashed = TokenHash.Create(refreshToken);
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var existing = await dbContext.RefreshTokens
+        var hash = TokenHash.Create(refreshToken);
+        var session = await dbContext.RefreshTokens
             .Include(x => x.AppUser)
-            .SingleOrDefaultAsync(x => x.TokenHash == hashed, cancellationToken);
-
-        if (existing is null || existing.IsRevoked || existing.ExpiresAtUtc <= now)
-        {
-            throw new AuthenticationException("Invalid or expired refresh token.");
-        }
-
-        var user = existing.AppUser;
-        if (user.Status != AccountStatus.Active)
-        {
-            throw new AuthorizationException("The account is not active.");
-        }
-
-        existing.IsRevoked = true;
-        existing.RevokedAtUtc = now;
-
-    public async Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordCommand command, CancellationToken cancellationToken)
-    {
-        var normalizedEmail = NormalizeEmail(command.Email);
-        var user = await dbContext.AppUsers.SingleOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
-        var expires = DateTime.UtcNow.AddMinutes(15);
-
-        if (user is null)
-        {
-            return new ForgotPasswordResponse(
-                "Nếu email tồn tại trong hệ thống, mã xác nhận OTP đặt lại mật khẩu đã được tạo.",
-                null,
-                expires);
-        }
-
-        var otp = new Random().Next(100000, 999999).ToString();
-        ResetOtps[normalizedEmail] = (otp, expires);
-
-        return new ForgotPasswordResponse(
-            "Mã xác nhận OTP đặt lại mật khẩu đã được tạo (hiệu lực trong 15 phút).",
-            otp,
-            expires);
-    }
-
-    public async Task ResetPasswordAsync(ResetPasswordCommand command, CancellationToken cancellationToken)
-    {
-        var normalizedEmail = NormalizeEmail(command.Email);
-        if (string.IsNullOrWhiteSpace(command.Otp))
-        {
-            throw new RequestValidationException(nameof(command.Otp), "Mã OTP xác thực không được để trống.");
-        }
-
-        if (!ResetOtps.TryGetValue(normalizedEmail, out var entry) || entry.ExpiresAtUtc < DateTime.UtcNow || entry.Otp != command.Otp.Trim())
-        {
-            throw new RequestValidationException(nameof(command.Otp), "Mã xác thực OTP không chính xác hoặc đã hết hạn.");
-        }
-
-        ValidatePassword(command.NewPassword);
-
-        var user = await dbContext.AppUsers
-            .Include(x => x.RefreshTokens)
-            .SingleOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken)
-            ?? throw new ResourceNotFoundException("Tài khoản không tồn tại.");
-
-        user.PasswordHash = passwordHasher.HashPassword(user, command.NewPassword);
-        user.FailedLoginAttempts = 0;
-        user.LockedUntilUtc = null;
-        if (user.Status == AccountStatus.Locked) user.Status = AccountStatus.Active;
-
+            .SingleOrDefaultAsync(x => x.TokenHash == hash, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        foreach (var rt in user.RefreshTokens.Where(t => !t.RevokedAtUtc.HasValue))
+        if (session is null || session.RevokedAtUtc.HasValue || session.ExpiresAtUtc <= now || session.AppUser.Status != AccountStatus.Active)
         {
-            rt.RevokedAtUtc = now;
+            throw new AuthenticationException("The refresh token is invalid or expired.");
         }
 
-        ResetOtps.TryRemove(normalizedEmail, out _);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        session.RevokedAtUtc = now;
+        var result = CreateSession(session.AppUser, now);
+        session.ReplacedByTokenId = dbContext.RefreshTokens.Local.Single(x => x.AccessTokenJti == ReadJti(result.AccessToken)).Id;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return result;
     }
 
-        var access = tokenGenerator.GenerateAccessToken(user);
-        var rawRefreshToken = tokenGenerator.GenerateRefreshToken();
-        existing.ReplacedByTokenHash = TokenHash.Create(rawRefreshToken);
+    public async Task<LogoutView> LogoutAsync(
+        Guid userId,
+        string accessTokenJti,
+        LogoutCommand command,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var sessions = dbContext.RefreshTokens.Where(x => x.AppUserId == userId && x.RevokedAtUtc == null);
 
-        dbContext.RefreshTokens.Add(new RefreshToken
+        if (command.RevokeAllDevices)
         {
-            AppUserId = user.Id,
-            TokenHash = TokenHash.Create(rawRefreshToken),
-            AccessTokenJti = access.Jti,
-            AccessTokenExpiresAtUtc = access.ExpiresAtUtc,
-            ExpiresAtUtc = now.AddDays(jwtOptions.Value.RefreshTokenDays),
-            CreatedAtUtc = now
-        });
+            // Revoke all active sessions below.
+        }
+        else if (!string.IsNullOrWhiteSpace(command.RefreshToken))
+        {
+            var hash = TokenHash.Create(command.RefreshToken);
+            sessions = sessions.Where(x => x.TokenHash == hash);
+        }
+        else
+        {
+            sessions = sessions.Where(x => x.AccessTokenJti == accessTokenJti);
+        }
 
-        var expiresIn = Math.Max(0, (int)(access.ExpiresAtUtc - now).TotalSeconds);
-        return new AuthTokenView(access.Token, rawRefreshToken, expiresIn, "Bearer", ToView(user));
+        var matches = await sessions.ToListAsync(cancellationToken);
+        foreach (var session in matches)
+        {
+            session.RevokedAtUtc = now;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new LogoutView(now, matches.Count);
     }
 
     public async Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordCommand command, CancellationToken cancellationToken)
@@ -303,14 +214,31 @@ internal sealed class AuthService(
         if (user.Status == AccountStatus.Locked) user.Status = AccountStatus.Active;
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        foreach (var rt in user.RefreshTokens.Where(t => !t.IsRevoked))
+        foreach (var rt in user.RefreshTokens.Where(t => !t.RevokedAtUtc.HasValue))
         {
-            rt.IsRevoked = true;
             rt.RevokedAtUtc = now;
         }
 
         ResetOtps.TryRemove(normalizedEmail, out _);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private AuthTokenView CreateSession(AppUser user, DateTime now)
+    {
+        var access = tokenGenerator.CreateAccessToken(user);
+        var rawRefreshToken = tokenGenerator.CreateRefreshToken();
+        dbContext.RefreshTokens.Add(new RefreshToken
+        {
+            AppUserId = user.Id,
+            TokenHash = TokenHash.Create(rawRefreshToken),
+            AccessTokenJti = access.Jti,
+            AccessTokenExpiresAtUtc = access.ExpiresAtUtc,
+            ExpiresAtUtc = now.AddDays(jwtOptions.Value.RefreshTokenDays),
+            CreatedAtUtc = now
+        });
+
+        var expiresIn = Math.Max(0, (int)(access.ExpiresAtUtc - now).TotalSeconds);
+        return new AuthTokenView(access.Token, rawRefreshToken, expiresIn, "Bearer", ToView(user));
     }
 
     private static string ReadJti(string token)
@@ -348,7 +276,7 @@ internal sealed class AuthService(
         if (!valid)
         {
             throw new RequestValidationException(nameof(password),
-                "Mật khẩu phải từ 8-100 ký tự và bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt.");
+                "Password must be 8-100 characters and include upper-case, lower-case, number and special characters.");
         }
     }
 

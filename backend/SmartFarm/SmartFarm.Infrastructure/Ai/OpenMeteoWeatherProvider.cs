@@ -26,6 +26,12 @@ public sealed class OpenMeteoWeatherProvider(
 {
     private readonly OpenMeteoOptions settings = options.Value;
 
+    public static decimal RoundForExternal(decimal coordinate) => Math.Round(coordinate, 2);
+
+    public static string BuildForecastUrl(string baseUrl, decimal lat, decimal lng) =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"{baseUrl}?latitude={RoundForExternal(lat):F2}&longitude={RoundForExternal(lng):F2}&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=6&timezone=UTC");
+
     public async Task<AiWeatherResult> GetAsync(Guid farmId, Guid zoneId, CancellationToken cancellationToken)
     {
         if (!settings.Enabled)
