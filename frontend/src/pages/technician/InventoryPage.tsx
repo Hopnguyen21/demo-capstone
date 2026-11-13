@@ -55,7 +55,7 @@ export const TechnicianInventoryPage: React.FC = () => {
         <Button onClick={() => setIsAdjustModalOpen(true)} className="bg-[#119653] hover:bg-emerald-700 text-white font-bold"><Plus size={16} className="mr-1.5" /> Bổ sung thiết bị</Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 uppercase font-semibold">

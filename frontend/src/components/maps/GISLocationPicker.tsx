@@ -981,15 +981,15 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
 
         <div className="relative w-full h-full flex-1 rounded-xl overflow-hidden shadow-inner">
           {/* Realtime Info Badge */}
-          <div className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800 shadow-md space-y-1">
-            <div className="flex items-center gap-2 font-medium">
-              <Crosshair size={14} className="text-[#119653]" />
-              <span>Tọa độ tâm: <strong className="font-mono text-slate-900">{center[0].toFixed(4)}, {center[1].toFixed(4)}</strong></span>
+          <div className="absolute top-2 sm:top-3 left-2 sm:left-3 z-[1000] bg-white/95 backdrop-blur-md px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-slate-200 text-[11px] sm:text-xs text-slate-800 shadow-md space-y-1 max-w-[190px] sm:max-w-xs">
+            <div className="flex items-center gap-1.5 sm:gap-2 font-medium">
+              <Crosshair size={13} className="text-[#119653] shrink-0" />
+              <span className="truncate">Tâm: <strong className="font-mono text-slate-900">{center[0].toFixed(3)}, {center[1].toFixed(3)}</strong></span>
             </div>
             {!isCenterOnly && polygon.length > 0 && (
-              <div className="flex items-center justify-between text-[11px] text-slate-600 border-t border-slate-100 pt-1 gap-3">
-                <span>Ranh giới: <strong className="text-emerald-700">{polygon.length} đỉnh</strong></span>
-                <span>Diện tích: <strong className="text-[#119653] font-bold">{areaM2.toLocaleString()} m² ({areaHa} ha)</strong></span>
+              <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-600 border-t border-slate-100 pt-1 gap-2 flex-wrap">
+                <span><strong className="text-emerald-700">{polygon.length} đỉnh</strong></span>
+                <span><strong className="text-[#119653] font-bold">{areaM2.toLocaleString()} m²</strong></span>
               </div>
             )}
             {level === 'FARM' && isReverseGeocoding && (
@@ -1000,18 +1000,18 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
           </div>
 
           {/* Map Layer & Zoom & Expand Controls Overlay */}
-          <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2 flex-wrap justify-end">
+          <div className="absolute top-2 sm:top-3 right-2 sm:right-3 z-[1000] flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
             {/* Manual Coordinate Input Button */}
             {!readOnly && !hidePolygon && (
               <button
                 type="button"
                 onClick={handleOpenCoordModal}
                 title="Nhập điểm ranh giới bằng Tọa độ (Lat, Lng) - Tối thiểu 3 điểm"
-                className="bg-[#119653] hover:bg-[#0e8046] text-white px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                className="bg-[#119653] hover:bg-[#0e8046] text-white px-2 sm:px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
               >
-                <MapPin size={13} className="text-white" />
-                <span>📍 Nhập Tọa độ (Lat/Lng)</span>
-                <span className="text-[10px] bg-white/20 text-white px-1 py-0.5 rounded font-mono">Min 3 điểm</span>
+                <MapPin size={12} className="text-white" />
+                <span className="hidden sm:inline">📍 Nhập Tọa độ (Lat/Lng)</span>
+                <span className="sm:hidden">📍 Tọa độ</span>
               </button>
             )}
 
@@ -1020,17 +1020,17 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               type="button"
               onClick={toggleFullscreen}
               title={isFullscreen ? "Thu nhỏ lại như ban đầu (Esc)" : "Mở rộng bản đồ toàn màn hình"}
-              className="bg-[#119653] hover:bg-[#0e8046] text-white px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="bg-[#119653] hover:bg-[#0e8046] text-white px-2 sm:px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
             >
               {isFullscreen ? (
                 <>
-                  <Minimize2 size={13} className="text-amber-200" />
-                  <span>Thu nhỏ</span>
+                  <Minimize2 size={12} className="text-amber-200" />
+                  <span className="hidden sm:inline">Thu nhỏ</span>
                 </>
               ) : (
                 <>
-                  <Maximize2 size={13} className="text-white" />
-                  <span>Mở rộng Map</span>
+                  <Maximize2 size={12} className="text-white" />
+                  <span className="hidden sm:inline">Mở rộng Map</span>
                 </>
               )}
             </button>
@@ -1040,10 +1040,10 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               type="button"
               onClick={() => setFitKey(k => k + 1)}
               title="Căn vừa vị trí (Fit Zoom)"
-              className="bg-white/95 hover:bg-slate-100 text-slate-800 px-2 py-1 rounded-lg border border-slate-200 shadow-md text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+              className="bg-white/95 hover:bg-slate-100 text-slate-800 px-2 py-1 rounded-lg border border-slate-200 shadow-md text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
             >
-              <Maximize2 size={13} className="text-emerald-600" />
-              <span>Căn Zoom</span>
+              <Maximize2 size={12} className="text-emerald-600" />
+              <span className="hidden sm:inline">Căn Zoom</span>
             </button>
 
             {/* Layer Selector */}

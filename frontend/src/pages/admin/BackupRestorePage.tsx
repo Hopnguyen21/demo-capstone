@@ -286,7 +286,7 @@ export const BackupRestorePage: React.FC = () => {
       </div>
 
       {/* Backups Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-600">

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Building2, Database, Users, Sprout, Cpu, Radio, Activity,
   ShieldAlert, Settings, Wrench, Package, CpuIcon, MapPin, Gauge,
   Sliders, Calendar, Bot, FileText, ClipboardList, PackageCheck, Headphones,
-  ChevronRight, FileCheck, BookOpen
+  ChevronRight, FileCheck, BookOpen, X
 } from 'lucide-react';
 
 export interface NavItem {
@@ -15,7 +15,12 @@ export interface NavItem {
   badge?: string;
 }
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { role } = useAuth();
 
   const adminNav: NavItem[] = [
@@ -86,8 +91,8 @@ export const Sidebar: React.FC = () => {
 
   const navItems = getNavItems();
 
-  return (
-    <aside className="w-64 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 flex flex-col justify-between p-3 select-none overflow-y-auto shadow-sm">
+  const renderNavContent = (onItemClick?: () => void) => (
+    <>
       <div className="space-y-1">
         <div className="px-3 py-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
           Menu Chức năng
@@ -96,10 +101,11 @@ export const Sidebar: React.FC = () => {
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={onItemClick}
             className={({ isActive }) => `
-              flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all group
+              flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all group
               ${isActive
-                ? 'bg-[#119653] text-white font-semibold shadow-sm'
+                ? 'bg-[#119653] text-white font-semibold shadow-xs'
                 : 'text-slate-600 hover:bg-emerald-50 hover:text-[#119653]'
               }
             `}
@@ -108,14 +114,14 @@ export const Sidebar: React.FC = () => {
               <>
                 <div className="flex items-center gap-2.5">
                   <span className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-[#119653]'} transition-colors`}>{item.icon}</span>
-                  <span>{item.title}</span>
+                  <span className="truncate">{item.title}</span>
                 </div>
                 {item.badge ? (
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isActive ? 'bg-[#0e8046] text-white border border-white/20' : 'bg-emerald-50 text-[#119653] border border-emerald-200'}`}>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${isActive ? 'bg-[#0e8046] text-white border border-white/20' : 'bg-emerald-50 text-[#119653] border border-emerald-200'}`}>
                     {item.badge}
                   </span>
                 ) : (
-                  <ChevronRight size={12} className={`opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'text-emerald-100' : 'text-slate-400'}`} />
+                  <ChevronRight size={12} className={`opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ${isActive ? 'text-emerald-100' : 'text-slate-400'}`} />
                 )}
               </>
             )}
@@ -131,6 +137,51 @@ export const Sidebar: React.FC = () => {
         </div>
         <p className="mt-0.5 text-slate-400">PostgreSQL + Gemini 2.5</p>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Drawer Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 z-50 lg:hidden backdrop-blur-xs transition-opacity animate-in fade-in"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Mobile Drawer (Slide-over) */}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-white z-50 flex flex-col justify-between p-4 shadow-2xl transition-transform duration-300 ease-in-out lg:hidden
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-[#119653] text-white shadow-xs">
+              <Sprout size={18} />
+            </div>
+            <span className="font-bold text-sm text-slate-900">Danh mục Chức năng</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            aria-label="Đóng menu"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto py-2">
+          {renderNavContent(onClose)}
+        </div>
+      </aside>
+
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden lg:flex w-64 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 flex-col justify-between p-3 select-none overflow-y-auto shadow-xs shrink-0">
+        {renderNavContent()}
+      </aside>
+    </>
   );
 };

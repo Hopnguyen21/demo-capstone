@@ -6,10 +6,16 @@ import { UserRole, Alert } from '../../types';
 import { alertService, supportService, notificationService, NotificationItem, isAuthenticated, zoneContractService } from '../../services';
 import {
   Sprout, Bell, UserCheck, LogOut, User,
-  ChevronDown, CheckCircle2, Check, ExternalLink, Clock
+  ChevronDown, CheckCircle2, Check, ExternalLink, Clock,
+  Menu, X
 } from 'lucide-react';
 
-export const Topbar: React.FC = () => {
+interface TopbarProps {
+  onToggleMobileMenu?: () => void;
+  isMobileMenuOpen?: boolean;
+}
+
+export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenuOpen }) => {
   const { user, role, switchRole, logout } = useAuth();
   const navigate = useNavigate();
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
@@ -149,22 +155,29 @@ export const Topbar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full h-16 bg-[#119653] text-white border-b border-[#0e8046] px-4 flex items-center justify-between shadow-md">
-      {/* Left section: Logo & Farm Selector */}
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-white/20 border border-white/30 text-white shadow-xs">
-            <Sprout size={22} />
+    <header className="sticky top-0 z-40 w-full h-16 bg-[#119653] text-white border-b border-[#0e8046] px-3 sm:px-4 flex items-center justify-between shadow-md">
+      {/* Left section: Hamburger (mobile), Logo & Farm Selector */}
+      <div className="flex items-center gap-2.5 sm:gap-6">
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            className="p-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white lg:hidden transition-all border border-white/20"
+            aria-label="Toggle navigation menu"
+          >
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        )}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <div className="p-1.5 sm:p-2 rounded-xl bg-white/20 border border-white/30 text-white shadow-xs shrink-0">
+            <Sprout size={20} className="sm:w-[22px] sm:h-[22px]" />
           </div>
           <div>
-            <span className="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
-              SmartFarm <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#0e8046] text-white border border-white/30">AI Cloud</span>
+            <span className="font-bold text-sm sm:text-base tracking-tight text-white flex items-center gap-1.5">
+              SmartFarm <span className="text-[9px] sm:text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#0e8046] text-white border border-white/30">AI Cloud</span>
             </span>
             <p className="text-[10px] text-emerald-100/90 hidden sm:block">Nền tảng Nông nghiệp Thông minh</p>
           </div>
         </div>
-
-
       </div>
 
       {/* Right section: Weather, Notifications, Dev Role Switcher, Profile */}

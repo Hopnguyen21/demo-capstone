@@ -79,29 +79,29 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 py-8">
-      <div className="w-full max-w-4xl grid md:grid-cols-2 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden text-slate-800">
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-3 sm:p-4 py-6 sm:py-8">
+      <div className="w-full max-w-4xl grid md:grid-cols-2 bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden text-slate-800">
         {/* Left column: Branding & Feature summary */}
-        <div className="p-8 bg-gradient-to-br from-[#119653] via-emerald-700 to-emerald-800 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-emerald-600/40">
+        <div className="p-5 sm:p-8 bg-gradient-to-br from-[#119653] via-emerald-700 to-emerald-800 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-emerald-600/40">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs">
-                <Sprout size={28} />
+              <div className="p-2 sm:p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs shrink-0">
+                <Sprout size={24} className="sm:w-7 sm:h-7" />
               </div>
               <div>
-                <span className="font-bold text-xl tracking-tight text-white block">SmartFarm SaaS</span>
+                <span className="font-bold text-lg sm:text-xl tracking-tight text-white block">SmartFarm SaaS</span>
                 <span className="text-[10px] text-emerald-200/90 uppercase tracking-widest font-mono">Đăng ký tài khoản</span>
               </div>
             </div>
 
-            <h1 className="mt-8 text-2xl font-bold text-white leading-tight">
+            <h1 className="mt-4 sm:mt-8 text-xl sm:text-2xl font-bold text-white leading-tight">
               Khởi tạo Nông trang Công nghệ cao cùng SmartFarm
             </h1>
-            <p className="mt-3 text-xs text-emerald-100/90 leading-relaxed">
+            <p className="mt-2 sm:mt-3 text-xs text-emerald-100/90 leading-relaxed">
               Giải pháp toàn diện quản lý hạ tầng IoT nông nghiệp, tự động hóa vi khí hậu và cố vấn nông học AI chuyên sâu dành riêng cho các mô hình nông trại hiện đại.
             </p>
 
-            <div className="mt-8 space-y-3.5">
+            <div className="mt-4 sm:mt-8 space-y-3 hidden sm:block">
               <div className="flex items-start gap-3 text-xs text-emerald-100">
                 <div className="p-1 rounded bg-white/20 text-white shrink-0 mt-0.5">
                   <ShieldCheck size={14} />
