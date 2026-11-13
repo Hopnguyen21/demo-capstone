@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Package, Plus, Search, Filter, CheckCircle2, Clock, XCircle,
-  FileText, ArrowDownRight, AlertCircle, Building2, Eye, Trash2
+  FileText, ArrowDownRight, AlertCircle, Building2, Eye, Trash2, Cpu
 } from 'lucide-react';
 import { Button, Modal, Input } from '../../components/ui/BaseUI';
 import { useAuth } from '@/app/providers/AuthContext';
-import { farmService, supportService, stockOutService, zoneService, extractApiError } from '../../services';
+import { farmService, adminService, supportService, stockOutService, zoneService, extractApiError } from '../../services';
 import { Farm, Zone, StockOut, StockOutStatus } from '../../types';
 
 export const StockOutsPage: React.FC = () => {
@@ -15,6 +15,7 @@ export const StockOutsPage: React.FC = () => {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>('');
   const [zones, setZones] = useState<Zone[]>([]);
+  const [hardwareItems, setHardwareItems] = useState<any[]>([]);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [stockOuts, setStockOuts] = useState<StockOut[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,22 +46,47 @@ export const StockOutsPage: React.FC = () => {
     }).catch(err => console.error(err));
   }, []);
 
-  // Load zones & inventory & stock-outs when selectedFarmId changes
+  // Load zones & hardware inventory & stock-outs when selectedFarmId changes
   useEffect(() => {
     if (!selectedFarmId) return;
     setLoading(true);
 
     Promise.all([
       zoneService.getZones().catch(() => []),
+      adminService.getHardwareItems().catch(() => []),
       supportService.getInventory(selectedFarmId).catch(() => []),
       stockOutService.getList(selectedFarmId).catch(() => [])
-    ]).then(([zRes, invRes, soRes]) => {
+    ]).then(([zRes, hwRes, invRes, soRes]) => {
       const allZones = Array.isArray(zRes) ? zRes : [];
       setZones(allZones.filter((z: any) => !z.farmId || z.farmId === selectedFarmId));
+      setHardwareItems(Array.isArray(hwRes) ? hwRes : []);
       setInventoryItems(Array.isArray(invRes) ? invRes : []);
       setStockOuts(Array.isArray(soRes) ? soRes : []);
     }).finally(() => setLoading(false));
   }, [selectedFarmId]);
+
+  const availableDevices = useMemo(() => {
+    if (hardwareItems.length > 0) {
+      return hardwareItems.map(h => ({
+        id: h.id,
+        name: `[${h.code}] ${h.name}${h.model ? ` - ${h.model}` : ''}`,
+        rawName: h.name,
+        code: h.code,
+        unit: 'Cái',
+        quantityOnHand: h.quantityInStock,
+        category: h.category
+      }));
+    }
+    return inventoryItems.map(inv => ({
+      id: inv.id,
+      name: inv.name,
+      rawName: inv.name,
+      code: '',
+      unit: inv.unit || 'Cái',
+      quantityOnHand: inv.quantityOnHand,
+      category: ''
+    }));
+  }, [hardwareItems, inventoryItems]);
 
   const refreshList = async () => {
     if (!selectedFarmId) return;
@@ -200,12 +226,10 @@ export const StockOutsPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Package className="text-[#119653]" size={24} /> {isManager ? 'Quản lý Phiếu Xuất Kho (Stock Out)' : 'Lịch sử Phiếu Xuất Kho (Stock Out History)'}
+            <Cpu className="text-[#119653]" size={24} /> Quản lý Xuất Kho Thiết Bị IoT (Hardware Stock Out)
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            {isManager
-              ? 'Theo dõi, phê duyệt và khấu trừ vật tư phân bón, thuốc BVTV, thiết bị phục vụ canh tác từng Zone.'
-              : 'Xem lịch sử các phiếu xuất kho vật tư, phân bón, hạt giống và thiết bị phục vụ canh tác của trang trại.'}
+            Lập, phê duyệt và quản lý phiếu xuất kho thiết bị phần cứng (Gateway, Trạm cảm biến, Tủ rơ-le điều khiển, Phụ kiện IoT...) phục vụ thi công lắp đặt và bảo trì tại các trang trại. Chỉ dành riêng cho Platform Admin và Kỹ thuật viên (Technician).
           </p>
         </div>
 
@@ -231,7 +255,7 @@ export const StockOutsPage: React.FC = () => {
               onClick={() => setIsCreateModalOpen(true)}
               className="bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 text-xs shadow-sm"
             >
-              <Plus size={16} /> Tạo Phiếu Xuất Kho
+              <Plus size={16} /> Tạo Phiếu Xuất Kho Thiết Bị
             </Button>
           )}
         </div>
@@ -270,11 +294,11 @@ export const StockOutsPage: React.FC = () => {
       {/* Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {loading ? (
-          <div className="p-12 text-center text-slate-400 text-xs">Đang tải danh sách phiếu xuất kho...</div>
+          <div className="p-12 text-center text-slate-400 text-xs">Đang tải danh sách phiếu xuất kho thiết bị...</div>
         ) : filteredStockOuts.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-xs">
-            <Package size={36} className="mx-auto text-slate-300 mb-2" />
-            Không có phiếu xuất kho nào phù hợp.
+            <Cpu size={36} className="mx-auto text-slate-300 mb-2" />
+            Không có phiếu xuất kho thiết bị nào phù hợp.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -282,10 +306,10 @@ export const StockOutsPage: React.FC = () => {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold uppercase">
                   <th className="p-3.5">Mã phiếu</th>
-                  <th className="p-3.5">Zone nhận</th>
-                  <th className="p-3.5">Số loại vật tư</th>
-                  <th className="p-3.5">Người tạo</th>
-                  <th className="p-3.5">Ngày tạo</th>
+                  <th className="p-3.5">Zone nhận thiết bị</th>
+                  <th className="p-3.5">Số loại thiết bị</th>
+                  <th className="p-3.5">Người lập</th>
+                  <th className="p-3.5">Ngày lập</th>
                   <th className="p-3.5">Trạng thái</th>
                   <th className="p-3.5 text-right">Thao tác</th>
                 </tr>
@@ -294,9 +318,9 @@ export const StockOutsPage: React.FC = () => {
                 {filteredStockOuts.map(item => (
                   <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="p-3.5 font-mono font-bold text-sky-700">{item.stockOutCode}</td>
-                    <td className="p-3.5 font-medium text-slate-900">{item.zoneName || 'Toàn farm / Không gắn Zone'}</td>
+                    <td className="p-3.5 font-medium text-slate-900">{item.zoneName || 'Toàn trang trại / Kỹ thuật viên'}</td>
                     <td className="p-3.5 font-medium text-slate-700">
-                      {item.details.length} mặt hàng ({item.details.reduce((sum, d) => sum + d.quantity, 0)})
+                      {item.details.length} loại thiết bị ({item.details.reduce((sum, d) => sum + d.quantity, 0)} cái)
                     </td>
                     <td className="p-3.5 text-slate-600">{item.createdByName}</td>
                     <td className="p-3.5 text-slate-500">
@@ -323,17 +347,17 @@ export const StockOutsPage: React.FC = () => {
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="Tạo Phiếu Xuất Kho (Stock Out Note)"
+        title="Tạo Phiếu Xuất Kho Thiết Bị IoT (Hardware Stock Out)"
       >
         <form onSubmit={handleCreateStockOut} className="space-y-4 text-xs">
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Zone nhận vật tư (Tùy chọn)</label>
+            <label className="block text-slate-700 font-semibold mb-1">Zone nhận thiết bị lắp đặt / bảo trì (Tùy chọn)</label>
             <select
               value={selectedZoneId}
               onChange={e => setSelectedZoneId(e.target.value)}
               className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-[#119653]"
             >
-              <option value="">-- Xuất dùng chung cho toàn Farm / Không chỉ định Zone --</option>
+              <option value="">-- Xuất trang bị cho toàn Trang trại / Kỹ thuật viên thi công --</option>
               {zones.map(z => {
                 const zid = z.zoneId || (z as any).id;
                 return <option key={zid} value={zid}>{z.name}</option>;
@@ -342,31 +366,31 @@ export const StockOutsPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Ghi chú / Mục đích xuất kho</label>
+            <label className="block text-slate-700 font-semibold mb-1">Ghi chú / Mục đích xuất kho thiết bị</label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={2}
-              placeholder="Ví dụ: Xuất phân NPK bón thúc giai đoạn sinh trưởng zone A..."
+              placeholder="Ví dụ: Xuất 1 Gateway LoRa và 2 Node cảm biến đất phục vụ thi công lắp đặt theo yêu cầu dịch vụ..."
               className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-[#119653]"
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-slate-800 font-bold">Danh sách vật tư xuất kho</label>
+              <label className="text-slate-800 font-bold">Danh sách thiết bị & linh kiện xuất kho</label>
               <button
                 type="button"
                 onClick={handleAddItemRow}
                 className="text-[#119653] font-bold hover:underline flex items-center gap-1"
               >
-                <Plus size={14} /> Thêm vật tư
+                <Plus size={14} /> Thêm thiết bị
               </button>
             </div>
 
             <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
               {itemRows.map((row, idx) => {
-                const selectedInv = inventoryItems.find(i => i.id === row.inventoryItemId);
+                const selectedDev = availableDevices.find(i => i.id === row.inventoryItemId);
                 return (
                   <div key={idx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -376,10 +400,10 @@ export const StockOutsPage: React.FC = () => {
                         className="flex-1 p-2 border border-slate-300 rounded-lg text-xs font-medium bg-white focus:outline-none focus:border-[#119653]"
                         required
                       >
-                        <option value="">-- Chọn vật tư trong kho --</option>
-                        {inventoryItems.map(inv => (
-                          <option key={inv.id} value={inv.id}>
-                            {inv.name} (Tồn: {inv.quantityOnHand} {inv.unit})
+                        <option value="">-- Chọn thiết bị trong kho Platform --</option>
+                        {availableDevices.map(dev => (
+                          <option key={dev.id} value={dev.id}>
+                            {dev.name} (Tồn kho: {dev.quantityOnHand} {dev.unit})
                           </option>
                         ))}
                       </select>
@@ -387,11 +411,11 @@ export const StockOutsPage: React.FC = () => {
                       <div className="w-24">
                         <input
                           type="number"
-                          step="0.01"
-                          min="0.01"
+                          step="1"
+                          min="1"
                           placeholder="SL"
                           value={row.quantity}
-                          onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                          onChange={e => handleItemChange(idx, 'quantity', parseInt(e.target.value) || 0)}
                           className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white text-right focus:outline-none focus:border-[#119653]"
                           required
                         />
@@ -408,13 +432,13 @@ export const StockOutsPage: React.FC = () => {
                       )}
                     </div>
 
-                    {selectedInv && (
+                    {selectedDev && (
                       <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
-                        <span>Đơn vị: <strong>{selectedInv.unit}</strong></span>
-                        <span className={row.quantity > selectedInv.quantityOnHand ? 'text-rose-600 font-bold' : 'text-emerald-700 font-medium'}>
-                          {row.quantity > selectedInv.quantityOnHand
-                            ? `⚠️ Vượt quá tồn kho (${selectedInv.quantityOnHand})`
-                            : `Tồn kho sau xuất: ${(selectedInv.quantityOnHand - row.quantity).toFixed(2)}`}
+                        <span>Đơn vị tính: <strong>{selectedDev.unit}</strong></span>
+                        <span className={row.quantity > selectedDev.quantityOnHand ? 'text-rose-600 font-bold' : 'text-emerald-700 font-medium'}>
+                          {row.quantity > selectedDev.quantityOnHand
+                            ? `⚠️ Vượt quá tồn kho hiện có (${selectedDev.quantityOnHand})`
+                            : `Tồn kho sau xuất: ${(selectedDev.quantityOnHand - row.quantity)} ${selectedDev.unit}`}
                         </span>
                       </div>
                     )}
@@ -429,7 +453,7 @@ export const StockOutsPage: React.FC = () => {
               Đóng
             </Button>
             <Button type="submit" disabled={actionLoading} className="bg-[#119653] hover:bg-emerald-700 text-white font-bold">
-              {actionLoading ? 'Đang tạo...' : 'Lưu Phiếu Xuất'}
+              {actionLoading ? 'Đang tạo...' : 'Lưu Phiếu Xuất Thiết Bị'}
             </Button>
           </div>
         </form>
@@ -440,7 +464,7 @@ export const StockOutsPage: React.FC = () => {
         <Modal
           isOpen={isDetailModalOpen}
           onClose={() => setIsDetailModalOpen(false)}
-          title={`Chi tiết Phiếu Xuất Kho #${selectedStockOut.stockOutCode}`}
+          title={`Chi tiết Phiếu Xuất Kho Thiết Bị #${selectedStockOut.stockOutCode}`}
         >
           <div className="space-y-4 text-xs">
             <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -453,11 +477,11 @@ export const StockOutsPage: React.FC = () => {
                 <div>{renderStatusBadge(selectedStockOut.status)}</div>
               </div>
               <div>
-                <p className="text-[11px] text-slate-500">Khu vực nhận:</p>
-                <p className="font-semibold text-slate-800">{selectedStockOut.zoneName || 'Toàn farm'}</p>
+                <p className="text-[11px] text-slate-500">Khu vực / Zone nhận:</p>
+                <p className="font-semibold text-slate-800">{selectedStockOut.zoneName || 'Toàn trang trại'}</p>
               </div>
               <div>
-                <p className="text-[11px] text-slate-500">Người tạo:</p>
+                <p className="text-[11px] text-slate-500">Người lập phiếu:</p>
                 <p className="font-semibold text-slate-800">{selectedStockOut.createdByName}</p>
               </div>
               <div>
@@ -466,7 +490,7 @@ export const StockOutsPage: React.FC = () => {
               </div>
               {selectedStockOut.completedAtUtc && (
                 <div>
-                  <p className="text-[11px] text-slate-500">Hoàn thành lúc:</p>
+                  <p className="text-[11px] text-slate-500">Hoàn tất xuất kho lúc:</p>
                   <p className="text-emerald-700 font-semibold">{new Date(selectedStockOut.completedAtUtc).toLocaleString('vi-VN')}</p>
                 </div>
               )}
@@ -474,18 +498,18 @@ export const StockOutsPage: React.FC = () => {
 
             {selectedStockOut.notes && (
               <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-amber-900">
-                <span className="font-bold">Lý do / Ghi chú: </span>
+                <span className="font-bold">Mục đích / Ghi chú: </span>
                 {selectedStockOut.notes}
               </div>
             )}
 
             <div>
-              <h4 className="font-bold text-slate-800 mb-2">Danh mục vật tư xuất kho:</h4>
+              <h4 className="font-bold text-slate-800 mb-2">Danh mục thiết bị & linh kiện IoT xuất kho:</h4>
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
-                      <th className="p-2.5">Tên vật tư</th>
+                      <th className="p-2.5">Tên thiết bị / linh kiện</th>
                       <th className="p-2.5 text-right">Số lượng xuất</th>
                       <th className="p-2.5 text-center">Đơn vị</th>
                       <th className="p-2.5 text-right">Tồn kho hiện tại</th>

@@ -32,7 +32,12 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
         }
 
         var list = await query.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct);
-        return list.Select(MapToView).ToList();
+        var detailItemIds = list.SelectMany(s => s.Details.Select(d => d.InventoryItemId)).Distinct().ToList();
+        var hardwareMap = await db.PlatformHardwareItems
+            .Where(h => detailItemIds.Contains(h.Id))
+            .ToDictionaryAsync(h => h.Id, ct);
+
+        return list.Select(s => MapToView(s, hardwareMap)).ToList();
     }
 
     public async Task<StockOutView> GetByIdAsync(Guid userId, Guid tenantId, Guid farmId, Guid id, CancellationToken ct)
@@ -51,7 +56,12 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .FirstOrDefaultAsync(x => x.Id == id && x.FarmId == farmId && x.TenantId == tenantId, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy phiếu xuất kho #{id}");
 
-        return MapToView(stockOut);
+        var detailItemIds = stockOut.Details.Select(d => d.InventoryItemId).Distinct().ToList();
+        var hardwareMap = await db.PlatformHardwareItems
+            .Where(h => detailItemIds.Contains(h.Id))
+            .ToDictionaryAsync(h => h.Id, ct);
+
+        return MapToView(stockOut, hardwareMap);
     }
 
     public async Task<StockOutView> CreateAsync(Guid userId, Guid tenantId, Guid farmId, CreateStockOutCommand command, CancellationToken ct)
@@ -97,8 +107,14 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             if (d.Quantity <= 0)
                 throw new RequestValidationException("quantity", "Số lượng xuất kho phải lớn hơn 0.");
 
-            var item = await db.InventoryItems.FirstOrDefaultAsync(i => i.Id == d.InventoryItemId && i.FarmId == farmId && i.TenantId == tenantId && i.ArchivedAtUtc == null, ct)
-                ?? throw new ResourceNotFoundException($"Vật tư #{d.InventoryItemId} không tồn tại trong kho Farm.");
+            var item = await db.InventoryItems.FirstOrDefaultAsync(i => i.Id == d.InventoryItemId && i.FarmId == farmId && i.TenantId == tenantId && i.ArchivedAtUtc == null, ct);
+            var hardware = item == null ? await db.PlatformHardwareItems.FirstOrDefaultAsync(h => h.Id == d.InventoryItemId, ct) : null;
+
+            if (item == null && hardware == null)
+                throw new ResourceNotFoundException($"Thiết bị/vật tư #{d.InventoryItemId} không tồn tại trong kho.");
+
+            if (hardware != null && hardware.QuantityInStock < (int)d.Quantity)
+                throw new ResourceConflictException($"Không đủ tồn kho cho thiết bị '{hardware.Name}'. Tồn kho hiện tại: {hardware.QuantityInStock}, số lượng xuất: {d.Quantity}.");
 
             stockOut.Details.Add(new StockOutDetail
             {
@@ -156,7 +172,10 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
                 throw new RequestValidationException("quantity", "Số lượng xuất kho phải lớn hơn 0.");
 
             var itemExists = await db.InventoryItems.AnyAsync(i => i.Id == d.InventoryItemId && i.FarmId == farmId && i.TenantId == tenantId && i.ArchivedAtUtc == null, ct);
-            if (!itemExists) throw new ResourceNotFoundException($"Vật tư #{d.InventoryItemId} không tồn tại trong kho Farm.");
+            var hardwareExists = !itemExists && await db.PlatformHardwareItems.AnyAsync(h => h.Id == d.InventoryItemId, ct);
+
+            if (!itemExists && !hardwareExists)
+                throw new ResourceNotFoundException($"Thiết bị/vật tư #{d.InventoryItemId} không tồn tại trong kho.");
 
             stockOut.Details.Add(new StockOutDetail
             {
@@ -197,46 +216,60 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
 
             foreach (var detail in stockOut.Details)
             {
-                var item = await db.InventoryItems.FirstOrDefaultAsync(i => i.Id == detail.InventoryItemId && i.FarmId == farmId && i.TenantId == tenantId, ct)
-                    ?? throw new ResourceNotFoundException($"Vật tư #{detail.InventoryItemId} không tìm thấy trong kho.");
+                var item = await db.InventoryItems.FirstOrDefaultAsync(i => i.Id == detail.InventoryItemId && i.FarmId == farmId && i.TenantId == tenantId, ct);
+                var hardware = item == null ? await db.PlatformHardwareItems.FirstOrDefaultAsync(h => h.Id == detail.InventoryItemId, ct) : null;
 
-                if (item.QuantityOnHand < detail.Quantity)
+                if (item == null && hardware == null)
+                    throw new ResourceNotFoundException($"Thiết bị/vật tư #{detail.InventoryItemId} không tìm thấy trong kho.");
+
+                if (item != null)
                 {
-                    throw new ResourceConflictException($"Không đủ tồn kho cho vật tư '{item.Name}'. Tồn kho hiện tại: {item.QuantityOnHand} {item.Unit}, số lượng xuất: {detail.Quantity} {item.Unit}.");
-                }
-
-                item.QuantityOnHand -= detail.Quantity;
-
-                var transaction = new InventoryTransaction
-                {
-                    TenantId = tenantId,
-                    FarmId = farmId,
-                    InventoryItemId = item.Id,
-                    MovementType = InventoryMovementType.Issue,
-                    Quantity = detail.Quantity,
-                    BalanceAfter = item.QuantityOnHand,
-                    ActorUserId = userId,
-                    ZoneId = stockOut.ZoneId,
-                    Notes = $"Xuất kho theo phiếu {stockOut.StockOutCode}. {(string.IsNullOrWhiteSpace(detail.Notes) ? "" : "Chi tiết: " + detail.Notes)}"
-                };
-                db.InventoryTransactions.Add(transaction);
-
-                // Check Low Stock
-                if (item.QuantityOnHand <= item.LowStockThreshold)
-                {
-                    var hasOpenAlert = await db.LowStockAlerts.AnyAsync(a => a.InventoryItemId == item.Id && a.Status == LowStockAlertStatus.Open, ct);
-                    if (!hasOpenAlert)
+                    if (item.QuantityOnHand < detail.Quantity)
                     {
-                        db.LowStockAlerts.Add(new LowStockAlert
-                        {
-                            TenantId = tenantId,
-                            FarmId = farmId,
-                            InventoryItemId = item.Id,
-                            Status = LowStockAlertStatus.Open,
-                            QuantityAtOpen = item.QuantityOnHand,
-                            OpenedAtUtc = clock.GetUtcNow().UtcDateTime
-                        });
+                        throw new ResourceConflictException($"Không đủ tồn kho cho vật tư '{item.Name}'. Tồn kho hiện tại: {item.QuantityOnHand} {item.Unit}, số lượng xuất: {detail.Quantity} {item.Unit}.");
                     }
+
+                    item.QuantityOnHand -= detail.Quantity;
+
+                    var transaction = new InventoryTransaction
+                    {
+                        TenantId = tenantId,
+                        FarmId = farmId,
+                        InventoryItemId = item.Id,
+                        MovementType = InventoryMovementType.Issue,
+                        Quantity = detail.Quantity,
+                        BalanceAfter = item.QuantityOnHand,
+                        ActorUserId = userId,
+                        ZoneId = stockOut.ZoneId,
+                        Notes = $"Xuất kho theo phiếu {stockOut.StockOutCode}. {(string.IsNullOrWhiteSpace(detail.Notes) ? "" : "Chi tiết: " + detail.Notes)}"
+                    };
+                    db.InventoryTransactions.Add(transaction);
+
+                    // Check Low Stock
+                    if (item.QuantityOnHand <= item.LowStockThreshold)
+                    {
+                        var hasOpenAlert = await db.LowStockAlerts.AnyAsync(a => a.InventoryItemId == item.Id && a.Status == LowStockAlertStatus.Open, ct);
+                        if (!hasOpenAlert)
+                        {
+                            db.LowStockAlerts.Add(new LowStockAlert
+                            {
+                                TenantId = tenantId,
+                                FarmId = farmId,
+                                InventoryItemId = item.Id,
+                                Status = LowStockAlertStatus.Open,
+                                QuantityAtOpen = item.QuantityOnHand,
+                                OpenedAtUtc = clock.GetUtcNow().UtcDateTime
+                            });
+                        }
+                    }
+                }
+                else if (hardware != null)
+                {
+                    if (hardware.QuantityInStock < (int)detail.Quantity)
+                    {
+                        throw new ResourceConflictException($"Không đủ tồn kho cho thiết bị '{hardware.Name}'. Tồn kho hiện tại: {hardware.QuantityInStock} cái, số lượng xuất: {detail.Quantity} cái.");
+                    }
+                    hardware.QuantityInStock -= (int)detail.Quantity;
                 }
             }
 
@@ -315,7 +348,7 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
         return farm?.TenantId ?? Guid.Empty;
     }
 
-    private static StockOutView MapToView(StockOut s)
+    private static StockOutView MapToView(StockOut s, IReadOnlyDictionary<Guid, PlatformHardwareItem>? hardwareMap = null)
     {
         var statusText = s.Status switch
         {
@@ -344,16 +377,23 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             s.CompletedAtUtc,
             s.Notes,
             s.CreatedAtUtc,
-            s.Details.Select(d => new StockOutDetailView(
-                d.Id,
-                d.StockOutId,
-                d.InventoryItemId,
-                d.InventoryItem?.Name ?? "Vật tư",
-                d.InventoryItem?.Unit ?? "Cái",
-                d.Quantity,
-                d.InventoryItem?.QuantityOnHand ?? 0,
-                d.Notes
-            )).ToList()
+            s.Details.Select(d => {
+                var hw = hardwareMap != null && hardwareMap.TryGetValue(d.InventoryItemId, out var h) ? h : null;
+                var itemName = d.InventoryItem?.Name ?? (hw != null ? $"[{hw.Code}] {hw.Name}" : "Thiết bị");
+                var unit = d.InventoryItem?.Unit ?? "Cái";
+                var currentStock = d.InventoryItem?.QuantityOnHand ?? (hw != null ? (decimal)hw.QuantityInStock : 0m);
+
+                return new StockOutDetailView(
+                    d.Id,
+                    d.StockOutId,
+                    d.InventoryItemId,
+                    itemName,
+                    unit,
+                    d.Quantity,
+                    currentStock,
+                    d.Notes
+                );
+            }).ToList()
         );
     }
 }

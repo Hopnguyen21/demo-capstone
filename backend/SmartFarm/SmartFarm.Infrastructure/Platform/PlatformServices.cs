@@ -491,6 +491,10 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         {
             srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == command.ServiceRequestId.Value && x.ZoneId == zoneId && x.TenantId == zone.Field.Farm.TenantId, ct);
         }
+        else
+        {
+            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.ZoneId == zoneId && x.AssignedTechnicianId == technicianId, ct);
+        }
 
         var depReq = command.DeploymentRequestId.HasValue
             ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == command.DeploymentRequestId.Value, ct)
@@ -508,10 +512,10 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 
         if (!isPlatformOrOwner)
         {
-            var technicianOwnsRequest = depReq is not null &&
-                (depReq.TechnicianUserId == technicianId || srCheck?.AssignedTechnicianId == technicianId);
-            if (depReq is null || depReq.ZoneId != zoneId || depReq.FarmId != farmId || !technicianOwnsRequest)
-                throw new AuthorizationException("The GIS update must belong to the Technician's Deployment Request for this Zone.");
+            var technicianOwnsRequest = (depReq is not null && (depReq.TechnicianUserId == technicianId || srCheck?.AssignedTechnicianId == technicianId))
+                || (srCheck is not null && srCheck.AssignedTechnicianId == technicianId);
+            if (!technicianOwnsRequest)
+                throw new AuthorizationException("The GIS update must belong to the Technician's Deployment Request or Service Request for this Zone.");
         }
         // GIS placement is an explicit technician mapping workflow. The UI
         // allows drafting/correcting node positions before later deployment

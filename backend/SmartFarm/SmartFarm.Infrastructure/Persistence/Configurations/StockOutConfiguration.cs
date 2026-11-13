@@ -33,7 +33,7 @@ internal sealed class StockOutDetailConfiguration : IEntityTypeConfiguration<Sto
         b.Property(x => x.Quantity).HasPrecision(18, 4);
         b.Property(x => x.Notes).HasMaxLength(1000);
 
-        b.HasOne(x => x.InventoryItem).WithMany().HasForeignKey(x => x.InventoryItemId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.InventoryItem).WithMany().HasForeignKey(x => x.InventoryItemId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

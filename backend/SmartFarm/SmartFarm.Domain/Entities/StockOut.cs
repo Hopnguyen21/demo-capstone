@@ -27,7 +27,7 @@ public sealed class StockOutDetail : AuditableEntity
     public Guid StockOutId { get; set; }
     public StockOut StockOut { get; set; } = null!;
     public Guid InventoryItemId { get; set; }
-    public InventoryItem InventoryItem { get; set; } = null!;
+    public InventoryItem? InventoryItem { get; set; }
     public decimal Quantity { get; set; }
     public string? Notes { get; set; }
 }
