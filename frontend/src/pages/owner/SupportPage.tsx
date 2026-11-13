@@ -470,7 +470,7 @@ export const SupportPage: React.FC = () => {
                 const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER');
                 const isCompleted = Boolean(
                   isAcceptanceDone ||
-                  ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted'].includes(req.status as string) ||
+                  ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted', 'VERIFIED', 'Verified', 'COMPLETED', 'Completed'].includes(req.status as string) ||
                   req.deploymentStatus === 'Completed' ||
                   req.deploymentStatus === 'COMPLETED' ||
                   req.quotationStatus === 'Completed' ||

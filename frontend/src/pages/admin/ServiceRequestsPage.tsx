@@ -222,12 +222,17 @@ export const ServiceRequestsPage: React.FC = () => {
           filteredRequests.map(req => {
             const isPending = req.status === 'OPEN';
             const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
-            const isCompleted = ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted'].includes(req.status as string)
+            const isCompleted = ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted', 'VERIFIED', 'Verified', 'COMPLETED', 'Completed'].includes(req.status as string)
               || Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER')
               || req.deploymentStatus === 'Completed'
               || req.deploymentStatus === 'COMPLETED'
               || req.quotationStatus === 'Completed'
               || req.quotationStatus === 'COMPLETED';
+
+            const techObj = technicians.find(t => t.userId === req.assignedTechnician || t.fullName === req.assignedTechnicianName);
+            const techDisplayName = techObj 
+              ? `${techObj.fullName}${techObj.roleName ? ` (${techObj.roleName})` : ''}` 
+              : (req.assignedTechnicianName || '');
 
             return (
               <div
@@ -249,11 +254,11 @@ export const ServiceRequestsPage: React.FC = () => {
                         <span className="px-2 py-0.5 rounded bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1">
                           <CheckSquare size={11} /> OWNER ĐÃ NGHIỆM THU
                         </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200">
+                      ) : (['WORK_COMPLETED', 'WorkCompleted', 'VERIFIED', 'Verified'].includes(req.status as string) || req.deploymentStatus === 'Completed') ? (
+                        <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold border border-amber-300">
                           Chờ Owner Nghiệm thu
                         </span>
-                      )}
+                      ) : null}
                       <span className="text-[10px] text-slate-400 font-mono">ID: {req.serviceRequestId}</span>
                     </div>
 
@@ -287,7 +292,7 @@ export const ServiceRequestsPage: React.FC = () => {
                       <span className="text-slate-400 block text-[10px] uppercase font-bold">Trạng thái Phân công Kỹ thuật viên</span>
                       {req.assignedTechnicianName ? (
                         <strong className="text-emerald-400 font-bold flex items-center gap-1">
-                          <CheckCircle2 size={14} /> Đã phân công: {req.assignedTechnicianName}
+                          <CheckCircle2 size={14} /> Đã phân công: {techDisplayName}
                         </strong>
                       ) : (
                         <span className="text-amber-400 font-bold flex items-center gap-1">
@@ -298,7 +303,7 @@ export const ServiceRequestsPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    {['OPEN', 'ASSIGNED'].includes(req.status) && (
+                    {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && ['OPEN', 'ASSIGNED'].includes(req.status) && (
                       <div className="flex items-center gap-2">
                         <select
                           value={assignedTechMap[req.serviceRequestId] || req.assignedTechnician || technicians[0]?.userId || ''}
