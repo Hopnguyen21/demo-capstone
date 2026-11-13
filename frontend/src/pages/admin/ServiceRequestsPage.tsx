@@ -222,6 +222,12 @@ export const ServiceRequestsPage: React.FC = () => {
           filteredRequests.map(req => {
             const isPending = req.status === 'OPEN';
             const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
+            const isCompleted = ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted'].includes(req.status as string)
+              || Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER')
+              || req.deploymentStatus === 'Completed'
+              || req.deploymentStatus === 'COMPLETED'
+              || req.quotationStatus === 'Completed'
+              || req.quotationStatus === 'COMPLETED';
 
             return (
               <div
@@ -309,7 +315,7 @@ export const ServiceRequestsPage: React.FC = () => {
                       </div>
                     )}
 
-                    {!['RESOLVED', 'CLOSED', 'CANCELLED', 'Cancelled'].includes(req.status) && (
+                    {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && (
                       <Button
                         size="sm"
                         variant="outline"

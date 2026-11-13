@@ -466,8 +466,16 @@ export const SupportPage: React.FC = () => {
               filteredRequests.map(req => {
                 const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
                 const contract = req.contractDetails;
-                const isContractSigned = Boolean(contract?.isSignedByOwner && contract?.is30PercentPaid);
-                const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
+                const isContractSigned = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || req.isContractSigned || req.isDepositPaid || req.isFullyPaid);
+                const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER');
+                const isCompleted = Boolean(
+                  isAcceptanceDone ||
+                  ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted'].includes(req.status as string) ||
+                  req.deploymentStatus === 'Completed' ||
+                  req.deploymentStatus === 'COMPLETED' ||
+                  req.quotationStatus === 'Completed' ||
+                  req.quotationStatus === 'COMPLETED'
+                );
                 const isExpanded = !!expandedRequestIds[req.serviceRequestId];
 
                 // Resolve exact Zone name of the contract
@@ -594,7 +602,7 @@ export const SupportPage: React.FC = () => {
 
                       {/* Right Action Button */}
                       <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
-                        {!['RESOLVED', 'CLOSED', 'CANCELLED', 'Cancelled'].includes(req.status) && (
+                        {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && (
                           <button
                             type="button"
                             onClick={(e) => {
