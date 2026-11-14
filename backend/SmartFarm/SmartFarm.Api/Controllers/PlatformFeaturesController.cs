@@ -100,6 +100,13 @@ public sealed class PlatformFeaturesController(
         return Ok(await adminService.GetSettingsAsync(ct));
     }
 
+    /// <summary>Tham số nghiệp vụ hiện hành (tỷ lệ cọc, ngưỡng mưa, giảm giá); công khai (trang giới thiệu cần hiển thị tỷ lệ cọc), chỉ gồm 4 con số không bí mật.</summary>
+    [HttpGet("api/v1/platform/business-parameters"), AllowAnonymous]
+    public async Task<ActionResult<BusinessParametersView>> GetBusinessParameters(CancellationToken ct)
+    {
+        return Ok(await adminService.GetBusinessParametersAsync(ct));
+    }
+
     [HttpPut("api/v1/platform/settings")]
     [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<PlatformSettingView>>> UpdateSettings(

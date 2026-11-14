@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Input } from '../ui/BaseUI';
 import { Zone, Farm, ZoneContract } from '../../types';
 import { zoneContractService } from '../../services';
+import { useBusinessParameters } from '../../services/businessParameters';
 import {
   FileText, Calendar, DollarSign, Percent, ShieldCheck, CheckCircle2,
   Building2, MapPin, Tag, User, Phone, Sparkles, AlertCircle, Link, PackageCheck
@@ -74,8 +75,9 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
   // Pricing inputs
   const [monthlyRent, setMonthlyRent] = useState<number>(12000000); // 12,000,000 đ/tháng
   const [vatPercent, setVatPercent] = useState<number>(8); // 8% VAT
-  const [depositPercent, setDepositPercent] = useState<number>(30); // 30% cọc
-  const [discountPercent, setDiscountPercent] = useState<number>(parentContract ? 10 : 0); // default
+  const businessParams = useBusinessParameters(); // tỷ lệ cọc và mức giảm giá do Admin cấu hình, không hardcode
+  const depositPercent = businessParams.depositPercent;
+  const [discountPercent, setDiscountPercent] = useState<number>(parentContract ? businessParams.renewalDiscountPercent : 0);
 
   const [specialTerms, setSpecialTerms] = useState<string>(
     'Hợp đồng bao gồm dịch vụ kết nối mạng LoRa, bảo trì định kỳ trạm cảm biến và hỗ trợ kỹ thuật 24/7.'
@@ -93,16 +95,16 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
         setSelectedParentId(parentContract?.id || recentTwoMonthsContract.id);
         setLesseeName(parentContract?.lesseeName || recentTwoMonthsContract.lesseeName || lesseeName);
         setLesseePhone(parentContract?.lesseePhone || recentTwoMonthsContract.lesseePhone || lesseePhone);
-        setDiscountPercent(15); // 15% discount for 2nd purchase within 2 months!
-        setNotes(`Áp dụng ưu đãi Giảm giá 15% cho khách hàng mua/ký hợp đồng lần thứ 2 trong vòng 2 tháng (HĐ trước: #${recentTwoMonthsContract.contractNumber}).`);
+        setDiscountPercent(businessParams.repeatPurchaseDiscountPercent); // giảm giá mua lần 2 trong 2 tháng (cấu hình)
+        setNotes(`Áp dụng ưu đãi Giảm giá ${businessParams.repeatPurchaseDiscountPercent}% cho khách hàng mua/ký hợp đồng lần thứ 2 trong vòng 2 tháng (HĐ trước: #${recentTwoMonthsContract.contractNumber}).`);
       } else if (parentContract) {
         setSelectedParentId(parentContract.id);
         setLesseeName(parentContract.lesseeName || lesseeName);
         setLesseePhone(parentContract.lesseePhone || lesseePhone);
-        setDiscountPercent(10);
+        setDiscountPercent(businessParams.renewalDiscountPercent);
       }
     }
-  }, [isOpen, parentContract, zone, recentTwoMonthsContract]);
+  }, [isOpen, parentContract, zone, recentTwoMonthsContract, businessParams.repeatPurchaseDiscountPercent, businessParams.renewalDiscountPercent]);
 
   // Compute End Date
   const calculateEndDate = (): string => {
@@ -119,8 +121,8 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
   const totalWithVat = subtotal + vatAmount; // Tổng tiền = Thành tiền + VAT
   const discountAmount = Math.round(totalWithVat * (discountPercent / 100)); // Chiết khấu
   const finalTotalAmount = Math.max(0, totalWithVat - discountAmount); // Số tiền sau chiết khấu (Tổng thanh toán)
-  const depositAmount = Math.round(finalTotalAmount * (depositPercent / 100)); // Tạm ứng 30%
-  const remainingAmount = finalTotalAmount - depositAmount; // Còn lại 70%
+  const depositAmount = Math.round(finalTotalAmount * (depositPercent / 100)); // Tạm ứng theo tỷ lệ cấu hình
+  const remainingAmount = finalTotalAmount - depositAmount; // Phần còn lại
 
   const isReturningCustomer = Boolean(selectedParentId);
 
@@ -141,7 +143,7 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
         contractNumber: contractNumber.trim(),
         cropType,
         monthlyRentVnd: monthlyRent,
-        depositVnd: depositAmount,
+        depositVnd: 0, // 0 → server tính theo tỷ lệ cọc đang cấu hình
         totalContractValueVnd: finalTotalAmount,
         discountPercent: discountPercent > 0 ? discountPercent : undefined,
         discountAmount: discountAmount > 0 ? discountAmount : undefined,
@@ -206,12 +208,12 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
                 <span>🎉 ƯU ĐÃI ĐẶC QUYỀN: GIẢM GIÁ MUA LẦN 2 TRONG VÒNG 2 THÁNG</span>
               </div>
               <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-extrabold text-xs shadow-2xs">
-                GIẢM NGAY 15%
+                GIẢM NGAY {businessParams.repeatPurchaseDiscountPercent}%
               </span>
             </div>
             <p className="text-[11px] text-amber-900 leading-snug">
               Hệ thống nhận diện bạn đã có hợp đồng <strong>#{recentTwoMonthsContract?.contractNumber}</strong> ký vào ngày <strong>{recentTwoMonthsContract?.startDate || recentTwoMonthsContract?.createdAtUtc?.split('T')[0]}</strong> (trong vòng 60 ngày qua). 
-              Hệ thống tự động áp dụng chính sách chiết khấu <strong>15%</strong> cho lần mua thứ 2 này!
+              Hệ thống tự động áp dụng chính sách chiết khấu <strong>{businessParams.repeatPurchaseDiscountPercent}%</strong> cho lần mua thứ 2 này!
             </p>
           </div>
         )}
@@ -516,11 +518,11 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
               <span className="font-mono text-base">{finalTotalAmount.toLocaleString('vi-VN')} VNĐ</span>
             </div>
             <div className="flex justify-between text-amber-900 font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
-              <span>• Tạm ứng 30% khi ký hợp đồng (= Tổng thanh toán × 30%):</span>
+              <span>• Tạm ứng {depositPercent}% khi ký hợp đồng (= Tổng thanh toán × {depositPercent}%):</span>
               <span className="font-mono text-sm">{depositAmount.toLocaleString('vi-VN')} VNĐ</span>
             </div>
             <div className="flex justify-between text-slate-600 text-[11px] pt-1">
-              <span>• Còn lại thanh toán theo kỳ hoặc nghiệm thu (70%):</span>
+              <span>• Còn lại thanh toán theo kỳ hoặc nghiệm thu ({100 - depositPercent}%):</span>
               <span className="font-mono font-medium">{remainingAmount.toLocaleString('vi-VN')} VNĐ</span>
             </div>
           </div>

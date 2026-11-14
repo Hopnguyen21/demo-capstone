@@ -380,6 +380,37 @@ public sealed class ZoneGrowthProfileTests
         Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ControlSchedules.CountAsync(x => x.ZoneId == seed.ZoneAId && x.Name.StartsWith("[AutoSync]")));
     }
 
+    [Theory]
+    [InlineData(null, 70)]
+    [InlineData("55", 55)]
+    public async Task Auto_synced_schedules_use_the_configured_rain_threshold(string? configured, int expected)
+    {
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync();
+        var pump = await AddPumpAsync(factory, seed.ZoneAId);
+        if (configured is not null)
+        {
+            using var scope0 = factory.Services.CreateScope();
+            var db0 = scope0.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            await SmartFarm.Infrastructure.Platform.PlatformSettingsStore.EnsureDefaultsAsync(db0, default);
+            (await db0.PlatformSettings.SingleAsync(x => x.Key == SmartFarm.Infrastructure.Platform.PlatformSettingKeys.RainGuardThresholdPercent)).Value = configured;
+            await db0.SaveChangesAsync();
+        }
+        using var owner = factory.CreateClient(); await LoginAsync(owner, "owner-a@example.com");
+        var copy = await CloneAsync(owner, "Bản kiểm tra ngưỡng mưa");
+        var stageId = await FirstStageIdAsync(owner, copy);
+        await owner.PutAsJsonAsync($"/api/v1/growth-profiles/{copy}/irrigation-schedule", new { stages = new[] { new { stageId, sessions = new object[] {
+            new { title = "Sáng", startTime = "05:45", durationSeconds = 420, enabled = true } } } } });
+        await owner.PutAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}", new { name = "Zone A", growthProfileId = copy });
+
+        var response = await owner.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/schedules/sync-from-profile", new { actuatorId = pump, growthStageId = stageId });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var schedule = await scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ControlSchedules.SingleAsync(x => x.ZoneId == seed.ZoneAId && x.Name.StartsWith("[AutoSync]"));
+        Assert.True(schedule.EnableRainDelay);
+        Assert.Equal(expected, schedule.RainThresholdPercent);
+    }
+
     [Fact]
     public async Task Sync_falls_back_to_the_crop_sample_only_when_the_profile_stage_has_no_sessions_and_says_so()
     {

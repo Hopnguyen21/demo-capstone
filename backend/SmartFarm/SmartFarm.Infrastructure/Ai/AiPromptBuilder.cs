@@ -585,8 +585,12 @@ public static class AiPromptBuilder
         if (needsActuators && c.Actuators is not null && c.Actuators.Count > 0)
         {
             sb.AppendLine("    <actuators>");
-            foreach (var x in c.Actuators)
-                sb.AppendLine($"      <actuator id=\"{x.ActuatorId}\" type=\"{Escape(x.ActuatorType)}\" max_duration_seconds=\"{x.MaxDurationSeconds}\" online=\"{x.IsOnline.ToString().ToLowerInvariant()}\" />");
+            // Gửi bí danh V1..Vn thay cho GUID thật; TryResolveActuator đổi ngược lại khi nhận đề xuất của AI.
+            for (var i = 0; i < c.Actuators.Count; i++)
+            {
+                var x = c.Actuators[i];
+                sb.AppendLine($"      <actuator id=\"V{i + 1}\" type=\"{Escape(x.ActuatorType)}\" max_duration_seconds=\"{x.MaxDurationSeconds}\" online=\"{x.IsOnline.ToString().ToLowerInvariant()}\" />");
+            }
             sb.AppendLine("    </actuators>");
         }
 

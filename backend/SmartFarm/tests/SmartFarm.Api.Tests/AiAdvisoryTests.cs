@@ -1330,6 +1330,27 @@ public sealed class AiAdvisoryTests
     }
 
     [Fact]
+    public async Task Minimum_confidence_comes_from_platform_settings_and_applies_without_restart()
+    {
+        using var factory = new TestApplicationFactory();
+        var fixture = await PrepareActionableContextAsync(factory);
+        factory.AiProvider.Result = factory.AiProvider.Result with { Confidence = 0.40m };
+        using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com");
+        // Mặc định 0.70: 0.40 là LowConfidence.
+        Assert.Equal(AiRecommendationStatus.LowConfidence, (await Ask(client, fixture.ZoneId)).Status);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            await SmartFarm.Infrastructure.Platform.PlatformSettingsStore.EnsureDefaultsAsync(db, default);
+            (await db.PlatformSettings.SingleAsync(x => x.Key == SmartFarm.Infrastructure.Platform.PlatformSettingKeys.AiMinimumConfidence)).Value = "0.30";
+            await db.SaveChangesAsync();
+        }
+        // Admin hạ ngưỡng xuống 0.30: cùng độ tin cậy 0.40 nay đạt, không cần restart.
+        Assert.Equal(AiRecommendationStatus.Ready, (await Ask(client, fixture.ZoneId)).Status);
+    }
+
+    [Fact]
     public async Task Irrigation_recommendation_cannot_be_accepted_after_soil_telemetry_goes_stale()
     {
         using var factory = new TestApplicationFactory();

@@ -321,8 +321,8 @@ public class LocationAndDataPrivacyTests
         prompt.Should().Contain("[sđt]");
         prompt.Should().Contain("[email]");
         prompt.Should().Contain("[hợp đồng]");
-        // Free text zone name must also be sanitized
-        prompt.Should().Contain("Nhà màng chú Ba sđt [sđt]");
+        // Free text zone name must also be sanitized (honorific + name is personal data)
+        prompt.Should().Contain("Nhà màng chú [tên] sđt [sđt]");
     }
     [Fact]
     public void AiPromptBuilder_omits_operational_clutter_for_pure_knowledge_questions()

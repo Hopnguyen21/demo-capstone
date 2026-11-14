@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Input } from '../ui/BaseUI';
 import { ZoneContract } from '../../types';
 import { zoneContractService } from '../../services';
+import { useBusinessParameters } from '../../services/businessParameters';
 import {
   RefreshCw, Calendar, DollarSign, Percent, ShieldCheck, CheckCircle2,
   Clock, ArrowRight, Sparkles, Tag, AlertCircle
@@ -42,7 +43,8 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
   const [newMonthlyRent, setNewMonthlyRent] = useState<string>(String(contract.monthlyRentVnd || 12000000));
 
   // Discount for old customer - automatically 15% if 2nd purchase within 2 months!
-  const [discountPercent, setDiscountPercent] = useState<number>(isSecondPurchaseInTwoMonths ? 15 : 10);
+  const businessParams = useBusinessParameters();
+  const [discountPercent, setDiscountPercent] = useState<number>(isSecondPurchaseInTwoMonths ? businessParams.repeatPurchaseDiscountPercent : businessParams.renewalDiscountPercent);
   const [discountType, setDiscountType] = useState<'PERCENT' | 'AMOUNT'>('PERCENT');
   const [discountAmount, setDiscountAmount] = useState<string>('0');
 
@@ -81,6 +83,11 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
   const monthsAdded = computeMonthsAdded();
 
   // Financial calculations
+  // Mức giảm mặc định theo cấu hình: cập nhật khi giá trị cấu hình tải xong hoặc thay đổi.
+  useEffect(() => {
+    setDiscountPercent(isSecondPurchaseInTwoMonths ? businessParams.repeatPurchaseDiscountPercent : businessParams.renewalDiscountPercent);
+  }, [isSecondPurchaseInTwoMonths, businessParams.repeatPurchaseDiscountPercent, businessParams.renewalDiscountPercent]);
+
   const rentPerMonth = priceMode === 'KEEP'
     ? Number(contract.monthlyRentVnd || 0)
     : Number(newMonthlyRent || 0);
@@ -91,7 +98,7 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
     : Number(discountAmount || 0);
 
   const finalRenewalTotal = Math.max(0, rawRenewalTotal - calculatedDiscount);
-  const deposit30 = Math.round(finalRenewalTotal * 0.3);
+  const depositExpected = Math.round(finalRenewalTotal * businessParams.depositPercent / 100);
 
   const handleConfirmRenew = async () => {
     setIsSubmitting(true);
@@ -347,8 +354,8 @@ export const ZoneContractRenewModal: React.FC<ZoneContractRenewModalProps> = ({
                   <span className="font-mono text-emerald-700 text-base">{finalRenewalTotal.toLocaleString('vi-VN')} VNĐ</span>
                 </div>
                 <div className="flex justify-between text-slate-500 text-[11px] pt-1">
-                  <span>Tạm ứng gia hạn dự kiến (30%):</span>
-                  <span className="font-mono font-medium">{deposit30.toLocaleString('vi-VN')} VNĐ</span>
+                  <span>Tạm ứng gia hạn dự kiến ({businessParams.depositPercent}%):</span>
+                  <span className="font-mono font-medium">{depositExpected.toLocaleString('vi-VN')} VNĐ</span>
                 </div>
               </div>
             </div>

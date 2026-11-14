@@ -92,6 +92,72 @@ public sealed class DeploymentCancelAndLinkTests
         Assert.Equal(DeploymentRequestStatus.PlanConfirmed, (await db.DeploymentRequests.SingleAsync(x => x.Id == id)).Status);
     }
 
+    // SR-26: huỷ phiếu dịch vụ phải theo cùng luật huỷ với yêu cầu triển khai.
+    [Theory]
+    [InlineData(DeploymentRequestStatus.Installing)]
+    [InlineData(DeploymentRequestStatus.MaintenanceRequired)]
+    [InlineData(DeploymentRequestStatus.Completed)]
+    public async Task Cancelling_installation_service_request_is_rejected_once_installation_started_and_deployment_is_unchanged(DeploymentRequestStatus status)
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient(); var s = await f.SeedAsync();
+        var id = await AddDeployment(f, s, status);
+        await Login(c, "owner-a@example.com");
+        Guid srId; using (var scope = f.Services.CreateScope()) srId = (await scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ServiceRequests.SingleAsync(x => x.DeploymentRequestId == id)).Id;
+        Assert.Equal(HttpStatusCode.Conflict, (await c.PostAsJsonAsync($"/api/v1/service-requests/{srId}/cancel", new { reason = "x" })).StatusCode);
+        using var scope2 = f.Services.CreateScope();
+        var db = scope2.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.Equal(status, (await db.DeploymentRequests.SingleAsync(x => x.Id == id)).Status);
+        Assert.Equal(ServiceRequestStatus.Assigned, (await db.ServiceRequests.SingleAsync(x => x.Id == srId)).Status);
+    }
+
+    [Fact]
+    public async Task Cancelling_installation_service_request_before_installation_cancels_deployment_with_decision_history()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient(); var s = await f.SeedAsync();
+        var id = await AddDeployment(f, s, DeploymentRequestStatus.Accepted);
+        await Login(c, "owner-a@example.com");
+        Guid srId; using (var scope = f.Services.CreateScope()) srId = (await scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ServiceRequests.SingleAsync(x => x.DeploymentRequestId == id)).Id;
+        (await c.PostAsJsonAsync($"/api/v1/service-requests/{srId}/cancel", new { reason = "Đổi kế hoạch" })).EnsureSuccessStatusCode();
+        using var scope2 = f.Services.CreateScope();
+        var db = scope2.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.Equal(DeploymentRequestStatus.Cancelled, (await db.DeploymentRequests.SingleAsync(x => x.Id == id)).Status);
+        Assert.Equal(ServiceRequestStatus.Cancelled, (await db.ServiceRequests.SingleAsync(x => x.Id == srId)).Status);
+        Assert.True(await db.DeploymentDecisionHistory.AnyAsync(x => x.DeploymentRequestId == id && x.DecisionType == "Cancelled" && x.FromStatus == "Accepted" && x.ToStatus == "Cancelled"));
+    }
+
+    [Fact]
+    public async Task Cancelling_installation_service_request_is_rejected_when_contract_is_signed_and_deposit_paid()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient(); var s = await f.SeedAsync();
+        var id = await AddDeployment(f, s, DeploymentRequestStatus.PlanConfirmed, signed: true);
+        await Login(c, "owner-a@example.com");
+        Guid srId; using (var scope = f.Services.CreateScope()) srId = (await scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>().ServiceRequests.SingleAsync(x => x.DeploymentRequestId == id)).Id;
+        Assert.Equal(HttpStatusCode.Conflict, (await c.PostAsJsonAsync($"/api/v1/service-requests/{srId}/cancel", new { reason = "x" })).StatusCode);
+        using var scope2 = f.Services.CreateScope();
+        Assert.Equal(DeploymentRequestStatus.PlanConfirmed, (await scope2.ServiceProvider.GetRequiredService<SmartFarmDbContext>().DeploymentRequests.SingleAsync(x => x.Id == id)).Status);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_maintenance_service_request_never_cancels_the_installed_deployment()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient(); var s = await f.SeedAsync();
+        var id = await AddDeployment(f, s, DeploymentRequestStatus.MaintenanceRequired, withInstallRequest: false);
+        Guid srId;
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var farm = await db.Farms.SingleAsync(x => x.Id == s.FarmAId);
+            var sr = new ServiceRequest { TenantId = farm.TenantId, FarmId = s.FarmAId, ZoneId = s.ZoneAId, DeploymentRequestId = id, Source = "Owner", FailureCode = "SENSOR_FAULT", Description = "Cảm biến lỗi", Status = ServiceRequestStatus.Open };
+            db.ServiceRequests.Add(sr); await db.SaveChangesAsync(); srId = sr.Id;
+        }
+        await Login(c, "owner-a@example.com");
+        (await c.PostAsJsonAsync($"/api/v1/service-requests/{srId}/cancel", new { reason = "Tự hết lỗi" })).EnsureSuccessStatusCode();
+        using var scope2 = f.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        Assert.Equal(DeploymentRequestStatus.MaintenanceRequired, (await db2.DeploymentRequests.SingleAsync(x => x.Id == id)).Status);
+        Assert.Equal(ServiceRequestStatus.Cancelled, (await db2.ServiceRequests.SingleAsync(x => x.Id == srId)).Status);
+    }
+
     [Fact]
     public async Task Cancel_of_another_tenants_or_missing_request_is_not_found_and_technician_cannot_cancel()
     {

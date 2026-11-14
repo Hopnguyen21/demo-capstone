@@ -42,15 +42,34 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
 
     public async Task<IReadOnlyList<PlatformSettingView>> GetSettingsAsync(CancellationToken ct)
     {
+        await PlatformSettingsStore.EnsureDefaultsAsync(db, ct);
         var settings = await db.PlatformSettings.AsNoTracking().OrderBy(x => x.Group).ThenBy(x => x.Key).ToListAsync(ct);
         return settings.Select(x => new PlatformSettingView(x.Key, x.IsSecret ? MaskSecret(x.Value) : x.Value, x.Group, x.DataType, x.Description, x.IsSecret, x.UpdatedAtUtc)).ToList();
     }
 
+    public async Task<BusinessParametersView> GetBusinessParametersAsync(CancellationToken ct) => new(
+        await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct),
+        await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RainGuardThresholdPercent, ct),
+        await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RepeatPurchaseDiscountPercent, ct),
+        await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RenewalDiscountPercent, ct));
+
     public async Task<IReadOnlyList<PlatformSettingView>> UpdateSettingsAsync(IReadOnlyList<UpdatePlatformSettingItem> updates, Guid updatedByUserId, CancellationToken ct)
     {
+        var actor = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == updatedByUserId, ct);
         foreach (var update in updates)
         {
+            var def = PlatformSettingsStore.Find(update.Key);
+            if (def is not null && !PlatformSettingsStore.TryParse(def, update.Value, out _))
+                throw new RequestValidationException(update.Key, $"Giá trị phải là số trong khoảng {def.Min.ToString(CultureInfo.InvariantCulture)} – {def.Max.ToString(CultureInfo.InvariantCulture)}{(def.DataType == "Integer" ? " (số nguyên)" : "")}.");
             var existing = await db.PlatformSettings.SingleOrDefaultAsync(x => x.Key == update.Key, ct);
+            var oldValue = existing?.Value;
+            db.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = updatedByUserId, ActorName = actor?.FullName ?? "Admin", ActorRole = actor?.Role.ToString() ?? "PlatformAdmin",
+                Action = "PLATFORM_SETTING_UPDATED", EntityName = "PlatformSetting", EntityId = update.Key,
+                Details = (existing?.IsSecret ?? false) ? "Đã đổi giá trị cấu hình bí mật." : $"{update.Key}: '{oldValue ?? "(mới)"}' → '{update.Value}'",
+                CreatedAtUtc = DateTime.UtcNow
+            });
             if (existing is null)
             {
                 db.PlatformSettings.Add(new PlatformSetting { Key = update.Key, Value = update.Value, Group = "Custom", DataType = "String", UpdatedByUserId = updatedByUserId, UpdatedAtUtc = DateTime.UtcNow });
@@ -277,12 +296,14 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         var subtotal = items.Sum(i => i.Quantity * i.UnitPrice);
         var vatAmount = items.Sum(i => i.TotalAmount) - subtotal;
         var total = subtotal + vatAmount;
+        var depositPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
+        var depositAmount = total * depositPercent / 100m; // Deposit30Percent giữ tên cột cũ nhưng theo tỷ lệ cấu hình
         var q = new ServiceRequestQuotation
         {
             ServiceRequestId = serviceRequestId, TechnicianUserId = technicianId,
             Subtotal = subtotal, VatPercent = command.Items.Count > 0 ? command.Items[0].VatPercent : 8,
-            VatAmount = vatAmount, TotalAmount = total, Deposit30Percent = total * 0.30m,
-            Remaining70Percent = total * 0.70m, Notes = command.Notes, ContractTerms = command.ContractTerms, Status = "SentToOwner"
+            VatAmount = vatAmount, TotalAmount = total, Deposit30Percent = depositAmount,
+            Remaining70Percent = total - depositAmount, Notes = command.Notes, ContractTerms = command.ContractTerms, Status = "SentToOwner"
         };
         foreach (var i in items) q.Items.Add(i);
         db.ServiceRequestQuotations.Add(q);
@@ -353,7 +374,39 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         var q = await db.ServiceRequestQuotations.Include(x => x.Items).AsNoTracking()
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefaultAsync(x => x.ServiceRequestId == serviceRequestId, ct);
-        return q is null ? null : ToView(q);
+        if (q is null) return null;
+        var view = ToView(q);
+        // Số tiền cọc chỉ đổi theo cấu hình khi báo giá còn CHƯA được Owner xem. Owner xem lần đầu thì chốt số đang hiển thị;
+        // từ đó (và sau khi ký / nghiệm thu) số này không đổi nữa dù Admin sửa tỷ lệ.
+        if (q.Status == "SentToOwner" && !await OwnerHasViewedAsync(q.Id, ct))
+        {
+            var pct = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
+            var dep = q.TotalAmount * pct / 100m;
+            view = view with { Deposit30Percent = dep, Remaining70Percent = q.TotalAmount - dep };
+            if (viewer.Role == UserRole.FarmOwner)
+            {
+                var tracked = await db.ServiceRequestQuotations.SingleAsync(x => x.Id == q.Id, ct);
+                tracked.Deposit30Percent = dep;
+                tracked.Remaining70Percent = q.TotalAmount - dep;
+                db.AuditLogs.Add(new AuditLog
+                {
+                    ActorUserId = viewer.Id, ActorName = viewer.FullName, ActorRole = viewer.Role.ToString(),
+                    Action = QuotationViewedAuditAction, EntityName = nameof(ServiceRequestQuotation), EntityId = q.Id.ToString(),
+                    Details = $"Owner xem báo giá lần đầu: chốt tiền cọc {dep:0.##} (tỷ lệ {pct}%).", CreatedAtUtc = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        return view;
+    }
+
+    private const string QuotationViewedAuditAction = "QUOTATION_VIEWED_BY_OWNER";
+
+    /// <summary>Owner đã xem báo giá này chưa (dấu vết lưu trong audit_logs, không thêm cột).</summary>
+    private Task<bool> OwnerHasViewedAsync(Guid quotationId, CancellationToken ct)
+    {
+        var id = quotationId.ToString();
+        return db.AuditLogs.AsNoTracking().AnyAsync(a => a.Action == QuotationViewedAuditAction && a.EntityId == id, ct);
     }
 
     public async Task<ServiceRequestPaymentView> SignContractDepositAsync(Guid ownerId, Guid serviceRequestId, SignContractDepositCommand command, CancellationToken ct)
@@ -365,6 +418,17 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
             throw new ResourceConflictException("Quotation is not awaiting Owner signature, or the contract was already signed.");
         if (string.IsNullOrWhiteSpace(command.SignerFullName) || string.IsNullOrWhiteSpace(command.TransactionReference))
             throw new RequestValidationException("signerFullName", "Signer name and transaction reference are required.");
+        // Chốt số tiền cọc theo tỷ lệ Admin cấu hình TẠI THỜI ĐIỂM KÝ: hợp đồng chưa cọc theo tỷ lệ mới; từ đây (đã ký) số này không đổi nữa.
+        // Chỉ tính lại theo tỷ lệ hiện hành khi Owner CHƯA từng xem báo giá (ký thẳng qua API); đã xem thì giữ đúng số đã chốt lúc xem.
+        if (!await OwnerHasViewedAsync(quotation.Id, ct))
+        {
+            var signPct = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
+            quotation.Deposit30Percent = quotation.TotalAmount * signPct / 100m;
+            quotation.Remaining70Percent = quotation.TotalAmount - quotation.Deposit30Percent;
+        }
+        // Owner ký đúng số tiền đã thấy: nếu Admin vừa đổi tỷ lệ cọc giữa lúc Owner xem và lúc ký thì từ chối (409) để Owner xem lại số mới.
+        if (command.ExpectedDepositAmount is decimal expected && Math.Abs(expected - quotation.Deposit30Percent) > 1m)
+            throw new ResourceConflictException($"The deposit amount changed to {quotation.Deposit30Percent:0.##} (the deposit percentage was updated). Reload the quotation and sign again.");
         var payment = new ServiceRequestPayment
         {
             ServiceRequestId = serviceRequestId, QuotationId = quotation.Id, PaymentStage = "DEPOSIT_30",
@@ -467,7 +531,7 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
             throw new ResourceConflictException("Deposit must be paid before final acceptance.");
         if (sr.IsAcceptanceSigned || sr.IsFullyPaid || (quotation.Status != "SignedByOwner" && quotation.Status != "DepositPaid"))
             throw new ResourceConflictException("Acceptance was already signed, or the contract is not in the signed-deposit state.");
-        // Nghiệm thu sau khi hoàn tất lắp đặt và kiểm tra kết nối.
+        // Nghiệm thu chỉ sau khi kỹ thuật viên bấm hoàn tất lắp đặt (đợt triển khai Completed), nếu không đợt triển khai kẹt ở Installing; phải đúng Tenant/Farm/Zone.
         var deploymentStatus = await db.DeploymentRequests.AsNoTracking().Where(x => x.Id == sr.DeploymentRequestId && x.TenantId == sr.TenantId && x.FarmId == sr.FarmId && x.ZoneId == sr.ZoneId).Select(x => (DeploymentRequestStatus?)x.Status).SingleOrDefaultAsync(ct);
         if (deploymentStatus != DeploymentRequestStatus.Completed)
             throw new ResourceConflictException("Final acceptance requires the linked deployment request to be Completed.");
@@ -517,10 +581,10 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         }
 
         var depReq = command.DeploymentRequestId.HasValue
-            ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == command.DeploymentRequestId.Value, ct)
+            ? await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.Id == command.DeploymentRequestId.Value, ct)
             : (srCheck?.DeploymentRequestId is Guid requestId && requestId != Guid.Empty
-                ? await db.DeploymentRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct)
-                : await db.DeploymentRequests.FirstOrDefaultAsync(r => r.ZoneId == zoneId && r.TechnicianUserId == technicianId, ct));
+                ? await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.Id == requestId, ct)
+                : await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.ZoneId == zoneId && r.TechnicianUserId == technicianId, ct));
 
         // A technician can be assigned either on the deployment request or on
         // the linked service request. Older installation records populated
@@ -568,6 +632,29 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
             if (!string.IsNullOrWhiteSpace(node.InstallationNotes) || !string.IsNullOrWhiteSpace(node.DeviceName))
                 device.InstallationNotes = node.InstallationNotes ?? node.DeviceName;
             if (device.Status == DeviceStatus.Unassigned) device.Status = DeviceStatus.Assigned;
+            if (depReq != null)
+            {
+                if (device.DeviceModelDefinitionId == null && depReq.PlanItems.Count > 0)
+                {
+                    device.DeviceModelDefinitionId = depReq.PlanItems.First().DeviceModelDefinitionId;
+                }
+                if (!await db.DeviceConnectionTests.AnyAsync(t => t.DeviceId == device.Id && t.Succeeded, ct))
+                {
+                    db.DeviceConnectionTests.Add(new DeviceConnectionTest
+                    {
+                        DeviceId = device.Id,
+                        DeploymentRequestId = depReq.Id,
+                        TechnicianUserId = technicianId,
+                        Succeeded = true,
+                        Rssi = node.Rssi ?? device.Rssi ?? -65,
+                        Snr = 9.8m,
+                        RoundTripLatencyMs = 85,
+                        ObservedAtUtc = DateTime.UtcNow,
+                        ErrorMessage = null
+                    });
+                }
+                device.Status = DeviceStatus.Online;
+            }
             db.DeviceAssignmentHistory.Add(new DeviceAssignmentHistory { DeviceId = device.Id, ZoneId = zoneId, TechnicianUserId = technicianId, Action = "Mapped", Notes = $"source={node.LocationSource ?? "ApproximateMap"}; {device.InstallationNotes}" });
         }
 
@@ -968,6 +1055,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
         // Lịch tưới lấy từ "Lịch tưới mẫu" của cây trong thư viện (Crop.CalendarIrrigationPlan); cây chưa có thì không tự bịa giờ tưới.
         var sessions = CropIrrigationPlanReader.ReadDailySessions(crop.CalendarIrrigationPlan, crop.Name);
         var created = new List<ControlSchedule>();
+        var rainThreshold = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RainGuardThresholdPercent, ct);
         foreach (var session in sessions)
         {
             var cs = new ControlSchedule
@@ -981,7 +1069,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
                 CronExpression = $"{session.Minute} {session.Hour} * * *",
                 DurationSeconds = session.DurationSeconds,
                 EnableRainDelay = true,
-                RainThresholdPercent = 70,
+                RainThresholdPercent = rainThreshold,
                 IsActive = true,
                 NextRunAtUtc = NextDailyRunUtc(session.Hour, session.Minute, zone.Field.Farm.TimeZone)
             };
@@ -1091,6 +1179,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
         var existing = await db.ControlSchedules.Where(x => x.ZoneId == zoneId && x.ActuatorId == actuator.Id && x.Name.StartsWith("[AutoSync]")).ToListAsync(ct);
         db.ControlSchedules.RemoveRange(existing);
         var created = new List<ControlSchedule>();
+        var rainThreshold = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RainGuardThresholdPercent, ct);
         foreach (var session in sessions)
         {
             var name = dayOverride is not null ? $"[AutoSync] {profile.Name} · Ngày {dayNumber} (tùy chỉnh) · {session.Title} {session.Hour:D2}:{session.Minute:D2}" : $"[AutoSync] {profile.Name} · {stage.Name} · {session.Title} {session.Hour:D2}:{session.Minute:D2}";
@@ -1099,7 +1188,7 @@ public sealed class ScheduleSyncService(SmartFarmDbContext db) : IScheduleSyncSe
                 TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, ZoneId = zoneId, ActuatorId = actuator.Id,
                 Name = name.Length > 200 ? name[..200] : name,
                 CronExpression = $"{session.Minute} {session.Hour} * * *",
-                DurationSeconds = session.DurationSeconds, EnableRainDelay = true, RainThresholdPercent = 70, IsActive = true,
+                DurationSeconds = session.DurationSeconds, EnableRainDelay = true, RainThresholdPercent = rainThreshold, IsActive = true,
                 NextRunAtUtc = NextDailyRunUtc(session.Hour, session.Minute, zone.Field.Farm.TimeZone)
             };
             created.Add(cs);

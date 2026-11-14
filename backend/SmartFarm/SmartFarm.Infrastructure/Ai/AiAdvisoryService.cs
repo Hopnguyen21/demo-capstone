@@ -26,19 +26,42 @@ public sealed class AiAdvisoryService(
     Microsoft.Extensions.Logging.ILogger<AiAdvisoryService> logger,
     TimeProvider clock) : IAiAdvisoryService
 {
-    private readonly AiOptions settings = options.Value;
+    // Giới hạn thời gian khớp regex chống ReDoS. 100 ms quá sát: khi máy tải cao (test song song, server bận) regex hợp lệ vẫn bị
+    // hết hạn và câu trả lời chuyển sang nhánh dự phòng sai. 1 giây vẫn đủ chặn mẫu độc hại.
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
+    private AiOptions settings = options.Value;
+
+    /// <summary>Ngưỡng tin cậy và độ mới của số liệu lấy từ platform_settings (Admin đổi được); thiếu thì dùng giá trị trong appsettings.</summary>
+    private async Task RefreshSettingsAsync(CancellationToken cancellationToken)
+    {
+        var baseline = options.Value;
+        settings = new AiOptions
+        {
+            MinimumConfidence = await Platform.PlatformSettingsStore.GetDecimalAsync(db, Platform.PlatformSettingKeys.AiMinimumConfidence, cancellationToken, baseline.MinimumConfidence),
+            TelemetryFreshnessMinutes = (int)await Platform.PlatformSettingsStore.GetDecimalAsync(db, Platform.PlatformSettingKeys.AiTelemetryFreshnessMinutes, cancellationToken, baseline.TelemetryFreshnessMinutes),
+            MaxRequestsPerWindow = baseline.MaxRequestsPerWindow,
+            RateLimitWindowMinutes = baseline.RateLimitWindowMinutes,
+            RecommendationValidityMinutes = baseline.RecommendationValidityMinutes
+        };
+    }
 
     public async Task<AiZoneContext> GetContextAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken cancellationToken)
     {
+        await RefreshSettingsAsync(cancellationToken);
         var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: false, cancellationToken);
         return await BuildContextAsync(zone, includeHistory: false, historyCount: 0, historyDays: 0, cancellationToken);
     }
 
-    public Task<AiRecommendationView> AskAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, CancellationToken cancellationToken) =>
-        AskInternalAsync(ownerId, tenantId, zoneId, command, true, cancellationToken);
+    public async Task<AiRecommendationView> AskAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, CancellationToken cancellationToken)
+    {
+        await RefreshSettingsAsync(cancellationToken);
+        return await AskInternalAsync(ownerId, tenantId, zoneId, command, true, cancellationToken);
+    }
 
     public async Task<AiDecisionResult> DecideAsync(Guid ownerId, Guid tenantId, Guid zoneId, DecideRecommendationCommand command, CancellationToken cancellationToken)
     {
+        await RefreshSettingsAsync(cancellationToken);
         await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
         var recommendation = await db.AiRecommendations
             .Include(x => x.ConsultationRequest)
@@ -139,19 +162,32 @@ public sealed class AiAdvisoryService(
 
     private async Task<AiRecommendationView> AskInternalAsync(Guid ownerId, Guid tenantId, Guid zoneId, AskAiCommand command, bool checkRateLimit, CancellationToken cancellationToken)
     {
-        var question = Required(command.Question, "question", 2000, 3);
-        RejectPromptInjection(question);
-        var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
-        var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
-        if (checkRateLimit) await EnsureRateLimitAsync(ownerId, zoneId, cancellationToken);
-        if (command.ParentRecommendationId.HasValue && !await db.AiRecommendations.AnyAsync(x => x.Id == command.ParentRecommendationId && x.ZoneId == zoneId && x.TenantId == tenantId, cancellationToken))
-            throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
-
-        var now = clock.GetUtcNow().UtcDateTime;
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        long classifyMs, contextMs, ragMs = 0, providerMs = 0;
-        // Phân loại câu hỏi (gọi HTTP tới Gemini, không dùng DbContext) chạy song song với việc nạp ngữ cảnh Zone từ DB: tiết kiệm trọn
-        // thời gian nạp ngữ cảnh (~0,3–0,5 giây) ở mọi câu hỏi. Chỉ câu hỏi lịch sử/theo ngày mới cần nạp thêm sau khi biết ý định.
+        var question = Required(command.Question, "question", 2000, 3);
+
+        RejectPromptInjection(question);
+
+        var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
+
+        var zone = await EnsureZoneAccessAsync(ownerId, tenantId, zoneId, ownerOnly: true, cancellationToken);
+
+        if (checkRateLimit) await EnsureRateLimitAsync(ownerId, zoneId, cancellationToken);
+
+        if (command.ParentRecommendationId.HasValue && !await db.AiRecommendations.AnyAsync(x => x.Id == command.ParentRecommendationId && x.ZoneId == zoneId && x.TenantId == tenantId, cancellationToken))
+
+            throw new ResourceNotFoundException("Parent recommendation was not found in this Zone.");
+
+
+
+        var now = clock.GetUtcNow().UtcDateTime;
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        long classifyMs, contextMs, ragMs = 0, providerMs = 0;
+
+        // Phân loại câu hỏi (gọi HTTP tới Gemini, không dùng DbContext) chạy song song với việc nạp ngữ cảnh Zone từ DB: tiết kiệm trọn
+
+        // thời gian nạp ngữ cảnh (~0,3–0,5 giây) ở mọi câu hỏi. Chỉ câu hỏi lịch sử/theo ngày mới cần nạp thêm sau khi biết ý định.
+
         var classifyTask = ClassifyIntentAsync(sanitizedQuestion, cancellationToken);
         var baseContext = await BuildContextAsync(zone, includeHistory: false, historyCount: 0, historyDays: 0, cancellationToken);
         var intent = await classifyTask;
@@ -339,7 +375,8 @@ public sealed class AiAdvisoryService(
                     var ragStart = stopwatch.ElapsedMilliseconds;
                     try
                     {
-                        passages = await knowledgeRetriever.RetrievePassagesAsync(
+                        passages = await knowledgeRetriever.RetrievePassagesAsync(
+
                             sanitizedQuestion,
                             cropName: ragCrop,
                             category: null,      // Không lọc theo danh mục để tối đa tài liệu
@@ -953,10 +990,10 @@ public sealed class AiAdvisoryService(
         return answer is null ? details : $"{answer.Details}\n\n{details}";
     }
 
-    private static readonly Regex DegreeValue = new(@"(\d+(?:[.,]\d+)?)\s*(?:°\s*c\b|°|độ\b)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex PercentValue = new(@"(\d+(?:[.,]\d+)?)\s*%", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex PhValue = new(@"ph\D{0,15}?(\d+(?:[.,]\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex LuxValue = new(@"(\d+(?:[.,]\d+)?)\s*lux", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex DegreeValue = new(@"(\d+(?:[.,]\d+)?)\s*(?:°\s*c\b|°|độ\b)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex PercentValue = new(@"(\d+(?:[.,]\d+)?)\s*%", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex PhValue = new(@"ph\D{0,15}?(\d+(?:[.,]\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex LuxValue = new(@"(\d+(?:[.,]\d+)?)\s*lux", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, RegexTimeout);
 
     /// <summary>
     /// Giá trị giả định trong câu hỏi ("nếu nhiệt độ lên 40 độ", "độ ẩm đất xuống 30%", "pH xuống 5") so với ngưỡng đã cấu hình của giai đoạn hiện tại.
@@ -1126,13 +1163,20 @@ public sealed class AiAdvisoryService(
             parts.Any(p => p.WantsOverallComment));
     }
 
-    private async Task<QuestionIntent> ClassifyIntentAsync(string question, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
-            var classified = await intentClassifier.ClassifyAsync(sanitizedQuestion, cancellationToken) ?? QuestionIntent.Unknown;
-            return WithPeriodFallbacks(sanitizedQuestion, classified.Topics.Count == 0 ? WithHypotheticalFallback(sanitizedQuestion, classified) : classified);
+    private async Task<QuestionIntent> ClassifyIntentAsync(string question, CancellationToken cancellationToken)
+
+    {
+
+        try
+
+        {
+
+            var sanitizedQuestion = AiPrivacySanitizer.SanitizeUserQuestion(question);
+
+            var classified = await intentClassifier.ClassifyAsync(sanitizedQuestion, cancellationToken) ?? QuestionIntent.Unknown;
+
+            return WithPeriodFallbacks(sanitizedQuestion, classified.Topics.Count == 0 ? WithHypotheticalFallback(sanitizedQuestion, classified) : classified);
+
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1147,7 +1191,7 @@ public sealed class AiAdvisoryService(
 
     private static readonly Regex SmallTalkOnly = new(
         @"^\s*(xin chao|chao|hello|hi|hey|cam on|thanks|thank you|ok|oke|duoc roi|tam biet|bye)\b[\s!.,]*((ban|ad|bot|nhe|a|nha|nhieu)[\s!.,]*){0,2}$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
 
     /// <summary>Lời chào/cảm ơn thuần túy khi AI phân loại không khả dụng: trả lời mẫu, không tốn lượt gọi mô hình.</summary>
     internal static QuestionIntent WithSmallTalkFallback(string question, QuestionIntent intent)
@@ -1161,18 +1205,18 @@ public sealed class AiAdvisoryService(
     // (quá tải, hết thời gian) vẫn không để model trả lời hậu quả nông học từ kiến thức chung không có căn cứ.
     private static readonly Regex HypotheticalConsequence = new(
         @"(neu.*thi.*(sao|the nao|ra sao))|(co sao khong)|(anh huong (gi|nhu the nao))|(phai lam sao)|(lam sao de)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
 
-    private static readonly Regex DaysBack = new(@"(\d{1,2})\s*ngay\s*(qua|gan day|gan nhat|truoc)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex DaysAhead = new(@"(\d{1,2})\s*ngay\s*(toi|nua|sap\s*toi|sap\s*den|tiep\s*theo)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex WeekAhead = new(@"tuan\s*(toi|sau|nay)|7\s*ngay\s*(toi|nua)|mot\s*tuan\s*(toi|nua)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex WhichVarietyAsk = new(@"thuoc\s+(loai|giong)|dang\s+trong\s+(cay|giong)?\s*(gi|nao)|trong\s+(cay|giong)\s+(gi|nao)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex PlantCountAsk = new(@"(bao\s*nhieu|so|so\s*luong|tong\s*so)\s*(cay|goc)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex PlantCapacityAsk = new(@"\b(co\s*the|duoc|toi\s*da|nen|khuyen\s*cao|phu\s*hop)\b|mat\s*do", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex WeekBack = new(@"tuan\s*(qua|truoc|nay)|7\s*ngay|mot\s*tuan", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex DaySummaryToday = new(@"hom\s*nay.*(trung\s*binh|cao\s*nhat|thap\s*nhat|tong\s*hop)|(trung\s*binh|cao\s*nhat|thap\s*nhat|tong\s*hop).*hom\s*nay", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex RecordWords = new(@"ban\s*ghi|lan\s*do|so\s*do\s*gan\s*nhat|moi\s*nhat", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    private static readonly Regex LastCommandAsk = new(@"(lan|luc|lich\s*su)\s*(tuoi|bat|tat|dieu\s*khien|chay)\b|tuoi\s*(lan\s*)?(gan\s*nhat|cuoi)|(gan\s*nhat|cuoi\s*cung).*(tuoi|bat|tat|lenh)|lenh\s*(gan\s*nhat|cuoi)", RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    private static readonly Regex DaysBack = new(@"(\d{1,2})\s*ngay\s*(qua|gan day|gan nhat|truoc)", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex DaysAhead = new(@"(\d{1,2})\s*ngay\s*(toi|nua|sap\s*toi|sap\s*den|tiep\s*theo)", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex WeekAhead = new(@"tuan\s*(toi|sau|nay)|7\s*ngay\s*(toi|nua)|mot\s*tuan\s*(toi|nua)", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex WhichVarietyAsk = new(@"thuoc\s+(loai|giong)|dang\s+trong\s+(cay|giong)?\s*(gi|nao)|trong\s+(cay|giong)\s+(gi|nao)", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex PlantCountAsk = new(@"(bao\s*nhieu|so|so\s*luong|tong\s*so)\s*(cay|goc)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex PlantCapacityAsk = new(@"\b(co\s*the|duoc|toi\s*da|nen|khuyen\s*cao|phu\s*hop)\b|mat\s*do", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex WeekBack = new(@"tuan\s*(qua|truoc|nay)|7\s*ngay|mot\s*tuan", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex DaySummaryToday = new(@"hom\s*nay.*(trung\s*binh|cao\s*nhat|thap\s*nhat|tong\s*hop)|(trung\s*binh|cao\s*nhat|thap\s*nhat|tong\s*hop).*hom\s*nay", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex RecordWords = new(@"ban\s*ghi|lan\s*do|so\s*do\s*gan\s*nhat|moi\s*nhat", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
+    private static readonly Regex LastCommandAsk = new(@"(lan|luc|lich\s*su)\s*(tuoi|bat|tat|dieu\s*khien|chay)\b|tuoi\s*(lan\s*)?(gan\s*nhat|cuoi)|(gan\s*nhat|cuoi\s*cung).*(tuoi|bat|tat|lenh)|lenh\s*(gan\s*nhat|cuoi)", RegexOptions.Compiled | RegexOptions.CultureInvariant, RegexTimeout);
 
     /// <summary>
     /// Bù chỗ AI phân loại hay bỏ sót, không đổi những gì AI đã hiểu đúng:
@@ -2100,7 +2144,8 @@ public sealed class AiAdvisoryService(
                     if (ctx[k] is { } cv) c[k] = cv.DeepClone();
                 o["Context"] = c;
             }
-            return o.ToJsonString();
+            // Giữ nguyên chữ có dấu để người dùng đọc được snapshot minh bạch (không escape unicode).
+            return o.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         }
         catch (System.Text.Json.JsonException)
         {

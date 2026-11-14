@@ -994,6 +994,42 @@ export interface StockOut {
   details: StockOutDetail[];
 }
 
+export type StockInStatus = 'Draft' | 'Pending' | 'Approved' | 'Completed' | 'Cancelled' | number;
+
+export interface StockInDetail {
+  id: string;
+  stockInId: string;
+  inventoryItemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  currentStock: number;
+  notes?: string;
+}
+
+export interface StockIn {
+  id: string;
+  tenantId: string;
+  farmId: string;
+  farmName: string;
+  stockInCode: string;
+  supplierName?: string;
+  status: StockInStatus;
+  statusText: string;
+  totalAmount: number;
+  totalItems: number;
+  createdByUserId: string;
+  createdByName: string;
+  approvedByUserId?: string;
+  approvedByName?: string;
+  completedAtUtc?: string;
+  notes?: string;
+  createdAtUtc: string;
+  details: StockInDetail[];
+}
+
 // ─── Module 2: Hóa Đơn Độc Lập (Bill / Invoices) ────────────────────────────
 export type BillStatus = 'Draft' | 'Issued' | 'PartiallyPaid' | 'Paid' | 'Overdue' | 'Cancelled' | number;
 

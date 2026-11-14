@@ -5,6 +5,7 @@ using SmartFarm.Application.Features.Control;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Persistence;
+using SmartFarm.Infrastructure.Platform;
 
 namespace SmartFarm.Infrastructure.Control;
 
@@ -98,7 +99,7 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
     {
         await EnsureZoneControlAsync(userId, tenantId, zoneId, ct); var actuator = await ActuatorAsync(zoneId, actuatorId, ct); ValidateDuration(request.DurationSeconds, actuator); var key = Required(request.IdempotencyKey, "idempotencyKey", 100);
         var existing = await db.ActuatorCommands.Include(x => x.Events).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == key, ct); if (existing is not null) return ToView(existing);
-        await EnsureReadyAsync(actuator.DeviceId, ct); await EnsureRainAsync(actuator, true, 70, request.Action, ct);
+        await EnsureReadyAsync(actuator.DeviceId, ct); await EnsureRainAsync(actuator, true, await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RainGuardThresholdPercent, ct), request.Action, ct);
         var now = clock.GetUtcNow().UtcDateTime; var active = await ActiveCommandsAsync(actuator, now, ct);
         if (active.Any(x => x.TriggerSource == CommandTriggerSource.Manual)) throw new ResourceConflictException("A manual command is already active in this Zone.");
         if (active.Count > 0 && !request.OverrideActiveSchedules) throw new ResourceConflictException("An automated command is active; set overrideActiveSchedules to request safe preemption.");
@@ -126,7 +127,7 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
         var actuator = await ActuatorAsync(zoneId, actuatorId, ct);
         ValidateDuration(durationSeconds, actuator);
         await EnsureReadyAsync(actuator.DeviceId, ct);
-        await EnsureRainAsync(actuator, true, 70, action, ct);
+        await EnsureRainAsync(actuator, true, await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RainGuardThresholdPercent, ct), action, ct);
         var now = clock.GetUtcNow().UtcDateTime;
         if ((await ActiveCommandsAsync(actuator, now, ct)).Count > 0)
             throw new ResourceConflictException("An active command conflicts with this AI-approved action.");

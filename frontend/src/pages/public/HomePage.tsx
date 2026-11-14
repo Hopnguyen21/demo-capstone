@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useBusinessParameters, depositLabels } from '../../services/businessParameters';
 import {
   Sprout, ShieldCheck, ArrowRight, CheckCircle2, ChevronRight,
   Radio, Cpu, Droplets, Sun, Activity, Bot, MapPin, Layers,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 
 export const HomePage: React.FC = () => {
+  const { deposit: depLabel, remaining: remLabel } = depositLabels(useBusinessParameters());
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'iot' | 'gis' | 'ai' | 'contract'>('iot');
   const [consultModal, setConsultModal] = useState(false);
@@ -281,7 +283,7 @@ export const HomePage: React.FC = () => {
             <div className="pt-4 md:pt-0">
               <div className="text-3xl sm:text-4xl font-black text-white font-mono">100%</div>
               <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Hợp Đồng & Nghiệm Thu Số</div>
-              <div className="text-[11px] text-emerald-200 mt-0.5">Tạm ứng 30% - Hoàn tất 70%</div>
+              <div className="text-[11px] text-emerald-200 mt-0.5">Tạm ứng {depLabel} - Hoàn tất {remLabel}</div>
             </div>
           </div>
         </div>
@@ -531,9 +533,9 @@ export const HomePage: React.FC = () => {
             {/* Step 2 */}
             <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 relative">
               <span className="text-3xl font-black text-emerald-300 font-mono">02</span>
-              <h3 className="text-base font-bold text-slate-900 mt-2 mb-1.5">Ký Số & Tạm ứng 30%</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-2 mb-1.5">Ký Số & Tạm ứng {depLabel}</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Xuất bảng báo giá chi tiết, Owner ký hợp đồng điện tử và thực hiện thanh toán tạm ứng 30% để triển khai.
+                Xuất bảng báo giá chi tiết, Owner ký hợp đồng điện tử và thực hiện thanh toán tạm ứng {depLabel} để triển khai.
               </p>
             </div>
 
@@ -549,9 +551,9 @@ export const HomePage: React.FC = () => {
             {/* Step 4 */}
             <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-400 relative">
               <span className="text-3xl font-black text-emerald-600 font-mono">04</span>
-              <h3 className="text-base font-bold text-slate-900 mt-2 mb-1.5">Nghiệm thu & Vận hành 70%</h3>
+              <h3 className="text-base font-bold text-slate-900 mt-2 mb-1.5">Nghiệm thu & Vận hành {remLabel}</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Chủ trang trại kiểm tra hệ thống tưới tự động hoạt động ổn định, ký biên bản nghiệm thu và thanh toán 70% còn lại.
+                Chủ trang trại kiểm tra hệ thống tưới tự động hoạt động ổn định, ký biên bản nghiệm thu và thanh toán {remLabel} còn lại.
               </p>
             </div>
           </div>
