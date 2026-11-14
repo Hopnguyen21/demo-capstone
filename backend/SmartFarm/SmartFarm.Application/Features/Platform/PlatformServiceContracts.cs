@@ -16,6 +16,8 @@ public sealed record AuditLogView(
 public sealed record AuditLogPagedResult(IReadOnlyList<AuditLogView> Items, int TotalCount, int Page, int PageSize);
 
 // ─── Platform Settings ────────────────────────────────────────────────────────
+/// <summary>Tham số nghiệp vụ hiện hành mà web/mobile cần để hiển thị; đọc từ platform_settings (mọi vai trò đã đăng nhập đều đọc được).</summary>
+public sealed record BusinessParametersView(decimal DepositPercent, decimal RainGuardThresholdPercent, decimal RepeatPurchaseDiscountPercent, decimal RenewalDiscountPercent);
 public sealed record PlatformSettingView(string Key, string Value, string Group, string DataType, string? Description, bool IsSecret, DateTime? UpdatedAtUtc);
 public sealed record UpdatePlatformSettingItem(string Key, string Value);
 
@@ -55,7 +57,7 @@ public sealed record QuotationView(
     DateTime CreatedAtUtc);
 
 // ─── Contract Signing & Payments ──────────────────────────────────────────────
-public sealed record SignContractDepositCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes);
+public sealed record SignContractDepositCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes, decimal? ExpectedDepositAmount = null);
 public sealed record SignAcceptanceFinalCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes);
 public sealed record ServiceRequestPaymentView(Guid Id, string PaymentStage, decimal Amount, string PaymentMethod, string? TransactionReference, string SignerFullName, string Status, DateTime PaidAtUtc);
 
@@ -107,6 +109,7 @@ public interface IPlatformAdminService
 
     // Platform settings
     Task<IReadOnlyList<PlatformSettingView>> GetSettingsAsync(CancellationToken ct);
+    Task<BusinessParametersView> GetBusinessParametersAsync(CancellationToken ct);
     Task<IReadOnlyList<PlatformSettingView>> UpdateSettingsAsync(IReadOnlyList<UpdatePlatformSettingItem> updates, Guid updatedByUserId, CancellationToken ct);
 
     // Hardware items

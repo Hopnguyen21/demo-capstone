@@ -56,9 +56,13 @@ present service, deployment and quotation states independently. In particular,
 `Closed` and `Resolved` do not prove Owner acceptance or full payment.
 
 Quotation flow is `Draft -> SentToOwner -> SignedByOwner -> Completed`.
-Final acceptance requires the linked deployment to be `Completed` and to match
-the service request's Tenant, Farm and Zone. This follows the completed-installation
-sequence in Report 3; its broader `Installing or Completed` wording is not used.
+Final acceptance requires the linked deployment to be `Completed` (the Technician has pressed Complete installation) and to
+match the service request's Tenant, Farm and Zone. Accepting while `Installing` would close the service request and leave the
+deployment stranded, so it is refused (409). This is a deliberate narrowing of Report 3 FR-14 / BM04 WF-01, whose wording is
+"Installing or Completed"; the reports are to be aligned to `Completed`.
+`ServiceRequestView` also exposes `isContractSigned`, `isDepositPaid`, `isAcceptanceSigned`, `isFullyPaid`.
+`sign-contract-deposit` accepts an optional `expectedDepositAmount`; if the configured deposit percentage changed since the Owner
+viewed the quotation the request is refused (409) so the Owner re-reads the new amount. The first Owner view of an unsigned quotation fixes its amounts (audit row `QUOTATION_VIEWED_BY_OWNER`); until then the amounts follow the configured percentage.
 `NEW_INSTALL` is the installation failure/type code, not a workflow status.
 
 Replacement may occur only after diagnosis selected `Replacement`. Tenant, Farm, Zone, old

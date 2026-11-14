@@ -10,6 +10,8 @@ using SmartFarm.Application.Features.IoTDeployment;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Persistence;
+using SmartFarm.Application.Features.Platform;
+using SmartFarm.Infrastructure.Platform;
 using Xunit;
 
 namespace SmartFarm.Api.Tests;
@@ -152,6 +154,95 @@ public sealed class ContractSigningTests
         Assert.Contains(closed.History, h => h.ToStatus == ServiceRequestStatus.Closed);
     }
 
+    [Fact]
+    public async Task Deposit_percent_changes_apply_only_until_the_owner_has_viewed_the_quotation()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing); // đang đăng nhập kỹ thuật viên
+        async Task SetDeposit(string value)
+        {
+            using var scope = f.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            await new PlatformAdminService(db).UpdateSettingsAsync([new(PlatformSettingKeys.DepositPercent, value)], Guid.NewGuid(), default);
+        }
+        async Task<QuotationView> GetQuotation() =>
+            await Read<QuotationView>(await c.GetAsync($"/api/v1/service-requests/{x.ServiceRequestId}/quotation"));
+
+        // Owner CHƯA xem: tỷ lệ Admin đổi thì báo giá (kỹ thuật viên xem) theo tỷ lệ mới và chưa bị chốt.
+        var q0 = await GetQuotation();
+        Assert.Equal(q0.TotalAmount * 0.3m, q0.Deposit30Percent);
+        await SetDeposit("40");
+        Assert.Equal(q0.TotalAmount * 0.4m, (await GetQuotation()).Deposit30Percent);
+
+        // Owner xem lần đầu: chốt số đang hiển thị (40%).
+        await Login(c, "owner-a@example.com");
+        var seen = await GetQuotation();
+        Assert.Equal(q0.TotalAmount * 0.4m, seen.Deposit30Percent);
+        Assert.Equal(q0.TotalAmount * 0.6m, seen.Remaining70Percent);
+
+        // Owner ĐÃ xem: Admin đổi tiếp sang 45% / 50% cũng không làm đổi số Owner đã thấy.
+        await SetDeposit("45");
+        Assert.Equal(q0.TotalAmount * 0.4m, (await GetQuotation()).Deposit30Percent);
+        await Login(c, "technician@example.com");
+        Assert.Equal(q0.TotalAmount * 0.4m, (await GetQuotation()).Deposit30Percent);
+        await Login(c, "owner-a@example.com");
+
+        // Ký đúng số đã xem: khoản cọc là 40%, không phải 45%.
+        var pay = await Read<ServiceRequestPaymentView>(await c.PostAsJsonAsync($"/api/v1/service-requests/{x.ServiceRequestId}/sign-contract-deposit",
+            new { signerFullName = "Chủ A", paymentMethod = "BANK_TRANSFER", transactionReference = "TX-1", expectedDepositAmount = seen.Deposit30Percent }));
+        Assert.Equal(q0.TotalAmount * 0.4m, pay.Amount);
+
+        // Đã ký: tiếp tục giữ nguyên.
+        await SetDeposit("50");
+        var after = await GetQuotation();
+        Assert.Equal(q0.TotalAmount * 0.4m, after.Deposit30Percent);
+        Assert.Equal(q0.TotalAmount * 0.6m, after.Remaining70Percent);
+    }
+
+    [Fact]
+    public async Task Signing_without_viewing_uses_the_current_percentage_and_stale_expected_amount_is_refused()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        var q0 = await Read<QuotationView>(await c.GetAsync($"/api/v1/service-requests/{x.ServiceRequestId}/quotation")); // kỹ thuật viên xem, không phải Owner
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            await new PlatformAdminService(db).UpdateSettingsAsync([new(PlatformSettingKeys.DepositPercent, "40")], Guid.NewGuid(), default);
+        }
+        await Login(c, "owner-a@example.com");
+        // Owner ký thẳng (chưa xem) với số cũ: số thật theo tỷ lệ hiện hành là 40% nên bị từ chối.
+        var stale = await c.PostAsJsonAsync($"/api/v1/service-requests/{x.ServiceRequestId}/sign-contract-deposit",
+            new { signerFullName = "Chủ A", paymentMethod = "BANK_TRANSFER", transactionReference = "TX-OLD", expectedDepositAmount = q0.Deposit30Percent });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var ok = await Read<ServiceRequestPaymentView>(await c.PostAsJsonAsync($"/api/v1/service-requests/{x.ServiceRequestId}/sign-contract-deposit",
+            new { signerFullName = "Chủ A", paymentMethod = "BANK_TRANSFER", transactionReference = "TX-NEW", expectedDepositAmount = q0.TotalAmount * 0.4m }));
+        Assert.Equal(q0.TotalAmount * 0.4m, ok.Amount);
+    }
+
+    [Fact]
+    public async Task Final_acceptance_waits_for_completed_installation_and_flags_are_exposed_on_the_service_request()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        await Login(c, "owner-a@example.com");
+        var before = await Read<ServiceRequestView>(await c.GetAsync($"/api/v1/service-requests/{x.ServiceRequestId}"));
+        Assert.False(before.IsContractSigned); Assert.False(before.IsDepositPaid); Assert.False(before.IsAcceptanceSigned); Assert.False(before.IsFullyPaid);
+        (await Deposit(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+        var signed = await Read<ServiceRequestView>(await c.GetAsync($"/api/v1/service-requests/{x.ServiceRequestId}"));
+        Assert.True(signed.IsContractSigned); Assert.True(signed.IsDepositPaid); Assert.False(signed.IsAcceptanceSigned); Assert.False(signed.IsFullyPaid);
+        // Chỉ nghiệm thu sau khi kỹ thuật viên hoàn tất lắp đặt: đang Installing thì bị từ chối (409), không đóng phiếu sớm.
+        Assert.Equal(HttpStatusCode.Conflict, (await Final(c, x.ServiceRequestId)).StatusCode);
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            (await db.DeploymentRequests.SingleAsync(d => d.Id == x.DeploymentId)).Status = DeploymentRequestStatus.Completed;
+            await db.SaveChangesAsync();
+        }
+        (await Final(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+        var done = await Read<ServiceRequestView>(await c.GetAsync($"/api/v1/service-requests/{x.ServiceRequestId}"));
+        Assert.True(done.IsAcceptanceSigned); Assert.True(done.IsFullyPaid);
+    }
     [Fact]
     public async Task Service_request_cannot_link_another_tenants_deployment_request()
     {

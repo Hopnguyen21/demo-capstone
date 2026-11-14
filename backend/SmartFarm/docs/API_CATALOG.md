@@ -167,3 +167,5 @@ Server-built context, explicit uncertainty, persisted Owner decisions, rate limi
 | ext | DELETE | `/api/v1/zones/{zoneId}/planting-seasons/{seasonId}/irrigation-calendar[/days/{dayNumber}]` | SeasonIrrigationCalendar | FarmOwner (restore whole season / one day) |
 | ext | GET | `/api/v1/zone-contracts/expiring?farmId=&zoneId=&daysThreshold=` | ExpiringContractAlert | FarmOwner / Technician / Admin (zoneId lọc theo một Zone, vẫn trong Tenant) |
 | ext | POST | `/api/v1/zones/{zoneId}/schedules/sync-from-profile` | ProfileScheduleSyncResult | FarmOwner |
+| ext | GET | `/api/v1/platform/business-parameters` | BusinessParametersView | Public (no sign-in): deposit %, rain guard %, repeat/renewal discount % only; see DECISIONS.md 2026-11-14 |
+| ext | PUT | `/api/v1/platform/settings` | PlatformSettingView | Admin (audit `PLATFORM_SETTING_UPDATED`) |

@@ -3,6 +3,7 @@ using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Features.Finance;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
+using SmartFarm.Infrastructure.IoTDeployment;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Finance;
@@ -178,6 +179,22 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         if (r.Status == ServiceRequestStatus.Cancelled)
             throw new ResourceConflictException("Yêu cầu này đã được hủy trước đó.");
 
+        // Chỉ phiếu lắp đặt mới gắn với vòng đời của đợt triển khai; phiếu bảo trì/sửa chữa hủy riêng, không đụng tới đợt triển khai đã lắp.
+        DeploymentRequest? dep = null;
+        if (r.DeploymentRequestId != Guid.Empty && DeploymentSupport.IsInstallationCode(r.FailureCode))
+        {
+            dep = await db.DeploymentRequests.Include(x => x.Decisions).SingleOrDefaultAsync(x => x.Id == r.DeploymentRequestId, ct);
+            // Cùng luật với hủy yêu cầu triển khai: chỉ hủy trước khi lắp đặt, và chưa ký hợp đồng/đóng cọc (cần Admin hoàn cọc).
+            if (dep != null)
+            {
+                if (dep.Status is not (DeploymentRequestStatus.Draft or DeploymentRequestStatus.Submitted or DeploymentRequestStatus.Accepted
+                    or DeploymentRequestStatus.Surveyed or DeploymentRequestStatus.PlanConfirmed))
+                    throw new ResourceConflictException($"Installation request can only be cancelled before installation starts; the deployment status is {dep.Status}.");
+                if (r.IsContractSigned || r.IsDepositPaid)
+                    throw new ResourceConflictException("The contract is already signed or the deposit is paid; contact the platform administrator to cancel.");
+            }
+        }
+
         var from = r.Status;
         r.Status = ServiceRequestStatus.Cancelled;
         r.ClosedAtUtc = clock.GetUtcNow().UtcDateTime;
@@ -185,13 +202,15 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         var reason = string.IsNullOrWhiteSpace(c.Reason) ? "Chủ động hủy yêu cầu" : c.Reason.Trim();
         Add(r, userId, ServiceHistoryEventType.Cancelled, from, r.Status, $"Hủy bởi {u.Role}: {reason}");
 
-        if (r.DeploymentRequestId != Guid.Empty)
+        if (dep != null)
         {
-            var dep = await db.DeploymentRequests.SingleOrDefaultAsync(x => x.Id == r.DeploymentRequestId, ct);
-            if (dep != null && dep.Status != DeploymentRequestStatus.Completed && dep.Status != DeploymentRequestStatus.Cancelled)
+            var old = dep.Status;
+            dep.Status = DeploymentRequestStatus.Cancelled;
+            db.DeploymentDecisionHistory.Add(new DeploymentDecisionHistory
             {
-                dep.Status = DeploymentRequestStatus.Cancelled;
-            }
+                DeploymentRequestId = dep.Id, ActorUserId = userId, DecisionType = "Cancelled",
+                FromStatus = old.ToString(), ToStatus = DeploymentRequestStatus.Cancelled.ToString(), Notes = $"Hủy qua phiếu dịch vụ: {reason}"
+            });
         }
 
         await db.SaveChangesAsync(ct);
@@ -210,5 +229,5 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
     private void Move(ServiceRequest r, Guid actor, ServiceRequestStatus expected, ServiceRequestStatus next, ServiceHistoryEventType e, string? notes) { if (r.Status != expected) throw new ResourceConflictException($"Expected Service Request state {expected}."); var from = r.Status; r.Status = next; Add(r, actor, e, from, next, notes); }
     private void Add(ServiceRequest r, Guid actor, ServiceHistoryEventType e, ServiceRequestStatus from, ServiceRequestStatus to, string? notes) { var h = new ServiceRequestHistory { ServiceRequest = r, ActorUserId = actor, EventType = e, FromStatus = from, ToStatus = to, Notes = FinanceService.Optional(notes, 2000) }; r.History.Add(h); db.ServiceRequestHistories.Add(h); }
     private async Task<ServiceRequestView> Load(Guid id, CancellationToken ct) => View(await Query().AsNoTracking().SingleAsync(x => x.Id == id, ct));
-    private static ServiceRequestView View(ServiceRequest r) => new(r.Id, r.TenantId, r.FarmId, r.ZoneId, r.DeviceId, r.CurrentDeviceId ?? r.DeviceId, r.FailureCode, r.Description, r.Status, r.AssignedTechnicianId, r.InspectionNotes, r.Diagnosis, r.ResolutionAction, r.WorkPerformed, r.ClosedAtUtc, r.History.OrderBy(x => x.CreatedAtUtc).Select(x => new ServiceHistoryView(x.Id, x.EventType, x.FromStatus, x.ToStatus, x.ActorUserId, x.Notes, x.CreatedAtUtc)).ToList(), r.Replacements.OrderBy(x => x.CreatedAtUtc).Select(x => new DeviceReplacementView(x.Id, x.OldDeviceId, x.NewDeviceId, x.ZoneId, x.CreatedAtUtc)).ToList(), r.DeploymentRequestId);
+    private static ServiceRequestView View(ServiceRequest r) => new(r.Id, r.TenantId, r.FarmId, r.ZoneId, r.DeviceId, r.CurrentDeviceId ?? r.DeviceId, r.FailureCode, r.Description, r.Status, r.AssignedTechnicianId, r.InspectionNotes, r.Diagnosis, r.ResolutionAction, r.WorkPerformed, r.ClosedAtUtc, r.History.OrderBy(x => x.CreatedAtUtc).Select(x => new ServiceHistoryView(x.Id, x.EventType, x.FromStatus, x.ToStatus, x.ActorUserId, x.Notes, x.CreatedAtUtc)).ToList(), r.Replacements.OrderBy(x => x.CreatedAtUtc).Select(x => new DeviceReplacementView(x.Id, x.OldDeviceId, x.NewDeviceId, x.ZoneId, x.CreatedAtUtc)).ToList(), r.DeploymentRequestId, r.IsContractSigned, r.IsDepositPaid, r.IsAcceptanceSigned, r.IsFullyPaid);
 }

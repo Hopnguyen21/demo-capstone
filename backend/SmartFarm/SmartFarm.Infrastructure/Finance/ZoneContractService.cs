@@ -5,6 +5,7 @@ using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Inventory;
 using SmartFarm.Infrastructure.Persistence;
+using SmartFarm.Infrastructure.Platform;
 
 namespace SmartFarm.Infrastructure.Finance;
 
@@ -232,11 +233,14 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             .FirstOrDefaultAsync(ct);
 
         var isRepeatPurchaseInTwoMonths = previousRecentContract != null;
-        var discountPercent = command.DiscountPercent ?? (isRepeatPurchaseInTwoMonths ? 15m : (command.ParentContractId.HasValue ? 10m : 0m));
+        var repeatDiscountPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RepeatPurchaseDiscountPercent, ct);
+        var renewalDiscountPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RenewalDiscountPercent, ct);
+        var discountPercent = command.DiscountPercent ?? (isRepeatPurchaseInTwoMonths ? repeatDiscountPercent : (command.ParentContractId.HasValue ? renewalDiscountPercent : 0m));
 
         var discount = command.DiscountAmount ?? (discountPercent > 0 ? rawTotal * (discountPercent / 100m) : 0m);
         var finalTotal = Math.Max(0, rawTotal - discount);
-        var deposit = command.DepositVnd > 0 ? command.DepositVnd : Math.Round(finalTotal * 0.30m);
+        var depositPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
+        var deposit = command.DepositVnd > 0 ? command.DepositVnd : Math.Round(finalTotal * depositPercent / 100m);
 
         var notes = command.Notes;
         if (isRepeatPurchaseInTwoMonths && (notes == null || !notes.Contains("lần 2 trong 2 tháng")))
@@ -352,7 +356,9 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             (contract.SignedAtUtc.HasValue && contract.SignedAtUtc.Value >= twoMonthsAgo) ||
             (contract.Renewals != null && contract.Renewals.Any(r => r.CreatedAtUtc >= twoMonthsAgo));
 
-        var discountPercent = command.DiscountPercent ?? (isRepeatWithinTwoMonths ? 15m : 10m);
+        var repeatDiscountPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RepeatPurchaseDiscountPercent, ct);
+        var renewalDiscountPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RenewalDiscountPercent, ct);
+        var discountPercent = command.DiscountPercent ?? (isRepeatWithinTwoMonths ? repeatDiscountPercent : renewalDiscountPercent);
         var monthsAdded = Math.Max(1, ((newEndDate.Year - baseEndDate.Year) * 12) + newEndDate.Month - baseEndDate.Month);
         var rentPerMonth = command.NewMonthlyRentVnd ?? contract.MonthlyRentVnd;
         var rawRenewalValue = rentPerMonth * monthsAdded;

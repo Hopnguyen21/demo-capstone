@@ -77,6 +77,27 @@ public sealed class ControlTests
     }
 
     [Fact]
+    public async Task Rain_guard_threshold_comes_from_platform_settings_and_changes_take_effect_immediately()
+    {
+        using var factory = new TestApplicationFactory(); var f = await PrepareAsync(factory); using var client = factory.CreateClient(); await Login(client, "owner-a@example.com");
+        factory.RainProvider.Probability = 50;
+        async Task SetThreshold(string value)
+        {
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            await SmartFarm.Infrastructure.Platform.PlatformSettingsStore.EnsureDefaultsAsync(db, default);
+            (await db.PlatformSettings.SingleAsync(x => x.Key == SmartFarm.Infrastructure.Platform.PlatformSettingKeys.RainGuardThresholdPercent)).Value = value;
+            await db.SaveChangesAsync();
+        }
+        // Admin hạ ngưỡng xuống 40%: 50% mưa bị chặn.
+        await SetThreshold("40");
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/v1/zones/{f.ZoneId}/actuators/{f.PumpAId}/command", Manual("rain-lowered"))).StatusCode);
+        // Nâng lên 60%: cùng 50% mưa nay được phép, không cần restart.
+        await SetThreshold("60");
+        (await client.PostAsJsonAsync($"/api/v1/zones/{f.ZoneId}/actuators/{f.PumpAId}/command", Manual("rain-raised"))).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Rain_delay_and_overlapping_schedule_are_enforced()
     {
         using var factory = new TestApplicationFactory(); var f = await PrepareAsync(factory); using var client = factory.CreateClient(); await Login(client, "owner-a@example.com"); factory.RainProvider.Probability = 80;

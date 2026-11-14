@@ -253,8 +253,8 @@ public sealed partial class GeminiAiAdvisoryProvider(
         if (proposed is null) return null;
         if (proposed.Enabled == false) return null;
 
-        if (string.IsNullOrWhiteSpace(proposed.ActuatorId) || !Guid.TryParse(proposed.ActuatorId, out var actuatorId))
-            return Reject("ActuatorId is not a valid GUID");
+        if (string.IsNullOrWhiteSpace(proposed.ActuatorId) || !AiPromptBuilder.TryResolveActuator(request.Context.Actuators, proposed.ActuatorId, out var actuatorId))
+            return Reject("ActuatorId is not an actuator of the provided context");
 
         if (string.IsNullOrWhiteSpace(proposed.Action) ||
             !Enum.TryParse<ActuatorCommandAction>(proposed.Action, true, out var commandAction) ||

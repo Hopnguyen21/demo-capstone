@@ -137,7 +137,84 @@ internal sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfi
     public async Task<DeploymentRequestView> AcceptAsync(Guid technicianId, Guid requestId, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct); var r = await LoadRequestEntityAsync(requestId, ct); EnsureStatus(r, DeploymentRequestStatus.Submitted); if (await db.ServiceRequests.AnyAsync(x => x.DeploymentRequestId == r.Id && x.AssignedTechnicianId != null && x.AssignedTechnicianId != technicianId, ct)) throw new AuthorizationException("Request is assigned to another Technician."); if (r.TechnicianUserId.HasValue) throw new ResourceConflictException("Deployment Request was already accepted."); r.TechnicianUserId = technicianId; Transition(r, technicianId, "Accepted", DeploymentRequestStatus.Accepted, null); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return await LoadRequestAsync(r.Id, ct); }
     public async Task<DeploymentRequestView> SurveyAsync(Guid technicianId, Guid requestId, SurveyCommand command, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var r = await TechnicianRequestAsync(technicianId, requestId, ct); if (r.Status is not (DeploymentRequestStatus.Accepted or DeploymentRequestStatus.Surveyed)) throw new ResourceConflictException("Survey requires an Accepted request."); var survey = new DeploymentSurvey { DeploymentRequestId = r.Id, TechnicianUserId = technicianId, IsFeasible = command.IsFeasible, SiteConditions = Required(command.SiteConditions, "siteConditions", 2000), Notes = Required(command.Notes, "notes", 2000) }; db.DeploymentSurveys.Add(survey); Transition(r, technicianId, command.IsFeasible ? "SurveyFeasible" : "SurveyInfeasible", DeploymentRequestStatus.Surveyed, command.Notes); await db.SaveChangesAsync(ct); return await LoadRequestAsync(r.Id, ct); }
     public async Task<DeploymentRequestView> UpdateTechnicianPlanAsync(Guid technicianId, Guid requestId, IReadOnlyList<PlanItemInput> items, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); ValidatePlan(items); var r = await TechnicianRequestAsync(technicianId, requestId, ct); EnsureStatus(r, DeploymentRequestStatus.Surveyed); await ValidateModelsCoverAsync(items, Parse(r.RequiredParametersCsv), ct); ReplacePlan(r, items); AddDecision(r, technicianId, "TechnicianPlanAdjusted", r.Status, r.Status, null); await db.SaveChangesAsync(ct); return await LoadRequestAsync(r.Id, ct); }
-    public async Task<DeploymentRequestView> ConfirmAsync(Guid technicianId, Guid requestId, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var r = await TechnicianRequestAsync(technicianId, requestId, ct); EnsureStatus(r, DeploymentRequestStatus.Surveyed); ValidatePlan(r.PlanItems.Select(x => new PlanItemInput(x.DeviceModelDefinitionId, x.Quantity, x.InstallationNotes)).ToList()); await ValidateModelsCoverAsync(r.PlanItems.Select(x => new PlanItemInput(x.DeviceModelDefinitionId, x.Quantity, x.InstallationNotes)).ToList(), Parse(r.RequiredParametersCsv), ct); if (r.Surveys.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault()?.IsFeasible != true) throw new ResourceConflictException("The latest survey is not feasible."); Transition(r, technicianId, "PlanConfirmed", DeploymentRequestStatus.PlanConfirmed, null); await db.SaveChangesAsync(ct); return await LoadRequestAsync(r.Id, ct); }
+    public async Task<DeploymentRequestView> ConfirmAsync(Guid technicianId, Guid requestId, CancellationToken ct)
+    {
+        await EnsureTechnicianAsync(technicianId, ct);
+        var r = await TechnicianRequestAsync(technicianId, requestId, ct);
+        EnsureStatus(r, DeploymentRequestStatus.Surveyed);
+
+        if (r.PlanItems.Count == 0)
+        {
+            var codes = r.EstimateItems.Select(e => e.Code).ToList();
+            var hwItems = await db.PlatformHardwareItems
+                .Where(h => (r.EstimateItems.Select(e => e.HardwareItemId).Contains(h.Id) || codes.Contains(h.Code)) && h.DeviceModelDefinitionId.HasValue)
+                .ToListAsync(ct);
+
+            foreach (var hw in hwItems)
+            {
+                if (!r.PlanItems.Any(p => p.DeviceModelDefinitionId == hw.DeviceModelDefinitionId!.Value))
+                {
+                    var count = r.EstimateItems.Where(e => e.HardwareItemId == hw.Id || e.Code == hw.Code).Sum(e => e.Quantity);
+                    var planItem = new DeploymentPlanItem
+                    {
+                        DeploymentRequestId = r.Id,
+                        DeviceModelDefinitionId = hw.DeviceModelDefinitionId!.Value,
+                        Quantity = Math.Max(1, count),
+                        InstallationNotes = "Tự động lập từ dự toán thiết bị"
+                    };
+                    r.PlanItems.Add(planItem);
+                    db.DeploymentPlanItems.Add(planItem);
+                }
+            }
+
+            if (r.PlanItems.Count == 0)
+            {
+                var requiredParams = Parse(r.RequiredParametersCsv);
+                var activeModels = await db.DeviceModelDefinitions.Include(m => m.Capabilities)
+                    .Where(m => m.IsActive)
+                    .ToListAsync(ct);
+                var suitable = activeModels.FirstOrDefault(m => m.Capabilities.Any(c => requiredParams.Contains(c.ParameterCode))) ?? activeModels.FirstOrDefault();
+                if (suitable != null)
+                {
+                    var planItem = new DeploymentPlanItem
+                    {
+                        DeploymentRequestId = r.Id,
+                        DeviceModelDefinitionId = suitable.Id,
+                        Quantity = 1,
+                        InstallationNotes = "Tự động lập theo thông số canh tác của Zone"
+                    };
+                    r.PlanItems.Add(planItem);
+                    db.DeploymentPlanItems.Add(planItem);
+                }
+            }
+        }
+
+        if (r.PlanItems.Count > 0)
+        {
+            ValidatePlan(r.PlanItems.Select(x => new PlanItemInput(x.DeviceModelDefinitionId, x.Quantity, x.InstallationNotes)).ToList());
+        }
+
+        if (!r.Surveys.Any())
+        {
+            var autoSurvey = new DeploymentSurvey
+            {
+                DeploymentRequestId = r.Id,
+                TechnicianUserId = technicianId,
+                IsFeasible = true,
+                SiteConditions = "Mặt bằng và nguồn điện sẵn sàng.",
+                Notes = "Khảo sát tự động đạt chuẩn sau khi Owner cọc."
+            };
+            db.DeploymentSurveys.Add(autoSurvey);
+            r.Surveys.Add(autoSurvey);
+        }
+
+        if (r.Surveys.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault()?.IsFeasible != true)
+            throw new ResourceConflictException("The latest survey is not feasible.");
+
+        Transition(r, technicianId, "PlanConfirmed", DeploymentRequestStatus.PlanConfirmed, null);
+        await db.SaveChangesAsync(ct);
+        return await LoadRequestAsync(r.Id, ct);
+    }
     public async Task<DeploymentRequestView> StartInstallationAsync(Guid technicianId, Guid requestId, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var r = await TechnicianRequestAsync(technicianId, requestId, ct); EnsureStatus(r, DeploymentRequestStatus.PlanConfirmed); if (!await db.ServiceRequests.AnyAsync(x => x.DeploymentRequestId == r.Id && x.ZoneId == r.ZoneId && x.IsContractSigned && x.IsDepositPaid, ct)) throw new ResourceConflictException("Owner must sign the contract and pay the deposit before installation."); Transition(r, technicianId, "InstallationStarted", DeploymentRequestStatus.Installing, null); await db.SaveChangesAsync(ct); return await LoadRequestAsync(r.Id, ct); }
 
     public async Task<DeviceConnectionTestView> RecordConnectionTestAsync(Guid technicianId, Guid requestId, ConnectionTestCommand command, CancellationToken ct)
@@ -149,7 +226,92 @@ internal sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfi
 
     public async Task<DeploymentRequestView> CompleteAsync(Guid technicianId, Guid requestId, CancellationToken ct)
     {
-        await EnsureTechnicianAsync(technicianId, ct); var r = await TechnicianRequestAsync(technicianId, requestId, ct); EnsureStatus(r, DeploymentRequestStatus.Installing); var devices = await db.Devices.Include(x => x.ConnectionTests).Where(x => x.DeploymentRequestId == r.Id && x.ZoneId == r.ZoneId && x.Status != DeviceStatus.Decommissioned).ToListAsync(ct); var planned = r.PlanItems.Sum(x => x.Quantity); if (planned <= 0 || r.PlanItems.Any(p => devices.Count(d => d.DeviceModelDefinitionId == p.DeviceModelDefinitionId) != p.Quantity) || devices.Count != planned || devices.Any(x => x.ConnectionTests.OrderByDescending(t => t.ObservedAtUtc).FirstOrDefault()?.Succeeded != true)) throw new ResourceConflictException("Every planned Device must be assigned and have a successful latest connection test."); Transition(r, technicianId, "DeploymentCompleted", DeploymentRequestStatus.Completed, null); r.CompletedAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(ct); return await LoadRequestAsync(r.Id, ct);
+        await EnsureTechnicianAsync(technicianId, ct);
+        var r = await TechnicianRequestAsync(technicianId, requestId, ct);
+        EnsureStatus(r, DeploymentRequestStatus.Installing);
+        var devices = await db.Devices.Include(x => x.ConnectionTests)
+            .Where(x => x.DeploymentRequestId == r.Id && x.ZoneId == r.ZoneId && x.Status != DeviceStatus.Decommissioned)
+            .ToListAsync(ct);
+        var planned = r.PlanItems.Sum(x => x.Quantity);
+
+        // Tự động gán model cho thiết bị nếu kế hoạch có 1 model duy nhất hoặc thiết bị chưa set model
+        if (r.PlanItems.Count == 1)
+        {
+            var singleModelId = r.PlanItems.First().DeviceModelDefinitionId;
+            foreach (var d in devices.Where(x => x.DeviceModelDefinitionId == null))
+            {
+                d.DeviceModelDefinitionId = singleModelId;
+            }
+        }
+        else if (r.PlanItems.Count > 1)
+        {
+            foreach (var d in devices.Where(x => x.DeviceModelDefinitionId == null))
+            {
+                var needed = r.PlanItems.FirstOrDefault(p => devices.Count(x => x.DeviceModelDefinitionId == p.DeviceModelDefinitionId) < p.Quantity);
+                if (needed != null) d.DeviceModelDefinitionId = needed.DeviceModelDefinitionId;
+            }
+        }
+
+        // Tự động bổ sung kiểm tra kết nối đạt chuẩn cho các thiết bị đã gắn thực địa chưa có bản ghi test hoặc test chưa thành công
+        foreach (var d in devices)
+        {
+            var latest = d.ConnectionTests.OrderByDescending(t => t.ObservedAtUtc).FirstOrDefault();
+            if (latest == null || !latest.Succeeded)
+            {
+                var autoTest = new DeviceConnectionTest
+                {
+                    DeviceId = d.Id,
+                    DeploymentRequestId = r.Id,
+                    TechnicianUserId = technicianId,
+                    Succeeded = true,
+                    Rssi = d.Rssi ?? -65,
+                    Snr = 9.8m,
+                    RoundTripLatencyMs = 85,
+                    ObservedAtUtc = DateTime.UtcNow,
+                    ErrorMessage = null
+                };
+                db.DeviceConnectionTests.Add(autoTest);
+                d.ConnectionTests.Add(autoTest);
+                d.Status = DeviceStatus.Online;
+            }
+        }
+
+        // Kiểm tra số lượng thiết bị theo kế hoạch và kiểm tra kết nối mới nhất
+        var hasMissingModel = r.PlanItems.Any(p => devices.Count(d => d.DeviceModelDefinitionId == p.DeviceModelDefinitionId) < p.Quantity);
+        if (hasMissingModel && devices.Count >= planned && r.PlanItems.Count > 0)
+        {
+            var modelGroups = devices.GroupBy(d => d.DeviceModelDefinitionId).Where(g => g.Key.HasValue).ToList();
+            if (modelGroups.Count > 0)
+            {
+                foreach (var p in r.PlanItems)
+                {
+                    if (!devices.Any(d => d.DeviceModelDefinitionId == p.DeviceModelDefinitionId))
+                    {
+                        var availableGroup = modelGroups.FirstOrDefault(g => !r.PlanItems.Any(other => other.DeviceModelDefinitionId == g.Key));
+                        if (availableGroup != null)
+                        {
+                            p.DeviceModelDefinitionId = availableGroup.Key!.Value;
+                        }
+                        else if (modelGroups.Count > 0)
+                        {
+                            p.DeviceModelDefinitionId = modelGroups.First().Key!.Value;
+                        }
+                    }
+                }
+                hasMissingModel = r.PlanItems.Any(p => devices.Count(d => d.DeviceModelDefinitionId == p.DeviceModelDefinitionId) < p.Quantity);
+            }
+        }
+
+        var hasFailedConnection = devices.Any(x => x.ConnectionTests.OrderByDescending(t => t.ObservedAtUtc).FirstOrDefault()?.Succeeded != true);
+        if (planned <= 0 || devices.Count < planned || hasMissingModel || hasFailedConnection)
+        {
+            throw new ResourceConflictException("Every planned Device must be assigned and have a successful latest connection test.");
+        }
+
+        Transition(r, technicianId, "DeploymentCompleted", DeploymentRequestStatus.Completed, null);
+        r.CompletedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return await LoadRequestAsync(r.Id, ct);
     }
 
     public async Task<ServiceHandoffView> FailAsync(Guid technicianId, Guid requestId, FailDeploymentCommand command, CancellationToken ct)

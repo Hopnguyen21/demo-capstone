@@ -17,7 +17,7 @@ public sealed record CancelServiceRequestRequest(string? Reason);
 public sealed record ServiceConnectionTestCommand(bool Succeeded, decimal? Rssi, decimal? Snr, int? RoundTripLatencyMs, DateTime ObservedAtUtc, string? ErrorCode, string? ErrorMessage);
 public sealed record ServiceHistoryView(Guid Id, ServiceHistoryEventType EventType, ServiceRequestStatus FromStatus, ServiceRequestStatus ToStatus, Guid ActorUserId, string? Notes, DateTime CreatedAtUtc);
 public sealed record DeviceReplacementView(Guid Id, Guid OldDeviceId, Guid NewDeviceId, Guid ZoneId, DateTime CreatedAtUtc);
-public sealed record ServiceRequestView(Guid Id, Guid TenantId, Guid FarmId, Guid ZoneId, Guid? OriginalDeviceId, Guid? CurrentDeviceId, string FailureCode, string Description, ServiceRequestStatus Status, Guid? AssignedTechnicianId, string? InspectionNotes, string? Diagnosis, ServiceResolutionAction? ResolutionAction, string? WorkPerformed, DateTime? ClosedAtUtc, IReadOnlyList<ServiceHistoryView> History, IReadOnlyList<DeviceReplacementView> Replacements, Guid DeploymentRequestId = default);
+public sealed record ServiceRequestView(Guid Id, Guid TenantId, Guid FarmId, Guid ZoneId, Guid? OriginalDeviceId, Guid? CurrentDeviceId, string FailureCode, string Description, ServiceRequestStatus Status, Guid? AssignedTechnicianId, string? InspectionNotes, string? Diagnosis, ServiceResolutionAction? ResolutionAction, string? WorkPerformed, DateTime? ClosedAtUtc, IReadOnlyList<ServiceHistoryView> History, IReadOnlyList<DeviceReplacementView> Replacements, Guid DeploymentRequestId = default, bool IsContractSigned = false, bool IsDepositPaid = false, bool IsAcceptanceSigned = false, bool IsFullyPaid = false);
 
 public interface IFinanceService
 {

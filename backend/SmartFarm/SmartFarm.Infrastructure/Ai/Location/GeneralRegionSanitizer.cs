@@ -32,6 +32,14 @@ public static class GeneralRegionSanitizer
         "Thừa Thiên Huế", "Huế", "Tiền Giang", "Trà Vinh", "Tuyên Quang", "Vĩnh Long", "Vĩnh Phúc", "Yên Bái"
     ];
 
+    // Danh mục đơn vị cấp huyện hay gặp nhưng thường viết trần, không kèm tiền tố hành chính ("Đà Lạt, Lâm Đồng").
+    // Chỉ tên có trong danh mục này mới được giữ; tên địa danh khác (phường, xã, tên riêng) vẫn bị loại.
+    private static readonly string[] RecognizedDistricts =
+    [
+        "Đà Lạt", "Bảo Lộc", "Đức Trọng", "Đơn Dương", "Lạc Dương", "Lâm Hà", "Di Linh", "Bảo Lâm",
+        "Đạ Huoai", "Đạ Tẻh", "Cát Tiên", "Đam Rông"
+    ];
+
     private static readonly Regex DistrictPrefixPattern = new(
         @"(?i)\b(quận|huyện|thị xã|thành phố|tp\.?|tx\.?)\b",
         RegexOptions.Compiled);
@@ -82,8 +90,9 @@ public static class GeneralRegionSanitizer
         {
             var precedingPart = parts[provinceIndex - 1];
             // Nếu có tiền tố hành chính (Quận, Huyện, Thị xã, Thành phố) hoặc tên địa danh cấp huyện phổ biến
-            // Chỉ giữ cấp quận/huyện khi có tiền tố hành chính rõ ràng; tên địa danh trần không được coi là an toàn.
-            if (DistrictPrefixPattern.IsMatch(precedingPart))
+            // Chỉ giữ cấp quận/huyện khi có tiền tố hành chính rõ ràng hoặc tên nằm trong danh mục cấp huyện; tên địa danh trần khác không được coi là an toàn.
+            if (DistrictPrefixPattern.IsMatch(precedingPart) ||
+                RecognizedDistricts.Any(d => precedingPart.Equals(d, StringComparison.OrdinalIgnoreCase)))
             {
                 return $"{precedingPart}, {matchedProvince}";
             }
