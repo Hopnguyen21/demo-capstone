@@ -116,7 +116,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
   useEffect(() => {
     alertService.getAlerts().then(res => {
       if (res) setAlerts(res);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const handleRoleSwitch = (targetRole: UserRole) => {
@@ -173,7 +173,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
           </div>
           <div>
             <span className="font-bold text-sm sm:text-base tracking-tight text-white flex items-center gap-1.5">
-              SmartFarm <span className="text-[9px] sm:text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#0e8046] text-white border border-white/30">AI Cloud</span>
+              SmartFarm
             </span>
             <p className="text-[10px] text-emerald-100/90 hidden sm:block">Nền tảng Nông nghiệp Thông minh</p>
           </div>
@@ -240,22 +240,20 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
                         setShowNotificationMenu(false);
                         if (n.targetUrl) navigate(n.targetUrl);
                       }}
-                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-all hover:shadow-sm ${
-                        n.isRead
-                          ? 'bg-slate-50/70 border-slate-200/60 opacity-80'
-                          : 'bg-emerald-50/40 border-emerald-200/90 font-medium'
-                      } hover:bg-emerald-50/80`}
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-all hover:shadow-sm ${n.isRead
+                        ? 'bg-slate-50/70 border-slate-200/60 opacity-80'
+                        : 'bg-emerald-50/40 border-emerald-200/90 font-medium'
+                        } hover:bg-emerald-50/80`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="font-semibold text-slate-900 text-[13px] leading-snug">{n.title}</span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 uppercase tracking-wider ${
-                            n.severity === 'Critical'
-                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                              : n.severity === 'Warning'
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 uppercase tracking-wider ${n.severity === 'Critical'
+                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                            : n.severity === 'Warning'
                               ? 'bg-amber-100 text-amber-700 border border-amber-200'
                               : 'bg-slate-100 text-slate-700 border border-slate-200'
-                          }`}
+                            }`}
                         >
                           {n.type}
                         </span>
