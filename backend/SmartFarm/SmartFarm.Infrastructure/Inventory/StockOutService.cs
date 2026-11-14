@@ -270,6 +270,8 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
                         throw new ResourceConflictException($"Không đủ tồn kho cho thiết bị '{hardware.Name}'. Tồn kho hiện tại: {hardware.QuantityInStock} cái, số lượng xuất: {detail.Quantity} cái.");
                     }
                     hardware.QuantityInStock -= (int)detail.Quantity;
+                    hardware.AssignedTechnicianId ??= stockOut.CreatedByUserId;
+                    hardware.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
                 }
             }
 

@@ -36,6 +36,38 @@ public static class StockOutAutomationHelper
             stockOutCode = $"{prefix}-{Random.Shared.Next(100, 999)}-{Guid.NewGuid().ToString("N")[..3].ToUpperInvariant()}";
         }
 
+        // Đảm bảo Kỹ thuật viên phụ trách luôn là tài khoản PlatformTechnician (tuyệt đối không gán cho FarmOwner)
+        AppUser? technician = null;
+        if (creatorUserId != Guid.Empty)
+        {
+            technician = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == creatorUserId && u.Role == UserRole.PlatformTechnician, ct);
+        }
+
+        // Nếu người truyền vào không phải là Technician (ví dụ truyền ownerId khi ký HĐ), tự động tra cứu KTV đã được gán cho Farm/Zone này
+        technician ??= await db.ServiceRequests
+            .Where(s => s.FarmId == farmId && s.AssignedTechnicianId != null)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .Select(s => s.AssignedTechnician)
+            .FirstOrDefaultAsync(ct);
+
+        // Fallback: Tìm Kỹ thuật viên bất kỳ trong hệ thống, hoặc Admin
+        technician ??= await db.AppUsers.FirstOrDefaultAsync(u => u.Role == UserRole.PlatformTechnician, ct)
+                       ?? await db.AppUsers.FirstOrDefaultAsync(u => u.Role == UserRole.PlatformAdmin, ct);
+
+        var techUserId = technician?.Id ?? Guid.Parse("20000000-0000-0000-0000-000000000004");
+        var techName = technician?.FullName ?? "Demo Technician";
+
+        // Tách bạch rõ Khách hàng (Owner/Lessee) và Kỹ thuật viên phụ trách
+        string noteDescription;
+        if (!string.IsNullOrWhiteSpace(technicianName) && !technicianName.Equals(techName, StringComparison.OrdinalIgnoreCase))
+        {
+            noteDescription = $"[Tự động tạo từ HĐ #{contractNumber}] Xuất thiết bị IoT cho trang trại (Khách hàng: {technicianName}). Kỹ thuật viên phụ trách: {techName}.";
+        }
+        else
+        {
+            noteDescription = $"[Tự động tạo từ HĐ #{contractNumber}] Xuất thiết bị IoT theo hợp đồng đã thanh toán cọc 30%. Phụ trách: {techName}.";
+        }
+
         var stockOut = new StockOut
         {
             TenantId = tenantId,
@@ -43,8 +75,8 @@ public static class StockOutAutomationHelper
             ZoneId = zoneId == Guid.Empty ? null : zoneId,
             StockOutCode = stockOutCode,
             Status = StockOutStatus.Pending, // Chờ duyệt xuất kho thiết bị
-            CreatedByUserId = creatorUserId,
-            Notes = $"[Tự động tạo từ HĐ #{contractNumber}] Xuất thiết bị IoT theo hợp đồng đã thanh toán cọc 30%. Phụ trách: {technicianName ?? "Kỹ thuật viên"}."
+            CreatedByUserId = techUserId, // Luôn luôn là Kỹ thuật viên
+            Notes = noteDescription
         };
 
         var allHardware = await db.PlatformHardwareItems.AsNoTracking().ToListAsync(ct);
