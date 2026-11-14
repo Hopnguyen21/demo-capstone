@@ -2507,6 +2507,50 @@ export const stockOutService = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// NEW MODULE: STOCK IN SERVICE (PHIẾU NHẬP KHO)
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const stockInService = {
+  /** GET /api/v1/farms/{farmId}/stock-ins */
+  getList: async (farmId: string, status?: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-ins`, {
+      params: status ? { status } : undefined,
+    });
+    return res.data;
+  },
+
+  /** GET /api/v1/farms/{farmId}/stock-ins/{id} */
+  getById: async (farmId: string, id: string) => {
+    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-ins/${id}`);
+    return res.data;
+  },
+
+  /** POST /api/v1/farms/{farmId}/stock-ins */
+  create: async (farmId: string, data: { supplierName?: string; notes?: string; details: { inventoryItemId: string; quantity: number; unitPrice?: number; notes?: string }[] }) => {
+    const res = await apiClient.post(`/api/v1/farms/${farmId}/stock-ins`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/farms/{farmId}/stock-ins/{id} */
+  update: async (farmId: string, id: string, data: { supplierName?: string; notes?: string; details: { inventoryItemId: string; quantity: number; unitPrice?: number; notes?: string }[] }) => {
+    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}`, data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/farms/{farmId}/stock-ins/{id}/status */
+  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => {
+    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}/status`, { status, notes });
+    return res.data;
+  },
+
+  /** DELETE /api/v1/farms/{farmId}/stock-ins/{id} */
+  delete: async (farmId: string, id: string) => {
+    const res = await apiClient.delete(`/api/v1/farms/${farmId}/stock-ins/${id}`);
+    return res.data;
+  },
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // NEW MODULE: BILL SERVICE (HÓA ĐƠN ĐỘC LẬP)
 // ═══════════════════════════════════════════════════════════════════════════════
