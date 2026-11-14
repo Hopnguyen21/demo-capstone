@@ -1,7 +1,8 @@
 import { ServiceRequestStatus, serviceStatusLabels } from '../../components/ui/ServiceRequestStatus';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
-import { supportService, deviceService } from '../../services';
+import { supportService, deviceService, extractApiError } from '../../services';
+import { useBusinessParameters, depositLabels, formatPercent, contractDepositPercent } from '../../services/businessParameters';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
 import { ExperimentReportModal, HardwareItem } from '../../components/control/ExperimentReportModal';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
@@ -13,6 +14,8 @@ import {
 } from 'lucide-react';
 
 export const ProvisioningPage: React.FC = () => {
+  const businessParams = useBusinessParameters();
+  const { deposit: depLabel } = depositLabels(businessParams);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deploymentRequests, setDeploymentRequests] = useState<any[]>([]);
@@ -67,8 +70,15 @@ export const ProvisioningPage: React.FC = () => {
       else if (status === 'accepted') await deviceService.surveyDeploymentRequest(id, { isFeasible: true, siteConditions: 'Khảo sát tại hiện trường', notes: 'Đủ điều kiện triển khai Gateway ngoài Zone và chấm Node trên GIS.' });
       else if (status === 'surveyed') await deviceService.confirmDeploymentRequest(id);
       else if (status === 'planconfirmed') await deviceService.startDeploymentInstallation(id);
+      else if (status === 'installing') {
+        if (!window.confirm('Hoàn tất lắp đặt? Sau đó Owner sẽ thấy mục nghiệm thu và thanh toán phần còn lại. Backend chỉ chấp nhận khi mọi thiết bị theo kế hoạch đã gán Zone và có kiểm tra kết nối thành công mới nhất.')) return;
+        await deviceService.completeDeploymentRequest(id);
+        setSuccessMsg('✅ Đã hoàn tất lắp đặt. Owner có thể ký nghiệm thu và thanh toán phần còn lại.');
+        setTimeout(() => setSuccessMsg(null), 5000);
+        await loadRequests();
+      }
       await refreshDeploymentRequests();
-    } catch (error: any) { alert(error?.response?.data?.message || error?.message || 'Không thể chuyển trạng thái Deployment.'); }
+    } catch (error: any) { alert(extractApiError(error) || 'Không thể chuyển trạng thái Deployment.'); }
   };
 
   useEffect(() => {
@@ -85,7 +95,7 @@ export const ProvisioningPage: React.FC = () => {
       if (!zoneId || req?.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
       await supportService.updateMappedNodes(zoneId, nodes, requestId, req?.deploymentRequestId);
       await loadRequests();
-      setSuccessMsg(`✅ Đã cập nhật biểu đồ GIS và lưu thành công ${mappedCount} Nodes cho Phân khu! Vui lòng báo Owner ký Biên bản Nghiệm thu & 70% còn lại.`);
+      setSuccessMsg(`✅ Đã cập nhật biểu đồ GIS và lưu thành công ${mappedCount} Nodes cho Phân khu! Vui lòng báo Owner ký Biên bản Nghiệm thu & ${depositLabels(businessParams).remaining} còn lại.`);
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to update mapped nodes:', err);
@@ -95,7 +105,7 @@ export const ProvisioningPage: React.FC = () => {
 
   const handleSendContractSuccess = async () => {
     await loadRequests();
-    setSuccessMsg('📩 Đã gửi Báo giá & Hợp đồng thành công! Vui lòng chờ Owner Ký Hợp đồng & Thanh toán 30% tiền cọc.');
+    setSuccessMsg('📩 Đã gửi Báo giá & Hợp đồng thành công! Vui lòng chờ Owner Ký Hợp đồng & Thanh toán ' + depLabel + ' tiền cọc.');
     setTimeout(() => setSuccessMsg(null), 5000);
   };
 
@@ -150,7 +160,7 @@ export const ProvisioningPage: React.FC = () => {
             Quản lý Báo giá, Hợp đồng & Chấm vị trí Node Thực địa
           </h1>
           <p className="text-xs text-emerald-100 mt-1">
-            Kỹ thuật viên lập Báo giá & Hợp đồng gửi Owner &rarr; Sau khi Owner Ký & Thanh toán 30% Cọc &rarr; Kỹ thuật viên tiến hành Vào Zone Chấm Node.
+            Kỹ thuật viên lập Báo giá & Hợp đồng gửi Owner &rarr; Sau khi Owner Ký & Thanh toán {depLabel} Cọc &rarr; Kỹ thuật viên tiến hành Vào Zone Chấm Node.
           </p>
         </div>
 
@@ -165,7 +175,7 @@ export const ProvisioningPage: React.FC = () => {
 
       {false && <section className="p-4 bg-slate-900 text-white rounded-2xl border border-emerald-500/30 shadow-md space-y-3">
         <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-sm">Luồng Deployment IoT chuẩn</h2><p className="text-[11px] text-slate-300">Đây là nơi chuyển request sang Installing trước khi provision Gateway.</p></div><Button size="sm" variant="outline" onClick={refreshDeploymentRequests} className="text-white border-slate-500">Làm mới</Button></div>
-        {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-slate-800 border border-slate-700"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-slate-300">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-slate-700 text-xs font-bold">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
+        {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : lower === 'installing' ? 'Hoàn tất lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-slate-800 border border-slate-700"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-slate-300">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-slate-700 text-xs font-bold">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
       </section>}
 
 
@@ -272,6 +282,7 @@ export const ProvisioningPage: React.FC = () => {
           filteredRequests.map(req => {
             const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
             const contract = req.contractDetails;
+            const depLabel = `${formatPercent(contractDepositPercent(contract, businessParams.depositPercent))}%`;
             const is30Paid = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || (req.isContractSigned && req.isDepositPaid));
             const isAccepted = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
             const isCompleted = req.status === 'RESOLVED' || req.status === 'CLOSED';
@@ -302,11 +313,11 @@ export const ProvisioningPage: React.FC = () => {
                       {isInstallation && (
                         is30Paid ? (
                           <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1">
-                            <CheckCircle2 size={12} /> ĐÃ THANH TOÁN 30% CỌC
+                            <CheckCircle2 size={12} /> ĐÃ THANH TOÁN {depLabel} CỌC
                           </span>
                         ) : contract?.isContractSent ? (
                           <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300 animate-pulse">
-                            ⏳ Đã gửi HĐ • Chờ Owner cọc 30%
+                            ⏳ Đã gửi HĐ • Chờ Owner cọc {depLabel}
                           </span>
                         ) : (
                           <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px]">
@@ -405,18 +416,18 @@ export const ProvisioningPage: React.FC = () => {
                             📄 Hợp đồng {contract.contractId} ({contract.items?.length || 0} thiết bị)
                           </span>
                           <span className="text-[11px] text-slate-600">
-                            Tổng HĐ: <strong>{contract.totalAmount.toLocaleString('vi-VN')}đ</strong> • Cọc 30%: <strong>{contract.deposit30Percent.toLocaleString('vi-VN')}đ</strong>
+                            Tổng HĐ: <strong>{contract.totalAmount.toLocaleString('vi-VN')}đ</strong> • Cọc {depLabel}: <strong>{contract.deposit30Percent.toLocaleString('vi-VN')}đ</strong>
                           </span>
                         </div>
 
                         <div className="shrink-0">
                           {is30Paid ? (
                             <span className="px-2.5 py-1 rounded bg-emerald-600 text-white font-bold text-[11px] flex items-center gap-1">
-                              <CheckCircle2 size={13} /> Owner Đã Ký & Cọc 30% (Khóa Sửa)
+                              <CheckCircle2 size={13} /> Owner Đã Ký & Cọc {depLabel} (Khóa Sửa)
                             </span>
                           ) : (
                             <span className="px-2.5 py-1 rounded bg-amber-200 text-amber-950 font-bold text-[11px] flex items-center gap-1">
-                              <Lock size={13} /> Chờ Owner Ký & Thanh toán 30%
+                              <Lock size={13} /> Chờ Owner Ký & Thanh toán {depLabel}
                             </span>
                           )}
                         </div>
@@ -430,7 +441,7 @@ export const ProvisioningPage: React.FC = () => {
                         <div>
                           <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa Kỹ thuật</span>
                           <span className="text-white font-semibold">
-                            {is30Paid ? 'Hợp đồng đã ký & cọc (Không thể sửa) • Tiến hành Vào Zone Chấm Node' : 'Cần gửi Báo giá Hợp đồng & cọc 30% trước khi chấm Node'}
+                            {is30Paid ? 'Hợp đồng đã ký & cọc (Không thể sửa) • Tiến hành Vào Zone Chấm Node' : 'Cần gửi Báo giá Hợp đồng & cọc ' + depLabel + ' trước khi chấm Node'}
                           </span>
                         </div>
                       </div>
@@ -442,7 +453,7 @@ export const ProvisioningPage: React.FC = () => {
                             <Button
                               onClick={() => setSelectedRequestForExperiment(req)}
                               className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center gap-1.5 shadow-sm border border-slate-600"
-                              title="Hợp đồng đã được ký kết & đặt cọc 30%. Xem chi tiết (Chỉ đọc, không thể sửa)"
+                              title={`Hợp đồng đã được ký kết & đặt cọc ${depLabel}. Xem chi tiết (Chỉ đọc, không thể sửa)`}
                             >
                               <Lock size={14} className="text-amber-400" />
                               <span>Xem Hợp đồng (Đã khóa)</span>
@@ -486,12 +497,23 @@ export const ProvisioningPage: React.FC = () => {
                           <div className="relative group">
                             <span className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 text-[11px] font-semibold border border-amber-500/20 flex items-center gap-1">
                               <Lock size={12} className="text-amber-400" />
-                              <span>Chờ Cọc 30% để Nghiệm thu</span>
+                              <span>Chờ Cọc {depLabel} để Nghiệm thu</span>
                             </span>
                             <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-64 p-2.5 bg-slate-800 text-amber-300 text-[11px] rounded-xl shadow-xl border border-slate-700 z-20">
-                              🔒 Bạn vẫn có thể bấm "Sửa Biểu đồ GIS" để phác thảo và định vị node. Sau khi Owner cọc 30%, công trình sẽ chuyển sang giai đoạn thi công thực địa.
+                              🔒 Bạn vẫn có thể bấm "Sửa Biểu đồ GIS" để phác thảo và định vị node. Sau khi Owner cọc {depLabel}, công trình sẽ chuyển sang giai đoạn thi công thực địa.
                             </div>
                           </div>
+                        )}
+
+                        {/* BUTTON 2C: HOÀN TẤT LẮP ĐẶT (đã cọc + triển khai đang lắp đặt) → mở mục nghiệm thu cho Owner */}
+                        {isInstallation && is30Paid && req.deploymentStatus === 'Installing' && req.deploymentRequestId && (
+                          <Button
+                            onClick={() => advanceDeployment({ requestId: req.deploymentRequestId, status: 'Installing' })}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm"
+                          >
+                            <CheckCircle2 size={15} />
+                            <span>Hoàn tất lắp đặt</span>
+                          </Button>
                         )}
 
                         {/* BUTTON 3: XÁC NHẬN HOÀN THÀNH */}

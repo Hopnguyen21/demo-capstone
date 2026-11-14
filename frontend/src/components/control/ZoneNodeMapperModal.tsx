@@ -8,8 +8,9 @@ import {
   Sparkles, Check, Droplets, BatteryCharging, Wifi
 } from 'lucide-react';
 import { Button, Modal } from '../ui/BaseUI';
-import { supportService, zoneService, fieldService, deviceService, telemetryService } from '../../services';
+import { supportService, zoneService, fieldService, deviceService, telemetryService, extractApiError } from '../../services';
 import { extractPolygonPoints, calculatePolygonAreaM2, toGeoJsonPolygon } from '../maps/GISLocationPicker';
+import { useAuth } from '../../app/providers/AuthContext';
 
 interface ZoneNodeMapperModalProps {
   isOpen: boolean;
@@ -400,6 +401,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   onSaveMapping,
   selectedHardwareItems,
 }) => {
+  // Chỉ chủ trang trại được sửa ranh giới Zone (PUT /zones/{id} là API của FarmOwner); kỹ thuật viên chỉ lưu vị trí Node.
+  const { role: authRole } = useAuth();
+  const canEditZoneBoundary = authRole === 'FARM_OWNER';
   // Center of Zone
   const [center, setCenter] = useState<[number, number]>([11.9404, 108.4583]);
   const [mapType, setMapType] = useState<'osm' | 'street' | 'satellite'>('osm');
@@ -1104,7 +1108,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       if (!zoneId || request.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
 
       // 1. If polygon was adjusted, save updated boundary to Zone entity
-      if (zonePolygon.length >= 3 && zoneId && currentZoneData) {
+      if (canEditZoneBoundary && zonePolygon.length >= 3 && zoneId && currentZoneData) {
         try {
           const geoJson = toGeoJsonPolygon(zonePolygon);
           const computedArea = Math.max(1, Math.round(calculatePolygonAreaM2(zonePolygon) || Number(currentZoneData.areaM2) || 100));
@@ -1115,7 +1119,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           });
         } catch (zErr) {
           console.warn('Could not update zone GIS boundary:', zErr);
-          throw zErr;
+          // Ranh giới Zone là việc của chủ trang trại: 403/404 thì bỏ qua và vẫn lưu vị trí Node; lỗi khác mới dừng.
+          const st = (zErr as any)?.response?.status;
+          if (st !== 403 && st !== 404) throw zErr;
         }
       }
 
@@ -1129,7 +1135,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error saving mapping:', err);
-      alert('Lỗi lưu sơ đồ GIS: ' + (err?.response?.data?.message || err?.message || 'Vui lòng thử lại.'));
+      const status = err?.response?.status ? ' (HTTP ' + err.response.status + ')' : '';
+      alert('Lỗi lưu sơ đồ GIS' + status + ': ' + (extractApiError(err) || 'Vui lòng thử lại.'));
     } finally {
       setIsSaving(false);
     }

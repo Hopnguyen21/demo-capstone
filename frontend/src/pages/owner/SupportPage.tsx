@@ -1,4 +1,5 @@
 import { ServiceRequestStatus, serviceStatusLabels, deploymentLabels } from '../../components/ui/ServiceRequestStatus';
+import { useBusinessParameters, contractDepositPercent } from '../../services/businessParameters';
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest, ZoneContract } from '../../types';
@@ -14,6 +15,7 @@ import {
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
 export const SupportPage: React.FC = () => {
+  const bp = useBusinessParameters(); const depositPct = bp.depositPercent;
   const navigate = useNavigate();
   const location = useLocation();
   const { farms, zones, user } = useAuth();
@@ -127,6 +129,7 @@ export const SupportPage: React.FC = () => {
 
   // State for Payment Success Screen / Receipt Modal
   interface PaymentSuccessModalData {
+    depositPercent?: number;
     stage: 'DEPOSIT_30' | 'FINAL_70';
     requestId: string;
     title: string;
@@ -162,6 +165,9 @@ export const SupportPage: React.FC = () => {
     priority: 'HIGH' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
   });
 
+  // Tỷ lệ cọc của CHÍNH hợp đồng của yêu cầu này (đã chốt khi Owner xem/ký), không theo cấu hình hiện hành.
+  const depositPctOf = (requestId: string) => contractDepositPercent(requests.find(r => r.serviceRequestId === requestId)?.contractDetails, bp.depositPercent);
+
   const handleSignContractAndPay30 = async (requestId: string) => {
     const signature = ownerSignatures[requestId] || defaultSignatureName;
     const method = paymentMethods30[requestId] || 'BANK_TRANSFER';
@@ -169,7 +175,7 @@ export const SupportPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      const paymentRes = await supportService.signContractAndPay30(requestId, signature, method);
+      const paymentRes = await supportService.signContractAndPay30(requestId, signature, method, requests.find(r => r.serviceRequestId === requestId)?.contractDetails?.deposit30Percent);
       const req = requests.find(r => r.serviceRequestId === requestId);
       const amount = paymentRes?.amount || req?.contractDetails?.deposit30Percent || 0;
 
@@ -177,7 +183,8 @@ export const SupportPage: React.FC = () => {
       setPaymentSuccessData({
         stage: 'DEPOSIT_30',
         requestId,
-        title: 'KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG',
+        title: `KÝ HỢP ĐỒNG & THANH TOÁN ${depositPctOf(requestId)}% TẠM ỨNG THÀNH CÔNG`,
+        depositPercent: depositPctOf(requestId),
         amount,
         paymentMethod: paymentRes?.paymentMethod || method,
         signerFullName: paymentRes?.signerFullName || signature,
@@ -185,11 +192,11 @@ export const SupportPage: React.FC = () => {
         paidAt: paymentRes?.paidAtUtc || new Date().toISOString(),
         status: paymentRes?.status || 'Confirmed',
         contractTotal: req?.contractDetails?.totalAmount,
-        notes: 'Hệ thống SmartFarm đã ghi nhận thanh toán tạm ứng 30% và Hợp đồng đã có hiệu lực. Nút Ký hợp đồng & Thanh toán đã được KHÓA. Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).',
+        notes: `Hệ thống SmartFarm đã ghi nhận thanh toán tạm ứng ${depositPctOf(requestId)}% và Hợp đồng đã có hiệu lực. Nút Ký hợp đồng & Thanh toán đã được KHÓA. Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).`,
       });
 
       await loadRequests();
-      setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG!');
+      setSuccessMsg(`🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN ${depositPctOf(requestId)}% TẠM ỨNG THÀNH CÔNG!`);
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to sign contract deposit:', err);
@@ -221,7 +228,8 @@ export const SupportPage: React.FC = () => {
       setPaymentSuccessData({
         stage: 'FINAL_70',
         requestId,
-        title: 'NGHIỆM THU BÀN GIAO & QUYẾT TOÁN 70% THÀNH CÔNG',
+        title: `NGHIỆM THU BÀN GIAO & QUYẾT TOÁN ${100 - depositPctOf(requestId)}% THÀNH CÔNG`,
+        depositPercent: depositPctOf(requestId),
         amount,
         paymentMethod: paymentRes?.paymentMethod || method,
         signerFullName: paymentRes?.signerFullName || signature,
@@ -233,7 +241,7 @@ export const SupportPage: React.FC = () => {
       });
 
       await loadRequests();
-      setSuccessMsg('✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN 70% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.');
+      setSuccessMsg(`✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN ${100 - depositPctOf(requestId)}% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.`);
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to sign acceptance:', err);
@@ -302,7 +310,7 @@ export const SupportPage: React.FC = () => {
             Quản lý Yêu cầu Dịch vụ, Ký Hợp đồng & Nghiệm thu (Owner Portal)
           </h1>
           <p className="text-xs text-emerald-100 mt-1">
-            Chủ trang trại nhận Hợp đồng báo giá, ký tên & cọc 30% tiền mặt/chuyển khoản để cho phép Kỹ thuật viên chấm Node, sau đó ký Nghiệm thu và thanh toán 70% còn lại.
+            Chủ trang trại nhận Hợp đồng báo giá, ký tên & cọc {depositPct}% tiền mặt/chuyển khoản để cho phép Kỹ thuật viên chấm Node, sau đó ký Nghiệm thu và thanh toán {100 - depositPct}% còn lại.
           </p>
         </div>
 
@@ -466,6 +474,8 @@ export const SupportPage: React.FC = () => {
               filteredRequests.map(req => {
                 const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
                 const contract = req.contractDetails;
+                // Tỷ lệ cọc của CHÍNH hợp đồng này (đã chốt khi cọc); cấu hình Platform đổi sau đó không làm đổi hợp đồng đã cọc.
+                const cardDepositPct = contractDepositPercent(contract, bp.depositPercent);
                 const isContractSigned = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || req.isContractSigned || req.isDepositPaid || req.isFullyPaid);
                 const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER');
                 const isCompleted = Boolean(
@@ -538,11 +548,11 @@ export const SupportPage: React.FC = () => {
 
                           {isContractSigned ? (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center gap-1">
-                              <CheckCircle2 size={12} /> ĐÃ KÝ HĐ & CỌC 30%
+                              <CheckCircle2 size={12} /> ĐÃ KÝ HĐ & CỌC {cardDepositPct}%
                             </span>
                           ) : (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300 animate-pulse">
-                              ⏳ Chờ Ký HĐ & Cọc 30%
+                              ⏳ Chờ Ký HĐ & Cọc {cardDepositPct}%
                             </span>
                           )}
 
@@ -688,7 +698,7 @@ export const SupportPage: React.FC = () => {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h4 className="font-bold text-amber-950 flex items-center gap-2 text-xs uppercase tracking-wider">
                       <FileText size={16} className="text-amber-700" />
-                      1. Hợp đồng Báo giá Thiết bị & Thanh toán Tạm ứng 30%
+                      1. Hợp đồng Báo giá Thiết bị & Thanh toán Tạm ứng {cardDepositPct}%
                     </h4>
                     <div className="flex items-center gap-2">
                       <button
@@ -712,11 +722,11 @@ export const SupportPage: React.FC = () => {
                       </button>
                       {isContractSigned ? (
                         <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1">
-                          <CheckCircle2 size={12} /> Đã Ký & Thanh toán 30%
+                          <CheckCircle2 size={12} /> Đã Ký & Thanh toán {cardDepositPct}%
                         </span>
                       ) : (
                         <span className="px-2.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[10px]">
-                          Cần Owner Ký tên & Cọc 30%
+                          Cần Owner Ký tên & Cọc {cardDepositPct}%
                         </span>
                       )}
                     </div>
@@ -772,7 +782,7 @@ export const SupportPage: React.FC = () => {
                           <strong className="font-mono text-slate-900">{contract.totalAmount.toLocaleString('vi-VN')} VNĐ</strong>
                         </div>
                         <div className="flex justify-between font-bold text-amber-900 text-sm pt-1 border-t border-slate-100">
-                          <span>SỐ TIỀN TẠM ỨNG 30% CẦN THANH TOÁN TẠI ĐÂY:</span>
+                          <span>SỐ TIỀN TẠM ỨNG {cardDepositPct}% CẦN THANH TOÁN TẠI ĐÂY:</span>
                           <span className="font-mono text-amber-900 text-base">{contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ</span>
                         </div>
                       </div>
@@ -782,7 +792,7 @@ export const SupportPage: React.FC = () => {
                         <div className="p-3.5 bg-white border-2 border-amber-400 rounded-xl space-y-3 shadow-xs">
                           <h5 className="font-bold text-amber-950 flex items-center gap-1.5 text-xs">
                             <ShieldCheck size={16} className="text-amber-600" />
-                            Xác nhận Ký Hợp đồng & Thanh toán 30% Tạm ứng ({contract.deposit30Percent.toLocaleString('vi-VN')}đ)
+                            Xác nhận Ký Hợp đồng & Thanh toán {cardDepositPct}% Tạm ứng ({contract.deposit30Percent.toLocaleString('vi-VN')}đ)
                           </h5>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -796,7 +806,7 @@ export const SupportPage: React.FC = () => {
                             </div>
 
                             <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán 30% Cọc *</label>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán {cardDepositPct}% Cọc *</label>
                               <div className="flex gap-2">
                                 <button
                                   type="button"
@@ -853,10 +863,10 @@ export const SupportPage: React.FC = () => {
                             </div>
 
                             <div className="p-2.5 bg-white border border-amber-200 rounded-lg text-[11px] text-slate-600 space-y-1.5 max-h-32 overflow-y-auto leading-relaxed shadow-2xs">
-                              <p>• <strong>Điều 1 (Tạm ứng & Triển khai):</strong> Bên A đồng ý thanh toán tạm ứng 30% giá trị hợp đồng để Bên B tiến hành xuất kho thiết bị, điều động nhân sự kỹ thuật và tiến hành lắp đặt trên thực địa phân khu.</p>
-                              <p>• <strong>Điều 2 (Nghiệm thu & Quyết toán):</strong> Sau khi Bên B thi công hoàn tất, đo kiểm kết nối vi khí hậu đạt chuẩn và bàn giao thực địa, Bên A sẽ ký biên bản nghiệm thu và thanh toán 70% còn lại trong vòng 03 ngày làm việc.</p>
+                              <p>• <strong>Điều 1 (Tạm ứng & Triển khai):</strong> Bên A đồng ý thanh toán tạm ứng {cardDepositPct}% giá trị hợp đồng để Bên B tiến hành xuất kho thiết bị, điều động nhân sự kỹ thuật và tiến hành lắp đặt trên thực địa phân khu.</p>
+                              <p>• <strong>Điều 2 (Nghiệm thu & Quyết toán):</strong> Sau khi Bên B thi công hoàn tất, đo kiểm kết nối vi khí hậu đạt chuẩn và bàn giao thực địa, Bên A sẽ ký biên bản nghiệm thu và thanh toán {100 - cardDepositPct}% còn lại trong vòng 03 ngày làm việc.</p>
                               <p>• <strong>Điều 3 (Bảo hành & Bảo dưỡng):</strong> Toàn bộ cảm biến, trạm node và thiết bị điều khiển tự động được bảo hành chính hãng 12 tháng, bảo dưỡng định kỳ và hỗ trợ kỹ thuật 24/7 theo tiêu chuẩn SmartFarm.</p>
-                              <p>• <strong>Điều 4 (Kích hoạt số hóa phân khu):</strong> Phân khu sẽ được kích hoạt quyền quản lý hợp đồng chính thức, mở khóa bản đồ GIS và điều khiển tự động ngay khi khoản cọc 30% được xác nhận.</p>
+                              <p>• <strong>Điều 4 (Kích hoạt số hóa phân khu):</strong> Phân khu sẽ được kích hoạt quyền quản lý hợp đồng chính thức, mở khóa bản đồ GIS và điều khiển tự động ngay khi khoản cọc {cardDepositPct}% được xác nhận.</p>
                             </div>
 
                             <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
@@ -870,7 +880,7 @@ export const SupportPage: React.FC = () => {
                                 className="mt-0.5 w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500 cursor-pointer shrink-0"
                               />
                               <span className="text-[11px] text-slate-800 font-semibold leading-snug">
-                                Tôi đã đọc, hiểu rõ và <span className="text-amber-900 font-bold underline">đồng ý với toàn bộ các điều khoản hợp đồng nêu trên</span>, đồng thời cam kết thanh toán tạm ứng 30% để tiến hành triển khai.
+                                Tôi đã đọc, hiểu rõ và <span className="text-amber-900 font-bold underline">đồng ý với toàn bộ các điều khoản hợp đồng nêu trên</span>, đồng thời cam kết thanh toán tạm ứng {cardDepositPct}% để tiến hành triển khai.
                               </span>
                             </label>
                           </div>
@@ -888,12 +898,12 @@ export const SupportPage: React.FC = () => {
                             {isProcessingId === req.serviceRequestId ? (
                               <>
                                 <Loader2 size={16} className="animate-spin" />
-                                Đang xác thực Ký HĐ & Ghi nhận Cọc 30% qua API...
+                                Đang xác thực Ký HĐ & Ghi nhận Cọc {cardDepositPct}% qua API...
                               </>
                             ) : (
                               <>
                                 <CheckSquare size={16} />
-                                KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC ({contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ)
+                                KÝ HỢP ĐỒNG & THANH TOÁN {cardDepositPct}% CỌC ({contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ)
                               </>
                             )}
                           </Button>
@@ -909,7 +919,7 @@ export const SupportPage: React.FC = () => {
                           <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-200 pb-2">
                             <span className="flex items-center gap-2 text-sm text-emerald-800">
                               <CheckCircle2 size={18} className="text-emerald-600" />
-                              ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC THÀNH CÔNG
+                              ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN {cardDepositPct}% CỌC THÀNH CÔNG
                             </span>
                             <span className="text-[11px] bg-emerald-200 text-emerald-950 px-2.5 py-1 rounded-full font-mono font-bold flex items-center gap-1">
                               <Lock size={12} /> Đã khóa thao tác
@@ -922,7 +932,7 @@ export const SupportPage: React.FC = () => {
                               <strong>{contract.ownerSignatureName || defaultSignatureName}</strong>
                             </div>
                             <div>
-                              <span className="text-slate-500 block">Số tiền tạm ứng 30%:</span>
+                              <span className="text-slate-500 block">Số tiền tạm ứng {cardDepositPct}%:</span>
                               <strong className="text-emerald-700 font-mono text-xs">{contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ</strong>
                             </div>
                             <div>
@@ -940,10 +950,10 @@ export const SupportPage: React.FC = () => {
                             type="button"
                             disabled={true}
                             className="w-full bg-slate-100 text-slate-400 font-bold py-2.5 px-4 rounded-xl border border-slate-300 text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-90 shadow-2xs"
-                            title="Hợp đồng đã được ký và thanh toán 30% cọc thành công. Nút này đã bị khóa."
+                            title={`Hợp đồng đã được ký và thanh toán ${cardDepositPct}% cọc thành công. Nút này đã bị khóa.`}
                           >
                             <Lock size={15} className="text-slate-400" />
-                            ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC (NÚT ĐÃ KHÓA HOÀN TOÀN)
+                            ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN {cardDepositPct}% CỌC (NÚT ĐÃ KHÓA HOÀN TOÀN)
                           </button>
 
                           <p className="text-[11px] text-emerald-900 font-semibold pt-0.5 flex items-center justify-between gap-2 flex-wrap">
@@ -986,7 +996,7 @@ export const SupportPage: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-emerald-950 flex items-center gap-2 text-xs uppercase tracking-wider">
                       <CheckSquare size={16} className="text-emerald-700" />
-                      2. Biên bản Nghiệm thu Công trình & Thanh toán 70% còn lại
+                      2. Biên bản Nghiệm thu Công trình & Thanh toán {100 - cardDepositPct}% còn lại
                     </h4>
                     {isAcceptanceDone ? (
                       <span className="px-2.5 py-0.5 rounded bg-emerald-700 text-white font-bold text-[10px]">
@@ -1001,7 +1011,7 @@ export const SupportPage: React.FC = () => {
 
                   {!isContractSigned ? (
                     <div className="p-3 bg-slate-100 text-slate-500 rounded-xl text-center italic text-xs">
-                      🔒 Bước này bị khóa. Cần ký Hợp đồng & thanh toán 30% cọc tại Bước 1 trước khi nghiệm thu.
+                      🔒 Bước này bị khóa. Cần ký Hợp đồng & thanh toán {cardDepositPct}% cọc tại Bước 1 trước khi nghiệm thu.
                     </div>
                   ) : !isAcceptanceDone ? (
                     <div className="p-3.5 bg-white border-2 border-emerald-400 rounded-xl space-y-3 shadow-xs text-xs">
@@ -1013,7 +1023,7 @@ export const SupportPage: React.FC = () => {
                       </div>
 
                       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between font-bold text-slate-900">
-                        <span>SỐ TIỀN 70% CÒN LẠI CẦN THANH TOÁN KHI NGHIỆM THU:</span>
+                        <span>SỐ TIỀN {100 - cardDepositPct}% CÒN LẠI CẦN THANH TOÁN KHI NGHIỆM THU:</span>
                         <span className="font-mono text-emerald-950 text-sm">
                           {(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ
                         </span>
@@ -1030,7 +1040,7 @@ export const SupportPage: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán 70% còn lại *</label>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán {100 - cardDepositPct}% còn lại *</label>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -1080,12 +1090,12 @@ export const SupportPage: React.FC = () => {
                         {isProcessingId === req.serviceRequestId ? (
                           <>
                             <Loader2 size={16} className="animate-spin" />
-                            Đang xác nhận Ký Nghiệm thu & Ghi nhận 70% qua API...
+                            Đang xác nhận Ký Nghiệm thu & Ghi nhận {100 - cardDepositPct}% qua API...
                           </>
                         ) : (
                           <>
                             <CheckSquare size={16} />
-                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN 70% CÒN LẠI ({(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ)
+                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN {100 - cardDepositPct}% CÒN LẠI ({(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ)
                           </>
                         )}
                       </Button>
@@ -1107,7 +1117,7 @@ export const SupportPage: React.FC = () => {
                           <strong>{req.acceptanceDetails?.ownerSignatureName || defaultSignatureName}</strong>
                         </div>
                         <div>
-                          <span className="text-slate-500 block">Số tiền thanh toán 70%:</span>
+                          <span className="text-slate-500 block">Số tiền thanh toán {100 - cardDepositPct}%:</span>
                           <strong className="text-emerald-700 font-mono text-xs">{(contract?.remaining70Percent || 0).toLocaleString('vi-VN')} VNĐ</strong>
                         </div>
                         <div>
@@ -1318,8 +1328,8 @@ export const SupportPage: React.FC = () => {
               </div>
               <span className="text-[10px] text-emerald-700 mt-1 inline-block font-medium">
                 {paymentSuccessData.stage === 'DEPOSIT_30'
-                  ? 'Giai đoạn: Tạm ứng 30% Hợp đồng triển khai'
-                  : 'Giai đoạn: Quyết toán 70% Bàn giao nghiệm thu'}
+                  ? `Giai đoạn: Tạm ứng ${paymentSuccessData.depositPercent ?? depositPct}% Hợp đồng triển khai`
+                  : `Giai đoạn: Quyết toán ${100 - (paymentSuccessData.depositPercent ?? depositPct)}% Bàn giao nghiệm thu`}
               </span>
             </div>
 

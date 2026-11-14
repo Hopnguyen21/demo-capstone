@@ -2,6 +2,7 @@
 // Replaces all mock data imports from ./mocks/mockData
 
 import { apiClient, setTokens, clearTokens, extractApiError } from './api';
+import { getCachedBusinessParameters, formatPercent, contractDepositPercent } from './businessParameters';
 import type {
   ServiceRequest,
   FarmingSeason,
@@ -1687,8 +1688,8 @@ export const supportService = {
               subtotal: q.subtotal || 0,
               vatTotal: q.vatAmount || 0,
               totalAmount: q.totalAmount || 0,
-              deposit30Percent: q.deposit30Percent || Math.round((q.totalAmount || 0) * 0.3),
-              remaining70Percent: q.remaining70Percent || Math.round((q.totalAmount || 0) * 0.7),
+              deposit30Percent: q.deposit30Percent || Math.round((q.totalAmount || 0) * getCachedBusinessParameters().depositPercent / 100),
+              remaining70Percent: q.remaining70Percent || Math.round((q.totalAmount || 0) * (100 - getCachedBusinessParameters().depositPercent) / 100),
               isContractSent: q.status !== 'Draft',
               contractSentAt: q.createdAtUtc,
               isSignedByOwner: isSigned,
@@ -1968,11 +1969,12 @@ export const supportService = {
   },
 
   /** POST /api/v1/service-requests/{requestId}/sign-contract-deposit */
-  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER') => {
+  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER', expectedDepositAmount?: number) => {
     const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-contract-deposit`, {
       signerFullName,
       paymentMethod,
-      transactionReference: `PAY30-${Date.now()}`
+      transactionReference: `PAY30-${Date.now()}`,
+      ...(expectedDepositAmount != null ? { expectedDepositAmount } : {})
     });
     return res.data;
   },
@@ -2220,7 +2222,7 @@ export const zoneContractService = {
                 durationMonths: 12,
                 daysRemaining: daysRemaining,
                 status: c.isSignedByOwner ? 'Active' : 'ExpiringSoon',
-                statusText: c.isSignedByOwner ? 'Còn hiệu lực (Đã cọc 30%)' : 'Chờ Ký Duyệt & Cọc 30%',
+                statusText: c.isSignedByOwner ? `Còn hiệu lực (Đã cọc ${formatPercent(contractDepositPercent(c, getCachedBusinessParameters().depositPercent))}%)` : `Chờ Ký Duyệt & Cọc ${formatPercent(contractDepositPercent(c, getCachedBusinessParameters().depositPercent))}%`,
                 lesseeName: c.ownerSignatureName || 'Lê Văn An (Chủ Trang Trại)',
                 lesseePhone: '0903666888',
                 lesseeAddress: 'Trang trại thông minh SmartFarm',

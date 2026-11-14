@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useBusinessParameters } from '../../services/businessParameters';
 import { Modal, Button, Input } from '../ui/BaseUI';
 import { ServiceRequest, QuotationItem } from '../../types';
 import { supportService, adminService } from '../../services';
@@ -33,6 +34,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   request,
   onSendContractSuccess,
 }) => {
+  const bp = useBusinessParameters(); const depositPct = bp.depositPercent;
   // Default quotation items matching Image 2 table layout!
   const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([
     {
@@ -275,7 +277,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   const grandTotalBeforeDiscount = subtotal + vatTotal;
   const discountAmount = applyRepeatDiscount ? Math.round(grandTotalBeforeDiscount * (repeatDiscountPercent / 100)) : 0;
   const grandTotal = Math.max(0, grandTotalBeforeDiscount - discountAmount);
-  const deposit30 = Math.round(grandTotal * 0.3);
+  const deposit30 = Math.round(grandTotal * depositPct / 100);
   const remaining70 = grandTotal - deposit30;
 
   const handleSendContract = async (e: React.FormEvent) => {
@@ -601,14 +603,14 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
 
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-200 text-xs">
             <div className="p-2 bg-amber-100/70 border border-amber-300 rounded-lg text-amber-950">
-              <span className="block text-[10px] font-bold uppercase text-amber-900">💳 Tạm ứng 30% khi ký HĐ (Owner cọc)</span>
+              <span className="block text-[10px] font-bold uppercase text-amber-900">💳 Tạm ứng {depositPct}% khi ký HĐ (Owner cọc)</span>
               <strong className="text-sm font-mono block font-bold text-amber-950 mt-0.5">
                 {deposit30.toLocaleString('vi-VN')} VNĐ
               </strong>
             </div>
 
             <div className="p-2 bg-sky-100/70 border border-sky-300 rounded-lg text-sky-950">
-              <span className="block text-[10px] font-bold uppercase text-sky-900">📋 Thanh toán 70% khi Nghiệm thu</span>
+              <span className="block text-[10px] font-bold uppercase text-sky-900">📋 Thanh toán {100 - depositPct}% khi Nghiệm thu</span>
               <strong className="text-sm font-mono block font-bold text-sky-950 mt-0.5">
                 {remaining70.toLocaleString('vi-VN')} VNĐ
               </strong>
@@ -624,7 +626,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                 <Lock size={13} className="text-amber-600" /> Hợp đồng đã có giá trị pháp lý và đã nhận thanh toán cọc thành công.
               </span>
             ) : (
-              'Sau khi gửi, Owner sẽ nhận được Hợp đồng để ký & đặt cọc 30%.'
+              `Sau khi gửi, Owner sẽ nhận được Hợp đồng để ký & đặt cọc ${depositPct}%.`
             )}
           </div>
 

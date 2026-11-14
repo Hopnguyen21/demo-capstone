@@ -22,6 +22,7 @@ import { ZoneContractDetailsModal } from '../../components/contracts/ZoneContrac
 import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
 import { DeviceDepreciationModal } from '../../components/contracts/DeviceDepreciationModal';
 import { HoneycombEstimator } from '../../components/estimation/HoneycombEstimator';
+import { useBusinessParameters, formatPercent, contractDepositPercent } from '../../services/businessParameters';
 
 const sensorCodeToParameters = (sensor: any): string[] => {
   const text = `${sensor?.sensorType || ''} ${sensor?.code || ''} ${sensor?.name || ''}`.toUpperCase();
@@ -39,6 +40,7 @@ const normalizeDeviceStatus = (value: any) => {
 
 
 export const FarmsPage: React.FC = () => {
+  const businessParams = useBusinessParameters();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -731,6 +733,9 @@ export const FarmsPage: React.FC = () => {
     return currentZoneContracts.find(c => c.status === 'Active' || c.status === 'ExpiringSoon' || (typeof c.status === 'number' && (c.status === 0 || c.status === 1)))
       || (currentZoneContracts.length > 0 ? currentZoneContracts[0] : null);
   }, [currentZoneContracts]);
+
+  // Tỷ lệ cọc của hợp đồng Zone đang xem (suy từ số tiền đã chốt), không theo cấu hình Platform hiện hành.
+  const depLabel = `${formatPercent(contractDepositPercent({ deposit30Percent: Number(activeZoneContract?.depositVnd ?? 0), totalAmount: Number(activeZoneContract?.totalContractValueVnd ?? 0) }, businessParams.depositPercent))}%`;
 
   const historicalZoneContracts = React.useMemo(() => {
     if (!activeZoneContract) return currentZoneContracts;
@@ -2410,8 +2415,8 @@ export const FarmsPage: React.FC = () => {
                         </span>
                         <span className="text-[10px] text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded font-mono font-semibold">
                           {(activeZoneContract.vatPercent ?? activeZoneContract.vatRatePercent ?? 0) > 0
-                            ? `VAT ${activeZoneContract.vatPercent ?? activeZoneContract.vatRatePercent}% & Tạm ứng 30%`
-                            : 'Tạm ứng 30%'}
+                            ? `VAT ${activeZoneContract.vatPercent ?? activeZoneContract.vatRatePercent}% & Tạm ứng ${depLabel}`
+                            : `Tạm ứng ${depLabel}`}
                         </span>
                       </div>
 
@@ -2452,7 +2457,7 @@ export const FarmsPage: React.FC = () => {
                         </div>
 
                         <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-                          <div className="text-[10px] text-emerald-900 font-bold">Tạm ứng (30%)</div>
+                          <div className="text-[10px] text-emerald-900 font-bold">Tạm ứng ({depLabel})</div>
                           <div className="font-bold text-emerald-900 text-xs mt-0.5 font-mono">
                             {(activeZoneContract.depositVnd || 0).toLocaleString()} đ
                           </div>
@@ -2509,7 +2514,7 @@ export const FarmsPage: React.FC = () => {
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm">Chưa có hợp đồng nào được ký thành công cho Zone này</h4>
                       <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                        Hợp đồng phân khu chỉ hiển thị sau khi đã ký kết thành công và hoàn tất cọc 30% tại Cổng Dịch vụ & Hợp đồng (Owner Portal). Hãy vào Cổng Dịch vụ để kiểm tra báo giá và ký hợp đồng.
+                        Hợp đồng phân khu chỉ hiển thị sau khi đã ký kết thành công và hoàn tất cọc {depLabel} tại Cổng Dịch vụ & Hợp đồng (Owner Portal). Hãy vào Cổng Dịch vụ để kiểm tra báo giá và ký hợp đồng.
                       </p>
                     </div>
                     <Button

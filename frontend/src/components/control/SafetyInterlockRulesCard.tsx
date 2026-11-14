@@ -1,4 +1,5 @@
 import React from 'react';
+import { useBusinessParameters } from '../../services/businessParameters';
 import { ShieldCheck, Zap, CloudRain, Clock, AlertTriangle, AlertOctagon } from 'lucide-react';
 import { Button } from '../ui/BaseUI';
 
@@ -11,6 +12,7 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
   onEmergencyStopAll,
   isEmergencyStopActive = false
 }) => {
+  const rainPct = useBusinessParameters().rainGuardThresholdPercent;
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -86,7 +88,7 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
             <CloudRain size={14} className="text-sky-600" /> Rain Delay Hoãn Lịch
           </h4>
           <p className="text-[11px] text-slate-600 leading-relaxed">
-            Tự động hoãn các lịch tưới định kỳ nếu dự báo thời tiết có xác suất mưa &ge; 70% trong 3 giờ tới.
+            Tự động hoãn các lịch tưới định kỳ nếu dự báo thời tiết có xác suất mưa &ge; {rainPct}% trong 3 giờ tới.
           </p>
         </div>
 

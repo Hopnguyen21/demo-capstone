@@ -1,6 +1,7 @@
 import React from 'react';
 import { ServiceRequest } from '../../types';
 import { StatusBadge } from './BaseUI';
+import { getCachedBusinessParameters, formatPercent, contractDepositPercent } from '../../services/businessParameters';
 
 export const serviceStatusLabels: Record<string, string> = {
   OPEN: 'Mới tạo', Open: 'Mới tạo',
@@ -19,10 +20,10 @@ export const deploymentLabels: Record<string, string> = {
   Installing: 'Đang lắp đặt', Completed: 'Hoàn tất triển khai',
   MaintenanceRequired: 'Cần bảo trì', Cancelled: 'Đã hủy',
 };
-export const quotationLabels: Record<string, string> = {
-  Draft: 'Nháp', SentToOwner: 'Đã gửi báo giá', SignedByOwner: 'Đã ký và cọc 30%',
-  DepositPaid: 'Đã cọc 30%', Completed: 'Đã nghiệm thu và thanh toán đủ',
-};
+export const getQuotationLabels = (contract?: { deposit30Percent?: number; totalAmount?: number } | null): Record<string, string> => { const cached = getCachedBusinessParameters(); const dep = `${formatPercent(contractDepositPercent(contract, cached.depositPercent))}%`; return {
+  Draft: 'Nháp', SentToOwner: 'Đã gửi báo giá', SignedByOwner: `Đã ký và cọc ${dep}`,
+  DepositPaid: `Đã cọc ${dep}`, Completed: 'Đã nghiệm thu và thanh toán đủ',
+}; };
 export function ServiceRequestStatus({ request }: { request: ServiceRequest }) {
   const isAssigned = (request.status as string) === 'ASSIGNED' || (request.status as string) === 'Assigned';
   const labelText = isAssigned && request.assignedTechnicianName
@@ -34,7 +35,7 @@ export function ServiceRequestStatus({ request }: { request: ServiceRequest }) {
     {request.deploymentStatus && <StatusBadge status={request.deploymentStatus}
       label={`Triển khai: ${deploymentLabels[request.deploymentStatus] ?? request.deploymentStatus}`} />}
     {request.quotationStatus && <StatusBadge status={request.quotationStatus}
-      label={`Hợp đồng: ${quotationLabels[request.quotationStatus] ?? request.quotationStatus}`} />}
+      label={`Hợp đồng: ${getQuotationLabels((request as any).contractDetails)[request.quotationStatus] ?? request.quotationStatus}`} />}
     {request.deploymentLinkInvalid && <span className="text-red-700 text-xs">Liên kết triển khai sai farm/zone — cần kiểm tra</span>}
   </span>;
 }

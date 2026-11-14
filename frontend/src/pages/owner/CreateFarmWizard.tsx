@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sprout, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Layers, Cpu, Building2,
@@ -116,20 +116,33 @@ export const CreateFarmWizard: React.FC = () => {
         cropService.getVarieties(cropId).catch(() => []),
         cropService.getGrowthProfiles(cropId).catch(() => []),
       ]);
-      if (Array.isArray(vars) && vars.length > 0) {
-        setServerVarieties(vars);
-        setSelectedVarietyId(vars[0].varietyId);
-        setCropData(prev => ({ ...prev, variety: vars[0].name }));
+      const validVars = Array.isArray(vars) ? vars : [];
+      const validProfs = Array.isArray(profs) ? profs : [];
+      setServerVarieties(validVars);
+      setServerProfiles(validProfs);
+
+      const defaultProf = validProfs.find((p: any) => p.isDefault) || validProfs[0];
+      if (defaultProf) {
+        const profId = defaultProf.profileId || defaultProf.id || '';
+        setSelectedProfileId(profId);
+        if (defaultProf.varietyId) {
+          setSelectedVarietyId(defaultProf.varietyId);
+          const v = validVars.find((x: any) => x.varietyId === defaultProf.varietyId);
+          if (v) setCropData(prev => ({ ...prev, variety: v.name }));
+        } else if (validVars.length > 0) {
+          setSelectedVarietyId(validVars[0].varietyId);
+          setCropData(prev => ({ ...prev, variety: validVars[0].name }));
+        } else {
+          setSelectedVarietyId('');
+        }
       } else {
-        setServerVarieties([]);
-        setSelectedVarietyId('');
-      }
-      if (Array.isArray(profs) && profs.length > 0) {
-        setServerProfiles(profs);
-        setSelectedProfileId(profs[0].profileId || profs[0].id || '');
-      } else {
-        setServerProfiles([]);
         setSelectedProfileId('');
+        if (validVars.length > 0) {
+          setSelectedVarietyId(validVars[0].varietyId);
+          setCropData(prev => ({ ...prev, variety: validVars[0].name }));
+        } else {
+          setSelectedVarietyId('');
+        }
       }
     } catch (err) {
       console.warn('Failed to load crop varieties/profiles', err);
@@ -650,9 +663,14 @@ export const CreateFarmWizard: React.FC = () => {
                       className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
                       value={selectedVarietyId}
                       onChange={e => {
-                        setSelectedVarietyId(e.target.value);
-                        const v = serverVarieties.find(x => x.varietyId === e.target.value);
+                        const newVarId = e.target.value;
+                        setSelectedVarietyId(newVarId);
+                        const v = serverVarieties.find(x => x.varietyId === newVarId);
                         if (v) setCropData(prev => ({ ...prev, variety: v.name }));
+                        const matchedProf = serverProfiles.find(p => p.varietyId === newVarId) || serverProfiles.find(p => !p.varietyId);
+                        if (matchedProf) {
+                          setSelectedProfileId(matchedProf.profileId || matchedProf.id || '');
+                        }
                       }}
                     >
                       {serverVarieties.length > 0 ? (
@@ -677,6 +695,11 @@ export const CreateFarmWizard: React.FC = () => {
                         setSelectedProfileId(newProfileId);
                         const prof = serverProfiles.find(p => (p.profileId || p.id) === newProfileId);
                         if (prof) {
+                          if (prof.varietyId) {
+                            setSelectedVarietyId(prof.varietyId);
+                            const v = serverVarieties.find(x => x.varietyId === prof.varietyId);
+                            if (v) setCropData(prev => ({ ...prev, variety: v.name }));
+                          }
                           const pStages = prof.stages || [];
                           const cycleDays = pStages.reduce((s: number, cur: any) => s + (Number(cur.durationDays) || 0), 0) || 90;
                           if (cropData.startDate) {
@@ -1071,6 +1094,11 @@ export const CreateFarmWizard: React.FC = () => {
                   setIsSubmitting(true);
                   setSubmitError(null);
                   try {
+                    const chosenProf = serverProfiles.find(p => (p.profileId || p.id) === selectedProfileId);
+                    const effectiveVarietyId = chosenProf?.varietyId !== undefined
+                      ? (chosenProf.varietyId || undefined)
+                      : (selectedVarietyId || undefined);
+
                     const res = await farmService.wizardSetup({
                       farm: {
                         name: farmData.name.trim() || 'Trang trại mới',
@@ -1095,7 +1123,7 @@ export const CreateFarmWizard: React.FC = () => {
                       season: {
                         name: cropData.seasonName.trim() || 'Vụ mùa mới',
                         cropId: selectedCropId || '10000000-0000-0000-0000-000000000001',
-                        varietyId: selectedVarietyId || undefined,
+                        varietyId: effectiveVarietyId,
                         growthProfileId: selectedProfileId || undefined,
                         startDate: cropData.startDate ? `${cropData.startDate}T00:00:00Z` : new Date().toISOString(),
                         expectedEndDate: cropData.expectedHarvestDate ? `${cropData.expectedHarvestDate}T00:00:00Z` : undefined,
@@ -1109,7 +1137,16 @@ export const CreateFarmWizard: React.FC = () => {
                     setWizardSuccessData(res);
                   } catch (err: any) {
                     console.error('Wizard setup error:', err);
-                    const msg = err.response?.data?.detail || err.response?.data?.title || err.message || 'Lỗi khi gửi yêu cầu khởi tạo phân cấp';
+                    const status = err.response?.status;
+                    const validationErrors = err?.response?.data?.errors
+                      ? Object.entries(err.response.data.errors as Record<string, string[]>)
+                          .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+                          .join('; ')
+                      : '';
+                    let msg = validationErrors || err.response?.data?.detail || err.response?.data?.title || err.message || 'Lỗi khi gửi yêu cầu khởi tạo phân cấp';
+                    if (status === 409) {
+                      msg = `Tên trang trại "${farmData.name.trim()}" đã tồn tại trong hệ thống. Vui lòng quay lại Bước 1 (Trang trại) để đổi tên trang trại khác.`;
+                    }
                     setSubmitError(`Lỗi thiết lập: ${msg}`);
                   } finally {
                     setIsSubmitting(false);

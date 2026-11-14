@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useBusinessParameters } from '../../services/businessParameters';
 import { Sensor } from '../../types';
 import { deviceService, telemetryService, controlService, seasonService } from '../../services';
 import { useAuth } from '@/app/providers/AuthContext';
@@ -68,6 +69,7 @@ const ParameterReading: React.FC<{ label: string; metric?: any; requirement?: an
 };
 
 export const MonitoringRealtime: React.FC = () => {
+  const rainPct = useBusinessParameters().rainGuardThresholdPercent;
   const { zones } = useAuth();
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   // Số đo mới nhất theo từng node của Zone (null = chưa tải được).
@@ -271,7 +273,7 @@ export const MonitoringRealtime: React.FC = () => {
           <div>
             <h4 className="text-xs font-bold text-slate-900">Khóa An Toàn Liên Động (Interlock)</h4>
             <p className="text-[11px] text-slate-600 mt-0.5">
-              Tự ngắt tưới khi độ ẩm đất &gt; 85% • Khóa tự động khi cảm biến dự báo mưa &gt; 70%.
+              Tự ngắt tưới khi độ ẩm đất &gt; 85% • Khóa tự động khi cảm biến dự báo mưa &gt; {rainPct}%.
             </p>
             <span className="inline-block mt-1 text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md">
               ✓ Đang Kích Hoạt Bảo Vệ
