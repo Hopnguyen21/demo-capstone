@@ -435,12 +435,14 @@ export const ProvisioningPage: React.FC = () => {
                     )}
 
                     {/* Interactive Actions for Technician */}
-                    <div className="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2">
-                        <MapPin size={16} className="text-emerald-400 shrink-0" />
+                    <div className="p-3.5 bg-gradient-to-r from-emerald-50/90 via-teal-50/40 to-emerald-50/60 text-slate-800 rounded-xl border border-emerald-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300/80 flex items-center justify-center text-[#119653] shrink-0 shadow-2xs">
+                          <MapPin size={16} />
+                        </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa Kỹ thuật</span>
-                          <span className="text-white font-semibold">
+                          <span className="text-emerald-800/80 block text-[10px] uppercase font-bold tracking-wide">Thao tác Thực địa Kỹ thuật</span>
+                          <span className="text-slate-900 font-bold text-xs">
                             {is30Paid ? 'Hợp đồng đã ký & cọc (Không thể sửa) • Tiến hành Vào Zone Chấm Node' : 'Cần gửi Báo giá Hợp đồng & cọc ' + depLabel + ' trước khi chấm Node'}
                           </span>
                         </div>
@@ -452,10 +454,10 @@ export const ProvisioningPage: React.FC = () => {
                           is30Paid ? (
                             <Button
                               onClick={() => setSelectedRequestForExperiment(req)}
-                              className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center gap-1.5 shadow-sm border border-slate-600"
+                              className="bg-white hover:bg-slate-50 text-slate-700 font-bold flex items-center gap-1.5 shadow-xs border border-slate-300"
                               title={`Hợp đồng đã được ký kết & đặt cọc ${depLabel}. Xem chi tiết (Chỉ đọc, không thể sửa)`}
                             >
-                              <Lock size={14} className="text-amber-400" />
+                              <Lock size={14} className="text-amber-600" />
                               <span>Xem Hợp đồng (Đã khóa)</span>
                             </Button>
                           ) : (
@@ -475,9 +477,9 @@ export const ProvisioningPage: React.FC = () => {
                             setSelectedHardwareItems(req.contractDetails?.items || []);
                             setSelectedRequestForMapper(req);
                           }}
-                          className="bg-sky-700 hover:bg-sky-800 text-white font-bold flex items-center gap-1.5 shadow-sm"
+                          className="bg-sky-600 hover:bg-sky-700 text-white font-bold flex items-center gap-1.5 shadow-xs"
                         >
-                          <Layers size={15} className="text-sky-300" />
+                          <Layers size={15} className="text-sky-100" />
                           <span>Sửa Biểu đồ GIS ({req.mappedNodesCount ?? 'Chưa tải'} Nodes)</span>
                         </Button>
 
@@ -488,18 +490,18 @@ export const ProvisioningPage: React.FC = () => {
                               setSelectedHardwareItems(req.contractDetails?.items || []);
                               setSelectedRequestForMapper(req);
                             }}
-                            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex items-center gap-1.5 shadow-md border border-emerald-500/50 ring-2 ring-emerald-500/30 animate-pulse"
+                            className="bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600 ring-2 ring-emerald-500/20 animate-pulse"
                           >
-                            <MapPin size={15} className="text-emerald-300" />
+                            <MapPin size={15} className="text-emerald-100" />
                             <span>🚀 Vào Thực địa Chấm Node</span>
                           </Button>
                         ) : (
                           <div className="relative group">
-                            <span className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 text-[11px] font-semibold border border-amber-500/20 flex items-center gap-1">
-                              <Lock size={12} className="text-amber-400" />
+                            <span className="px-2.5 py-1.5 rounded-lg bg-amber-100/80 text-amber-900 text-[11px] font-semibold border border-amber-300 flex items-center gap-1">
+                              <Lock size={12} className="text-amber-700" />
                               <span>Chờ Cọc {depLabel} để Nghiệm thu</span>
                             </span>
-                            <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-64 p-2.5 bg-slate-800 text-amber-300 text-[11px] rounded-xl shadow-xl border border-slate-700 z-20">
+                            <div className="absolute right-0 bottom-full mb-1.5 hidden group-hover:block w-64 p-2.5 bg-white text-slate-700 text-[11px] rounded-xl shadow-xl border border-slate-200 z-20">
                               🔒 Bạn vẫn có thể bấm "Sửa Biểu đồ GIS" để phác thảo và định vị node. Sau khi Owner cọc {depLabel}, công trình sẽ chuyển sang giai đoạn thi công thực địa.
                             </div>
                           </div>

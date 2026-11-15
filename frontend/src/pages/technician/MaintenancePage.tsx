@@ -261,12 +261,14 @@ export const MaintenancePage: React.FC = () => {
                 </p>
 
                 {/* Interactive Actions for Technician */}
-                <div className="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <MapPin size={16} className="text-amber-400 shrink-0" />
+                <div className="p-3.5 bg-gradient-to-r from-emerald-50/90 via-teal-50/40 to-emerald-50/60 text-slate-800 rounded-xl border border-emerald-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300/80 flex items-center justify-center text-[#119653] shrink-0 shadow-2xs">
+                      <MapPin size={16} />
+                    </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa Bảo trì</span>
-                      <span className="text-white font-semibold">Chấm lại Node trên sơ đồ GIS hoặc thực hiện Hot-Swap 1-đổi-1</span>
+                      <span className="text-emerald-800/80 block text-[10px] uppercase font-bold tracking-wide">Thao tác Thực địa Bảo trì</span>
+                      <span className="text-slate-900 font-bold text-xs">Chấm lại Node trên sơ đồ GIS hoặc thực hiện Hot-Swap 1-đổi-1</span>
                     </div>
                   </div>
 
@@ -277,9 +279,9 @@ export const MaintenancePage: React.FC = () => {
                         setHotSwapTargetReq(req.serviceRequestId);
                         setIsHotSwapOpen(true);
                       }}
-                      className="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold"
+                      className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold shadow-xs"
                     >
-                      <RefreshCw size={14} className="mr-1.5" /> Hot-Swap Node
+                      <RefreshCw size={14} className="mr-1.5 text-amber-600" /> Hot-Swap Node
                     </Button>
 
                     {/* Button 1: Vào Zone Chấm Node */}
