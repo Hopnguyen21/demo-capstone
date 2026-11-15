@@ -78,18 +78,7 @@ CREATE TABLE IF NOT EXISTS ""Bills"" (
     ""UpdatedAtUtc"" timestamp with time zone NULL
 );
 
--- Seed default standard contract packages if not existing
-INSERT INTO ""ContractPackages"" (""Id"", ""PackageName"", ""Description"", ""DurationMonths"", ""MaxZones"", ""Price"", ""Currency"", ""Status"", ""CreatedByUserId"", ""CreatedAtUtc"")
-SELECT 'a0000001-0000-0000-0000-000000000001', 'Gói Starter', 'Gói khởi đầu cho nông hộ quy mô nhỏ: 6 tháng canh tác, tối đa 1 phân khu (Zone). Hỗ trợ tư vấn nông học cơ bản.', 6, 1, 5000000, 'VND', 0, '00000000-0000-0000-0000-000000000000', NOW()
-WHERE NOT EXISTS (SELECT 1 FROM ""ContractPackages"" WHERE ""Id"" = 'a0000001-0000-0000-0000-000000000001');
-
-INSERT INTO ""ContractPackages"" (""Id"", ""PackageName"", ""Description"", ""DurationMonths"", ""MaxZones"", ""Price"", ""Currency"", ""Status"", ""CreatedByUserId"", ""CreatedAtUtc"")
-SELECT 'a0000001-0000-0000-0000-000000000002', 'Gói Standard', 'Gói tiêu chuẩn cho trang trại gia đình: 12 tháng (1 năm), tối đa 2 phân khu (Zone). Tích hợp cảnh báo vi khí hậu và điều khiển tự động.', 12, 2, 9500000, 'VND', 0, '00000000-0000-0000-0000-000000000000', NOW()
-WHERE NOT EXISTS (SELECT 1 FROM ""ContractPackages"" WHERE ""Id"" = 'a0000001-0000-0000-0000-000000000002');
-
-INSERT INTO ""ContractPackages"" (""Id"", ""PackageName"", ""Description"", ""DurationMonths"", ""MaxZones"", ""Price"", ""Currency"", ""Status"", ""CreatedByUserId"", ""CreatedAtUtc"")
-SELECT 'a0000001-0000-0000-0000-000000000003', 'Gói Professional', 'Gói chuyên nghiệp cho hợp tác xã và nông trại mở rộng: 12 tháng (1 năm), tối đa 5 phân khu (Zone). Trợ lý AI nông học chuyên sâu và quản lý thiết bị toàn diện.', 12, 5, 22000000, 'VND', 0, '00000000-0000-0000-0000-000000000000', NOW()
-WHERE NOT EXISTS (SELECT 1 FROM ""ContractPackages"" WHERE ""Id"" = 'a0000001-0000-0000-0000-000000000003');
+-- (Không seed gói hợp đồng mẫu: gói do Admin tự tạo.)
 ");
         }
 

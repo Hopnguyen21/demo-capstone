@@ -22,7 +22,6 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .Include(x => x.CreatedByUser)
             .Include(x => x.ApprovedByUser)
             .Include(x => x.Details)
-                .ThenInclude(d => d.InventoryItem)
             .AsNoTracking()
             .Where(x => x.FarmId == farmId && x.TenantId == tenantId);
 
@@ -36,8 +35,11 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
         var hardwareMap = await db.PlatformHardwareItems
             .Where(h => detailItemIds.Contains(h.Id))
             .ToDictionaryAsync(h => h.Id, ct);
+        var inventoryMap = await db.InventoryItems.AsNoTracking()
+            .Where(i => detailItemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, ct);
 
-        return list.Select(s => MapToView(s, hardwareMap)).ToList();
+        return list.Select(s => MapToView(s, hardwareMap, inventoryMap)).ToList();
     }
 
     public async Task<StockOutView> GetByIdAsync(Guid userId, Guid tenantId, Guid farmId, Guid id, CancellationToken ct)
@@ -51,7 +53,6 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .Include(x => x.CreatedByUser)
             .Include(x => x.ApprovedByUser)
             .Include(x => x.Details)
-                .ThenInclude(d => d.InventoryItem)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id && x.FarmId == farmId && x.TenantId == tenantId, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy phiếu xuất kho #{id}");
@@ -61,7 +62,11 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .Where(h => detailItemIds.Contains(h.Id))
             .ToDictionaryAsync(h => h.Id, ct);
 
-        return MapToView(stockOut, hardwareMap);
+        var inventoryMap = await db.InventoryItems.AsNoTracking()
+            .Where(i => detailItemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, ct);
+
+        return MapToView(stockOut, hardwareMap, inventoryMap);
     }
 
     public async Task<StockOutView> CreateAsync(Guid userId, Guid tenantId, Guid farmId, CreateStockOutCommand command, CancellationToken ct)
@@ -350,7 +355,7 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
         return farm?.TenantId ?? Guid.Empty;
     }
 
-    private static StockOutView MapToView(StockOut s, IReadOnlyDictionary<Guid, PlatformHardwareItem>? hardwareMap = null)
+    private static StockOutView MapToView(StockOut s, IReadOnlyDictionary<Guid, PlatformHardwareItem>? hardwareMap = null, IReadOnlyDictionary<Guid, InventoryItem>? inventoryMap = null)
     {
         var statusText = s.Status switch
         {
@@ -381,9 +386,10 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             s.CreatedAtUtc,
             s.Details.Select(d => {
                 var hw = hardwareMap != null && hardwareMap.TryGetValue(d.InventoryItemId, out var h) ? h : null;
-                var itemName = hw != null ? $"[{hw.Code}] {hw.Name}" : (d.InventoryItem?.Name ?? "Thiết bị");
-                var unit = hw != null ? "Cái" : (d.InventoryItem?.Unit ?? "Cái");
-                var currentStock = hw != null ? (decimal)hw.QuantityInStock : (d.InventoryItem?.QuantityOnHand ?? 0m);
+                var inv = inventoryMap != null && inventoryMap.TryGetValue(d.InventoryItemId, out var iv) ? iv : null;
+                var itemName = hw != null ? $"[{hw.Code}] {hw.Name}" : (inv?.Name ?? "Thiết bị");
+                var unit = hw != null ? "Cái" : (inv?.Unit ?? "Cái");
+                var currentStock = hw != null ? (decimal)hw.QuantityInStock : (inv?.QuantityOnHand ?? 0m);
 
                 return new StockOutDetailView(
                     d.Id,
