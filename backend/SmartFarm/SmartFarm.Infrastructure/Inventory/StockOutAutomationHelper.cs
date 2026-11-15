@@ -36,6 +36,40 @@ public static class StockOutAutomationHelper
             stockOutCode = $"{prefix}-{Random.Shared.Next(100, 999)}-{Guid.NewGuid().ToString("N")[..3].ToUpperInvariant()}";
         }
 
+        // Đảm bảo Kỹ thuật viên phụ trách luôn là tài khoản PlatformTechnician (tuyệt đối không gán cho FarmOwner)
+        AppUser? technician = null;
+        if (creatorUserId != Guid.Empty)
+        {
+            technician = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == creatorUserId && u.Role == UserRole.PlatformTechnician, ct);
+        }
+
+        // Nếu người truyền vào không phải là Technician (ví dụ truyền ownerId khi ký HĐ), tự động tra cứu KTV đã được gán cho Farm/Zone này
+        technician ??= await db.ServiceRequests
+            .Where(s => s.FarmId == farmId && s.AssignedTechnicianId != null)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .Select(s => s.AssignedTechnician)
+            .FirstOrDefaultAsync(ct);
+
+        // Fallback: Tìm Kỹ thuật viên bất kỳ trong hệ thống, hoặc Admin
+        technician ??= await db.AppUsers.FirstOrDefaultAsync(u => u.Role == UserRole.PlatformTechnician, ct)
+                       ?? await db.AppUsers.FirstOrDefaultAsync(u => u.Role == UserRole.PlatformAdmin, ct);
+
+        // Không có Kỹ thuật viên/Admin nào để đứng tên phiếu thì không tạo phiếu (không dùng ID giả; CreatedByUserId có khóa ngoại tới app_users).
+        if (technician == null) return null;
+        var techUserId = technician.Id;
+        var techName = technician.FullName;
+
+        // Tách bạch rõ Khách hàng (Owner/Lessee) và Kỹ thuật viên phụ trách
+        string noteDescription;
+        if (!string.IsNullOrWhiteSpace(technicianName) && !technicianName.Equals(techName, StringComparison.OrdinalIgnoreCase))
+        {
+            noteDescription = $"[Tự động tạo từ HĐ #{contractNumber}] Xuất thiết bị IoT cho trang trại (Khách hàng: {technicianName}). Kỹ thuật viên phụ trách: {techName}.";
+        }
+        else
+        {
+            noteDescription = $"[Tự động tạo từ HĐ #{contractNumber}] Xuất thiết bị IoT theo hợp đồng đã thanh toán cọc 30%. Phụ trách: {techName}.";
+        }
+
         var stockOut = new StockOut
         {
             TenantId = tenantId,
@@ -43,12 +77,13 @@ public static class StockOutAutomationHelper
             ZoneId = zoneId == Guid.Empty ? null : zoneId,
             StockOutCode = stockOutCode,
             Status = StockOutStatus.Pending, // Chờ duyệt xuất kho thiết bị
-            CreatedByUserId = creatorUserId,
-            Notes = $"[Tự động tạo từ HĐ #{contractNumber}] Xuất thiết bị IoT theo hợp đồng đã thanh toán cọc 30%. Phụ trách: {technicianName ?? "Kỹ thuật viên"}."
+            CreatedByUserId = techUserId, // Luôn luôn là Kỹ thuật viên
+            Notes = noteDescription
         };
 
         var allHardware = await db.PlatformHardwareItems.AsNoTracking().ToListAsync(ct);
 
+        var unmatched = new List<string>();
         foreach (var item in itemList)
         {
             var hw = allHardware.FirstOrDefault(h => !string.IsNullOrWhiteSpace(h.Code) && h.Code.Equals(item.Code, StringComparison.OrdinalIgnoreCase))
@@ -56,14 +91,25 @@ public static class StockOutAutomationHelper
                 ?? (!string.IsNullOrWhiteSpace(item.Category) ? allHardware.FirstOrDefault(h => h.Category.Equals(item.Category, StringComparison.OrdinalIgnoreCase)) : null)
                 ?? allHardware.FirstOrDefault(h => !string.IsNullOrWhiteSpace(item.Name) && (h.Name.Contains(item.Name, StringComparison.OrdinalIgnoreCase) || item.Name.Contains(h.Name, StringComparison.OrdinalIgnoreCase)));
 
+            // Không khớp được thiết bị trong kho phần cứng thì bỏ qua dòng này, không lưu ID ngẫu nhiên.
+            if (hw == null)
+            {
+                unmatched.Add(item.Name);
+                continue;
+            }
+
             stockOut.Details.Add(new StockOutDetail
             {
                 StockOutId = stockOut.Id,
-                InventoryItemId = hw?.Id ?? Guid.NewGuid(),
+                InventoryItemId = hw.Id,
                 Quantity = item.Quantity,
                 Notes = $"Xuất theo HĐ #{contractNumber}: {item.Name} ({item.Category ?? "Thiết bị"})"
             });
         }
+
+        if (stockOut.Details.Count == 0) return null;
+        if (unmatched.Count > 0)
+            stockOut.Notes += $" Chưa khớp thiết bị trong kho (cần xuất thủ công): {string.Join(", ", unmatched)}.";
 
         db.StockOuts.Add(stockOut);
         return stockOut;

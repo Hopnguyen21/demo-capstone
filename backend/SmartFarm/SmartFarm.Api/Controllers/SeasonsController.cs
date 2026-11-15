@@ -99,6 +99,10 @@ public sealed class SeasonsController(SmartFarmDbContext dbContext) : Controller
     {
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest(new { message = "Tên vụ mùa là bắt buộc." });
+        if (request.Name.Trim().Length > 250)
+            return BadRequest(new { message = "Tên vụ mùa tối đa 250 ký tự." });
+        if (!string.IsNullOrWhiteSpace(request.Code) && request.Code.Trim().Length > 100)
+            return BadRequest(new { message = "Mã vụ mùa tối đa 100 ký tự." });
         if (request.EndDate <= request.StartDate)
             return BadRequest(new { message = "Ngày kết thúc vụ mùa phải sau ngày bắt đầu." });
 
@@ -166,6 +170,8 @@ public sealed class SeasonsController(SmartFarmDbContext dbContext) : Controller
             return NotFound(new { message = "Vụ mùa không tồn tại hoặc bạn không có quyền sửa đổi vụ mùa này (vụ mùa mẫu toàn cục chỉ Admin mới có quyền cập nhật)." });
 
         if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest(new { message = "Tên vụ mùa là bắt buộc." });
+        if (request.Name.Trim().Length > 250) return BadRequest(new { message = "Tên vụ mùa tối đa 250 ký tự." });
+        if (!string.IsNullOrWhiteSpace(request.Code) && request.Code.Trim().Length > 100) return BadRequest(new { message = "Mã vụ mùa tối đa 100 ký tự." });
         if (request.EndDate <= request.StartDate) return BadRequest(new { message = "Ngày kết thúc vụ mùa phải sau ngày bắt đầu." });
 
         season.Name = request.Name.Trim();

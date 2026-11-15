@@ -26,8 +26,8 @@ public sealed class StockOutDetail : AuditableEntity
 {
     public Guid StockOutId { get; set; }
     public StockOut StockOut { get; set; } = null!;
+    /// <summary>Id của vật tư kho trang trại (inventory_items) HOẶC thiết bị phần cứng nền tảng (PlatformHardwareItems); cột đa nghĩa nên không có khóa ngoại.</summary>
     public Guid InventoryItemId { get; set; }
-    public InventoryItem? InventoryItem { get; set; }
     public decimal Quantity { get; set; }
     public string? Notes { get; set; }
 }
