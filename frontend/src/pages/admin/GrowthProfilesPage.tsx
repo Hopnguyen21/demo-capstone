@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { CropRangeBand } from '../../components/ui/BaseUI';
-import { 
-  Activity, Clock, CheckCircle, Sliders, RefreshCw, Sprout, 
-  Layers, ShieldCheck, Thermometer, Droplets, Zap, Sun, Edit3, X, Check, AlertCircle, Save 
+import {
+  Activity, Clock, CheckCircle, Sliders, RefreshCw, Sprout,
+  Layers, ShieldCheck, Thermometer, Droplets, Zap, Sun, Edit3, X, Check, AlertCircle, Save
 } from 'lucide-react';
 import { cropService } from '../../services';
 
@@ -395,11 +395,10 @@ export const GrowthProfilesPage: React.FC = () => {
       <div className="p-5 sm:p-6 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className={`text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
-              profile.isSystemDefined 
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
-                : 'bg-cyan-50 text-cyan-800 border-cyan-300'
-            }`}>
+            <span className={`text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${profile.isSystemDefined
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+              : 'bg-cyan-50 text-cyan-800 border-cyan-300'
+              }`}>
               {profile.isSystemDefined ? '✓ HỒ SƠ CHUẨN SYSTEM DEFAULT' : '🌾 HỒ SƠ TÙY BIẾN NÔNG TRẠI (VIETGAP)'}
             </span>
             <span className="text-xs font-semibold text-slate-500">
@@ -480,17 +479,15 @@ export const GrowthProfilesPage: React.FC = () => {
                 key={st.growthStageId || st.stageOrder}
                 type="button"
                 onClick={() => setSelectedStageId(st.growthStageId || String(st.stageOrder))}
-                className={`p-4 rounded-2xl text-left transition-all relative border flex flex-col justify-between cursor-pointer ${
-                  isSelected
-                    ? 'bg-emerald-50/90 border-emerald-500 shadow-md ring-2 ring-emerald-500/30'
-                    : 'bg-slate-50/80 border-slate-200 hover:border-slate-300 hover:bg-slate-100/70 shadow-2xs'
-                }`}
+                className={`p-4 rounded-2xl text-left transition-all relative border flex flex-col justify-between cursor-pointer ${isSelected
+                  ? 'bg-emerald-50/90 border-emerald-500 shadow-md ring-2 ring-emerald-500/30'
+                  : 'bg-slate-50/80 border-slate-200 hover:border-slate-300 hover:bg-slate-100/70 shadow-2xs'
+                  }`}
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
-                      isSelected ? 'bg-[#119653] text-white shadow-xs' : 'bg-slate-200 text-slate-700'
-                    }`}>
+                    <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${isSelected ? 'bg-[#119653] text-white shadow-xs' : 'bg-slate-200 text-slate-700'
+                      }`}>
                       {st.stageOrder}
                     </span>
                     <span className="text-xs font-mono font-bold text-emerald-800 bg-white/80 px-2 py-0.5 rounded border border-slate-200">
@@ -521,7 +518,7 @@ export const GrowthProfilesPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-              <Sliders size={18} className="text-[#119653]" /> 
+              <Sliders size={18} className="text-[#119653]" />
               Dải ngưỡng Vi khí hậu Giai đoạn: <span className="text-emerald-700 font-extrabold">{currentStage?.name}</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -535,11 +532,10 @@ export const GrowthProfilesPage: React.FC = () => {
             <button
               type="button"
               onClick={toggleInlineEditing}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold text-xs cursor-pointer transition shadow-2xs ${
-                isInlineEditing
-                  ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-              }`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold text-xs cursor-pointer transition shadow-2xs ${isInlineEditing
+                ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700'
+                : 'border-emerald-400 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                }`}
             >
               <Edit3 size={13} />
               {isInlineEditing ? 'Đang sửa trực tiếp trên thẻ' : 'Sửa trực tiếp các ngưỡng'}

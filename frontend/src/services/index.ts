@@ -600,6 +600,7 @@ export const cropService = {
     description?: string;
     isDefault?: boolean;
     sourceProfileId?: string;
+    isSharedWithFarmers?: boolean;
     stages?: any[];
   }) => {
     const payload: any = {
@@ -607,7 +608,8 @@ export const cropService = {
       varietyId: data.varietyId,
       name: data.name,
       description: data.description,
-      isDefault: data.isDefault ?? true,
+      isDefault: data.isDefault ?? false,
+      isSharedWithFarmers: (data as any).isSharedWithFarmers ?? true,
       sourceProfileId: data.sourceProfileId,
     };
     if (Array.isArray(data.stages) && data.stages.length > 0) {
@@ -617,12 +619,13 @@ export const cropService = {
           let code = r.parameterCode || r.parameterName;
           if (!code) throw new Error(`Missing parameter code in stage ${s.name || idx + 1}`);
           if (code === 'AirTemperature') code = 'Temperature';
+          else if (code === 'SoilTemp') code = 'SoilTemperature';
           else if (code === 'SoilPH') code = 'Ph';
           else if (code === 'SoilEC') code = 'Ec';
           else if (code === 'Light') code = 'LightIntensity';
           const min = Number(r.minValue);
           const max = Number(r.maxValue);
-          const target = Number(r.targetValue ?? r.optimalValue);
+          const target = Number(r.targetValue ?? r.optimalValue ?? ((min + max) / 2));
           if (![min, max, target].every(Number.isFinite) || min > target || target > max) {
             throw new Error(`Invalid min/target/max range for ${code} in stage ${s.name || idx + 1}`);
           }
@@ -631,7 +634,7 @@ export const cropService = {
             minValue: min,
             maxValue: max,
             targetValue: target,
-            unit: r.unit || (code === 'Temperature' ? '°C' : code === 'Ph' ? 'pH' : code === 'Ec' ? 'mS/cm' : '%')
+            unit: r.unit || (code === 'Temperature' || code === 'SoilTemperature' ? '°C' : code === 'Ph' ? 'pH' : code === 'Ec' ? 'mS/cm' : code === 'LightIntensity' ? 'Lux' : '%')
           };
         });
         return {
@@ -689,6 +692,32 @@ export const cropService = {
   getAllGrowthProfiles: async (params?: { isSystemDefined?: boolean; search?: string }) => {
     const res = await apiClient.get('/api/v1/growth-profiles', { params });
     return res.data?.value ?? res.data ?? [];
+  },
+
+  /** DELETE /api/v1/growth-profiles/{profileId} */
+  deleteGrowthProfile: async (profileId: string) => {
+    const res = await apiClient.delete(`/api/v1/growth-profiles/${profileId}`);
+    return res.data;
+  },
+
+  /** DELETE /api/v1/growth-stages/{stageId} */
+  deleteGrowthStage: async (stageId: string) => {
+    const res = await apiClient.delete(`/api/v1/growth-stages/${stageId}`);
+    return res.data;
+  },
+
+  /** PUT /api/v1/growth-profiles/{profileId}/status */
+  updateProfileStatus: async (profileId: string, status: { isActive?: boolean; isSharedWithFarmers?: boolean }) => {
+    const res = await apiClient.put(`/api/v1/growth-profiles/${profileId}/status`, status);
+    return res.data;
+  },
+
+  /** POST /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/sync-profile */
+  syncSeasonProfile: async (zoneId: string, seasonId: string, targetProfileId?: string) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/planting-seasons/${seasonId}/sync-profile`, {}, {
+      params: targetProfileId ? { targetProfileId } : {}
+    });
+    return res.data;
   },
 
   /** Synchronizes recommended irrigation schedule from crop to zone actuator */

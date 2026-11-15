@@ -279,7 +279,7 @@ export const PlantingSeasonsPage: React.FC = () => {
     const matchedProfile = pickProfile(newBatchForm.cropId, newVarietyId);
     setNewBatchForm(prev => ({
       ...prev,
-      varietyId: matchedProfile?.varietyId || '',
+      varietyId: newVarietyId,
       growthProfileId: profileIdOf(matchedProfile) || prev.growthProfileId,
       name: chosenVar ? `[${chosenVar.name}] Đợt 1 - ${chosenSeason?.name || 'Vụ 2026'}` : prev.name,
     }));
@@ -552,10 +552,10 @@ export const PlantingSeasonsPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono tracking-wider">
-              SMARTFARM AGRONOMY SUITE
+              SMARTFARM AGRONOMY
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-              MỤC C.8 + C.9 + C.10
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+              QUẢN LÝ VỤ MÙA &amp; ĐỢT TRỒNG
             </span>
           </div>
           <h1 className="text-xl font-bold text-slate-900 mt-2 flex items-center gap-2">
@@ -563,12 +563,19 @@ export const PlantingSeasonsPage: React.FC = () => {
             Quản Lý Vụ Mùa, Đợt Trồng &amp; Giống Cây Trồng
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            Nghiệp vụ quản lý canh tác nông học thông thường: Định nghĩa Vụ mùa (Đông-Xuân, Hè-Thu), lập Đợt trồng theo Phân khu và lọc Giống cây theo cascade dropdown.
+            Định nghĩa Vụ mùa (Đông-Xuân, Hè-Thu), lập Đợt trồng theo Phân khu và áp dụng Cấu hình hồ sơ sinh trưởng tự động điều khiển vi khí hậu IoT.
           </p>
         </div>
 
         {/* Action Buttons based on active tab */}
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="border-emerald-600 text-emerald-800 hover:bg-emerald-50 font-bold text-xs"
+            onClick={() => navigate('/owner/growth-profiles')}
+          >
+            <Sliders size={15} className="mr-1.5 text-emerald-600" /> Cấu hình Canh tác
+          </Button>
           {activeTab === 'PLANTING_CROPS' ? (
             <Button
               className="bg-[#119653] hover:bg-[#0e8046] text-white font-bold text-xs shadow-xs"
@@ -622,14 +629,13 @@ export const PlantingSeasonsPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('PLANTING_CROPS')}
-          className={`pb-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'PLANTING_CROPS'
-              ? 'border-[#119653] text-[#119653]'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          className={`pb-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${activeTab === 'PLANTING_CROPS'
+            ? 'border-[#119653] text-[#119653]'
+            : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
         >
           <Sprout size={16} />
-          <span>9. Đợt Trồng Theo Phân Khu (Planting Crops)</span>
+          <span>Đợt Trồng Theo Phân Khu (Planting Batches)</span>
           <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 font-mono text-slate-700">
             {plantingBatches.length}
           </span>
@@ -638,14 +644,13 @@ export const PlantingSeasonsPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('SEASONS')}
-          className={`pb-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
-            activeTab === 'SEASONS'
-              ? 'border-purple-600 text-purple-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          className={`pb-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${activeTab === 'SEASONS'
+            ? 'border-purple-600 text-purple-700'
+            : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
         >
           <Calendar size={16} />
-          <span>8. Quản Lý Vụ Mùa Master (Seasons)</span>
+          <span>Quản Lý Vụ Mùa Master (Seasons)</span>
           <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-100 font-mono text-purple-800">
             {farmingSeasons.length}
           </span>
@@ -865,7 +870,7 @@ export const PlantingSeasonsPage: React.FC = () => {
               <span>Nghiệp vụ Quản lý Vụ mùa (Master Season) — Quan hệ 1 Vụ mùa ───&lt; Nhiều Đợt Trồng</span>
             </div>
             <p className="text-xs text-purple-800 leading-relaxed">
-              Vụ mùa lưu thông tin chu kỳ thời vụ (ví dụ: Đông-Xuân, Hè-Thu, Thu-Đông), ngày bắt đầu và kết thúc của cả mùa canh tác. 
+              Vụ mùa lưu thông tin chu kỳ thời vụ (ví dụ: Đông-Xuân, Hè-Thu, Thu-Đông), ngày bắt đầu và kết thúc của cả mùa canh tác.
               Các đợt trồng trong từng nhà kính / phân khu sẽ gắn với một vụ mùa tương ứng để dễ dàng theo dõi sản lượng và đối soát chi phí.
             </p>
           </div>
@@ -1039,16 +1044,16 @@ export const PlantingSeasonsPage: React.FC = () => {
 
           {/* Educational notice */}
           <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-emerald-950">
-            <strong className="block font-bold">Quy chuẩn Nông học (Feedback Thầy Cô):</strong>
+            <strong className="block font-bold">Quy trình Thiết lập Đợt Canh tác:</strong>
             <p className="text-[11px] leading-tight text-emerald-800">
-              Chọn Nông trại ➔ Phân khu, Loại cây ➔ Giống cây phù hợp (cascade dropdown lọc tự động), và liên kết vào Vụ mùa chuẩn.
+              Chọn Nông trại ➔ Phân khu, Loại cây ➔ Giống cây phù hợp, và liên kết vào Vụ mùa chuẩn để tự động kích hoạt ngưỡng vi khí hậu IoT.
             </p>
           </div>
 
           {/* Step 1: Farm & Zone Selection */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 font-bold mb-1">1. Chọn Nông trại (Farm) *</label>
+              <label className="block text-slate-700 font-bold mb-1">Chọn Nông trại (Farm) *</label>
               <select
                 required
                 value={newBatchForm.farmId}
@@ -1063,7 +1068,7 @@ export const PlantingSeasonsPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-bold mb-1">2. Chọn Phân khu (Zone) *</label>
+              <label className="block text-slate-700 font-bold mb-1">Chọn Phân khu (Zone) *</label>
               <select
                 required
                 value={newBatchForm.zoneId}
@@ -1087,7 +1092,7 @@ export const PlantingSeasonsPage: React.FC = () => {
           {/* Step 2: Farming Season & Crop Selection */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 font-bold mb-1">3. Chọn Vụ mùa áp dụng (Season) *</label>
+              <label className="block text-slate-700 font-bold mb-1">Chọn Vụ mùa áp dụng (Season) *</label>
               <select
                 required
                 value={newBatchForm.farmingSeasonId}
@@ -1112,7 +1117,7 @@ export const PlantingSeasonsPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-700 font-bold mb-1">4. Chọn Loại Cây (Crop) *</label>
+              <label className="block text-slate-700 font-bold mb-1">Chọn Loại Cây (Crop) *</label>
               <select
                 required
                 value={newBatchForm.cropId}
@@ -1149,11 +1154,11 @@ export const PlantingSeasonsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Step 3: CASCADE DROPDOWN VARIETY (ITEM 10) */}
+          {/* Step 3: Giống Cây Trồng (Plant Variety) */}
           <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2">
             <label className="block text-purple-950 font-bold text-xs flex items-center justify-between">
               <span className="flex items-center gap-1.5">
-                <Tag size={13} className="text-purple-600" /> 5. Chọn Giống Cây Trồng (PlantVariety - Cascade Filter) *
+                <Tag size={13} className="text-purple-600" /> Chọn Giống Cây Trồng (Plant Variety)
               </span>
               <span className="text-[10px] text-purple-700 font-normal">
                 {availableVarietiesForForm.length} giống phù hợp với loài đã chọn
@@ -1162,12 +1167,11 @@ export const PlantingSeasonsPage: React.FC = () => {
 
             {availableVarietiesForForm.length > 0 ? (
               <select
-                required
                 value={newBatchForm.varietyId}
                 onChange={e => handleVarietyChange(e.target.value)}
                 className="w-full bg-white border border-purple-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-purple-500"
               >
-                <option value="">-- Chọn Giống cây con phù hợp --</option>
+                <option value="">-- Áp dụng giống chung (Theo hồ sơ cây) --</option>
                 {availableVarietiesForForm.map(v => (
                   <option key={v.varietyId} value={v.varietyId}>
                     {v.name} {v.description ? `— ${v.description}` : ''}

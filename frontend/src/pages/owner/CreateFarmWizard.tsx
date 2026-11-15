@@ -10,6 +10,8 @@ import { Button, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, calculatePolygonAreaM2, toGeoJsonPolygon } from '../../components/maps/GISLocationPicker';
 import { farmService, cropService, gisProxyService } from '../../services';
 import { HoneycombEstimator } from '../../components/estimation/HoneycombEstimator';
+import { CustomGrowthProfileModal } from '../../components/crops/CustomGrowthProfileModal';
+import { Sliders } from 'lucide-react';
 
 export const CreateFarmWizard: React.FC = () => {
   const navigate = useNavigate();
@@ -101,6 +103,8 @@ export const CreateFarmWizard: React.FC = () => {
   const [selectedVarietyId, setSelectedVarietyId] = useState<string>('');
   const [serverProfiles, setServerProfiles] = useState<any[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [profileSourceFilter, setProfileSourceFilter] = useState<'ALL' | 'SYSTEM' | 'CUSTOM'>('ALL');
+  const [isCustomProfileModalOpen, setIsCustomProfileModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [wizardSuccessData, setWizardSuccessData] = useState<{
@@ -654,7 +658,45 @@ export const CreateFarmWizard: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-medium mb-1">Hồ sơ Sinh trưởng / Growth Profile (Từ Database) *</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-slate-800 font-bold">Hồ sơ Sinh trưởng / Quy trình Canh tác *</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomProfileModalOpen(true)}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-emerald-300"
+                      >
+                        <Plus size={12} /> Tự tạo Cấu hình riêng
+                      </button>
+                    </div>
+
+                    {/* Source filter tabs */}
+                    <div className="flex items-center gap-1.5 mb-2 bg-slate-100 p-1 rounded-xl text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setProfileSourceFilter('ALL')}
+                        className={`flex-1 py-1 rounded-lg font-bold text-center cursor-pointer transition-all ${profileSourceFilter === 'ALL' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                      >
+                        Tất cả ({serverProfiles.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProfileSourceFilter('SYSTEM')}
+                        className={`flex-1 py-1 rounded-lg font-bold text-center cursor-pointer transition-all ${profileSourceFilter === 'SYSTEM' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                      >
+                        🌐 Hệ thống ({serverProfiles.filter((p: any) => p.isSystemDefined).length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProfileSourceFilter('CUSTOM')}
+                        className={`flex-1 py-1 rounded-lg font-bold text-center cursor-pointer transition-all ${profileSourceFilter === 'CUSTOM' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                      >
+                        🌿 Của Trang trại ({serverProfiles.filter((p: any) => !p.isSystemDefined).length})
+                      </button>
+                    </div>
+
                     <select
                       className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
                       value={selectedProfileId}
@@ -680,13 +722,18 @@ export const CreateFarmWizard: React.FC = () => {
                         }
                       }}
                     >
-                      {serverProfiles.length > 0 ? (
-                        serverProfiles.map(p => (
+                      {serverProfiles
+                        .filter((p: any) => {
+                          if (profileSourceFilter === 'SYSTEM') return p.isSystemDefined;
+                          if (profileSourceFilter === 'CUSTOM') return !p.isSystemDefined;
+                          return true;
+                        })
+                        .map(p => (
                           <option key={p.profileId || p.id} value={p.profileId || p.id}>
-                            {p.name} {p.isDefault ? '— [Mặc định]' : ''} ({p.stages?.length || 0} giai đoạn)
+                            {p.name} {p.isSystemDefined ? '— [Mẫu Hệ thống]' : '— [Trang trại riêng]'} ({p.stages?.length || 0} giai đoạn)
                           </option>
-                        ))
-                      ) : (
+                        ))}
+                      {serverProfiles.length === 0 && (
                         <option value="">Chưa có hồ sơ sinh trưởng cho giống này</option>
                       )}
                     </select>
@@ -1136,6 +1183,19 @@ export const CreateFarmWizard: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Tự tạo Cấu hình Canh tác riêng */}
+      <CustomGrowthProfileModal
+        isOpen={isCustomProfileModalOpen}
+        onClose={() => setIsCustomProfileModalOpen(false)}
+        initialCropId={selectedCropId}
+        initialVarietyId={selectedVarietyId}
+        onSuccess={newProfile => {
+          loadVarietiesAndProfiles(selectedCropId);
+          const profId = newProfile.profileId || newProfile.id;
+          if (profId) setSelectedProfileId(profId);
+        }}
+      />
     </div>
   );
 };
