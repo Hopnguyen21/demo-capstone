@@ -33,7 +33,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { title: 'Nhập & Xuất Kho IoT', path: '/admin/stock-outs', icon: <Package size={18} /> },
     { title: 'Thư viện Giống Cây', path: '/admin/crops', icon: <Sprout size={18} /> },
     { title: 'Quy chuẩn VietGAP', path: '/admin/vietgap', icon: <FileText size={18} />, badge: 'TCVN' },
-    { title: 'Hồ sơ Sinh trưởng', path: '/admin/growth-profiles', icon: <Activity size={18} /> },
     { title: 'Kho Vật tư & Linh kiện', path: '/admin/devices', icon: <Package size={18} />, badge: 'Kho' },
     { title: 'Sức khỏe Máy chủ & IoT', path: '/admin/system-health', icon: <Radio size={18} /> },
     { title: 'Nhật ký Audit Logs', path: '/admin/audit-logs', icon: <ShieldAlert size={18} /> },

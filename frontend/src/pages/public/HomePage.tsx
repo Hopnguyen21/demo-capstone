@@ -76,7 +76,6 @@ export const HomePage: React.FC = () => {
           <nav className="hidden lg:flex items-center gap-8 text-sm font-semibold text-slate-700">
             <a href="#solutions" className="hover:text-[#119653] transition-colors">Giải pháp</a>
             <a href="#hardware" className="hover:text-[#119653] transition-colors">Thiết bị LoRa</a>
-            <a href="#vietgap" className="hover:text-[#119653] transition-colors">Quy trình VietGAP</a>
             <a href="#workflow" className="hover:text-[#119653] transition-colors">Triển khai GIS</a>
             <a href="#testimonials" className="hover:text-[#119653] transition-colors">Khách hàng</a>
           </nav>
