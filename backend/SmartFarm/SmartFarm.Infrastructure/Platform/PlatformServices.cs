@@ -16,8 +16,56 @@ using SmartFarm.Infrastructure.Persistence;
 namespace SmartFarm.Infrastructure.Platform;
 
 // ─── Platform Admin Service ───────────────────────────────────────────────────
-public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdminService
+public sealed class PlatformAdminService(
+    SmartFarmDbContext db,
+    IOptions<SmartFarm.Infrastructure.Identity.JwtOptions>? jwt = null,
+    IOptions<GeminiOptions>? gemini = null,
+    IOptions<SmartFarm.Infrastructure.Ai.Knowledge.GeminiEmbeddingOptions>? embedding = null) : IPlatformAdminService
 {
+    private string SigningKey => jwt?.Value.SigningKey ?? string.Empty;
+
+    /// <summary>Giá trị Admin xem được: khoá bí mật luôn bị che (chỉ 4 ký tự cuối), không bao giờ trả khoá thật qua API.</summary>
+    private const int MaxGeminiKeys = 10;
+
+    /// <summary>Danh sách khoá mới từ màn hình: mục đã che (****abcd) giữ lại khoá đang lưu tương ứng, mục thường là khoá mới. Trả mảng JSON đã mã hoá ("" nếu rỗng).</summary>
+    private string BuildKeyList(string? storedEncrypted, string? submittedJson)
+    {
+        List<string> submitted;
+        try { submitted = JsonSerializer.Deserialize<List<string>>(string.IsNullOrWhiteSpace(submittedJson) ? "[]" : submittedJson) ?? []; }
+        catch (JsonException) { throw new RequestValidationException(PlatformSettingKeys.GeminiApiKeys, "Danh sách khoá phải là mảng JSON các chuỗi."); }
+        var current = GeminiRuntimeSettings.ReadKeyList(storedEncrypted, SigningKey);
+        var result = new List<string>();
+        foreach (var raw in submitted.Select(x => (x ?? string.Empty).Trim()).Where(x => x.Length > 0))
+        {
+            if (SecretProtector.LooksMasked(raw))
+            {
+                var kept = current.FirstOrDefault(k => SecretProtector.Mask(k) == raw && !result.Contains(k))
+                    ?? throw new RequestValidationException(PlatformSettingKeys.GeminiApiKeys, "Một khoá đã lưu không còn khớp, hãy tải lại trang rồi thử lại.");
+                result.Add(kept);
+                continue;
+            }
+            if (raw.Length < 20 || raw.Any(char.IsWhiteSpace))
+                throw new RequestValidationException(PlatformSettingKeys.GeminiApiKeys, "Khoá API không hợp lệ (tối thiểu 20 ký tự, không có khoảng trắng).");
+            if (!result.Contains(raw)) result.Add(raw);
+        }
+        if (result.Count > MaxGeminiKeys)
+            throw new RequestValidationException(PlatformSettingKeys.GeminiApiKeys, $"Tối đa {MaxGeminiKeys} khoá.");
+        if (result.Count == 0) return string.Empty;
+        if (SigningKey.Length < 32)
+            throw new RequestValidationException(PlatformSettingKeys.GeminiApiKeys, "Chưa cấu hình Jwt:SigningKey nên không thể mã hoá khoá API để lưu.");
+        return SecretProtector.Protect(JsonSerializer.Serialize(result), SigningKey);
+    }
+
+    private string DisplayValue(PlatformSetting x)
+    {
+        if (!x.IsSecret && !PlatformSettingsStore.IsSecretKey(x.Key)) return x.Value;
+        if (string.IsNullOrEmpty(x.Value)) return x.Key == PlatformSettingKeys.GeminiApiKeys ? "[]" : string.Empty;
+        if (x.Key == PlatformSettingKeys.GeminiApiKeys)
+            return JsonSerializer.Serialize(GeminiRuntimeSettings.ReadKeyList(x.Value, SigningKey).Select(SecretProtector.Mask));
+        var plain = SecretProtector.IsProtected(x.Value) ? SecretProtector.TryUnprotect(x.Value, SigningKey) : x.Value;
+        return plain is null ? string.Empty : SecretProtector.Mask(plain);
+    }
+
     public async Task<AuditLogPagedResult> GetAuditLogsAsync(int page, int pageSize, string? search, string? action, string? entity, DateTime? fromDate, DateTime? toDate, CancellationToken ct)
     {
         page = Math.Max(1, page);
@@ -44,7 +92,7 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
     {
         await PlatformSettingsStore.EnsureDefaultsAsync(db, ct);
         var settings = await db.PlatformSettings.AsNoTracking().OrderBy(x => x.Group).ThenBy(x => x.Key).ToListAsync(ct);
-        return settings.Select(x => new PlatformSettingView(x.Key, x.IsSecret ? MaskSecret(x.Value) : x.Value, x.Group, x.DataType, x.Description, x.IsSecret, x.UpdatedAtUtc)).ToList();
+        return settings.Select(x => new PlatformSettingView(x.Key, DisplayValue(x), x.Group, x.DataType, x.Description, x.IsSecret, x.UpdatedAtUtc)).ToList();
     }
 
     public async Task<BusinessParametersView> GetBusinessParametersAsync(CancellationToken ct) => new(
@@ -56,8 +104,41 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
     public async Task<IReadOnlyList<PlatformSettingView>> UpdateSettingsAsync(IReadOnlyList<UpdatePlatformSettingItem> updates, Guid updatedByUserId, CancellationToken ct)
     {
         var actor = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == updatedByUserId, ct);
-        foreach (var update in updates)
+        var geminiTouched = false;
+        foreach (var rawUpdate in updates)
         {
+            var update = rawUpdate;
+            var isSecretKey = PlatformSettingsStore.IsSecretKey(update.Key);
+            if (update.Key == PlatformSettingKeys.GeminiApiKeys)
+            {
+                var stored = await db.PlatformSettings.AsNoTracking().Where(x => x.Key == update.Key).Select(x => x.Value).SingleOrDefaultAsync(ct);
+                update = new UpdatePlatformSettingItem(update.Key, BuildKeyList(stored, update.Value));
+                geminiTouched = true;
+            }
+            else if (isSecretKey)
+            {
+                var plain = (update.Value ?? string.Empty).Trim();
+                // Màn hình gửi lại chuỗi đã che khi Admin không sửa ô khoá: giữ nguyên khoá đang lưu.
+                if (plain.Length > 0 && SecretProtector.LooksMasked(plain)) continue;
+                if (plain.Length > 0)
+                {
+                    if (plain.Length < 20 || plain.Any(char.IsWhiteSpace))
+                        throw new RequestValidationException(update.Key, "Khoá API không hợp lệ (tối thiểu 20 ký tự, không có khoảng trắng).");
+                    if (SigningKey.Length < 32)
+                        throw new RequestValidationException(update.Key, "Chưa cấu hình Jwt:SigningKey nên không thể mã hoá khoá API để lưu.");
+                    plain = SecretProtector.Protect(plain, SigningKey);
+                }
+                update = new UpdatePlatformSettingItem(update.Key, plain);
+                geminiTouched = true;
+            }
+            else if (update.Key == PlatformSettingKeys.GeminiModel)
+            {
+                var model = (update.Value ?? string.Empty).Trim();
+                if (model.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(model, @"^[A-Za-z0-9._\-]{1,80}$"))
+                    throw new RequestValidationException(update.Key, "Tên model chỉ gồm chữ, số, '.', '-', '_' (tối đa 80 ký tự).");
+                update = new UpdatePlatformSettingItem(update.Key, model);
+                geminiTouched = true;
+            }
             var def = PlatformSettingsStore.Find(update.Key);
             if (def is not null && !PlatformSettingsStore.TryParse(def, update.Value, out _))
                 throw new RequestValidationException(update.Key, $"Giá trị phải là số trong khoảng {def.Min.ToString(CultureInfo.InvariantCulture)} – {def.Max.ToString(CultureInfo.InvariantCulture)}{(def.DataType == "Integer" ? " (số nguyên)" : "")}.");
@@ -67,21 +148,25 @@ public sealed class PlatformAdminService(SmartFarmDbContext db) : IPlatformAdmin
             {
                 ActorUserId = updatedByUserId, ActorName = actor?.FullName ?? "Admin", ActorRole = actor?.Role.ToString() ?? "PlatformAdmin",
                 Action = "PLATFORM_SETTING_UPDATED", EntityName = "PlatformSetting", EntityId = update.Key,
-                Details = (existing?.IsSecret ?? false) ? "Đã đổi giá trị cấu hình bí mật." : $"{update.Key}: '{oldValue ?? "(mới)"}' → '{update.Value}'",
+                Details = (isSecretKey || (existing?.IsSecret ?? false)) ? "Đã đổi giá trị cấu hình bí mật." : $"{update.Key}: '{oldValue ?? "(mới)"}' → '{update.Value}'",
                 CreatedAtUtc = DateTime.UtcNow
             });
             if (existing is null)
             {
-                db.PlatformSettings.Add(new PlatformSetting { Key = update.Key, Value = update.Value, Group = "Custom", DataType = "String", UpdatedByUserId = updatedByUserId, UpdatedAtUtc = DateTime.UtcNow });
+                db.PlatformSettings.Add(new PlatformSetting { Key = update.Key, Value = update.Value, Group = isSecretKey || update.Key == PlatformSettingKeys.GeminiModel ? "Ai" : "Custom", DataType = "String", IsSecret = isSecretKey, UpdatedByUserId = updatedByUserId, UpdatedAtUtc = DateTime.UtcNow });
             }
             else
             {
                 existing.Value = update.Value;
+                if (isSecretKey) existing.IsSecret = true;
                 existing.UpdatedByUserId = updatedByUserId;
                 existing.UpdatedAtUtc = DateTime.UtcNow;
             }
         }
         await db.SaveChangesAsync(ct);
+        // Khoá/model Gemini mới có hiệu lực ngay, không cần khởi động lại backend.
+        if (geminiTouched && gemini is not null)
+            await GeminiRuntimeSettings.ApplyAsync(db, SigningKey, gemini.Value, embedding?.Value, null, ct);
         return await GetSettingsAsync(ct);
     }
 

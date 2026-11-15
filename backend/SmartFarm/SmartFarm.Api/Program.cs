@@ -156,6 +156,21 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     try
     {
+        // Khoá/model Gemini Admin đã nhập ở Cài đặt nền tảng được ưu tiên hơn cấu hình môi trường.
+        await SmartFarm.Infrastructure.Platform.GeminiRuntimeSettings.ApplyAsync(
+            db,
+            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Identity.JwtOptions>>().Value.SigningKey,
+            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Ai.GeminiOptions>>().Value,
+            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Ai.Knowledge.GeminiEmbeddingOptions>>().Value,
+            logger, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Applying Gemini settings from platform settings failed during startup");
+    }
+
+    try
+    {
         await SmartFarm.Infrastructure.Persistence.DataIntegrityHealer.HealAsync(db, logger, app.Configuration, app.Environment.IsDevelopment());
     }
     catch (Exception ex)
