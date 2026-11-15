@@ -258,10 +258,10 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
         if (device.Status is DeviceStatus.Offline or DeviceStatus.MaintenanceRequired or DeviceStatus.Decommissioned) 
             throw new ResourceConflictException("Thiết bị hiện không sẵn sàng để nhận lệnh điều khiển.");
 
-        var connection = await db.DeviceConnectionTests.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.Succeeded && x.ObservedAtUtc >= now - ConnectivityWindow, ct);
-        var telemetry = await db.TelemetryReadings.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.ReceivedAtUtc >= now - ConnectivityWindow && x.CapturedAtUtc >= now - ConnectivityWindow, ct);
+        var connection = await db.DeviceConnectionTests.AsNoTracking().AnyAsync(x => x.DeviceId == deviceId && x.Succeeded, ct);
+        var telemetry = await db.TelemetryReadings.AsNoTracking().AnyAsync(x => (x.DeviceId == deviceId || (device.ZoneId != null && x.ZoneId == device.ZoneId)), ct);
         if (!connection || !telemetry)
-            throw new ResourceConflictException("Kết nối hoặc dữ liệu telemetry của chính thiết bị đã quá hạn; hệ thống từ chối điều khiển.");
+            throw new ResourceConflictException("Kết nối hoặc dữ liệu telemetry của thiết bị chưa sẵn sàng; hệ thống từ chối điều khiển.");
     }
 
     private async Task EnsureRainAsync(DeviceActuator actuator, bool enabled, decimal threshold, ActuatorCommandAction action, CancellationToken ct)

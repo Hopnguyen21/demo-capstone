@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using SmartFarm.Application.Common.Exceptions;
 using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Control;
@@ -13,8 +14,9 @@ using SmartFarm.Infrastructure.Persistence;
 namespace SmartFarm.Infrastructure.Control;
 
 public sealed class MqttActuatorCommandTransport(
-    IServiceProvider serviceProvider,
-    IConfiguration configuration) : IActuatorCommandTransport
+    IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
+    ILogger<MqttActuatorCommandTransport> logger) : IActuatorCommandTransport
 {
     private bool IsSimulationEnabled
     {
@@ -43,7 +45,7 @@ public sealed class MqttActuatorCommandTransport(
             try
             {
                 await Task.Delay(1500, CancellationToken.None);
-                using (var scope = serviceProvider.CreateScope())
+                using (var scope = scopeFactory.CreateScope())
                 {
                     var control = scope.ServiceProvider.GetRequiredService<IControlService>();
                     await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
@@ -66,7 +68,7 @@ public sealed class MqttActuatorCommandTransport(
                 var runSeconds = demoDuration > 0 ? demoDuration : command.DurationSeconds;
                 await Task.Delay(TimeSpan.FromSeconds(runSeconds), CancellationToken.None);
 
-                using var completionScope = serviceProvider.CreateScope();
+                using var completionScope = scopeFactory.CreateScope();
                 var db = completionScope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
                 var notif = completionScope.ServiceProvider.GetRequiredService<INotificationService>();
                 var cmd = await db.ActuatorCommands
@@ -139,9 +141,9 @@ public sealed class MqttActuatorCommandTransport(
                     // Notification failure must not alter the command execution record.
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Failed simulated feedback remains unconfirmed and will follow command timeout handling.
+                logger.LogError(ex, "Failed simulated actuator feedback delivery for command {CommandId}", command.CommandId);
             }
         }, CancellationToken.None);
 
@@ -163,7 +165,7 @@ public sealed class MqttActuatorCommandTransport(
             try
             {
                 await Task.Delay(1000, CancellationToken.None);
-                using var scope = serviceProvider.CreateScope();
+                using var scope = scopeFactory.CreateScope();
                 var control = scope.ServiceProvider.GetRequiredService<IControlService>();
                 await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
                     command.GatewayId,
@@ -175,9 +177,9 @@ public sealed class MqttActuatorCommandTransport(
                     null,
                     null), CancellationToken.None);
             }
-            catch
+            catch (Exception ex)
             {
-                // Failed simulated feedback remains unconfirmed and will follow command timeout handling.
+                logger.LogError(ex, "Failed simulated emergency-stop feedback delivery for command {CommandId}", command.CommandId);
             }
         }, CancellationToken.None);
 

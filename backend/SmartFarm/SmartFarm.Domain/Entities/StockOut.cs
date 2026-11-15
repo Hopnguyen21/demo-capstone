@@ -10,6 +10,9 @@ public sealed class StockOut : AuditableEntity
     public Farm Farm { get; set; } = null!;
     public Guid? ZoneId { get; set; }
     public Zone? Zone { get; set; }
+    /// <summary>Yêu cầu dịch vụ (luồng lắp đặt) mà phiếu thuộc về; null với phiếu xuất lẻ.</summary>
+    public Guid? ServiceRequestId { get; set; }
+    public ServiceRequest? ServiceRequest { get; set; }
     public string StockOutCode { get; set; } = string.Empty;
     public StockOutStatus Status { get; set; } = StockOutStatus.Draft;
     public Guid CreatedByUserId { get; set; }

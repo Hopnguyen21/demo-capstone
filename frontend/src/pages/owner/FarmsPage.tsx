@@ -39,6 +39,14 @@ const normalizeDeviceStatus = (value: any) => {
 };
 
 
+const isHarvestStage = (stageName?: string | null, yieldStatus?: string | null): boolean => {
+  if (yieldStatus === 'Completed') return true;
+  if (!stageName) return false;
+  const lower = stageName.toLowerCase();
+  return lower.includes('thu hoạch') || lower.includes('harvest') || lower.includes('nuôi trái') || lower.includes('giai đoạn 4') || lower.includes('stage_4') || lower.includes('stage 4');
+  return lower.includes('thu hoạch') || lower.includes('thu hoach') || lower.includes('harvest');
+};
+
 export const FarmsPage: React.FC = () => {
   const businessParams = useBusinessParameters();
   const navigate = useNavigate();
@@ -1474,12 +1482,12 @@ export const FarmsPage: React.FC = () => {
 
                   return (
                     <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${!contract
-                        ? 'bg-slate-50 border-slate-200 text-slate-600'
-                        : isExp
-                          ? 'bg-rose-50/70 border-rose-200 text-rose-950'
-                          : isExpSoon
-                            ? 'bg-amber-50/80 border-amber-300 text-amber-950'
-                            : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                      ? 'bg-slate-50 border-slate-200 text-slate-600'
+                      : isExp
+                        ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+                        : isExpSoon
+                          ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                          : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
                       }`}>
                       <div className="flex items-center justify-between">
                         <span className="font-bold flex items-center gap-1.5">
@@ -1488,10 +1496,10 @@ export const FarmsPage: React.FC = () => {
                         </span>
                         {contract ? (
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isExp
-                              ? 'bg-rose-200 text-rose-900'
-                              : isExpSoon
-                                ? 'bg-amber-200 text-amber-900 animate-pulse'
-                                : 'bg-emerald-200 text-emerald-900'
+                            ? 'bg-rose-200 text-rose-900'
+                            : isExpSoon
+                              ? 'bg-amber-200 text-amber-900 animate-pulse'
+                              : 'bg-emerald-200 text-emerald-900'
                             }`}>
                             {isExp ? 'ĐÃ HẾT HẠN' : isExpSoon ? `SẮP HẾT HẠN (${contract.daysRemaining} ngày)` : 'CÒN HIỆU LỰC'}
                           </span>
@@ -1672,8 +1680,8 @@ export const FarmsPage: React.FC = () => {
               type="button"
               onClick={() => setZoneActiveTab('OVERVIEW')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'OVERVIEW'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
             >
               <Sprout size={15} />
@@ -1684,8 +1692,8 @@ export const FarmsPage: React.FC = () => {
               type="button"
               onClick={() => setZoneActiveTab('CONTRACTS')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'CONTRACTS'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
             >
               <FileText size={15} />
@@ -1702,8 +1710,8 @@ export const FarmsPage: React.FC = () => {
               type="button"
               onClick={() => setZoneActiveTab('DEPRECIATION')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'DEPRECIATION'
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
             >
               <Cpu size={15} />
@@ -1719,8 +1727,8 @@ export const FarmsPage: React.FC = () => {
               type="button"
               onClick={() => setZoneActiveTab('CF3')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'CF3'
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                ? 'bg-teal-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
             >
               <Gauge size={15} />
@@ -1731,8 +1739,8 @@ export const FarmsPage: React.FC = () => {
               type="button"
               onClick={() => setZoneActiveTab('ESTIMATION')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'ESTIMATION'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
             >
               <Layers size={15} />
@@ -1746,10 +1754,10 @@ export const FarmsPage: React.FC = () => {
               {/* Quick Contract & Crop Bar */}
               {activeZoneContract ? (
                 <div className={`p-4 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${activeZoneContract.daysRemaining < 0
-                    ? 'bg-rose-50/80 border-rose-200 text-rose-950'
-                    : activeZoneContract.daysRemaining <= 30
-                      ? 'bg-amber-50/90 border-amber-300 text-amber-950'
-                      : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                  ? 'bg-rose-50/80 border-rose-200 text-rose-950'
+                  : activeZoneContract.daysRemaining <= 30
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
                   }`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${activeZoneContract.daysRemaining < 0 ? 'bg-rose-600 text-white' : activeZoneContract.daysRemaining <= 30 ? 'bg-amber-500 text-white animate-pulse' : 'bg-emerald-600 text-white'
@@ -1761,10 +1769,10 @@ export const FarmsPage: React.FC = () => {
                         <span className="font-bold text-slate-900">Hợp đồng phân khu đang áp dụng:</span>
                         <span className="font-mono font-bold text-indigo-700">#{activeZoneContract.contractNumber}</span>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${activeZoneContract.daysRemaining < 0
-                            ? 'bg-rose-200 text-rose-900'
-                            : activeZoneContract.daysRemaining <= 30
-                              ? 'bg-amber-200 text-amber-900 animate-pulse'
-                              : 'bg-emerald-200 text-emerald-900'
+                          ? 'bg-rose-200 text-rose-900'
+                          : activeZoneContract.daysRemaining <= 30
+                            ? 'bg-amber-200 text-amber-900 animate-pulse'
+                            : 'bg-emerald-200 text-emerald-900'
                           }`}>
                           {activeZoneContract.daysRemaining < 0 ? 'ĐÃ HẾT HẠN' : activeZoneContract.daysRemaining <= 30 ? `SẮP HẾT HẠN (${activeZoneContract.daysRemaining} ngày)` : 'CÒN HIỆU LỰC'}
                         </span>
@@ -2049,72 +2057,74 @@ export const FarmsPage: React.FC = () => {
                       : <p className="text-xs text-slate-600">Zone chưa gán cây. Tạo vụ mùa để gán cây, rồi chọn hoặc chỉnh hồ sơ sinh trưởng tại đây.</p>}
                   </div>
 
-                  {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) */}
-                  <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
-                          <Scale size={18} />
+                  {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) - Chỉ hiện khi đến giai đoạn thu hoạch hoặc đã thu hoạch */}
+                  {isHarvestStage(selectedZone.currentStage, zoneYieldMap[selectedZone.zoneId]?.status) && (
+                    <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
+                            <Scale size={18} />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
+                            <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
-                          <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
+                        <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
+                          {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
+                        </span>
+                      </div>
+
+                      {/* Metrics Grid */}
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                          <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
+                          <div className="text-xl font-black text-white font-mono">
+                            {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
+                          </div>
+                          <div className="text-[10px] text-emerald-100">
+                            ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                          <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
+                          <div className="text-xl font-black text-white font-mono">
+                            {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
+                          </div>
+                          <div className="text-[10px] text-emerald-100">
+                            Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
+                          </div>
                         </div>
                       </div>
-                      <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
-                        {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
-                      </span>
+
+                      {/* Quality & harvest date */}
+                      <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
+                        <div className="flex justify-between">
+                          <span className="text-emerald-100">Phân loại chất lượng:</span>
+                          <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-emerald-100">Ngày ghi nhận:</span>
+                          <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
+                        </div>
+                        {zoneYieldMap[selectedZone.zoneId]?.notes && (
+                          <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
+                            Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenYieldModal}
+                        className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
+                      >
+                        <Plus size={15} />
+                        Nhập / Cập nhật Sản lượng Thu hoạch (kg)
+                      </button>
                     </div>
-
-                    {/* Metrics Grid */}
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
-                        <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
-                        <div className="text-xl font-black text-white font-mono">
-                          {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
-                        </div>
-                        <div className="text-[10px] text-emerald-100">
-                          ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
-                        </div>
-                      </div>
-
-                      <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
-                        <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
-                        <div className="text-xl font-black text-white font-mono">
-                          {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
-                        </div>
-                        <div className="text-[10px] text-emerald-100">
-                          Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quality & harvest date */}
-                    <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
-                      <div className="flex justify-between">
-                        <span className="text-emerald-100">Phân loại chất lượng:</span>
-                        <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-emerald-100">Ngày ghi nhận:</span>
-                        <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
-                      </div>
-                      {zoneYieldMap[selectedZone.zoneId]?.notes && (
-                        <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
-                          Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleOpenYieldModal}
-                      className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
-                    >
-                      <Plus size={15} />
-                      Nhập / Cập nhật Sản lượng Thu hoạch (kg)
-                    </button>
-                  </div>
+                  )}
 
                   {/* Thẻ Nhân viên Phân công phụ trách Zone */}
                   <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
@@ -2292,10 +2302,10 @@ export const FarmsPage: React.FC = () => {
                             </span>
                           )}
                           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${activeZoneContract.daysRemaining < 0
-                              ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                              : activeZoneContract.daysRemaining <= 30
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
-                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : activeZoneContract.daysRemaining <= 30
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             }`}>
                             {activeZoneContract.daysRemaining < 0
                               ? 'HẾT HẠN'
@@ -2379,10 +2389,10 @@ export const FarmsPage: React.FC = () => {
                           Thời hạn: <strong>{activeZoneContract.durationMonths} tháng</strong>
                         </div>
                         <div className={`text-[11px] font-bold ${activeZoneContract.daysRemaining < 0
-                            ? 'text-rose-600'
-                            : activeZoneContract.daysRemaining <= 30
-                              ? 'text-amber-600'
-                              : 'text-emerald-700'
+                          ? 'text-rose-600'
+                          : activeZoneContract.daysRemaining <= 30
+                            ? 'text-amber-600'
+                            : 'text-emerald-700'
                           }`}>
                           {activeZoneContract.daysRemaining < 0
                             ? `Đã hết hạn ${Math.abs(activeZoneContract.daysRemaining)} ngày trước`
@@ -2560,7 +2570,7 @@ export const FarmsPage: React.FC = () => {
                     Chưa có hợp đồng cũ nào trong lịch sử Zone này. Tất cả hợp đồng sau khi hết hạn hoặc thay thế sẽ được tự động bảo toàn tại đây.
                   </div>
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
@@ -2810,7 +2820,7 @@ export const FarmsPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
@@ -2851,10 +2861,10 @@ export const FarmsPage: React.FC = () => {
                               </td>
                               <td className="p-3 text-center">
                                 <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] ${remMonths <= 0
-                                    ? 'bg-rose-100 text-rose-800'
-                                    : remMonths <= 3
-                                      ? 'bg-amber-100 text-amber-900 font-black animate-pulse'
-                                      : 'bg-emerald-100 text-emerald-800'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : remMonths <= 3
+                                    ? 'bg-amber-100 text-amber-900 font-black animate-pulse'
+                                    : 'bg-emerald-100 text-emerald-800'
                                   }`}>
                                   {remMonths} tháng
                                 </span>
@@ -2870,10 +2880,10 @@ export const FarmsPage: React.FC = () => {
                               </td>
                               <td className="p-3 text-center">
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${depStatus === 'FullyDepreciated' || remMonths <= 0
-                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                                    : depStatus === 'ExpiringSoon' || remMonths <= 3
-                                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                  : depStatus === 'ExpiringSoon' || remMonths <= 3
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                   }`}>
                                   {depStatus === 'FullyDepreciated' || remMonths <= 0
                                     ? 'ĐÃ HẾT KHẤU HAO'
