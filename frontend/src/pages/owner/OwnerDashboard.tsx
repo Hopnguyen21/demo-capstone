@@ -16,7 +16,6 @@ import {
   FileText, Clock, BellRing, ArrowUpRightFromCircle
 } from 'lucide-react';
 import { StatusBadge, Button } from '../../components/ui/BaseUI';
-import { mockWeather } from '../../mocks/mockData';
 
 export const OwnerDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -148,7 +147,9 @@ export const OwnerDashboard: React.FC = () => {
   const openAlerts = alerts.filter(a => (a.status as any) === 'OPEN' || (a.status as any) === 'Open');
 
   // Weather info
-  const weather = weatherData || mockWeather;
+  // Weather is optional: a new Owner may not have a Farm yet, and the weather
+  // service can legitimately return no data. Keep the dashboard render-safe.
+  const weather = weatherData || {};
 
   const metric = (code: string) => latestTelemetry[code.toLowerCase()];
   const metricValue = (code: string, decimals = 1) => {
@@ -228,14 +229,11 @@ export const OwnerDashboard: React.FC = () => {
               </div>
               <div className="text-xs space-y-0.5">
                 <div className="font-bold text-white text-sm flex items-center gap-2">
-                  <span>{weather.temperature ?? 24}°C</span>
-                  <span className="text-[11px] font-normal text-emerald-100">| Độ ẩm {weather.humidity ?? 70}%</span>
-                  {!weatherData && (
-                    <span className="text-[9px] bg-amber-400/30 text-amber-200 px-1 py-0.2 rounded font-normal">Demo</span>
-                  )}
+                  <span>{weather.temperature !== undefined ? `${weather.temperature}°C` : '—'}</span>
+                  <span className="text-[11px] font-normal text-emerald-100">| Độ ẩm {weather.humidity !== undefined ? `${weather.humidity}%` : '—'}</span>
                 </div>
                 <div className="text-[11px] text-emerald-100 flex items-center gap-1">
-                  <Droplets size={11} className="text-emerald-200" /> Khả năng mưa: {weather.rainProbability ?? 15}%
+                  <Droplets size={11} className="text-emerald-200" /> Khả năng mưa: {weather.rainProbability !== undefined ? `${weather.rainProbability}%` : '—'}
                 </div>
               </div>
             </div>

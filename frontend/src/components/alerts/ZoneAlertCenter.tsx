@@ -1,6 +1,6 @@
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
+import { 
   ShieldAlert, CheckCircle2, Bot, Plus, Settings, Trash2, Edit3,
   Droplets, Thermometer, Wind, Sun, Zap, Activity, Cpu,
   X, ChevronDown, ChevronUp, Play, Pause, RefreshCw, Power, Info, Sparkles, AlertOctagon, HelpCircle
@@ -48,12 +48,12 @@ interface LiveAlert {
 }
 
 export const METRICS = [
-  { key: 'temperature', label: 'Nhiệt độ', unit: '°C', icon: Thermometer, color: 'orange', baseVal: 27, min: -10, max: 60 },
-  { key: 'humidity', label: 'Độ ẩm KK', unit: '%', icon: Wind, color: 'teal', baseVal: 72, min: 0, max: 100 },
-  { key: 'soil_moisture', label: 'Độ ẩm đất', unit: '%', icon: Droplets, color: 'sky', baseVal: 65, min: 0, max: 100 },
-  { key: 'light', label: 'Ánh sáng', unit: 'lux', icon: Sun, color: 'yellow', baseVal: 18000, min: 0, max: 100000 },
-  { key: 'co2', label: 'CO₂', unit: 'ppm', icon: Cpu, color: 'violet', baseVal: 420, min: 300, max: 5000 },
-  { key: 'battery', label: 'Pin Node', unit: '%', icon: Zap, color: 'emerald', baseVal: 78, min: 0, max: 100 },
+  { key: 'temperature', label: 'Nhiệt độ', unit: '°C', icon: Thermometer, color: 'orange', min: -10, max: 60 },
+  { key: 'humidity', label: 'Độ ẩm KK', unit: '%', icon: Wind, color: 'teal', min: 0, max: 100 },
+  { key: 'soil_moisture', label: 'Độ ẩm đất', unit: '%', icon: Droplets, color: 'sky', min: 0, max: 100 },
+  { key: 'light', label: 'Ánh sáng', unit: 'lux', icon: Sun, color: 'yellow', min: 0, max: 100000 },
+  { key: 'co2', label: 'CO₂', unit: 'ppm', icon: Cpu, color: 'violet', min: 300, max: 5000 },
+  { key: 'battery', label: 'Pin Node', unit: '%', icon: Zap, color: 'emerald', min: 0, max: 100 },
 ];
 
 const ICON_COLOR: Record<string, string> = {
@@ -64,14 +64,6 @@ const ICON_COLOR: Record<string, string> = {
   emerald: 'text-emerald-600 bg-emerald-100 border-emerald-200',
   violet: 'text-violet-600 bg-violet-100 border-violet-200',
 };
-
-const DEFAULT_ZONE_RULES: AlertRule[] = [
-  { id: 'r1', name: 'Đất khô – Tự động bật máy bơm tưới', metric: 'soil_moisture', unit: '%', minThreshold: 45, maxThreshold: 90, zone: 'Nhà màng 01 - Cà chua A', zoneId: 'zone-01', severity: 'WARNING', action: 'Bật máy bơm tưới nhỏ giọt', enabled: true },
-  { id: 'r2', name: 'Nhiệt độ quá cao – Bật quạt thông gió', metric: 'temperature', unit: '°C', minThreshold: 15, maxThreshold: 34, zone: 'Nhà màng 01 - Cà chua A', zoneId: 'zone-01', severity: 'CRITICAL', action: 'Bật quạt đối lưu & Phun sương', enabled: true },
-  { id: 'r3', name: 'Độ ẩm không khí thấp – Phun sương', metric: 'humidity', unit: '%', minThreshold: 55, maxThreshold: 95, zone: 'Nhà màng 02 - Dưa lưới B', zoneId: 'zone-02', severity: 'WARNING', action: 'Bật phun sương vi khí hậu', enabled: true },
-  { id: 'r4', name: 'Nhiệt độ nhà màng Ớt quá cao', metric: 'temperature', unit: '°C', minThreshold: 18, maxThreshold: 33, zone: 'Nhà màng 03 - Ớt C', zoneId: 'zone-03', severity: 'CRITICAL', action: 'Bật quạt thông gió & cắt nắng', enabled: true },
-  { id: 'r5', name: 'Pin Node LoRa yếu', metric: 'battery', unit: '%', minThreshold: 20, maxThreshold: 100, zone: 'Tất cả các Zone', zoneId: 'all', severity: 'CRITICAL', action: 'Gửi thông báo Kỹ thuật viên thay Pin', enabled: true },
-];
 
 function fmtVal(val: number, key: string) {
   if (key === 'light') return val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0);
@@ -106,28 +98,23 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           setInternalNodes(data);
         }
       }
-    }).catch(() => { });
+    }).catch(() => {});
   }, [zoneId, passedNodes]);
 
   // Compute active metrics matching ONLY actual connected nodes/modules
   const activeMetrics = React.useMemo(() => {
-    if (!internalNodes || internalNodes.length === 0) {
-      return METRICS;
-    }
+    if (!internalNodes || internalNodes.length === 0) return [];
 
     const detected = new Set<string>();
-    detected.add('battery'); // Always include battery for active IoT nodes
 
     internalNodes.forEach(node => {
-      const text = [
-        node.name,
-        node.category,
-        node.deviceType,
-        node.model,
-        node.manufacturer,
-        node.nodeCode,
-        ...(Array.isArray(node.sensors) ? node.sensors.map((s: any) => typeof s === 'string' ? s : (s.sensorType || s.name || '')) : [])
-      ].filter(Boolean).join(' ').toLowerCase();
+      // Sensor availability comes from the Backend device declaration and the
+      // last real telemetry payload, never from a node name/model heuristic.
+      const declared = Array.isArray(node.sensors) ? node.sensors : [];
+      const telemetry = Array.isArray(node.sensorParameters) ? node.sensorParameters : [];
+      const text = [...declared, ...telemetry].map((s: any) => typeof s === 'string'
+        ? s
+        : (s.parameterCode || s.sensorType || s.code || s.name || '')).filter(Boolean).join(' ').toLowerCase();
 
       // Temperature detection
       if (text.includes('nhiệt') || text.includes('temp') || text.includes('sht') || text.includes('dht') || text.includes('bme') || text.includes('air') || text.includes('khí hậu')) {
@@ -152,17 +139,38 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
     });
 
     const filtered = METRICS.filter(m => detected.has(m.key));
-    return filtered.length > 0 ? filtered : METRICS;
+    return filtered;
   }, [internalNodes]);
 
   const activeMetricKeys = React.useMemo(() => new Set(activeMetrics.map(m => m.key)), [activeMetrics]);
 
-  const [rules, setRules] = useState<AlertRule[]>(() => {
-    if (zoneId) {
-      return DEFAULT_ZONE_RULES.filter(r => r.zoneId === zoneId || r.zoneId === 'all');
+  const [rules, setRules] = useState<AlertRule[]>([]);
+
+  useEffect(() => {
+    if (!zoneId) {
+      setRules([]);
+      return;
     }
-    return DEFAULT_ZONE_RULES;
-  });
+    alertService.getAlertRules(zoneId).then((items: any[]) => {
+      const parameterLabel = (code: string) => METRICS.find(m => m.key.toLowerCase() === code.toLowerCase())?.label || code;
+      setRules((Array.isArray(items) ? items : []).map(item => {
+        const metric = String(item.parameterCode || '').toLowerCase();
+        return {
+          id: String(item.ruleId || item.id),
+          name: `${parameterLabel(metric)} – Quy tắc Backend`,
+          metric,
+          unit: METRICS.find(m => m.key === metric)?.unit || '',
+          minThreshold: Number(item.minThreshold),
+          maxThreshold: Number(item.maxThreshold),
+          zone: targetZone?.name || `Zone ${zoneId}`,
+          zoneId,
+          severity: item.severity === 'CRITICAL' ? 'CRITICAL' : 'WARNING',
+          action: 'Theo cấu hình điều khiển Backend',
+          enabled: item.isActive !== false,
+        };
+      }));
+    }).catch(() => setRules([]));
+  }, [zoneId, targetZone?.name]);
 
   const displayRules = React.useMemo(() => {
     return rules.filter(r => activeMetricKeys.has(r.metric));
@@ -181,16 +189,12 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
   const [activeActions, setActiveActions] = useState<Record<string, { action: string; since: string }>>({});
-  const [sensorValues, setSensorValues] = useState<Record<string, number>>(() =>
-    Object.fromEntries(METRICS.map(m => [m.key, m.baseVal]))
-  );
-
-  const [simRunning, setSimRunning] = useState(true);
-  const [simExpanded, setSimExpanded] = useState(false);
+  const [sensorValues, setSensorValues] = useState<Record<string, number>>({});
+  
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [ruleForm, setRuleForm] = useState<Partial<AlertRule>>({});
-
+  
   // AI assistant popup modal state
   const [aiAdviceModalAlert, setAiAdviceModalAlert] = useState<Alert | LiveAlert | null>(null);
 
@@ -242,25 +246,6 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
     checkRules(sensorValues);
   }, [checkRules]);
 
-  useEffect(() => {
-    if (!simRunning) return;
-    const t = setInterval(() => {
-      tickRef.current += 1;
-      setSensorValues(prev => {
-        const next: Record<string, number> = {};
-        activeMetrics.forEach(m => {
-          // slight drift simulation
-          const current = prev[m.key] ?? m.baseVal;
-          const drift = current * (1 + (Math.random() * 0.002 - 0.001));
-          next[m.key] = parseFloat(Math.min(m.max, Math.max(m.min, drift)).toFixed(2));
-        });
-        checkRules(next);
-        return { ...prev, ...next };
-      });
-    }, 5000);
-    return () => clearInterval(t);
-  }, [simRunning, checkRules, activeMetrics]);
-
   const openNewRule = () => {
     const firstMetric = activeMetrics[0] || METRICS[0];
     setEditingRule(null);
@@ -302,8 +287,33 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       enabled: ruleForm.enabled ?? true,
     };
 
-    setRules(prev => editingRule ? prev.map(r => r.id === editingRule.id ? rule : r) : [...prev, rule]);
-    setShowRuleModal(false);
+    if (!zoneId) return;
+    const payload = {
+      parameterCode: rule.metric,
+      minThreshold: rule.minThreshold,
+      maxThreshold: rule.maxThreshold,
+      severity: rule.severity,
+      cooldownMinutes: 5,
+      isActive: rule.enabled,
+    };
+    const operation = editingRule
+      ? alertService.updateAlertRule(zoneId, editingRule.id, payload)
+      : alertService.createAlertRule(zoneId, payload);
+    operation.then(() => {
+      setShowRuleModal(false);
+      return alertService.getAlertRules(zoneId);
+    }).then((items: any[]) => {
+      setRules((Array.isArray(items) ? items : []).map(item => ({
+        id: String(item.ruleId || item.id),
+        name: `${METRICS.find(m => m.key.toLowerCase() === String(item.parameterCode).toLowerCase())?.label || item.parameterCode} – Quy tắc Backend`,
+        metric: String(item.parameterCode).toLowerCase(),
+        unit: METRICS.find(m => m.key.toLowerCase() === String(item.parameterCode).toLowerCase())?.unit || '',
+        minThreshold: Number(item.minThreshold), maxThreshold: Number(item.maxThreshold),
+        zone: targetZone?.name || `Zone ${zoneId}`, zoneId,
+        severity: item.severity === 'CRITICAL' ? 'CRITICAL' : 'WARNING',
+        action: 'Theo cấu hình điều khiển Backend', enabled: item.isActive !== false,
+      })));
+    }).catch(() => setShowRuleModal(false));
   };
 
   const activeLiveCount = liveAlerts.filter(a => !a.acked).length;
@@ -350,17 +360,18 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       {/* Sensor Live Gauge Chips matching active node sensors */}
       <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-${Math.min(6, Math.max(2, activeMetrics.length))} gap-3`}>
         {activeMetrics.map(m => {
-          const val = sensorValues[m.key] ?? m.baseVal;
+          const val = sensorValues[m.key];
           const Icon = m.icon;
-          const violatingRule = rules.find(r => r.enabled && r.metric === m.key && (val < r.minThreshold || val > r.maxThreshold));
+          const violatingRule = val === undefined ? undefined : rules.find(r => r.enabled && r.metric === m.key && (val < r.minThreshold || val > r.maxThreshold));
 
           return (
             <div
               key={m.key}
-              className={`p-3 rounded-xl border transition-all ${violatingRule
-                ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400 animate-pulse'
-                : 'bg-white border-slate-200 shadow-2xs hover:border-slate-300'
-                }`}
+              className={`p-3 rounded-xl border transition-all ${
+                violatingRule 
+                  ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400 animate-pulse' 
+                  : 'bg-white border-slate-200 shadow-2xs hover:border-slate-300'
+              }`}
             >
               <div className="flex items-center justify-between text-slate-500 mb-1">
                 <span className="text-[11px] font-medium">{m.label}</span>
@@ -369,8 +380,8 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
               <div className="flex items-baseline justify-between">
                 <span className={`text-base font-extrabold font-mono ${violatingRule ? 'text-rose-700' : 'text-slate-900'}`}>
-                  {fmtVal(val, m.key)}
-                  <span className="text-xs font-normal text-slate-500 ml-0.5">{m.unit}</span>
+                  {val === undefined ? '--' : fmtVal(val, m.key)}
+                  {val !== undefined && <span className="text-xs font-normal text-slate-500 ml-0.5">{m.unit}</span>}
                 </span>
               </div>
 
@@ -379,8 +390,8 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                   ⚠️ Vượt ngưỡng {violatingRule.minThreshold}-{violatingRule.maxThreshold}{m.unit}
                 </span>
               ) : (
-                <span className="mt-1 block text-[10px] text-emerald-600 font-medium">
-                  ✓ Chuẩn an toàn
+                <span className={`mt-1 block text-[10px] font-medium ${val === undefined ? 'text-slate-500' : 'text-emerald-600'}`}>
+                  {val === undefined ? 'Chưa có telemetry' : '✓ Chuẩn an toàn'}
                 </span>
               )}
             </div>
@@ -406,10 +417,11 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               return (
                 <div
                   key={a.id}
-                  className={`p-4 rounded-2xl border-l-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs transition-all ${a.severity === 'CRITICAL'
-                    ? 'bg-rose-50/80 border-l-rose-600 border-rose-200'
-                    : 'bg-amber-50/80 border-l-amber-500 border-amber-200'
-                    }`}
+                  className={`p-4 rounded-2xl border-l-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs transition-all ${
+                    a.severity === 'CRITICAL' 
+                      ? 'bg-rose-50/80 border-l-rose-600 border-rose-200' 
+                      : 'bg-amber-50/80 border-l-amber-500 border-amber-200'
+                  }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${a.severity === 'CRITICAL' ? 'bg-rose-100 border-rose-200 text-rose-600' : 'bg-amber-100 border-amber-200 text-amber-600'}`}>
@@ -490,8 +502,9 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               return (
                 <div
                   key={rule.id}
-                  className={`px-5 py-3.5 flex items-center gap-4 text-xs transition-all ${!rule.enabled ? 'opacity-50 bg-slate-50/50' : isViolating ? 'bg-rose-50/60' : 'hover:bg-slate-50'
-                    }`}
+                  className={`px-5 py-3.5 flex items-center gap-4 text-xs transition-all ${
+                    !rule.enabled ? 'opacity-50 bg-slate-50/50' : isViolating ? 'bg-rose-50/60' : 'hover:bg-slate-50'
+                  }`}
                 >
                   {/* Toggle Switch */}
                   <button
@@ -546,7 +559,12 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                       <Edit3 size={15} />
                     </button>
                     <button
-                      onClick={() => setRules(prev => prev.filter(r => r.id !== rule.id))}
+                      onClick={() => {
+                        if (!zoneId) return;
+                        alertService.deleteAlertRule(zoneId, rule.id)
+                          .then(() => setRules(prev => prev.filter(r => r.id !== rule.id)))
+                          .catch(() => undefined);
+                      }}
                       className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"
                       title="Xóa luật"
                     >
@@ -609,27 +627,12 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
         </div>
       </div>
 
-      {/* Floating Sensor Simulator Switch */}
+      {/* Real device feed status; no synthetic sensor values are generated in production UI. */}
       <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between text-xs">
         <div className="flex items-center gap-2 font-mono text-[11px]">
-          <span className={`w-2 h-2 rounded-full ${simRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+          <span className={`w-2 h-2 rounded-full ${internalNodes.length > 0 ? 'bg-emerald-400' : 'bg-slate-500'}`} />
           <Cpu size={14} className="text-emerald-400" />
-          <span>Mô phỏng IoT Live Feed: {simRunning ? 'ĐANG CHẠY (5s/tick)' : 'TẠM DỪNG'}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800 hover:bg-slate-700" onClick={() => setSimRunning(!simRunning)}>
-            {simRunning ? <Pause size={13} className="mr-1 text-amber-400" /> : <Play size={13} className="mr-1 text-emerald-400" />}
-            {simRunning ? 'Tạm dừng' : 'Kích hoạt'}
-          </Button>
-
-          <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800 hover:bg-slate-700" onClick={() => {
-            const resetVals = Object.fromEntries(METRICS.map(m => [m.key, m.baseVal]));
-            setSensorValues(resetVals);
-            checkRules(resetVals);
-          }}>
-            <RefreshCw size={13} className="mr-1 text-slate-300" /> Reset Cảm biến
-          </Button>
+          <span>Dữ liệu IoT thực: {internalNodes.length > 0 ? 'ĐANG CHỜ TELEMETRY' : 'CHƯA CÓ NODE'}</span>
         </div>
       </div>
 
@@ -752,7 +755,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               </h4>
               <ul className="list-disc list-inside space-y-1.5 text-slate-700 leading-relaxed pl-1">
                 <li>Kích hoạt rơ-le <strong>Bật máy bơm tưới nhỏ giọt / Quạt đối lưu</strong> trong thời lượng 10-15 phút.</li>
-                <li>Kiểm tra đường ống cấp nước và điện áp nguồn LoRa Gateway khu vực đất trồng.</li>
+                <li>Kiểm tra đường ống cấp nước và điện áp nguồn LoRa Gateway khu vực nhà màng.</li>
                 <li>Điều chỉnh lại dải ngưỡng an toàn vi khí hậu nếu vụ trồng bước sang giai đoạn thu hoạch.</li>
               </ul>
             </div>

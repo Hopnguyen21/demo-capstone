@@ -48,6 +48,7 @@ public sealed class PlatformHardwareItem : AuditableEntity
     public string? SerialNumber { get; set; }
     public string? MacAddress { get; set; }
     public int QuantityInStock { get; set; } = 0;
+    public string Unit { get; set; } = "Cái";
     public string? LocationRack { get; set; }
     public decimal UnitPrice { get; set; } = 0;
     public string Status { get; set; } = "Available";

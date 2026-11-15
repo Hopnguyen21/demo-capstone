@@ -12,7 +12,7 @@ export const FieldsPage: React.FC = () => {
   const [farms, setFarms] = useState<Farm[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedFarmId, setSelectedFarmId] = useState('30000000-0000-0000-0000-000000000001');
+  const [selectedFarmId, setSelectedFarmId] = useState('');
   const [fieldName, setFieldName] = useState('');
   const [description, setDescription] = useState('');
   const [areaM2, setAreaM2] = useState('20000');

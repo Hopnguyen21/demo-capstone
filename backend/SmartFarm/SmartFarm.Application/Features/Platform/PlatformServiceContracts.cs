@@ -16,28 +16,23 @@ public sealed record AuditLogView(
 public sealed record AuditLogPagedResult(IReadOnlyList<AuditLogView> Items, int TotalCount, int Page, int PageSize);
 
 // ─── Platform Settings ────────────────────────────────────────────────────────
-/// <summary>Tham số nghiệp vụ hiện hành mà web/mobile cần để hiển thị; đọc từ platform_settings (mọi vai trò đã đăng nhập đều đọc được).</summary>
 public sealed record BusinessParametersView(decimal DepositPercent, decimal RainGuardThresholdPercent, decimal RepeatPurchaseDiscountPercent, decimal RenewalDiscountPercent);
 public sealed record PlatformSettingView(string Key, string Value, string Group, string DataType, string? Description, bool IsSecret, DateTime? UpdatedAtUtc);
 public sealed record UpdatePlatformSettingItem(string Key, string Value);
 
 // ─── Platform Hardware Items ──────────────────────────────────────────────────
-public sealed record PlatformHardwareItemView(Guid Id, string Code, string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string Status, Guid? AssignedTechnicianId, DateTime CreatedAtUtc, string? EstimateRole = null, int EstimateUnits = 1, IReadOnlyList<string>? MeasuredParameters = null, Guid? DeviceModelDefinitionId = null);
-public sealed record CreateHardwareItemCommand(string Code, string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string? Status, string? EstimateRole = null, int? EstimateUnits = null, IReadOnlyList<string>? MeasuredParameters = null, Guid? DeviceModelDefinitionId = null);
-/// <summary>PUT: UnitPrice/EstimateRole/EstimateUnits/MeasuredParameters = null nghĩa là GIỮ NGUYÊN giá trị hiện có (client cũ không được vô tình xóa giá). EstimateRole rỗng hoặc MeasuredParameters rỗng = xóa.</summary>
-public sealed record UpdateHardwareItemCommand(string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal? UnitPrice, string Status, string? EstimateRole = null, int? EstimateUnits = null, IReadOnlyList<string>? MeasuredParameters = null, Guid? DeviceModelDefinitionId = null);
+public sealed record PlatformHardwareItemView(Guid Id, string Code, string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string Status, Guid? AssignedTechnicianId, DateTime CreatedAtUtc, string? EstimateRole = null, int EstimateUnits = 1, IReadOnlyList<string>? MeasuredParameters = null, Guid? DeviceModelDefinitionId = null, string Unit = "cái");
+public sealed record CreateHardwareItemCommand(string Code, string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal UnitPrice, string? Status, string? EstimateRole = null, int? EstimateUnits = null, IReadOnlyList<string>? MeasuredParameters = null, Guid? DeviceModelDefinitionId = null, string? Unit = null);
+public sealed record UpdateHardwareItemCommand(string Name, string Category, string? Model, string? Manufacturer, string? SerialNumber, string? MacAddress, int QuantityInStock, string? LocationRack, decimal? UnitPrice, string Status, string? EstimateRole = null, int? EstimateUnits = null, IReadOnlyList<string>? MeasuredParameters = null, Guid? DeviceModelDefinitionId = null, string? Unit = null);
 public sealed record AssignHardwareItemCommand(Guid TechnicianUserId, int Quantity = 1);
+public sealed record HardwareAllocationRequestItem(Guid HardwareItemId, int Quantity);
+public sealed record HardwareAllocationRequestView(Guid Id, Guid TechnicianUserId, string TechnicianName, IReadOnlyList<HardwareAllocationRequestItem> Items, string Status, DateTime CreatedAtUtc);
 
 // ─── Service Request Quotation ────────────────────────────────────────────────
 public sealed record QuotationItemInput(string Code, string Name, string Category, string Unit, int Quantity, decimal UnitPrice, decimal VatPercent, string? Notes);
-/// <summary>VAT mặc định của báo giá lắp đặt thiết bị (8% theo các báo giá hiện có); kỹ thuật viên chỉnh được khi lập báo giá.</summary>
-public static class QuotationDefaults
-{
-    public const decimal VatPercent = 8m;
-}
-/// <summary>Bản nháp báo giá dựng từ dự toán Owner đã lưu kèm Deployment Request. Kỹ thuật viên chỉnh sửa rồi gửi bằng POST quotation.</summary>
-public sealed record QuotationEstimateDraftView(Guid ServiceRequestId, Guid DeploymentRequestId, decimal VatPercent, IReadOnlyList<QuotationItemInput> Items, decimal Subtotal, decimal Total);
 public sealed record CreateQuotationCommand(IReadOnlyList<QuotationItemInput> Items, string? Notes, string? ContractTerms);
+public static class QuotationDefaults { public const decimal VatPercent = 8m; }
+public sealed record QuotationEstimateDraftView(Guid ServiceRequestId, Guid DeploymentRequestId, decimal VatPercent, IReadOnlyList<QuotationItemInput> Items, decimal Subtotal, decimal Total);
 
 public sealed record QuotationItemView(Guid Id, string Code, string Name, string Category, string Unit, int Quantity, decimal UnitPrice, decimal VatPercent, decimal TotalAmount, string? Notes);
 public sealed record QuotationView(
@@ -57,7 +52,7 @@ public sealed record QuotationView(
     DateTime CreatedAtUtc);
 
 // ─── Contract Signing & Payments ──────────────────────────────────────────────
-public sealed record SignContractDepositCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes, decimal? ExpectedDepositAmount = null);
+public sealed record SignContractDepositCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes);
 public sealed record SignAcceptanceFinalCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes);
 public sealed record ServiceRequestPaymentView(Guid Id, string PaymentStage, decimal Amount, string PaymentMethod, string? TransactionReference, string SignerFullName, string Status, DateTime PaidAtUtc);
 
@@ -71,7 +66,6 @@ public sealed record FarmWizardFarmInput(string Name, string? LocationText, deci
 public sealed record FarmWizardFieldInput(string Name, decimal? AreaM2, string? SoilType, string? BoundaryGeoJson);
 public sealed record FarmWizardZoneInput(string Name, decimal? AreaM2, string? ZoneType, string? BoundaryGeoJson);
 public sealed record FarmWizardSeasonInput(string Name, Guid CropId, Guid? VarietyId, Guid? GrowthProfileId, DateTime StartDate, DateTime? ExpectedEndDate);
-/// <summary>Một dòng dự toán gửi kèm yêu cầu. Có HardwareItemId: server lấy mã/tên/giá từ kho (bỏ qua giá client). Role "Installation": chi phí thi công, cần UnitPrice.</summary>
 public sealed record FarmWizardEstimateItemInput(Guid? HardwareItemId, string Role, int Quantity, decimal? UnitPrice = null, string? Name = null, string? Notes = null);
 public sealed record FarmWizardDeploymentInput(IReadOnlyList<string>? RequiredParameters, string? OwnerNotes, IReadOnlyList<FarmWizardEstimateItemInput>? EstimateItems = null);
 public sealed record FarmWizardSetupCommand(
@@ -117,7 +111,12 @@ public interface IPlatformAdminService
     Task<PlatformHardwareItemView> CreateHardwareItemAsync(CreateHardwareItemCommand command, CancellationToken ct);
     Task<PlatformHardwareItemView> UpdateHardwareItemAsync(Guid id, UpdateHardwareItemCommand command, CancellationToken ct);
     Task<PlatformHardwareItemView> AssignHardwareItemAsync(Guid id, AssignHardwareItemCommand command, CancellationToken ct);
-    Task<PlatformHardwareItemView> ReturnHardwareItemAsync(Guid id, CancellationToken ct);
+    Task<HardwareAllocationRequestView> RequestHardwareAllocationAsync(Guid technicianId, IReadOnlyList<HardwareAllocationRequestItem> items, CancellationToken ct);
+    Task<IReadOnlyList<HardwareAllocationRequestView>> ListHardwareAllocationRequestsAsync(CancellationToken ct);
+    Task<HardwareAllocationRequestView> ApproveHardwareAllocationRequestAsync(Guid requestId, Guid adminId, CancellationToken ct);
+    Task<HardwareAllocationRequestView> RejectHardwareAllocationRequestAsync(Guid requestId, Guid adminId, string reason, CancellationToken ct);
+    Task<PlatformHardwareItemView> ReturnHardwareItemAsync(Guid id, Guid? technicianId, CancellationToken ct);
+    Task<PlatformHardwareItemView> ReportHardwareFaultAsync(Guid id, Guid technicianId, CancellationToken ct);
     Task DeleteHardwareItemAsync(Guid id, CancellationToken ct);
 
     // System health report
@@ -197,12 +196,9 @@ public interface IControlAutomationService
 public interface IScheduleSyncService
 {
     Task<IReadOnlyList<object>> SyncFromCropAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid cropId, Guid actuatorId, CancellationToken ct);
-
-    /// <summary>Đồng bộ lịch tưới của HỒ SƠ đang gắn trên Zone (không nhận cây tùy ý) thành ControlSchedule cho một thiết bị của Zone.</summary>
     Task<ProfileScheduleSyncResult> SyncFromProfileAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid actuatorId, Guid? growthStageId, CancellationToken ct);
 }
 
-/// <summary>Source: Profile (ca lưu trong profile) hoặc Crop (profile chưa có ca nên dùng lịch mẫu của cây).</summary>
 public sealed record ProfileScheduleSyncResult(Guid ProfileId, string ProfileName, Guid StageId, string StageName, string Source, Guid ActuatorId, IReadOnlyList<ProfileSyncedScheduleView> Schedules, Guid? SeasonId = null, int? DayNumber = null);
 public sealed record ProfileSyncedScheduleView(Guid ScheduleId, string Name, string CronExpression, int DurationSeconds, bool IsActive, DateTime NextRunAtUtc);
 

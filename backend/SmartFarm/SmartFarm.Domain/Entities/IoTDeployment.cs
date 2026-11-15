@@ -40,6 +40,9 @@ public sealed class DeploymentRequest : AuditableEntity
     public string? FailureDescription { get; set; }
     public DateTime? SubmittedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
+    public bool? ConnectivityCheckPassed { get; set; }
+    public DateTime? ConnectivityCheckedAtUtc { get; set; }
+    public string? ConnectivityEvidence { get; set; }
     public ICollection<DeploymentPlanItem> PlanItems { get; } = new List<DeploymentPlanItem>();
     public ICollection<DeploymentEstimateItem> EstimateItems { get; } = new List<DeploymentEstimateItem>();
     public ICollection<DeploymentSurvey> Surveys { get; } = new List<DeploymentSurvey>();
@@ -121,21 +124,106 @@ public sealed class Gateway : AuditableEntity
     public string? InstallationLocation { get; set; }
     public string ConfiguredNodeIdsCsv { get; set; } = string.Empty;
     public DateTime? ConfiguredAtUtc { get; set; }
+    public int ConfigVersion { get; set; } = 1;
+    public int PollingIntervalSeconds { get; set; } = 60;
+    public int HeartbeatIntervalSeconds { get; set; } = 15;
+    public int ResponseTimeoutMs { get; set; } = 3000;
+    public int RetryCount { get; set; } = 2;
+    public string ConfigSyncStatus { get; set; } = "Applied";
+    public long LastAckedSequenceNumber { get; set; } = 0;
     public ICollection<Device> Devices { get; } = new List<Device>();
+}
+
+public sealed class GatewayEnrollment : AuditableEntity
+{
+    public Guid? GatewayId { get; set; }
+    public Gateway? Gateway { get; set; }
+    public Guid HardwareItemId { get; set; }
+    public PlatformHardwareItem HardwareItem { get; set; } = null!;
+    public Guid TechnicianUserId { get; set; }
+    public AppUser TechnicianUser { get; set; } = null!;
+    public string MacAddress { get; set; } = string.Empty;
+    public string ChipId { get; set; } = string.Empty;
+    public string GatewaySerial { get; set; } = string.Empty;
+    public string BootstrapTokenHash { get; set; } = string.Empty;
+    public string BootstrapFirmwareVersion { get; set; } = string.Empty;
+    public string Status { get; set; } = "Pending";
+    public DateTime? EnrolledAtUtc { get; set; }
+    public DateTime? HandshakeVerifiedAtUtc { get; set; }
+    public string? Notes { get; set; }
 }
 
 public sealed class FirmwareJob : AuditableEntity
 {
     public Guid GatewayId { get; set; }
     public Gateway Gateway { get; set; } = null!;
+    public Guid FirmwareReleaseId { get; set; }
+    public FirmwareRelease FirmwareRelease { get; set; } = null!;
     public string TargetVersion { get; set; } = string.Empty;
     public string FirmwareUrl { get; set; } = string.Empty;
+    public string? ArtifactSha256 { get; set; }
     public DateTime ScheduledAtUtc { get; set; }
     public FirmwareJobStatus Status { get; set; } = FirmwareJobStatus.Scheduled;
 }
 
+public sealed class FirmwareRelease : AuditableEntity
+{
+    public string HardwareTarget { get; set; } = string.Empty;
+    public string Version { get; set; } = string.Empty;
+    public string ProtocolVersion { get; set; } = string.Empty;
+    public string? SourceRepository { get; set; }
+    public string? GitTag { get; set; }
+    public string? CommitSha { get; set; }
+    public string ArtifactUrl { get; set; } = string.Empty;
+    public string? ArtifactSha256 { get; set; }
+    public string? ReleaseNotes { get; set; }
+    public FirmwareReleaseStatus Status { get; set; } = FirmwareReleaseStatus.Imported;
+    public DateTime? PublishedAtUtc { get; set; }
+    public Guid? ApprovedByUserId { get; set; }
+    public AppUser? ApprovedByUser { get; set; }
+}
+
+/// <summary>Phiên chuẩn bị phần cứng trước khi thiết bị được phép đưa lên GIS.</summary>
+public sealed class HardwarePreparationSession : AuditableEntity
+{
+    public Guid HardwareItemId { get; set; }
+    public PlatformHardwareItem HardwareItem { get; set; } = null!;
+    public Guid TechnicianUserId { get; set; }
+    public AppUser TechnicianUser { get; set; } = null!;
+    public string DeviceType { get; set; } = string.Empty;
+    public HardwarePreparationStatus Status { get; set; } = HardwarePreparationStatus.HardwarePreparation;
+    public string? NodeId { get; set; }
+    public int? LoRaAddress { get; set; }
+    public string? BoardProfile { get; set; }
+    public string? Notes { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+    public bool? ConnectivityCheckPassed { get; set; }
+    public DateTime? ConnectivityCheckedAtUtc { get; set; }
+    public string? ConnectivityEvidence { get; set; }
+}
+
+public sealed class FirmwareInstallation : AuditableEntity
+{
+    public Guid? FirmwareReleaseId { get; set; }
+    public FirmwareRelease? FirmwareRelease { get; set; }
+    public Guid PreparationSessionId { get; set; }
+    public HardwarePreparationSession PreparationSession { get; set; } = null!;
+    public Guid TechnicianUserId { get; set; }
+    public AppUser TechnicianUser { get; set; } = null!;
+    public string FirmwareVersion { get; set; } = string.Empty;
+    public FirmwareUploadMethod UploadMethod { get; set; }
+    public string? BoardProfile { get; set; }
+    public string? BootloaderProfile { get; set; }
+    public FirmwareInstallationResult Result { get; set; } = FirmwareInstallationResult.Started;
+    public string? ErrorMessage { get; set; }
+    public string? Notes { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+}
+
 public sealed class Device : AuditableEntity
 {
+    public Guid? HardwareItemId { get; set; }
+    public PlatformHardwareItem? HardwareItem { get; set; }
     public Guid FarmId { get; set; }
     public Farm Farm { get; set; } = null!;
     public Guid GatewayId { get; set; }
@@ -186,6 +274,19 @@ public sealed class DeviceActuator : AuditableEntity
     public decimal? RatedPowerWatt { get; set; }
     public decimal? FlowRateLitersPerMinute { get; set; }
     public int MaxDurationMinutes { get; set; }
+}
+
+/// <summary>Consumable/support material declared on a node, such as LoRa, wire, resistor or connectors.</summary>
+public sealed class DeviceComponent : AuditableEntity
+{
+    public Guid DeviceId { get; set; }
+    public Device Device { get; set; } = null!;
+    public Guid HardwareItemId { get; set; }
+    public PlatformHardwareItem HardwareItem { get; set; } = null!;
+    public string ComponentType { get; set; } = string.Empty;
+    public int Quantity { get; set; } = 1;
+    public string Unit { get; set; } = "Cái";
+    public string? Notes { get; set; }
 }
 
 public sealed class DeviceAssignmentHistory : AuditableEntity

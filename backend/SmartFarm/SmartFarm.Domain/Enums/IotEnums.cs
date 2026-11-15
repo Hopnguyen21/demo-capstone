@@ -3,8 +3,12 @@ namespace SmartFarm.Domain.Enums;
 public enum DeploymentRequestStatus { Draft, Submitted, Accepted, Surveyed, PlanConfirmed, Installing, Completed, MaintenanceRequired, Cancelled }
 public enum DeviceType { SensorNode, ActuatorNode }
 public enum DeviceStatus { Unassigned, Assigned, SensorsConfigured, ActuatorsConfigured, Online, Offline, MaintenanceRequired, Decommissioned }
+public enum HardwarePreparationStatus { HardwarePreparation, FirmwarePrepared, IdentityVerified, ConnectivityVerified, ReadyForDeployment, Faulty, Maintenance }
+public enum FirmwareUploadMethod { Ota, UsbManual }
+public enum FirmwareInstallationResult { Started, Succeeded, Failed }
 public enum GatewayStatus { Provisioned, Online, Offline }
 public enum FirmwareJobStatus { Scheduled, InProgress, Succeeded, Failed }
+public enum FirmwareReleaseStatus { Imported, PendingReview, Approved, Denied, Deprecated, Revoked }
 public enum DiagnosticJobStatus { Pending, Sent, Acknowledged, Failed, TimedOut, Cancelled }
 public enum ServiceRequestStatus { Open, Assigned, InProgress, Diagnosed, WorkCompleted, Verified, Resolved, Closed, Cancelled }
 public enum AlertSeverity { Info, Warning, Critical }

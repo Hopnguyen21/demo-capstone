@@ -52,7 +52,8 @@ public sealed class MqttTelemetryAdapter(
             payload.DeviceId,
             payload.ZoneId,
             payload.CapturedAtUtc,
-            (payload.Readings ?? []).Select(x => new TelemetryValueInput(x.ParameterCode, x.Value, x.Unit ?? string.Empty)).ToList());
+            (payload.Readings ?? []).Select(x => new TelemetryValueInput(x.ParameterCode, x.Value, x.Unit ?? string.Empty)).ToList(),
+            payload.SequenceNumber);
         return await ingestionService.IngestAsync(gatewayId, envelope, cancellationToken);
     }
 
@@ -67,6 +68,7 @@ public sealed class MqttTelemetryAdapter(
     private sealed class TelemetryPayload
     {
         public string? MessageId { get; init; }
+        public long? SequenceNumber { get; init; }
         public Guid DeviceId { get; init; }
         public Guid ZoneId { get; init; }
         public DateTime CapturedAtUtc { get; init; }

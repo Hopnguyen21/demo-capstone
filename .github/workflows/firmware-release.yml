@@ -1,0 +1,37 @@
+name: Build SmartFarm firmware
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Configure Arduino CLI
+        run: |
+          arduino-cli config init
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.0.7 arduino:avr
+          arduino-cli lib install PubSubClient ArduinoJson DHT sensor
+      - name: Compile ESP32 Gateway
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32c3 \
+            --output-dir dist/gateway \
+            backend/SmartFarm/scripts/esp32_firmware/esp32_smartfarm_gateway_c3_v2
+          cp dist/gateway/*.bin dist/smartfarm-gateway-esp32-c3-${GITHUB_REF_NAME}.bin
+      - name: Compile Arduino Nano Node
+        run: |
+          arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328old \
+            --export-binaries \
+            backend/SmartFarm/scripts/esp32_firmware/arduino_combo_node_custom
+          cp backend/SmartFarm/scripts/esp32_firmware/arduino_combo_node_custom/build/arduino.avr.nano/*.hex dist/smartfarm-node-arduino-nano-${GITHUB_REF_NAME}.hex
+      - name: Checksums
+        run: sha256sum dist/* | tee dist/SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

@@ -63,7 +63,59 @@ internal sealed class GatewayConfiguration : IEntityTypeConfiguration<Gateway>
 
 internal sealed class FirmwareJobConfiguration : IEntityTypeConfiguration<FirmwareJob>
 {
-    public void Configure(EntityTypeBuilder<FirmwareJob> b) { b.ToTable("firmware_jobs"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b); b.Property(x => x.GatewayId).HasColumnName("gateway_id"); b.Property(x => x.TargetVersion).HasColumnName("target_version").HasMaxLength(50); b.Property(x => x.FirmwareUrl).HasColumnName("firmware_url").HasMaxLength(1000); b.Property(x => x.ScheduledAtUtc).HasColumnName("scheduled_at_utc"); b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(20); b.HasOne(x => x.Gateway).WithMany().HasForeignKey(x => x.GatewayId).OnDelete(DeleteBehavior.Restrict); }
+    public void Configure(EntityTypeBuilder<FirmwareJob> b) { b.ToTable("firmware_jobs"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b); b.Property(x => x.GatewayId).HasColumnName("gateway_id"); b.Property(x => x.FirmwareReleaseId).HasColumnName("firmware_release_id"); b.Property(x => x.TargetVersion).HasColumnName("target_version").HasMaxLength(50); b.Property(x => x.FirmwareUrl).HasColumnName("firmware_url").HasMaxLength(1000); b.Property(x => x.ArtifactSha256).HasColumnName("artifact_sha256").HasMaxLength(128); b.Property(x => x.ScheduledAtUtc).HasColumnName("scheduled_at_utc"); b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(20); b.HasOne(x => x.Gateway).WithMany().HasForeignKey(x => x.GatewayId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.FirmwareRelease).WithMany().HasForeignKey(x => x.FirmwareReleaseId).OnDelete(DeleteBehavior.Restrict); }
+}
+
+internal sealed class FirmwareReleaseConfiguration : IEntityTypeConfiguration<FirmwareRelease>
+{
+    public void Configure(EntityTypeBuilder<FirmwareRelease> b)
+    {
+        b.ToTable("firmware_releases"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b);
+        b.Property(x => x.HardwareTarget).HasColumnName("hardware_target").HasMaxLength(80).IsRequired();
+        b.Property(x => x.Version).HasColumnName("version").HasMaxLength(50).IsRequired();
+        b.Property(x => x.ProtocolVersion).HasColumnName("protocol_version").HasMaxLength(50).IsRequired();
+        b.Property(x => x.SourceRepository).HasColumnName("source_repository").HasMaxLength(500);
+        b.Property(x => x.GitTag).HasColumnName("git_tag").HasMaxLength(150);
+        b.Property(x => x.CommitSha).HasColumnName("commit_sha").HasMaxLength(100);
+        b.Property(x => x.ArtifactUrl).HasColumnName("artifact_url").HasMaxLength(1500).IsRequired();
+        b.Property(x => x.ArtifactSha256).HasColumnName("artifact_sha256").HasMaxLength(128);
+        b.Property(x => x.ReleaseNotes).HasColumnName("release_notes").HasMaxLength(4000);
+        b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(30);
+        b.Property(x => x.PublishedAtUtc).HasColumnName("published_at_utc"); b.Property(x => x.ApprovedByUserId).HasColumnName("approved_by_user_id");
+        b.HasIndex(x => new { x.HardwareTarget, x.Version }).IsUnique();
+        b.HasOne(x => x.ApprovedByUser).WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class HardwarePreparationSessionConfiguration : IEntityTypeConfiguration<HardwarePreparationSession>
+{
+    public void Configure(EntityTypeBuilder<HardwarePreparationSession> b)
+    {
+        b.ToTable("hardware_preparation_sessions"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b);
+        b.Property(x => x.HardwareItemId).HasColumnName("hardware_item_id"); b.Property(x => x.TechnicianUserId).HasColumnName("technician_user_id");
+        b.Property(x => x.DeviceType).HasColumnName("device_type").HasMaxLength(40).IsRequired(); b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(40).IsRequired();
+        b.Property(x => x.NodeId).HasColumnName("node_id").HasMaxLength(100); b.Property(x => x.LoRaAddress).HasColumnName("lora_address"); b.Property(x => x.BoardProfile).HasColumnName("board_profile").HasMaxLength(100); b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000); b.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+        b.HasIndex(x => new { x.HardwareItemId, x.Status }); b.HasIndex(x => new { x.TechnicianUserId, x.Status });
+        b.HasOne(x => x.HardwareItem).WithMany().HasForeignKey(x => x.HardwareItemId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.TechnicianUser).WithMany().HasForeignKey(x => x.TechnicianUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class FirmwareInstallationConfiguration : IEntityTypeConfiguration<FirmwareInstallation>
+{
+    public void Configure(EntityTypeBuilder<FirmwareInstallation> b)
+    {
+        b.ToTable("firmware_installations"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b);
+        b.Property(x => x.PreparationSessionId).HasColumnName("preparation_session_id"); b.Property(x => x.TechnicianUserId).HasColumnName("technician_user_id");
+        b.Property(x => x.FirmwareVersion).HasColumnName("firmware_version").HasMaxLength(50).IsRequired(); b.Property(x => x.UploadMethod).HasColumnName("upload_method").HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.BoardProfile).HasColumnName("board_profile").HasMaxLength(100); b.Property(x => x.BootloaderProfile).HasColumnName("bootloader_profile").HasMaxLength(100); b.Property(x => x.Result).HasColumnName("result").HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.ErrorMessage).HasColumnName("error_message").HasMaxLength(2000); b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000); b.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+        b.HasIndex(x => new { x.PreparationSessionId, x.CreatedAtUtc }); b.HasOne(x => x.PreparationSession).WithMany().HasForeignKey(x => x.PreparationSessionId).OnDelete(DeleteBehavior.Cascade); b.HasOne(x => x.TechnicianUser).WithMany().HasForeignKey(x => x.TechnicianUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class GatewayEnrollmentConfiguration : IEntityTypeConfiguration<GatewayEnrollment>
+{
+    public void Configure(EntityTypeBuilder<GatewayEnrollment> b) { b.ToTable("gateway_enrollments"); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b); b.Property(x => x.HardwareItemId).HasColumnName("hardware_item_id"); b.Property(x => x.TechnicianUserId).HasColumnName("technician_user_id"); b.Property(x => x.MacAddress).HasColumnName("mac_address").HasMaxLength(32); b.Property(x => x.ChipId).HasColumnName("chip_id").HasMaxLength(128); b.Property(x => x.GatewaySerial).HasColumnName("gateway_serial").HasMaxLength(100); b.Property(x => x.BootstrapTokenHash).HasColumnName("bootstrap_token_hash").HasMaxLength(128); b.Property(x => x.BootstrapFirmwareVersion).HasColumnName("bootstrap_firmware_version").HasMaxLength(80); b.Property(x => x.Status).HasColumnName("status").HasMaxLength(30); b.Property(x => x.EnrolledAtUtc).HasColumnName("enrolled_at_utc"); b.Property(x => x.HandshakeVerifiedAtUtc).HasColumnName("handshake_verified_at_utc"); b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(1000); b.HasIndex(x => new { x.HardwareItemId, x.Status }); b.HasOne(x => x.HardwareItem).WithMany().HasForeignKey(x => x.HardwareItemId).OnDelete(DeleteBehavior.Restrict); b.HasOne(x => x.TechnicianUser).WithMany().HasForeignKey(x => x.TechnicianUserId).OnDelete(DeleteBehavior.Restrict); }
 }
 
 internal sealed class DeviceConfiguration : IEntityTypeConfiguration<Device>
@@ -79,6 +131,25 @@ internal sealed class DeviceSensorConfiguration : IEntityTypeConfiguration<Devic
 internal sealed class DeviceActuatorConfiguration : IEntityTypeConfiguration<DeviceActuator>
 {
     public void Configure(EntityTypeBuilder<DeviceActuator> b) { b.ToTable("device_actuators", t => { t.HasCheckConstraint("ck_actuator_relay", "relay_channel BETWEEN 1 AND 8"); t.HasCheckConstraint("ck_actuator_duration", "max_duration_minutes BETWEEN 1 AND 30"); }); b.HasKey(x => x.Id); DeploymentRequestConfiguration.IdAudit(b); b.Property(x => x.DeviceId).HasColumnName("device_id"); b.Property(x => x.ActuatorType).HasColumnName("actuator_type").HasMaxLength(50); b.Property(x => x.RelayChannel).HasColumnName("relay_channel"); b.Property(x => x.RatedPowerWatt).HasColumnName("rated_power_watt").HasPrecision(12, 2); b.Property(x => x.MaxDurationMinutes).HasColumnName("max_duration_minutes"); b.HasIndex(x => new { x.DeviceId, x.RelayChannel }).IsUnique(); b.HasOne(x => x.Device).WithMany(x => x.Actuators).HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade); }
+}
+
+internal sealed class DeviceComponentConfiguration : IEntityTypeConfiguration<DeviceComponent>
+{
+    public void Configure(EntityTypeBuilder<DeviceComponent> b)
+    {
+        b.ToTable("device_components", t => { t.HasCheckConstraint("ck_device_component_quantity", "quantity > 0"); t.HasCheckConstraint("ck_device_component_not_actuator", "upper(component_type) NOT IN ('RELAY','VALVE','PUMP','ACTUATOR')"); });
+        b.HasKey(x => x.Id);
+        DeploymentRequestConfiguration.IdAudit(b);
+        b.Property(x => x.DeviceId).HasColumnName("device_id");
+        b.Property(x => x.HardwareItemId).HasColumnName("hardware_item_id");
+        b.Property(x => x.ComponentType).HasColumnName("component_type").HasMaxLength(50);
+        b.Property(x => x.Quantity).HasColumnName("quantity");
+        b.Property(x => x.Unit).HasColumnName("unit").HasMaxLength(30);
+        b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(500);
+        b.HasIndex(x => new { x.DeviceId, x.HardwareItemId }).IsUnique();
+        b.HasOne(x => x.Device).WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.HardwareItem).WithMany().HasForeignKey(x => x.HardwareItemId).OnDelete(DeleteBehavior.Restrict);
+    }
 }
 
 internal sealed class DeviceAssignmentHistoryConfiguration : IEntityTypeConfiguration<DeviceAssignmentHistory>

@@ -145,16 +145,40 @@ public sealed class PlatformFeaturesController(
     }
 
     [HttpPost("api/v1/platform/hardware-items/{id:guid}/assign")]
-    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
+    [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<PlatformHardwareItemView>> AssignHardwareItem(Guid id, [FromBody] AssignHardwareItemCommand command, CancellationToken ct)
         => Ok(await adminService.AssignHardwareItemAsync(id, command with { TechnicianUserId = User.IsInRole("PlatformTechnician") ? User.GetUserId() : command.TechnicianUserId }, ct));
+
+    [HttpPost("api/v1/platform/technicians/me/hardware-requests")]
+    [Authorize(Roles = "PlatformTechnician")]
+    public async Task<ActionResult<HardwareAllocationRequestView>> RequestHardwareAllocation([FromBody] IReadOnlyList<HardwareAllocationRequestItem> items, CancellationToken ct)
+        => StatusCode(StatusCodes.Status201Created, await adminService.RequestHardwareAllocationAsync(User.GetUserId(), items, ct));
+
+    [HttpGet("api/v1/platform/hardware-requests")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<IReadOnlyList<HardwareAllocationRequestView>>> ListHardwareAllocationRequests(CancellationToken ct)
+        => Ok(await adminService.ListHardwareAllocationRequestsAsync(ct));
+
+    [HttpPost("api/v1/platform/hardware-requests/{requestId:guid}/approve")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<HardwareAllocationRequestView>> ApproveHardwareAllocationRequest(Guid requestId, CancellationToken ct)
+        => Ok(await adminService.ApproveHardwareAllocationRequestAsync(requestId, User.GetUserId(), ct));
+    [HttpPost("api/v1/platform/hardware-requests/{requestId:guid}/reject")]
+    [Authorize(Roles = "PlatformAdmin")]
+    public async Task<ActionResult<HardwareAllocationRequestView>> RejectHardwareAllocationRequest(Guid requestId, [FromBody] RejectHardwareRequest body, CancellationToken ct)
+        => Ok(await adminService.RejectHardwareAllocationRequestAsync(requestId, User.GetUserId(), body.Reason, ct));
 
     [HttpPost("api/v1/platform/hardware-items/{id:guid}/return")]
     [Authorize(Roles = "PlatformTechnician,PlatformAdmin")]
     public async Task<ActionResult<PlatformHardwareItemView>> ReturnHardwareItem(Guid id, CancellationToken ct)
     {
-        return Ok(await adminService.ReturnHardwareItemAsync(id, ct));
+        return Ok(await adminService.ReturnHardwareItemAsync(id, User.IsInRole("PlatformTechnician") ? User.GetUserId() : null, ct));
     }
+
+    [HttpPost("api/v1/platform/hardware-items/{id:guid}/report-fault")]
+    [Authorize(Roles = "PlatformTechnician")]
+    public async Task<ActionResult<PlatformHardwareItemView>> ReportHardwareFault(Guid id, CancellationToken ct)
+        => Ok(await adminService.ReportHardwareFaultAsync(id, User.GetUserId(), ct));
 
     [HttpDelete("api/v1/platform/hardware-items/{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
@@ -424,4 +448,9 @@ public sealed class ReverseGeocodeRequest
 public sealed class SearchLocationRequest
 {
     public string Query { get; init; } = string.Empty;
+}
+
+public sealed class RejectHardwareRequest
+{
+    public string Reason { get; init; } = string.Empty;
 }

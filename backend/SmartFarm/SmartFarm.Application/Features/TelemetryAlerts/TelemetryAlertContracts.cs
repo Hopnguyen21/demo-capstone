@@ -5,7 +5,7 @@ namespace SmartFarm.Application.Features.TelemetryAlerts;
 public sealed record GatewayTransportIdentity(string ClientId, string CertificateFingerprint);
 public sealed record MqttInboundMessage(string Topic, GatewayTransportIdentity Identity, ReadOnlyMemory<byte> Payload);
 public sealed record TelemetryValueInput(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit);
-public sealed record TelemetryEnvelope(string MessageId, Guid DeviceId, Guid ZoneId, DateTime CapturedAtUtc, IReadOnlyList<TelemetryValueInput> Readings);
+public sealed record TelemetryEnvelope(string MessageId, Guid DeviceId, Guid ZoneId, DateTime CapturedAtUtc, IReadOnlyList<TelemetryValueInput> Readings, long? SequenceNumber = null);
 public sealed record TelemetryIngestionResult(Guid GatewayId, Guid DeviceId, Guid ZoneId, string MessageId, bool IsDuplicate, int StoredReadings, int AlertsCreated);
 
 public sealed record LatestMetricView(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc, DateTime ReceivedAtUtc, bool IsFresh, string ThresholdStatus);
