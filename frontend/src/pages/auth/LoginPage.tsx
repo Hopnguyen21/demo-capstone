@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthContext';
 import { UserRole } from '../../types';
 import {
-  Sprout, ShieldCheck, ArrowRight, UserCheck, KeyRound,
+  Sprout, ShieldCheck, ArrowRight, KeyRound,
   Mail, AlertCircle, Loader2, Eye, EyeOff, CheckCircle2
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
@@ -11,7 +11,7 @@ import { extractApiError } from '../../services';
 import { ForgotPasswordModal } from '../../components/auth/ForgotPasswordModal';
 
 export const LoginPage: React.FC = () => {
-  const { login, switchRole } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,19 +59,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleDevRoleLogin = async (targetRole: UserRole) => {
-    setLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    try {
-      await switchRole(targetRole);
-      navigateForRole(targetRole);
-    } catch (err) {
-      setErrorMessage(extractApiError(err) || 'Không thể chuyển đổi vai trò.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-3 sm:p-4">
@@ -216,50 +203,7 @@ export const LoginPage: React.FC = () => {
             </form>
           </div>
 
-          {/* Quick Role Selection for Frontend Evaluation */}
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-3">
-              <UserCheck size={14} className="text-[#119653]" /> Chuyển nhanh 4 Vai trò (Quick Dev Switch)
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDevRoleLogin('PLATFORM_ADMIN')}
-                className="p-2 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-left text-xs transition-all disabled:opacity-50"
-              >
-                <div className="font-semibold">1. Platform Admin</div>
-                <div className="text-[10px] text-rose-600">Quản trị toàn sàn SaaS</div>
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDevRoleLogin('PLATFORM_TECHNICIAN')}
-                className="p-2 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 text-left text-xs transition-all disabled:opacity-50"
-              >
-                <div className="font-semibold">2. Technician</div>
-                <div className="text-[10px] text-sky-600">Triển khai & Cấp phát IoT</div>
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDevRoleLogin('FARM_OWNER')}
-                className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-left text-xs transition-all disabled:opacity-50"
-              >
-                <div className="font-semibold">3. Farm Owner</div>
-                <div className="text-[10px] text-emerald-600">Chủ Nông trang Tenant Root</div>
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDevRoleLogin('FARMER')}
-                className="p-2 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-left text-xs transition-all disabled:opacity-50"
-              >
-                <div className="font-semibold">4. Farmer / Worker</div>
-                <div className="text-[10px] text-amber-600">Công nhân thực địa</div>
-              </button>
-            </div>
-          </div>
+
         </div>
       </div>
       <ForgotPasswordModal

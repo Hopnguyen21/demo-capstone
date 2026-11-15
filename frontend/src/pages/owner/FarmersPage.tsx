@@ -137,7 +137,7 @@ export const FarmersPage: React.FC = () => {
           </p>
         </div>
         <Button onClick={() => { setInviteError(null); setIsInviteOpen(true); }} className="font-bold" disabled={!selectedFarmId}>
-          <UserPlus size={16} className="mr-1.5" /> Thêm nhân công vào {selectedFarm?.name ? `“${selectedFarm.name}”` : 'nông trại'}
+          <UserPlus size={16} className="mr-1.5" /> Thêm công nhân vào trang trại
         </Button>
       </div>
 

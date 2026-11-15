@@ -5,8 +5,8 @@ import { UserProfileModal } from '../profile/UserProfileModal';
 import { UserRole, Alert } from '../../types';
 import { alertService, supportService, notificationService, NotificationItem, isAuthenticated, zoneContractService } from '../../services';
 import {
-  Sprout, Bell, UserCheck, LogOut, User,
-  ChevronDown, CheckCircle2, Check, ExternalLink, Clock,
+  Sprout, Bell, LogOut, User,
+  ChevronDown, Check, ExternalLink, Clock,
   Menu, X
 } from 'lucide-react';
 
@@ -16,10 +16,9 @@ interface TopbarProps {
 }
 
 export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenuOpen }) => {
-  const { user, role, switchRole, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const navigate = useNavigate();
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -28,16 +27,12 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const notificationRef = useRef<HTMLDivElement>(null);
-  const roleMenuRef = useRef<HTMLDivElement>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotificationMenu(false);
-      }
-      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target as Node)) {
-        setShowRoleMenu(false);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setShowUserMenu(false);
@@ -47,7 +42,6 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setShowNotificationMenu(false);
-        setShowRoleMenu(false);
         setShowUserMenu(false);
       }
     };
@@ -118,27 +112,6 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
       if (res) setAlerts(res);
     }).catch(() => { });
   }, []);
-
-  const handleRoleSwitch = (targetRole: UserRole) => {
-    switchRole(targetRole);
-    setShowRoleMenu(false);
-    switch (targetRole) {
-      case 'PLATFORM_ADMIN':
-        navigate('/admin/dashboard');
-        break;
-      case 'PLATFORM_TECHNICIAN':
-        navigate('/technician/dashboard');
-        break;
-      case 'FARM_OWNER':
-        navigate('/owner/dashboard');
-        break;
-      case 'FARMER':
-        navigate('/farmer/home');
-        break;
-      default:
-        navigate('/owner/dashboard');
-    }
-  };
 
   const activeAlerts = alerts.filter(a => a.status === 'OPEN');
 
@@ -310,53 +283,6 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
           )}
         </div>
 
-        {/* Dev Quick Role Switcher */}
-        <div className="relative" ref={roleMenuRef}>
-          <button
-            onClick={() => setShowRoleMenu(!showRoleMenu)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold shadow-sm transition-all ${roleLabels[role].color}`}
-          >
-            <UserCheck size={14} />
-            <span className="hidden md:inline">{roleLabels[role].label}</span>
-            <ChevronDown size={12} />
-          </button>
-
-          {showRoleMenu && (
-            <div className="absolute right-0 mt-2 w-56 max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
-              <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100 mb-1">
-                Chuyển nhanh vai trò (Dev Role Switcher)
-              </div>
-              <button
-                onClick={() => handleRoleSwitch('PLATFORM_ADMIN')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-rose-50 text-rose-700 flex items-center justify-between"
-              >
-                <span>1. Platform Admin</span>
-                {role === 'PLATFORM_ADMIN' && <CheckCircle2 size={13} className="text-[#119653]" />}
-              </button>
-              <button
-                onClick={() => handleRoleSwitch('PLATFORM_TECHNICIAN')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-sky-50 text-sky-700 flex items-center justify-between"
-              >
-                <span>2. Platform Technician</span>
-                {role === 'PLATFORM_TECHNICIAN' && <CheckCircle2 size={13} className="text-[#119653]" />}
-              </button>
-              <button
-                onClick={() => handleRoleSwitch('FARM_OWNER')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-50 text-emerald-700 flex items-center justify-between"
-              >
-                <span>3. Farm Owner (Tenant Root)</span>
-                {role === 'FARM_OWNER' && <CheckCircle2 size={13} className="text-[#119653]" />}
-              </button>
-              <button
-                onClick={() => handleRoleSwitch('FARMER')}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-50 text-amber-700 flex items-center justify-between"
-              >
-                <span>4. Farmer / Farm Worker</span>
-                {role === 'FARMER' && <CheckCircle2 size={13} className="text-[#119653]" />}
-              </button>
-            </div>
-          )}
-        </div>
 
         {/* User Avatar & Profile Dropdown */}
         <div className="relative pl-2 border-l border-white/20" ref={userMenuRef}>

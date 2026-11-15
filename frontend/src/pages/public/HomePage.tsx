@@ -258,35 +258,7 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* ─────────────────────────────────────────────────────────── */}
-      {/* 4. KEY METRICS HIGHLIGHT RIBBON                              */}
-      {/* ─────────────────────────────────────────────────────────── */}
-      <section className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 text-white py-10 border-y border-emerald-600/60 shadow-inner">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-emerald-600/50">
-            <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-white font-mono">1,200+</div>
-              <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Trạm Cảm Biến & Node LoRa</div>
-              <div className="text-[11px] text-emerald-200 mt-0.5">Thời lượng pin 3 năm liên tục</div>
-            </div>
-            <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-amber-300 font-mono">150+</div>
-              <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Hợp Tác Xã & Doanh Nghiệp</div>
-              <div className="text-[11px] text-emerald-200 mt-0.5">Trên 18 tỉnh thành toàn quốc</div>
-            </div>
-            <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-emerald-200 font-mono">1.4M+</div>
-              <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Bản Ghi Vi Khí Hậu / Ngày</div>
-              <div className="text-[11px] text-emerald-200 mt-0.5">Xử lý TimescaleDB Hypertable</div>
-            </div>
-            <div className="pt-4 md:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-white font-mono">100%</div>
-              <div className="text-xs sm:text-sm font-semibold text-emerald-100 mt-1">Hợp Đồng & Nghiệm Thu Số</div>
-              <div className="text-[11px] text-emerald-200 mt-0.5">Tạm ứng {depLabel} - Hoàn tất {remLabel}</div>
-            </div>
-          </div>
-        </div>
-      </section>
+
 
       {/* ─────────────────────────────────────────────────────────── */}
       {/* 5. ECOSYSTEM FEATURE CARDS (ASIAN-TAILORED VISUAL GRID)      */}
