@@ -2,10 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Cpu, Wifi, Radio, Zap, Wrench, Package, TrendingUp, AlertTriangle,
-  Info, CheckCircle2, ChevronDown, ChevronUp, Layers, Sliders, Maximize2, Send, Database
+  Info, CheckCircle2, ChevronDown, ChevronUp, Layers, Sliders, Maximize2, Send, Database,
+  Tag, Sparkles
 } from 'lucide-react';
 import { Button } from '../ui/BaseUI';
-import { adminService } from '../../services';
+import { adminService, discountService } from '../../services';
 
 export interface HoneycombEstimateResult {
   sensingRadiusM: number;
@@ -121,6 +122,8 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       .catch((err) => console.warn('Could not fetch hardware items from DB', err));
   }, []);
 
+  const [bestDiscount, setBestDiscount] = useState<any>(null);
+
   const gwItem = useMemo(() => {
     return hardwareItems.find(i => i.category === 'GATEWAY') || {
       name: 'Trạm Central Gateway ESP32-LoRa Dual Antenna',
@@ -216,6 +219,17 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       installationCost
     };
   }, [areaM2, sensingRadius, profile.actuatorRatio, gwItem, sensorItem, actuatorItem, accessoriesItem]);
+
+  useEffect(() => {
+    if (calculation.totalCostVnd > 0) {
+      discountService.getBestDiscount(calculation.totalCostVnd)
+        .then(res => {
+          if (res && res.hasDiscount) setBestDiscount(res);
+          else setBestDiscount(null);
+        })
+        .catch(() => setBestDiscount(null));
+    }
+  }, [calculation.totalCostVnd]);
 
   const formatVND = (n: number) => n.toLocaleString('vi-VN') + ' đ';
 
@@ -412,6 +426,24 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Discount Code Promotion Banner for Technician */}
+              {bestDiscount && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-gradient-to-r from-amber-50/90 via-emerald-50/90 to-teal-50/90 border-t border-emerald-200 text-xs animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold flex items-center gap-1 font-mono text-[11px] border border-amber-300 shrink-0">
+                      <Tag size={12} className="text-amber-700" /> {bestDiscount.code}
+                    </span>
+                    <span className="text-slate-800 font-medium">
+                      Ưu đãi Admin cấp phát: Giảm <strong>{bestDiscount.discountPercent}%</strong> (-{formatVND(bestDiscount.discountAmount)}). {bestDiscount.description}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] text-slate-500 block">Dự toán sau mã giảm giá:</span>
+                    <strong className="font-mono text-emerald-800 text-sm">{formatVND(bestDiscount.finalAmount)}</strong>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

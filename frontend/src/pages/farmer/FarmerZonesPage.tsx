@@ -3,9 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/app/providers/AuthContext';
 import { alertService, zoneService, supportService, telemetryService } from '../../services';
 import { Alert, Zone } from '../../types';
-import { 
-  Sprout, ShieldAlert, CheckCircle2, Power, Activity, BookOpen, Layers, 
-  Thermometer, Droplets, Sun, Sparkles, Calendar, Info, MapPin, Radio, Cpu, Wifi 
+import {
+  Sprout, ShieldAlert, CheckCircle2, Power, Activity, BookOpen, Layers,
+  Thermometer, Droplets, Sun, Sparkles, Calendar, Info, MapPin, Radio, Cpu, Wifi
 } from 'lucide-react';
 import { ZoneCropDetailModal } from '../../components/crops/ZoneCropDetailModal';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
@@ -31,7 +31,7 @@ export const FarmerZonesPage: React.FC = () => {
   useEffect(() => {
     alertService.getAlerts().then(res => {
       if (res) setAlerts(res);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export const FarmerZonesPage: React.FC = () => {
               <Sprout className="text-[#119653]" size={22} /> Điều khiển & Cảnh báo Nhà màng được Phân công ({zones.length})
             </h1>
           </div>
-          <p className="text-xs text-slate-600 mt-1">Danh sách khu vực nhà màng thuộc phạm vi phụ trách kỹ thuật & tích hợp Trung tâm Cảnh báo Nông nghiệp.</p>
+          <p className="text-xs text-slate-600 mt-1">Danh sách khu vực đất trồng thuộc phạm vi phụ trách kỹ thuật & tích hợp Trung tâm Cảnh báo Nông nghiệp.</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -144,95 +144,94 @@ export const FarmerZonesPage: React.FC = () => {
         {zones
           .filter(z => !zoneSearch.trim() || (z.name || '').toLowerCase().includes(zoneSearch.toLowerCase()) || (z.currentCrop || '').toLowerCase().includes(zoneSearch.toLowerCase()))
           .map(z => {
-          const isSelected = selectedZoneId === z.zoneId;
-          const zoneAlertsCount = alerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
+            const isSelected = selectedZoneId === z.zoneId;
+            const zoneAlertsCount = alerts.filter(a => a.zoneId === z.zoneId && a.status === 'OPEN').length;
 
-          return (
-            <div
-              key={z.zoneId}
-              onClick={() => setSelectedZoneId(z.zoneId)}
-              className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-3 ${
-                isSelected
-                  ? 'bg-emerald-50/40 border-emerald-500 shadow-md ring-2 ring-emerald-500 ring-offset-1'
-                  : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-200">
-                      ASSIGNED ZONE
-                    </span>
-                    {zoneAlertsCount > 0 ? (
-                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded border border-rose-300 flex items-center gap-1 animate-pulse">
-                        <Activity size={10} /> {zoneAlertsCount} Cảnh báo mở
+            return (
+              <div
+                key={z.zoneId}
+                onClick={() => setSelectedZoneId(z.zoneId)}
+                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-3 ${isSelected
+                    ? 'bg-emerald-50/40 border-emerald-500 shadow-md ring-2 ring-emerald-500 ring-offset-1'
+                    : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
+                  }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-200">
+                        ASSIGNED ZONE
                       </span>
-                    ) : (
-                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded border border-emerald-300">
-                        ✓ An toàn
-                      </span>
-                    )}
+                      {zoneAlertsCount > 0 ? (
+                        <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded border border-rose-300 flex items-center gap-1 animate-pulse">
+                          <Activity size={10} /> {zoneAlertsCount} Cảnh báo mở
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded border border-emerald-300">
+                          ✓ An toàn
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-base font-bold text-slate-900 mt-1">{z.name}</h3>
+                    <p className="text-xs text-slate-500">{z.description}</p>
                   </div>
-
-                  <h3 className="text-base font-bold text-slate-900 mt-1">{z.name}</h3>
-                  <p className="text-xs text-slate-500">{z.description}</p>
+                  {isSelected && <CheckCircle2 className="text-emerald-600" size={20} />}
                 </div>
-                {isSelected && <CheckCircle2 className="text-emerald-600" size={20} />}
-              </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-100 font-mono">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600">Cây trồng:</span>
-                  <strong className="text-emerald-900 font-bold">
-                    {zoneCropLabel(z)}
-                  </strong>
+                <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-100 font-mono">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600">Cây trồng:</span>
+                    <strong className="text-emerald-900 font-bold">
+                      {zoneCropLabel(z)}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600">Giai đoạn:</span>
+                    <strong className="text-emerald-700 font-semibold">
+                      {zoneStageLabel(z)}
+                    </strong>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600">Giai đoạn:</span>
-                  <strong className="text-emerald-700 font-semibold">
-                    {zoneStageLabel(z)}
-                  </strong>
-                </div>
-              </div>
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs flex-wrap gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedCropDetailZone(z);
-                  }}
-                  className="text-emerald-700 font-bold hover:underline flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200"
-                >
-                  <BookOpen size={12} /> Chi tiết cây trồng ➔
-                </button>
-
-                <div className="flex items-center gap-2">
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs flex-wrap gap-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedZoneId(z.zoneId);
-                      setActiveControlTab('ALERTS');
+                      setSelectedCropDetailZone(z);
                     }}
-                    className="text-rose-700 font-bold hover:underline flex items-center gap-1"
+                    className="text-emerald-700 font-bold hover:underline flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200"
                   >
-                    <ShieldAlert size={13} /> Cảnh báo ➔
+                    <BookOpen size={12} /> Chi tiết cây trồng ➔
                   </button>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedZoneId(z.zoneId);
-                      setActiveControlTab('ACTUATORS');
-                    }}
-                    className="text-emerald-800 font-bold hover:underline flex items-center gap-1"
-                  >
-                    <Power size={13} /> Rơ-le ➔
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedZoneId(z.zoneId);
+                        setActiveControlTab('ALERTS');
+                      }}
+                      className="text-rose-700 font-bold hover:underline flex items-center gap-1"
+                    >
+                      <ShieldAlert size={13} /> Cảnh báo ➔
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedZoneId(z.zoneId);
+                        setActiveControlTab('ACTUATORS');
+                      }}
+                      className="text-emerald-800 font-bold hover:underline flex items-center gap-1"
+                    >
+                      <Power size={13} /> Rơ-le ➔
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       {/* ─── GIS Map & Pinned Nodes Visualizer for Farmer ─── */}
@@ -279,7 +278,7 @@ export const FarmerZonesPage: React.FC = () => {
           <div className="border-t border-slate-100 pt-3">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <Radio size={14} className="text-[#119653]" /> 
+                <Radio size={14} className="text-[#119653]" />
                 Danh sách Node Cảm biến & Trạm điều khiển gắn tại Phân khu ({zoneNodes.length})
               </h4>
               <span className="text-[10px] font-mono text-slate-500">
@@ -300,9 +299,8 @@ export const FarmerZonesPage: React.FC = () => {
                     <div key={n.deviceId || idx} className="p-3 bg-slate-50 hover:bg-emerald-50/40 border border-slate-200 hover:border-emerald-300 rounded-xl transition-all space-y-2">
                       <div className="flex items-start justify-between">
                         <div className="space-y-0.5">
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                            isActuator ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
-                          }`}>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isActuator ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
                             {isActuator ? '⚡ ACTUATOR' : '📡 SENSOR'}
                           </span>
                           <h5 className="text-xs font-bold text-slate-900 mt-1 line-clamp-1">

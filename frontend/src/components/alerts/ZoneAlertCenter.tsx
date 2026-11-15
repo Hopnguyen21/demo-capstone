@@ -1,6 +1,6 @@
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
+import {
   ShieldAlert, CheckCircle2, Bot, Plus, Settings, Trash2, Edit3,
   Droplets, Thermometer, Wind, Sun, Zap, Activity, Cpu,
   X, ChevronDown, ChevronUp, Play, Pause, RefreshCw, Power, Info, Sparkles, AlertOctagon, HelpCircle
@@ -106,7 +106,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           setInternalNodes(data);
         }
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, [zoneId, passedNodes]);
 
   // Compute active metrics matching ONLY actual connected nodes/modules
@@ -184,13 +184,13 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   const [sensorValues, setSensorValues] = useState<Record<string, number>>(() =>
     Object.fromEntries(METRICS.map(m => [m.key, m.baseVal]))
   );
-  
+
   const [simRunning, setSimRunning] = useState(true);
   const [simExpanded, setSimExpanded] = useState(false);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [ruleForm, setRuleForm] = useState<Partial<AlertRule>>({});
-  
+
   // AI assistant popup modal state
   const [aiAdviceModalAlert, setAiAdviceModalAlert] = useState<Alert | LiveAlert | null>(null);
 
@@ -357,11 +357,10 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           return (
             <div
               key={m.key}
-              className={`p-3 rounded-xl border transition-all ${
-                violatingRule 
-                  ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400 animate-pulse' 
-                  : 'bg-white border-slate-200 shadow-2xs hover:border-slate-300'
-              }`}
+              className={`p-3 rounded-xl border transition-all ${violatingRule
+                ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400 animate-pulse'
+                : 'bg-white border-slate-200 shadow-2xs hover:border-slate-300'
+                }`}
             >
               <div className="flex items-center justify-between text-slate-500 mb-1">
                 <span className="text-[11px] font-medium">{m.label}</span>
@@ -407,11 +406,10 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               return (
                 <div
                   key={a.id}
-                  className={`p-4 rounded-2xl border-l-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs transition-all ${
-                    a.severity === 'CRITICAL' 
-                      ? 'bg-rose-50/80 border-l-rose-600 border-rose-200' 
-                      : 'bg-amber-50/80 border-l-amber-500 border-amber-200'
-                  }`}
+                  className={`p-4 rounded-2xl border-l-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs transition-all ${a.severity === 'CRITICAL'
+                    ? 'bg-rose-50/80 border-l-rose-600 border-rose-200'
+                    : 'bg-amber-50/80 border-l-amber-500 border-amber-200'
+                    }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${a.severity === 'CRITICAL' ? 'bg-rose-100 border-rose-200 text-rose-600' : 'bg-amber-100 border-amber-200 text-amber-600'}`}>
@@ -492,9 +490,8 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               return (
                 <div
                   key={rule.id}
-                  className={`px-5 py-3.5 flex items-center gap-4 text-xs transition-all ${
-                    !rule.enabled ? 'opacity-50 bg-slate-50/50' : isViolating ? 'bg-rose-50/60' : 'hover:bg-slate-50'
-                  }`}
+                  className={`px-5 py-3.5 flex items-center gap-4 text-xs transition-all ${!rule.enabled ? 'opacity-50 bg-slate-50/50' : isViolating ? 'bg-rose-50/60' : 'hover:bg-slate-50'
+                    }`}
                 >
                   {/* Toggle Switch */}
                   <button
@@ -755,7 +752,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               </h4>
               <ul className="list-disc list-inside space-y-1.5 text-slate-700 leading-relaxed pl-1">
                 <li>Kích hoạt rơ-le <strong>Bật máy bơm tưới nhỏ giọt / Quạt đối lưu</strong> trong thời lượng 10-15 phút.</li>
-                <li>Kiểm tra đường ống cấp nước và điện áp nguồn LoRa Gateway khu vực nhà màng.</li>
+                <li>Kiểm tra đường ống cấp nước và điện áp nguồn LoRa Gateway khu vực đất trồng.</li>
                 <li>Điều chỉnh lại dải ngưỡng an toàn vi khí hậu nếu vụ trồng bước sang giai đoạn thu hoạch.</li>
               </ul>
             </div>

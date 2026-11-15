@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Building2, Database, Users, Sprout, Cpu, Radio, Activity,
   ShieldAlert, Settings, Wrench, Package, CpuIcon, MapPin, Gauge,
   Sliders, Calendar, Bot, FileText, ClipboardList, PackageCheck, Headphones,
-  ChevronRight, FileCheck, BookOpen, X
+  ChevronRight, FileCheck, BookOpen, X, Tag
 } from 'lucide-react';
 
 export interface NavItem {
@@ -30,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { title: 'Quản lý Người dùng', path: '/admin/users', icon: <Users size={18} /> },
     { title: 'Gói Hợp Đồng Canh Tác', path: '/admin/contract-packages', icon: <PackageCheck size={18} /> },
     { title: 'Hóa Đơn Thu Phí', path: '/admin/bills', icon: <FileCheck size={18} /> },
+    { title: 'Mã Giảm Giá & Ưu Đãi', path: '/admin/discount-codes', icon: <Tag size={18} /> },
     { title: 'Nhập & Xuất Kho IoT', path: '/admin/stock-outs', icon: <Package size={18} /> },
     { title: 'Thư viện Giống Cây', path: '/admin/crops', icon: <Sprout size={18} /> },
     { title: 'Quy chuẩn VietGAP', path: '/admin/vietgap', icon: <FileText size={18} /> },
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const ownerNav: NavItem[] = [
     { title: 'Tổng quan Trang trại', path: '/owner/dashboard', icon: <LayoutDashboard size={18} /> },
     { title: 'Quản lý Nông trang', path: '/owner/farms', icon: <Building2 size={18} /> },
+    { title: 'Vụ Mùa & Giống Cây Trồng', path: '/owner/planting-seasons', icon: <Calendar size={18} /> },
     { title: 'Lịch sử Giao dịch & Hóa đơn', path: '/owner/bills', icon: <FileCheck size={18} /> },
     { title: 'Quản lý Nhân công', path: '/owner/farmers', icon: <Users size={18} /> },
     { title: 'Phân công Công việc', path: '/owner/tasks', icon: <ClipboardList size={18} /> },
@@ -121,15 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             )}
           </NavLink>
         ))}
-      </div>
-
-      {/* Sidebar Footer info */}
-      <div className="pt-3 mt-3 border-t border-slate-100 text-[10px] text-slate-400 px-3">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold text-slate-600">SmartFarm Web v4.0</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-        </div>
-        <p className="mt-0.5 text-slate-400">PostgreSQL + Gemini 2.5</p>
       </div>
     </>
   );

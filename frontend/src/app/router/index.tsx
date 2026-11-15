@@ -48,6 +48,7 @@ import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
 
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
 import { StockOutsPage } from '../../pages/owner/StockOutsPage';
+import { DiscountCodesPage } from '../../pages/admin/DiscountCodesPage';
 import { BillsPage } from '../../pages/owner/BillsPage';
 import { ContractPackagesPage } from '../../pages/admin/ContractPackagesPage';
 import { RouteErrorBoundary } from '../../components/ui/RouteErrorBoundary';
@@ -130,6 +131,7 @@ export const router = createBrowserRouter([
       { path: '/admin/settings', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><SettingsPage /></RequireRole> },
       { path: '/admin/contract-packages', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><ContractPackagesPage /></RequireRole> },
       { path: '/admin/bills', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><BillsPage /></RequireRole> },
+      { path: '/admin/discount-codes', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><DiscountCodesPage /></RequireRole> },
       { path: '/admin/stock-outs', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><StockOutsPage /></RequireRole> },
       { path: '/admin/backup-restore', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><BackupRestorePage /></RequireRole> },
 

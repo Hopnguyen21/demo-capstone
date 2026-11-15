@@ -161,6 +161,7 @@ public static class DependencyInjection
         services.AddScoped<IStockInService, StockInService>();
         services.AddScoped<IBillService, BillService>();
         services.AddScoped<IContractPackageService, ContractPackageService>();
+        services.AddScoped<IDiscountCodeService, DiscountCodeService>();
 
         return services;
     }

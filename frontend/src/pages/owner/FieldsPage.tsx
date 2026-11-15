@@ -107,15 +107,14 @@ export const FieldsPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <MapPin className="text-[#119653]" size={22} /> Phân khu Đất canh tác (Level 2: Fields)
+            <MapPin className="text-[#119653]" size={22} /> Phân khu Đất canh tác
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            Các phân khu lô đất lớn được quy hoạch lồng bên trong <strong>Trang trại Mẹ (Level 1: Farm)</strong> và chứa các <strong>Zone (Level 3: Zone)</strong>.
+            Các phân khu lô đất lớn được quy hoạch lồng bên trong <strong>Trang trại Mẹ</strong> và chứa các <strong>Zone </strong>.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => navigate('/owner/farms/create')}>
-            <Layers size={16} className="mr-1.5" /> Luồng CF1 Toàn diện
           </Button>
           <Button onClick={() => setShowCreateModal(true)}>
             <Plus size={16} className="mr-1.5" /> Tạo Field Mới (GIS Map)
@@ -132,7 +131,7 @@ export const FieldsPage: React.FC = () => {
             <div key={field.fieldId} className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4 hover:border-sky-500/40 transition-all">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] font-bold rounded border border-sky-200">LEVEL 2 FIELD</span>
+                  <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] font-bold rounded border border-sky-200">FIELD</span>
                   <h3 className="text-base font-bold text-slate-900 mt-1">{field.name}</h3>
                   <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                     <Building2 size={13} className="text-[#119653]" /> Thuộc: <strong className="text-slate-800">{farm?.name || 'Trang trại Đà Lạt'}</strong>
@@ -146,7 +145,7 @@ export const FieldsPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 border border-slate-100 rounded-lg text-xs">
                 <div>
                   <span className="text-slate-500 block text-[10px]">Diện tích Phân khu</span>
-                  <strong className="text-slate-900">{(field.areaM2/10000).toFixed(1)} ha ({field.areaM2.toLocaleString()} m²)</strong>
+                  <strong className="text-slate-900">{(field.areaM2 / 10000).toFixed(1)} ha ({field.areaM2.toLocaleString()} m²)</strong>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[10px]">Số Zone con</span>
@@ -165,17 +164,17 @@ export const FieldsPage: React.FC = () => {
       </div>
 
       {/* Modal create Field with GIS Location Picker */}
-      <Modal isOpen={showCreateModal} title="Khởi tạo Phân khu Lô đất Mới (Level 2 Field) bằng GIS Map" onClose={() => setShowCreateModal(false)}>
+      <Modal isOpen={showCreateModal} title="Khởi tạo Phân khu Lô đất Mới bằng GIS Map" onClose={() => setShowCreateModal(false)}>
         <div className="space-y-4 text-xs">
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Trang trại Mẹ sở hữu (Level 1 Farm) *</label>
+            <label className="block text-slate-700 font-bold mb-1">Trang trại Mẹ sở hữu  *</label>
             <select
               className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653]"
               value={selectedFarmId}
               onChange={e => setSelectedFarmId(e.target.value)}
             >
               {farms.map(f => (
-                <option key={f.farmId} value={f.farmId}>{f.name} ({f.address})</option>
+                <option key={f.farmId} value={f.farmId}>{f.name} ({f.address || f.locationText || 'Lâm Đồng'})</option>
               ))}
             </select>
           </div>

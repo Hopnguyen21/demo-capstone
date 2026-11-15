@@ -350,10 +350,6 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         {
             throw new ResourceConflictException("Cannot add a Zone to an archived parent.");
         }
-        if (command.AreaM2 > field.AvailableAreaM2)
-        {
-            throw new RequestValidationException(nameof(command.AreaM2), "Zone area exceeds the Field available area.");
-        }
         if (await dbContext.Zones.AnyAsync(x => x.FieldId == fieldId && x.Name.ToUpper() == name.ToUpper(), cancellationToken))
         {
             throw new ResourceConflictException("A Zone with this name already exists in the Field.");
@@ -390,7 +386,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         zone.CropId = cropId;
         zone.CropVarietyId = varietyId;
         zone.GrowthProfileId = profile?.Id;
-        field.AvailableAreaM2 -= zone.AreaM2;
+        field.AvailableAreaM2 = Math.Max(0, field.AvailableAreaM2 - zone.AreaM2);
         dbContext.Zones.Add(zone);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -438,10 +434,6 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
         }
         var requestedArea = command.AreaM2 ?? zone.AreaM2;
         var capacity = zone.Field.AvailableAreaM2 + zone.AreaM2;
-        if (requestedArea > capacity)
-        {
-            throw new RequestValidationException(nameof(command.AreaM2), "Zone area exceeds the Field available area.");
-        }
         var name = NormalizeRequired(command.Name, nameof(command.Name), 200);
         if (await dbContext.Zones.AnyAsync(
                 x => x.FieldId == zone.FieldId && x.Id != zoneId && x.Name.ToUpper() == name.ToUpper(), cancellationToken))
@@ -518,7 +510,7 @@ internal sealed class FarmStructureService(SmartFarmDbContext dbContext, TimePro
             zone.GrowthProfile = null;
         }
 
-        zone.Field.AvailableAreaM2 = capacity - requestedArea;
+        zone.Field.AvailableAreaM2 = Math.Max(0, capacity - requestedArea);
         (command with
         {
             Name = name,

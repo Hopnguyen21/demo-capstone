@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Input } from '../ui/BaseUI';
 import { Zone, Farm, ZoneContract } from '../../types';
-import { zoneContractService } from '../../services';
+import { zoneContractService, discountService } from '../../services';
 import { useBusinessParameters } from '../../services/businessParameters';
 import {
   FileText, Calendar, DollarSign, Percent, ShieldCheck, CheckCircle2,
@@ -85,6 +85,21 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
   const [notes, setNotes] = useState<string>('Áp dụng chính sách ưu đãi khách hàng ký hợp đồng mới.');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Discount Codes (Mã giảm giá do Admin tạo, Technician sử dụng)
+  const [availableDiscounts, setAvailableDiscounts] = useState<any[]>([]);
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; percent: number; amount: number; description: string } | null>(null);
+  const [manualCodeInput, setManualCodeInput] = useState<string>('');
+  const [autoApplying, setAutoApplying] = useState<boolean>(false);
+  const [discountMsg, setDiscountMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      discountService.getAll(true)
+        .then(list => setAvailableDiscounts(Array.isArray(list) ? list : []))
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen) {
       setContractNumber(`HD-ZN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`);
@@ -126,6 +141,62 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
 
   const isReturningCustomer = Boolean(selectedParentId);
 
+  // Technician: Tự động add mã giảm giá phù hợp với giá hợp đồng
+  const handleAutoAddBestDiscount = async () => {
+    setAutoApplying(true);
+    setDiscountMsg(null);
+    try {
+      const res = await discountService.getBestDiscount(totalWithVat);
+      if (res && res.hasDiscount) {
+        setAppliedDiscount({
+          code: res.code,
+          percent: res.discountPercent,
+          amount: res.discountAmount,
+          description: res.description,
+        });
+        setDiscountPercent(res.discountPercent);
+        setDiscountMsg(res.note || `Đã tự động áp dụng mã [${res.code}]: Giảm ${res.discountAmount.toLocaleString('vi-VN')} đ!`);
+      } else {
+        setDiscountMsg('ℹ️ Giá trị hợp đồng hiện tại chưa đủ điều kiện áp dụng mã giảm giá nào.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setDiscountMsg('Không thể kiểm tra mã giảm giá tự động.');
+    } finally {
+      setAutoApplying(false);
+    }
+  };
+
+  const handleApplyManualCode = async (codeToApply: string) => {
+    const trimmed = codeToApply.trim().toUpperCase();
+    if (!trimmed) return;
+    try {
+      const res = await discountService.validateCode(trimmed, totalWithVat);
+      if (res && res.isValid) {
+        setAppliedDiscount({
+          code: res.code,
+          percent: res.discountPercent,
+          amount: res.discountAmount,
+          description: res.message || '',
+        });
+        setDiscountPercent(res.discountPercent);
+        setDiscountMsg(`✅ ${res.message}`);
+        setManualCodeInput('');
+      } else {
+        alert(res?.message || 'Mã giảm giá không hợp lệ hoặc chưa đủ điều kiện hợp đồng.');
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Lỗi kiểm tra mã giảm giá.');
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+    setAppliedDiscount(null);
+    setDiscountPercent(0);
+    setManualCodeInput('');
+    setDiscountMsg(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!zone) {
@@ -154,7 +225,7 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
         lesseeIdentityNumber: lesseeIdentityNumber.trim(),
         lesseeAddress: lesseeAddress.trim(),
         specialTerms,
-        notes: isReturningCustomer ? `Hợp đồng mới tái ký từ HĐ cũ. Chiết khấu khách hàng cũ: ${discountPercent}%. ${notes}` : notes,
+        notes: (isReturningCustomer ? `Hợp đồng mới tái ký từ HĐ cũ. Chiết khấu khách hàng cũ: ${discountPercent}%. ` : '') + (appliedDiscount ? `[Ưu đãi Admin: Áp dụng mã ${appliedDiscount.code} (-${appliedDiscount.amount.toLocaleString()} đ)]. ` : '') + notes,
         customPackage: packageMode === 'custom' && customPackageName.trim() ? {
           packageName: customPackageName.trim(),
           description: customPackageDesc.trim() || undefined,
@@ -485,9 +556,103 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
                 min="0"
                 max="50"
                 value={discountPercent}
-                onChange={e => setDiscountPercent(Number(e.target.value))}
+                onChange={e => {
+                  setDiscountPercent(Number(e.target.value));
+                  if (appliedDiscount && Number(e.target.value) !== appliedDiscount.percent) {
+                    setAppliedDiscount(null);
+                  }
+                }}
               />
             </div>
+          </div>
+
+          {/* Technician Discount Code Selection & Auto-Add Feature */}
+          <div className="p-3 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                <Tag size={14} className="text-[#119653]" />
+                <span>Mã Giảm Giá Khuyến Mãi (Admin cấp phát cho Kỹ thuật viên)</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAutoAddBestDiscount}
+                disabled={autoApplying}
+                className="px-3 py-1 rounded-lg bg-[#119653] hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition-transform transform active:scale-95 cursor-pointer disabled:opacity-60"
+              >
+                <Sparkles size={12} className="text-amber-300" />
+                <span>{autoApplying ? 'Đang phân tích...' : '⚡ Tự động add mã phù hợp giá HĐ'}</span>
+              </button>
+            </div>
+
+            {/* Quick dropdown or manual input */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+              <div className="sm:col-span-7">
+                <select
+                  value={appliedDiscount?.code || ''}
+                  onChange={e => {
+                    if (e.target.value) handleApplyManualCode(e.target.value);
+                    else handleRemoveDiscount();
+                  }}
+                  className="w-full p-2 bg-white border border-emerald-300 rounded-lg text-xs font-medium text-slate-800"
+                >
+                  <option value="">-- Chọn mã ưu đãi có sẵn ({availableDiscounts.length} mã) --</option>
+                  {availableDiscounts.map(d => {
+                    const qualifies = totalWithVat >= d.minContractValue;
+                    return (
+                      <option key={d.id} value={d.code} disabled={!qualifies}>
+                        [{d.code}] {d.description} {d.minContractValue > 0 ? `(HĐ từ ${d.minContractValue.toLocaleString()} đ)` : ''} {!qualifies ? '— Chưa đủ giá trị' : '— Đủ điều kiện ✓'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="sm:col-span-5 flex items-center gap-1.5">
+                <Input
+                  value={manualCodeInput}
+                  onChange={e => setManualCodeInput(e.target.value.toUpperCase())}
+                  placeholder="Nhập mã khác..."
+                  className="text-xs uppercase font-mono"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleApplyManualCode(manualCodeInput);
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleApplyManualCode(manualCodeInput)}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs px-2.5 py-1.5 shrink-0"
+                >
+                  Áp dụng
+                </Button>
+              </div>
+            </div>
+
+            {/* Applied Badge or Notice */}
+            {appliedDiscount ? (
+              <div className="p-2 bg-white border border-emerald-300 rounded-lg flex items-center justify-between text-xs animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-[#119653] font-mono font-bold text-xs border border-emerald-300">
+                    {appliedDiscount.code}
+                  </span>
+                  <span className="text-slate-700 font-medium">
+                    {appliedDiscount.description} (Giảm <strong>{appliedDiscount.percent}%</strong>)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveDiscount}
+                  className="text-rose-600 hover:text-rose-800 font-semibold text-[11px] underline ml-2"
+                >
+                  Gỡ mã
+                </button>
+              </div>
+            ) : discountMsg ? (
+              <div className="text-[11px] text-emerald-800 font-medium">{discountMsg}</div>
+            ) : null}
           </div>
 
           {/* Formula Line Items */}

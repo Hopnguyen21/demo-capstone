@@ -341,13 +341,27 @@ export const farmService = {
   getFarms: async (status?: string) => {
     const params = status ? { status } : {};
     const res = await apiClient.get('/api/v1/farms', { params });
-    return res.data?.value ?? res.data ?? [];
+    const raw = res.data?.value ?? res.data ?? [];
+    const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map((f: any) => ({
+      ...f,
+      address: f.address || f.locationText || f.location_text || 'Lâm Đồng, Việt Nam',
+      locationText: f.locationText || f.address || f.location_text || 'Lâm Đồng, Việt Nam',
+    }));
   },
 
   /** GET /api/v1/farms/{farmId} */
   getFarmById: async (farmId: string) => {
     const res = await apiClient.get(`/api/v1/farms/${farmId}`);
-    return res.data;
+    const d = res.data?.value ?? res.data;
+    if (d) {
+      return {
+        ...d,
+        address: d.address || d.locationText || d.location_text || 'Lâm Đồng, Việt Nam',
+        locationText: d.locationText || d.address || d.location_text || 'Lâm Đồng, Việt Nam',
+      };
+    }
+    return d;
   },
 
   /** GET farm members */
@@ -2735,3 +2749,50 @@ export const backupService = {
   restore: async (fileName: string, confirm: boolean, overwriteConfirmation: string): Promise<RestoreBackupResult> =>
     (await apiClient.post(`/api/v1/platform/backups/${encodeURIComponent(fileName)}/restore`, { confirm, overwriteConfirmation })).data,
 };
+
+// ─── DISCOUNT CODES SERVICE (MÃ GIẢM GIÁ) ──────────────────────────────────
+export const discountService = {
+  /** Lấy danh sách mã giảm giá. Admin xem hết; Technician/Owner chỉ xem mã active */
+  getAll: async (activeOnly?: boolean): Promise<any[]> => {
+    const params = activeOnly !== undefined ? { activeOnly } : {};
+    const res = await apiClient.get('/api/v1/discount-codes', { params });
+    return res.data?.value ?? res.data ?? [];
+  },
+
+  /** Chi tiết 1 mã giảm giá */
+  getById: async (id: string): Promise<any> => {
+    const res = await apiClient.get(`/api/v1/discount-codes/${id}`);
+    return res.data?.value ?? res.data;
+  },
+
+  /** Kiểm tra mã giảm giá với giá trị hợp đồng (Technician / Admin) */
+  validateCode: async (code: string, contractAmount: number): Promise<any> => {
+    const res = await apiClient.post('/api/v1/discount-codes/validate', { code, contractAmount });
+    return res.data?.value ?? res.data;
+  },
+
+  /** Tự động tìm và áp dụng mã giảm giá tốt nhất cho hợp đồng (Technician) */
+  getBestDiscount: async (contractAmount: number): Promise<any> => {
+    const res = await apiClient.get('/api/v1/discount-codes/best-applicable', { params: { contractAmount } });
+    return res.data?.value ?? res.data;
+  },
+
+  /** Tạo mã giảm giá mới (CHỈ ADMIN) */
+  create: async (data: any): Promise<any> => {
+    const res = await apiClient.post('/api/v1/discount-codes', data);
+    return res.data?.value ?? res.data;
+  },
+
+  /** Sửa mã giảm giá (CHỈ ADMIN) */
+  update: async (id: string, data: any): Promise<any> => {
+    const res = await apiClient.put(`/api/v1/discount-codes/${id}`, data);
+    return res.data?.value ?? res.data;
+  },
+
+  /** Xóa mã giảm giá (CHỈ ADMIN) */
+  delete: async (id: string): Promise<any> => {
+    const res = await apiClient.delete(`/api/v1/discount-codes/${id}`);
+    return res.data?.value ?? res.data;
+  },
+};
+

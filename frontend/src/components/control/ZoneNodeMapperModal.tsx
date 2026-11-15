@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { ServiceRequest, SensorNode } from '../../types';
-import { 
-  MapPin, Cpu, Radio, Zap, CheckCircle2, Plus, Info, Layers, 
-  RefreshCw, Maximize2, Minimize2, Move, Trash2, Crosshair, Database, 
+import {
+  MapPin, Cpu, Radio, Zap, CheckCircle2, Plus, Info, Layers,
+  RefreshCw, Maximize2, Minimize2, Move, Trash2, Crosshair, Database,
   Sparkles, Check, Droplets, BatteryCharging, Wifi
 } from 'lucide-react';
 import { Button, Modal } from '../ui/BaseUI';
@@ -602,7 +602,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         const linkedDeployments = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) =>
           String(item.requestId || item.deploymentRequestId || item.id) === String(request.deploymentRequestId || '') &&
           String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId));
-        const requestIdsForThisService = new Set(linkedDeployments.map((item: any) => String(item.requestId || item.deploymentRequestId || item.id)));        const realNodeDevices = (Array.isArray(realDevices) ? realDevices : []).filter((d: any) =>
+        const requestIdsForThisService = new Set(linkedDeployments.map((item: any) => String(item.requestId || item.deploymentRequestId || item.id))); const realNodeDevices = (Array.isArray(realDevices) ? realDevices : []).filter((d: any) =>
           !String(d.hardwareAddress || d.macAddress || '').toUpperCase().startsWith('SIM-') &&
           requestIdsForThisService.has(String(d.deploymentRequestId || d.requestId || d.deployment?.id || '')) &&
           ['SensorNode', 'ActuatorNode'].includes(String(d.deviceType || ''))
@@ -1158,9 +1158,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${
-                  isMaintenance ? 'bg-amber-400/30 text-amber-100 border border-amber-300/40' : 'bg-emerald-800/40 text-emerald-100 border border-emerald-300/40'
-                }`}>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${isMaintenance ? 'bg-amber-400/30 text-amber-100 border border-amber-300/40' : 'bg-emerald-800/40 text-emerald-100 border border-emerald-300/40'
+                  }`}>
                   {isMaintenance ? 'BẢO TRÌ & THAY THẾ NODE' : 'LẮP ĐẶT MỚI & CHẤM VỊ TRÍ GIS'}
                 </span>
                 <span className="text-xs text-emerald-100/90 font-mono">Request #{request.serviceRequestId}</span>
@@ -1191,12 +1190,11 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  <Cpu size={14} className="text-[#119653]" /> 
+                  <Cpu size={14} className="text-[#119653]" />
                   {unassignedDevices.length === 0 ? 'Tất cả Node Đã Chấm' : `Thiết bị Chờ Chấm (${unassignedDevices.length})`}
                 </h3>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  unassignedDevices.length === 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
-                }`}>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${unassignedDevices.length === 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
+                  }`}>
                   {nodes.length} / {nodes.length + unassignedDevices.length} Đã Xong
                 </span>
               </div>
@@ -1248,16 +1246,14 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                       <div
                         key={dev.deviceId}
                         onClick={() => setSelectedDevice(dev)}
-                        className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
-                          isSelected
+                        className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${isSelected
                             ? 'bg-emerald-700 text-white border-emerald-700 shadow-md ring-2 ring-emerald-400'
                             : 'bg-white border-slate-200 text-slate-800 hover:border-emerald-500 hover:shadow-xs'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`font-mono font-bold text-[10px] px-1.5 py-0.5 rounded ${
-                            isSelected ? 'bg-emerald-800 text-emerald-100 border border-emerald-600' : 'bg-slate-100 text-slate-700 border border-slate-200'
-                          }`}>
+                          <span className={`font-mono font-bold text-[10px] px-1.5 py-0.5 rounded ${isSelected ? 'bg-emerald-800 text-emerald-100 border border-emerald-600' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
                             {dev.code}
                           </span>
                           {isSelected && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded font-bold animate-pulse">ĐANG CHỌN</span>}
@@ -1297,11 +1293,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                     <div
                       key={n.nodeId}
                       onClick={() => setActivePinNode(n)}
-                      className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center justify-between gap-2 transition-all ${
-                        activePinNode?.nodeId === n.nodeId
+                      className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center justify-between gap-2 transition-all ${activePinNode?.nodeId === n.nodeId
                           ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-300'
                           : 'bg-white border-slate-200 hover:border-slate-300'
-                      }`}
+                        }`}
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -1363,7 +1358,6 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                   </h4>
                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                     <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
                     </span>
                     <span>• {zonePolygon.length} tọa độ đỉnh</span>
                   </div>
@@ -1606,8 +1600,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             <Button variant="ghost" onClick={onClose} className="text-slate-300 hover:text-white">
               Hủy
             </Button>
-            <Button 
-              onClick={handleSave} 
+            <Button
+              onClick={handleSave}
               disabled={isSaving}
               className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold shadow-md px-5"
             >
@@ -1650,19 +1644,19 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           {selectedGatewayId && gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">Gateway này đã có trong kho Technician nhưng chưa có bản ghi Gateway/credential MQTT cho Farm. Cần provision trước khi kết nối.</div>}
           {!gatewayConnected && <div className="rounded-lg bg-slate-100 p-3 text-slate-600">Hãy chọn Gateway và kết nối thành công trước khi cấu hình các Node.</div>}
           {gatewayConnected && <>
-          <div>
-            <label className="block font-bold text-slate-800 mb-1">Các Node đã provision mà Gateway phục vụ (GIS có thể chấm sau)</label>
-            <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y">
-              {gatewayConfigNodes.length === 0 ? <div className="p-3 text-slate-500">Chưa có Node provision — vẫn có thể lưu cấu hình Gateway.</div> : gatewayConfigNodes.map((node: any) => <label key={node.deviceId} className="flex items-center gap-2 p-2.5 hover:bg-slate-50"><input type="checkbox" checked={selectedGatewayNodeIds.includes(node.deviceId)} onChange={event => setSelectedGatewayNodeIds(previous => event.target.checked ? [...new Set([...previous, node.deviceId])] : previous.filter(id => id !== node.deviceId))} /><span><strong>{node.hardwareAddress}</strong><small className="block text-slate-500">{node.deviceType} · GIS {node.zoneId ? 'đã có Zone' : 'chưa chấm'}</small></span></label>)}
+            <div>
+              <label className="block font-bold text-slate-800 mb-1">Các Node đã provision mà Gateway phục vụ (GIS có thể chấm sau)</label>
+              <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y">
+                {gatewayConfigNodes.length === 0 ? <div className="p-3 text-slate-500">Chưa có Node provision — vẫn có thể lưu cấu hình Gateway.</div> : gatewayConfigNodes.map((node: any) => <label key={node.deviceId} className="flex items-center gap-2 p-2.5 hover:bg-slate-50"><input type="checkbox" checked={selectedGatewayNodeIds.includes(node.deviceId)} onChange={event => setSelectedGatewayNodeIds(previous => event.target.checked ? [...new Set([...previous, node.deviceId])] : previous.filter(id => id !== node.deviceId))} /><span><strong>{node.hardwareAddress}</strong><small className="block text-slate-500">{node.deviceType} · GIS {node.zoneId ? 'đã có Zone' : 'chưa chấm'}</small></span></label>)}
+              </div>
+              <div className="mt-1 text-[10px] text-slate-500">Đã chọn {selectedGatewayNodeIds.length}/{gatewayConfigNodes.length} Node provision. Không cần chấm GIS để lưu.</div>
             </div>
-            <div className="mt-1 text-[10px] text-slate-500">Đã chọn {selectedGatewayNodeIds.length}/{gatewayConfigNodes.length} Node provision. Không cần chấm GIS để lưu.</div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="block font-bold text-slate-800 mb-1">Chu kỳ gửi (giây)</label><input type="number" min={10} max={86400} value={gatewayInterval} onChange={e => setGatewayInterval(Math.min(86400, Math.max(10, Number(e.target.value) || 10)))} className="w-full border border-slate-300 rounded-lg p-2.5" /><small className="text-slate-500">Khoảng cách giữa hai lần gửi.</small></div>
-            <div><label className="block font-bold text-slate-800 mb-1">Số lần gửi trong chu kỳ</label><input type="number" min={1} max={60} value={gatewaySamples} onChange={e => setGatewaySamples(Math.min(60, Math.max(1, Number(e.target.value) || 1)))} className="w-full border border-slate-300 rounded-lg p-2.5" /><small className="text-slate-500">Số sample Node gửi mỗi chu kỳ.</small></div>
-          </div>
-          <div><label className="block font-bold text-slate-800 mb-1">Vị trí lắp Gateway ngoài Zone</label><input value={gatewayLocation} onChange={e => setGatewayLocation(e.target.value)} placeholder="Ví dụ: Nhà kho phía Tây Farm, anten cao 6m" className="w-full border border-slate-300 rounded-lg p-2.5" /></div>
-          <div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setIsGatewayModalOpen(false)}>Hủy</Button><Button type="button" className="bg-amber-600 text-white" onClick={saveGatewayConfiguration}>Lưu cấu hình Gateway</Button></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block font-bold text-slate-800 mb-1">Chu kỳ gửi (giây)</label><input type="number" min={10} max={86400} value={gatewayInterval} onChange={e => setGatewayInterval(Math.min(86400, Math.max(10, Number(e.target.value) || 10)))} className="w-full border border-slate-300 rounded-lg p-2.5" /><small className="text-slate-500">Khoảng cách giữa hai lần gửi.</small></div>
+              <div><label className="block font-bold text-slate-800 mb-1">Số lần gửi trong chu kỳ</label><input type="number" min={1} max={60} value={gatewaySamples} onChange={e => setGatewaySamples(Math.min(60, Math.max(1, Number(e.target.value) || 1)))} className="w-full border border-slate-300 rounded-lg p-2.5" /><small className="text-slate-500">Số sample Node gửi mỗi chu kỳ.</small></div>
+            </div>
+            <div><label className="block font-bold text-slate-800 mb-1">Vị trí lắp Gateway ngoài Zone</label><input value={gatewayLocation} onChange={e => setGatewayLocation(e.target.value)} placeholder="Ví dụ: Nhà kho phía Tây Farm, anten cao 6m" className="w-full border border-slate-300 rounded-lg p-2.5" /></div>
+            <div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setIsGatewayModalOpen(false)}>Hủy</Button><Button type="button" className="bg-amber-600 text-white" onClick={saveGatewayConfiguration}>Lưu cấu hình Gateway</Button></div>
           </>}
         </div>
       </Modal>

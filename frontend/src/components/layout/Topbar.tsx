@@ -127,6 +127,30 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
     navigate('/login');
   };
 
+  const handleLogoClick = () => {
+    if (!user || !isAuthenticated()) {
+      navigate('/');
+    } else {
+      switch (role) {
+        case 'PLATFORM_ADMIN':
+          navigate('/admin/dashboard');
+          break;
+        case 'PLATFORM_TECHNICIAN':
+          navigate('/technician/dashboard');
+          break;
+        case 'FARM_OWNER':
+          navigate('/owner/dashboard');
+          break;
+        case 'FARMER':
+          navigate('/farmer/home');
+          break;
+        default:
+          navigate('/owner/dashboard');
+          break;
+      }
+    }
+  };
+
   return (
     <header className="sticky top-0 z-40 w-full h-16 bg-[#119653] text-white border-b border-[#0e8046] px-3 sm:px-4 flex items-center justify-between shadow-md">
       {/* Left section: Hamburger (mobile), Logo & Farm Selector */}
@@ -140,8 +164,20 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         )}
-        <div className="flex items-center gap-2 sm:gap-2.5">
-          <div className="p-1.5 sm:p-2 rounded-xl bg-white/20 border border-white/30 text-white shadow-xs shrink-0">
+        <div
+          onClick={handleLogoClick}
+          className="flex items-center gap-2 sm:gap-2.5 cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all select-none group"
+          title={!user || !isAuthenticated() ? 'Về Trang chủ' : 'Về Trang tổng quan'}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleLogoClick();
+            }
+          }}
+        >
+          <div className="p-1.5 sm:p-2 rounded-xl bg-white/20 border border-white/30 text-white shadow-xs shrink-0 group-hover:bg-white/25 transition-colors">
             <Sprout size={20} className="sm:w-[22px] sm:h-[22px]" />
           </div>
           <div>

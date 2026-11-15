@@ -94,17 +94,6 @@ export const ZonesPage: React.FC = () => {
     }
     const targetField = fields.find(f => f.fieldId === fieldId);
     const computedArea = calculatePolygonAreaM2(polygon) || 2000;
-    if (targetField && targetField.availableAreaM2 !== undefined && targetField.availableAreaM2 !== null) {
-      const avail = Number(targetField.availableAreaM2);
-      if (avail <= 0) {
-        alert(`Lô đất "${targetField.name}" đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Zone mới!`);
-        return;
-      }
-      if (computedArea > avail) {
-        alert(`Diện tích Zone (${computedArea.toLocaleString()} m²) vượt quá diện tích còn trống của Lô đất (${avail.toLocaleString()} m²)!`);
-        return;
-      }
-    }
     setIsSubmitting(true);
     try {
       const geoJson = toGeoJsonPolygon(polygon);
@@ -149,15 +138,14 @@ export const ZonesPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Sprout className="text-[#119653]" size={22} /> Quản lý & Cảnh báo Khu vực Canh tác (Level 3: Zones)
+            <Sprout className="text-[#119653]" size={22} /> Quản lý & Cảnh báo Khu vực Canh tác
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            Các Zone khép kín lồng bên trong <strong>Phân khu Lô đất (Level 2: Field)</strong> thuộc <strong>Trang trại (Level 1: Farm)</strong> được tích hợp Trung tâm Cảnh báo Nông nghiệp thời gian thực.
+            Các Zone khép kín lồng bên trong <strong>Phân khu Lô đất </strong> thuộc <strong>Trang trại (Level 1: Farm)</strong> được tích hợp Trung tâm Cảnh báo Nông nghiệp thời gian thực.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => navigate('/owner/farms/create')}>
-            <Layers size={16} className="mr-1.5" /> Luồng CF1 Wizard
           </Button>
           <Button onClick={() => setShowCreateModal(true)}>
             <Plus size={16} className="mr-1.5" /> Tạo Zone Mới (GIS Map)
@@ -175,14 +163,13 @@ export const ZonesPage: React.FC = () => {
             <div
               key={z.zoneId}
               onClick={() => setSelectedZoneId(z.zoneId)}
-              className={`p-5 bg-white border rounded-2xl space-y-4 shadow-xs transition-all cursor-pointer ${
-                isSelected ? 'border-emerald-600 ring-2 ring-emerald-500/30 bg-emerald-50/20' : 'border-slate-200 hover:border-slate-300'
-              }`}
+              className={`p-5 bg-white border rounded-2xl space-y-4 shadow-xs transition-all cursor-pointer ${isSelected ? 'border-emerald-600 ring-2 ring-emerald-500/30 bg-emerald-50/20' : 'border-slate-200 hover:border-slate-300'
+                }`}
             >
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-200">LEVEL 3 ZONE</span>
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-200"> ZONE</span>
                     {z.zoneId === 'zone-01' ? (
                       <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded border border-rose-300 animate-pulse">
                         ⚠️ 1 Cảnh báo Mở
@@ -216,15 +203,15 @@ export const ZonesPage: React.FC = () => {
                     {zoneStageLabel(z)}
                   </strong>
                 </div>
-                  {(!z.seasonStatus || z.seasonStatus === 'None' || z.seasonStatus === 'PlannedOnly') && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/owner/planting-seasons?zoneId=${z.zoneId}`)}
-                      className="w-full mt-1 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold hover:bg-emerald-100"
-                    >
-                      + Tạo vụ mùa cho Zone này
-                    </button>
-                  )}
+                {(!z.seasonStatus || z.seasonStatus === 'None' || z.seasonStatus === 'PlannedOnly') && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/owner/planting-seasons?zoneId=${z.zoneId}`)}
+                    className="w-full mt-1 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold hover:bg-emerald-100"
+                  >
+                    + Tạo vụ mùa cho Zone này
+                  </button>
+                )}
                 <div className="flex justify-between"><span>Diện tích Zone:</span><strong className="text-slate-900">{z.areaM2} m²</strong></div>
               </div>
 
@@ -297,10 +284,10 @@ export const ZonesPage: React.FC = () => {
       </div>
 
       {/* Modal create Zone with GIS map picker */}
-      <Modal isOpen={showCreateModal} title="Khởi tạo Khu vực Canh tác Mới (Level 3 Zone) bằng GIS Map" onClose={() => setShowCreateModal(false)}>
+      <Modal isOpen={showCreateModal} title="Khởi tạo Khu vực Canh tác Mới bằng GIS Map" onClose={() => setShowCreateModal(false)}>
         <div className="space-y-4 text-xs">
           <div>
-            <label className="block text-slate-700 font-bold mb-1">Chọn Lô đất Mẹ sở hữu (Level 2 Field) *</label>
+            <label className="block text-slate-700 font-bold mb-1">Chọn Lô đất Mẹ sở hữu  *</label>
             <select
               className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-emerald-500"
               value={selectedFieldId}
