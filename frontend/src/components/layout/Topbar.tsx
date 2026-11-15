@@ -181,8 +181,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
       </div>
 
       {/* Right section: Weather, Notifications, Dev Role Switcher, Profile */}
-      <div className="flex items-center gap-3">
-
+      <div className="flex items-center gap-1.5 sm:gap-3">
 
         {/* Notifications Bell */}
         <div className="relative" ref={notificationRef}>
@@ -201,7 +200,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
 
           {/* Notifications Dropdown */}
           {showNotificationMenu && (
-            <div className="absolute right-0 mt-2 w-[420px] sm:w-[460px] max-w-[92vw] bg-white border border-slate-200/90 rounded-2xl shadow-2xl p-4 z-50 text-slate-800 animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 mt-2 w-[420px] sm:w-[460px] max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200/90 rounded-2xl shadow-2xl p-4 z-50 text-slate-800 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
                 <span className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <div className="p-1 rounded-lg bg-emerald-50 text-[#119653]">
@@ -323,7 +322,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
           </button>
 
           {showRoleMenu && (
-            <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
+            <div className="absolute right-0 mt-2 w-56 max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
               <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100 mb-1">
                 Chuyển nhanh vai trò (Dev Role Switcher)
               </div>
@@ -381,7 +380,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
           </button>
 
           {showUserMenu && (
-            <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 text-slate-800">
+            <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 text-slate-800">
               <div className="p-2 border-b border-slate-100 mb-1.5">
                 <p className="font-bold text-xs text-slate-900 truncate">{user?.fullName || 'Người dùng'}</p>
                 <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>

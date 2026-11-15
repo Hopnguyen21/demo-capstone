@@ -774,7 +774,7 @@ export const StockOutsPage: React.FC = () => {
 
             <div>
               <h4 className="font-bold text-slate-800 mb-2">Danh mục thiết bị & linh kiện nhập kho:</h4>
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <div className="border border-slate-200 rounded-lg overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
@@ -1037,7 +1037,7 @@ export const StockOutsPage: React.FC = () => {
 
             <div>
               <h4 className="font-bold text-slate-800 mb-2">Danh mục thiết bị & linh kiện IoT xuất kho:</h4>
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <div className="border border-slate-200 rounded-lg overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>

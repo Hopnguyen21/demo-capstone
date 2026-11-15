@@ -2560,7 +2560,7 @@ export const FarmsPage: React.FC = () => {
                     Chưa có hợp đồng cũ nào trong lịch sử Zone này. Tất cả hợp đồng sau khi hết hạn hoặc thay thế sẽ được tự động bảo toàn tại đây.
                   </div>
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
@@ -2810,7 +2810,7 @@ export const FarmsPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">

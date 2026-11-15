@@ -66,7 +66,7 @@ export const HomePage: React.FC = () => {
                   IoT
                 </span>
               </div>
-              <span className="text-[10px] uppercase font-semibold tracking-wider text-emerald-700 block -mt-0.5">
+              <span className="text-[10px] uppercase font-semibold tracking-wider text-emerald-700 hidden sm:block -mt-0.5">
                 Nông nghiệp số công nghệ cao
               </span>
             </div>

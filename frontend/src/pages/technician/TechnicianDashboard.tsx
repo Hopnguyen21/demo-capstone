@@ -45,11 +45,11 @@ export const TechnicianDashboard: React.FC = () => {
             Vào Zone để **chấm vị trí Node**, nhận tín hiệu **Owner Nghiệm thu**, và **Xác nhận hoàn thành** công trình.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => navigate('/technician/provisioning')} className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => navigate('/technician/provisioning')} className="w-full sm:w-auto bg-white hover:bg-emerald-50 text-[#119653] font-bold shadow-sm">
             <Layers size={16} className="mr-1.5" /> Yêu cầu Lắp đặt Mới ({installationRequests.length})
           </Button>
-          <Button onClick={() => navigate('/technician/maintenance')} className="bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shadow-sm">
+          <Button onClick={() => navigate('/technician/maintenance')} className="w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-amber-950 font-bold shadow-sm">
             <Wrench size={16} className="mr-1.5" /> Yêu cầu Bảo trì ({maintenanceRequests.length})
           </Button>
         </div>

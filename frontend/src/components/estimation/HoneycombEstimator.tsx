@@ -441,7 +441,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       {/* Formula & Scientific Proof Modal */}
       {showFormulaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-xs text-slate-800">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl text-xs text-slate-800 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
                 <Cpu size={18} className="text-emerald-600" />

@@ -999,7 +999,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
             )}
           </div>
 
-          {/* Map Layer & Zoom & Expand Controls Overlay */}
+          {/* Map Layer & Zoom Controls Overlay */}
           <div className="absolute top-2 sm:top-3 right-2 sm:right-3 z-[1000] flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
             {/* Manual Coordinate Input Button */}
             {!readOnly && !hidePolygon && (
@@ -1014,26 +1014,6 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
                 <span className="sm:hidden">📍 Tọa độ</span>
               </button>
             )}
-
-            {/* Expand / Shrink Fullscreen Toggle */}
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? "Thu nhỏ lại như ban đầu (Esc)" : "Mở rộng bản đồ toàn màn hình"}
-              className="bg-[#119653] hover:bg-[#0e8046] text-white px-2 sm:px-2.5 py-1 rounded-lg border border-emerald-400 shadow-md text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
-            >
-              {isFullscreen ? (
-                <>
-                  <Minimize2 size={12} className="text-amber-200" />
-                  <span className="hidden sm:inline">Thu nhỏ</span>
-                </>
-              ) : (
-                <>
-                  <Maximize2 size={12} className="text-white" />
-                  <span className="hidden sm:inline">Mở rộng Map</span>
-                </>
-              )}
-            </button>
 
             {/* Fit Zoom Button */}
             <button
@@ -1070,6 +1050,28 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
                 Vệ tinh
               </button>
             </div>
+          </div>
+
+          {/* Floating Expand / Shrink Fullscreen Button (Bottom-Right) */}
+          <div className="absolute bottom-6 sm:bottom-7 right-2 sm:right-3 z-[1000]">
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Thu nhỏ lại như ban đầu (Esc)" : "Mở rộng bản đồ toàn màn hình"}
+              className="bg-[#119653] hover:bg-[#0e8046] text-white px-2.5 sm:px-3 py-1.5 rounded-xl border border-emerald-400/90 shadow-xl text-xs font-bold flex items-center gap-1.5 transition-all transform hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-xs"
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 size={13} className="text-amber-200" />
+                  <span>Thu nhỏ</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 size={13} className="text-white" />
+                  <span>Mở rộng Map</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Legend Overlay */}

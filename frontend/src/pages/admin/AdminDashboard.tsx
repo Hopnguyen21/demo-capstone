@@ -41,13 +41,13 @@ export const AdminDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="flex items-center justify-between p-6 bg-gradient-to-r from-emerald-50 via-white to-slate-50 border border-emerald-200/80 rounded-2xl shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6 bg-gradient-to-r from-emerald-50 via-white to-slate-50 border border-emerald-200/80 rounded-2xl shadow-xs">
         <div>
           <span className="text-xs font-mono font-semibold text-[#119653] uppercase tracking-wider">Bảng điều khiển Bổn mạng</span>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">Platform Admin Management Console</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1">Platform Admin Management Console</h1>
           <p className="text-xs text-slate-600 mt-1">Quản trị toàn bộ hạ tầng SaaS Cloud, người thuê (Tenants) và thư viện Nông học hệ thống.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 self-start sm:self-center shrink-0">
           <StatusBadge status="ACTIVE" label="SaaS Platform Operational" />
         </div>
       </div>
@@ -174,7 +174,7 @@ export const AdminDashboard: React.FC = () => {
               <FileCheck size={22} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-bold text-sm sm:text-base text-white">Quy chuẩn Nông nghiệp VietGAP Hệ thống Hiện hành</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-400 text-emerald-950 uppercase">
                   TCVN 11892-1:2017
