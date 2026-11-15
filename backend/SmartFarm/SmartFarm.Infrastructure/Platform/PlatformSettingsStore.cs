@@ -17,6 +17,11 @@ public static class PlatformSettingKeys
     public const string RenewalDiscountPercent = "contract.renewal_discount_percent";
     public const string AiMinimumConfidence = "ai.minimum_confidence";
     public const string AiTelemetryFreshnessMinutes = "ai.telemetry_freshness_minutes";
+    /// <summary>Khoá Gemini do Admin nhập (lưu mã hoá, xem SecretProtector) và model; ưu tiên hơn cấu hình môi trường.</summary>
+    public const string GeminiApiKey = "Gemini:ApiKey";
+    /// <summary>Nhiều khoá Gemini (mỗi khoá một project để cộng dồn quota): mảng JSON, lưu mã hoá cả mảng.</summary>
+    public const string GeminiApiKeys = "Gemini:ApiKeys";
+    public const string GeminiModel = "Gemini:Model";
 }
 
 public sealed record PlatformSettingDefinition(string Key, decimal Default, decimal Min, decimal Max, string Group, string DataType, string Description);
@@ -38,6 +43,8 @@ public static class PlatformSettingsStore
         new(PlatformSettingKeys.AiTelemetryFreshnessMinutes, 5m, 1m, 1440m, "Ai", "Integer",
             "Số phút tối đa kể từ lần đo cuối để số liệu cảm biến còn được coi là mới."),
     ];
+
+    public static bool IsSecretKey(string key) => key is PlatformSettingKeys.GeminiApiKey or PlatformSettingKeys.GeminiApiKeys;
 
     public static PlatformSettingDefinition? Find(string key) => Definitions.FirstOrDefault(x => x.Key == key);
 

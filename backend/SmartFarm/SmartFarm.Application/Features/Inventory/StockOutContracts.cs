@@ -29,7 +29,8 @@ public sealed record StockOutView(
     DateTime? CompletedAtUtc,
     string? Notes,
     DateTime CreatedAtUtc,
-    IReadOnlyList<StockOutDetailView> Details);
+    IReadOnlyList<StockOutDetailView> Details,
+    Guid? ServiceRequestId = null);
 
 public sealed record CreateStockOutDetailCommand(
     Guid InventoryItemId,
@@ -39,7 +40,8 @@ public sealed record CreateStockOutDetailCommand(
 public sealed record CreateStockOutCommand(
     Guid? ZoneId,
     string? Notes,
-    IReadOnlyList<CreateStockOutDetailCommand> Details);
+    IReadOnlyList<CreateStockOutDetailCommand> Details,
+    Guid? ServiceRequestId = null);
 
 public sealed record UpdateStockOutCommand(
     Guid? ZoneId,

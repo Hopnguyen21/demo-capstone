@@ -39,6 +39,13 @@ const normalizeDeviceStatus = (value: any) => {
 };
 
 
+const isHarvestStage = (stageName?: string | null, yieldStatus?: string | null): boolean => {
+  if (yieldStatus === 'Completed') return true;
+  if (!stageName) return false;
+  const lower = stageName.toLowerCase();
+  return lower.includes('thu hoạch') || lower.includes('thu hoach') || lower.includes('harvest') || lower.includes('nuôi trái') || lower.includes('giai đoạn 4') || lower.includes('stage_4') || lower.includes('stage 4');
+};
+
 export const FarmsPage: React.FC = () => {
   const businessParams = useBusinessParameters();
   const navigate = useNavigate();
@@ -2089,72 +2096,74 @@ export const FarmsPage: React.FC = () => {
                       : <p className="text-xs text-slate-600">Zone chưa gán cây. Tạo vụ mùa để gán cây, rồi chọn hoặc chỉnh hồ sơ sinh trưởng tại đây.</p>}
                   </div>
 
-                  {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) */}
-                  <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
-                          <Scale size={18} />
+                  {/* Thẻ Sản lượng Canh tác & Thu hoạch (Crop Yield Tracking) - Chỉ hiện khi đến giai đoạn thu hoạch hoặc đã thu hoạch */}
+                  {isHarvestStage(selectedZone.currentStage, zoneYieldMap[selectedZone.zoneId]?.status) && (
+                    <div className="p-5 bg-gradient-to-br from-[#119653] via-[#0f874a] to-[#0b6f3c] border border-emerald-400/30 rounded-2xl shadow-md text-white space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-2 rounded-xl bg-white/20 text-white border border-white/30">
+                            <Scale size={18} />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
+                            <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-bold text-white text-sm">Sản lượng Canh tác & Thu hoạch</h4>
-                          <p className="text-[11px] text-emerald-100">Theo dõi và ghi nhận sản lượng nông sản cho Zone này</p>
+                        <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
+                          {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
+                        </span>
+                      </div>
+
+                      {/* Metrics Grid */}
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                          <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
+                          <div className="text-xl font-black text-white font-mono">
+                            {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
+                          </div>
+                          <div className="text-[10px] text-emerald-100">
+                            ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
+                          <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
+                          <div className="text-xl font-black text-white font-mono">
+                            {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
+                          </div>
+                          <div className="text-[10px] text-emerald-100">
+                            Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
+                          </div>
                         </div>
                       </div>
-                      <span className="text-[10px] px-2.5 py-1 rounded-full bg-white/20 text-white font-bold border border-white/30 uppercase tracking-wider font-mono">
-                        {zoneYieldMap[selectedZone.zoneId]?.status === 'Completed' ? 'Đã thu hoạch' : 'Vụ đang canh tác'}
-                      </span>
+
+                      {/* Quality & harvest date */}
+                      <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
+                        <div className="flex justify-between">
+                          <span className="text-emerald-100">Phân loại chất lượng:</span>
+                          <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-emerald-100">Ngày ghi nhận:</span>
+                          <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
+                        </div>
+                        {zoneYieldMap[selectedZone.zoneId]?.notes && (
+                          <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
+                            Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenYieldModal}
+                        className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
+                      >
+                        <Plus size={15} />
+                        Nhập / Cập nhật Sản lượng Thu hoạch (kg)
+                      </button>
                     </div>
-
-                    {/* Metrics Grid */}
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
-                        <div className="text-[11px] text-emerald-100 font-medium">Sản lượng thực tế:</div>
-                        <div className="text-xl font-black text-white font-mono">
-                          {(zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0).toLocaleString()} <span className="text-xs font-normal text-emerald-100">kg</span>
-                        </div>
-                        <div className="text-[10px] text-emerald-100">
-                          ≈ {((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / 1000).toFixed(2)} tấn
-                        </div>
-                      </div>
-
-                      <div className="p-3 bg-white/15 border border-white/25 rounded-xl space-y-0.5">
-                        <div className="text-[11px] text-emerald-100 font-medium">Năng suất bình quân:</div>
-                        <div className="text-xl font-black text-white font-mono">
-                          {selectedZone.areaM2 ? (((zoneYieldMap[selectedZone.zoneId]?.actualYieldKg ?? 0) / Number(selectedZone.areaM2)).toFixed(2)) : '0'} <span className="text-xs font-normal text-emerald-100">kg/m²</span>
-                        </div>
-                        <div className="text-[10px] text-emerald-100">
-                          Trên diện tích {Number(selectedZone.areaM2).toLocaleString()} m²
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Quality & harvest date */}
-                    <div className="p-2.5 bg-black/15 rounded-xl border border-white/20 text-[11px] space-y-1 text-emerald-50">
-                      <div className="flex justify-between">
-                        <span className="text-emerald-100">Phân loại chất lượng:</span>
-                        <span className="font-semibold text-white">{zoneYieldMap[selectedZone.zoneId]?.qualityGrade || 'Loại 1 (Xuất khẩu)'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-emerald-100">Ngày ghi nhận:</span>
-                        <span className="font-mono text-emerald-50">{zoneYieldMap[selectedZone.zoneId]?.harvestDate || new Date().toISOString().split('T')[0]}</span>
-                      </div>
-                      {zoneYieldMap[selectedZone.zoneId]?.notes && (
-                        <div className="text-[10px] text-emerald-100 pt-1 border-t border-white/10">
-                          Ghi chú: {zoneYieldMap[selectedZone.zoneId]?.notes}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleOpenYieldModal}
-                      className="w-full py-2.5 px-4 rounded-xl bg-white text-[#119653] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 shadow-sm border border-white/40 transition-all cursor-pointer"
-                    >
-                      <Plus size={15} />
-                      Nhập / Cập nhật Sản lượng Thu hoạch (kg)
-                    </button>
-                  </div>
+                  )}
 
                   {/* Thẻ Nhân viên Phân công phụ trách Zone */}
                   <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
@@ -2600,7 +2609,7 @@ export const FarmsPage: React.FC = () => {
                     Chưa có hợp đồng cũ nào trong lịch sử Zone này. Tất cả hợp đồng sau khi hết hạn hoặc thay thế sẽ được tự động bảo toàn tại đây.
                   </div>
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
@@ -2850,7 +2859,7 @@ export const FarmsPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-x-auto shadow-xs">
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">

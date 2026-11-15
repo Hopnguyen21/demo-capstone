@@ -16,7 +16,8 @@ public static class StockOutAutomationHelper
         Guid creatorUserId,
         string? technicianName,
         IEnumerable<(string Code, string Name, string? Category, int Quantity)> items,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? serviceRequestId = null)
     {
         var itemList = items.Where(i => i.Quantity > 0).ToList();
         if (itemList.Count == 0 || farmId == Guid.Empty) return null;
@@ -75,6 +76,7 @@ public static class StockOutAutomationHelper
             TenantId = tenantId,
             FarmId = farmId,
             ZoneId = zoneId == Guid.Empty ? null : zoneId,
+            ServiceRequestId = serviceRequestId,
             StockOutCode = stockOutCode,
             Status = StockOutStatus.Pending, // Chờ duyệt xuất kho thiết bị
             CreatedByUserId = techUserId, // Luôn luôn là Kỹ thuật viên

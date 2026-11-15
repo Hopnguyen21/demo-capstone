@@ -350,7 +350,8 @@ public sealed class SimulatedIotTelemetryWorker(
                 }
 
                 var messageId = $"sim-{now.Ticks}-{Rnd.Next(1000, 9999)}-n{devIdx}";
-                var configuredParams = GetConfiguredParametersForDevice(curDev, zone);
+                var configuredParams = GetConfiguredParametersForDevice(curDev, zone).Distinct().ToList();
+                var devNow = DateTime.UtcNow.AddMilliseconds(devIdx * 100);
 
                 foreach (var param in configuredParams)
                 {
@@ -375,6 +376,9 @@ public sealed class SimulatedIotTelemetryWorker(
                             continue;
                     }
 
+                    if (readingsToAdd.Any(r => r.DeviceId == curDevId && r.ParameterCode == param && r.CapturedAtUtc == devNow))
+                        continue;
+
                     readingsToAdd.Add(new TelemetryReading
                     {
                         TenantId = farm.TenantId,
@@ -386,8 +390,8 @@ public sealed class SimulatedIotTelemetryWorker(
                         ParameterCode = param,
                         Value = val,
                         Unit = unit,
-                        CapturedAtUtc = now,
-                        ReceivedAtUtc = now
+                        CapturedAtUtc = devNow,
+                        ReceivedAtUtc = devNow
                     });
                 }
             }
@@ -405,13 +409,32 @@ public sealed class SimulatedIotTelemetryWorker(
             }
 
             var sendingDeviceIds = readingsToAdd.Select(r => r.DeviceId).Distinct().ToList();
-            foreach (var dev in await db.Devices.Where(d => sendingDeviceIds.Contains(d.Id)).ToListAsync(ct))
+            var activeZoneIds = zones.Select(z => z.Id).ToList();
+            var allZoneDevices = await db.Devices
+                .Where(d => sendingDeviceIds.Contains(d.Id) || (d.ZoneId != null && activeZoneIds.Contains(d.ZoneId.Value)))
+                .ToListAsync(ct);
+
+            var techUser = await db.AppUsers.FirstOrDefaultAsync(u => u.Role == UserRole.PlatformTechnician, ct);
+            var techId = techUser?.Id ?? Guid.Parse("20000000-0000-0000-0000-000000000004");
+            foreach (var dev in allZoneDevices)
             {
                 if (dev.Status != DeviceStatus.MaintenanceRequired && dev.Status != DeviceStatus.Decommissioned && dev.Status != DeviceStatus.Unassigned)
                 {
                     dev.Status = DeviceStatus.Online;
                 }
                 dev.LastSeenAtUtc = now;
+
+                if (dev.DeviceType == DeviceType.ActuatorNode && !await db.DeviceConnectionTests.AnyAsync(t => t.DeviceId == dev.Id && t.Succeeded, ct))
+                {
+                    db.DeviceConnectionTests.Add(new DeviceConnectionTest
+                    {
+                        DeviceId = dev.Id,
+                        DeploymentRequestId = dev.DeploymentRequestId,
+                        TechnicianUserId = techId,
+                        Succeeded = true,
+                        ObservedAtUtc = now
+                    });
+                }
             }
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Generated {Count} simulated IoT telemetry readings across {Zones} zones.", readingsToAdd.Count, zones.Count);

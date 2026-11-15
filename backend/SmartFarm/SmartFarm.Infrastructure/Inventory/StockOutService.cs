@@ -85,6 +85,14 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             if (!zoneExists) throw new ResourceNotFoundException("Zone nhận vật tư không tồn tại trong Farm này.");
         }
 
+        Guid? serviceRequestId = null;
+        if (command.ServiceRequestId.HasValue && command.ServiceRequestId.Value != Guid.Empty)
+        {
+            var srOk = await db.ServiceRequests.AnyAsync(x => x.Id == command.ServiceRequestId.Value && x.FarmId == farmId && x.TenantId == tenantId, ct);
+            if (!srOk) throw new ResourceNotFoundException("Yêu cầu dịch vụ của phiếu xuất kho không tồn tại trong Farm này.");
+            serviceRequestId = command.ServiceRequestId.Value;
+        }
+
         // Auto generate StockOutCode
         var now = clock.GetUtcNow().UtcDateTime;
         var prefix = $"PXK-{now:yyyyMM}";
@@ -101,6 +109,7 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             TenantId = tenantId,
             FarmId = farmId,
             ZoneId = command.ZoneId == Guid.Empty ? null : command.ZoneId,
+            ServiceRequestId = serviceRequestId,
             StockOutCode = code,
             Status = StockOutStatus.Draft,
             CreatedByUserId = userId,
@@ -401,7 +410,8 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
                     currentStock,
                     d.Notes
                 );
-            }).ToList()
+            }).ToList(),
+            s.ServiceRequestId
         );
     }
 }
