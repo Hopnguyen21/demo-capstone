@@ -112,3 +112,38 @@ public sealed class StockTablesModelTests
         Assert.Null(none2); // kho phần cứng trống: không có dòng nào khớp
     }
 }
+
+public sealed class StockOutServiceRequestLinkTests
+{
+    [Fact]
+    public void StockOut_has_optional_foreign_key_to_ServiceRequest_with_SetNull()
+    {
+        using var db = new SmartFarmDbContext(new DbContextOptionsBuilder<SmartFarmDbContext>()
+            .UseNpgsql("Host=localhost;Database=smartfarm_model_tests;Username=smartfarm", o => { o.UseNetTopologySuite(); o.UseVector(); })
+            .Options);
+        var t = db.Model.FindEntityType(typeof(StockOut))!;
+        var fk = Assert.Single(t.GetForeignKeys(), f => f.PrincipalEntityType.ClrType == typeof(ServiceRequest));
+        Assert.Equal("ServiceRequestId", fk.Properties.Single().Name);
+        Assert.False(fk.IsRequired);
+        Assert.Equal(DeleteBehavior.SetNull, fk.DeleteBehavior);
+    }
+
+    [Fact]
+    public async Task Auto_stock_out_records_the_service_request_it_belongs_to()
+    {
+        await using var db = new SmartFarmDbContext(new DbContextOptionsBuilder<SmartFarmDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var tech = new AppUser { Email = "kt@example.com", FullName = "KTV", Role = UserRole.PlatformTechnician };
+        db.AppUsers.Add(tech);
+        db.PlatformHardwareItems.Add(new PlatformHardwareItem { Code = "GW-01", Name = "Gateway LoRa", Category = "Gateway" });
+        await db.SaveChangesAsync();
+        var srId = Guid.NewGuid();
+        var so = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+            db, Guid.NewGuid(), Guid.NewGuid(), null, "HD-SR-ABC12345", tech.Id, "Khách",
+            new[] { ("GW-01", "Gateway LoRa", (string?)"Gateway", 1) }, default, srId);
+        Assert.Equal(srId, so!.ServiceRequestId);
+        var without = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
+            db, Guid.NewGuid(), Guid.NewGuid(), null, "HD-SR-XYZ", tech.Id, "Khách",
+            new[] { ("GW-01", "Gateway LoRa", (string?)"Gateway", 1) });
+        Assert.Null(without!.ServiceRequestId);
+    }
+}

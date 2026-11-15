@@ -515,7 +515,8 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                     sr.AssignedTechnicianId ?? quotation.TechnicianUserId,
                     quotation.TechnicianUser?.FullName ?? "Kỹ thuật viên",
                     quotation.Items.Select(i => (i.HardwareItemCode, i.HardwareItemName, (string?)i.Category, i.Quantity)),
-                    ct);
+                    ct,
+                    sr.Id);
             }
         }
 

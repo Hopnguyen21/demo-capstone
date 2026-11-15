@@ -5114,6 +5114,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<Guid?>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -5138,6 +5141,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("FarmId");
+
+                    b.HasIndex("ServiceRequestId");
 
                     b.HasIndex("ZoneId");
 
@@ -7116,6 +7121,11 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SmartFarm.Domain.Entities.ServiceRequest", "ServiceRequest")
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SmartFarm.Domain.Entities.Zone", "Zone")
                         .WithMany()
                         .HasForeignKey("ZoneId")
@@ -7126,6 +7136,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("Farm");
+
+                    b.Navigation("ServiceRequest");
 
                     b.Navigation("Zone");
                 });
