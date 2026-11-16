@@ -431,12 +431,12 @@ public static class AiPromptBuilder
         if (isSoil)
         {
             // Câu hỏi về đất: CHỈ gửi ngưỡng pH và độ ẩm đất (nếu được hỏi), không gửi nhiệt độ/ẩm không khí
-            reqs = c.Requirements.Where(x => x.ParameterCode == EnvironmentalParameterCode.Ph ||
-                (x.ParameterCode == EnvironmentalParameterCode.SoilMoisture && sanitizedQuestion.Contains("ẩm", StringComparison.OrdinalIgnoreCase))).ToList();
+            reqs = c.Requirements.Where(x => string.Equals(x.ParameterCode, "Ph", StringComparison.OrdinalIgnoreCase) ||
+                (string.Equals(x.ParameterCode, "SoilMoisture", StringComparison.OrdinalIgnoreCase) && sanitizedQuestion.Contains("ẩm", StringComparison.OrdinalIgnoreCase))).ToList();
         }
         else if (hasIntent && intent?.Parameters is { Count: > 0 } pList && !intent.Has(QuestionTopics.IrrigationOrControl))
         {
-            reqs = c.Requirements.Where(x => pList.Contains(x.ParameterCode)).ToList();
+            reqs = c.Requirements.Where(x => pList.Any(p => string.Equals(x.ParameterCode, p.ToString(), StringComparison.OrdinalIgnoreCase))).ToList();
         }
         else if (isWeatherOnly)
         {

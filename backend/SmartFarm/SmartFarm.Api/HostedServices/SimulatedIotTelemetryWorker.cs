@@ -486,7 +486,7 @@ public sealed class SimulatedIotTelemetryWorker(
                     }
                     else if (currentSeason != null)
                     {
-                        var seasonReq = currentSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == cfg.Param);
+                        var seasonReq = currentSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, cfg.Param.ToString(), StringComparison.OrdinalIgnoreCase));
                         if (seasonReq != null)
                         {
                             min = seasonReq.MinValue;

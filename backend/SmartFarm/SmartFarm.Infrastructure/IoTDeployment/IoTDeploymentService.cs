@@ -27,7 +27,14 @@ internal sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfi
     {
         await EnsureOwnerAsync(ownerId, tenantId, ct);
         var season = await db.PlantingSeasons.AsNoTracking().Include(x => x.Zone).ThenInclude(x => x.Field).ThenInclude(x => x.Farm).Include(x => x.AppliedRequirements).SingleOrDefaultAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress && x.Zone.Field.Farm.TenantId == tenantId, ct) ?? throw new ResourceNotFoundException("Zone has no InProgress Planting Season in the current Tenant.");
-        return new(zoneId, season.Id, season.CurrentGrowthStageId, season.Zone.AreaM2, season.AppliedRequirements.Select(x => x.ParameterCode).Distinct().Order().ToList());
+        var codes = season.AppliedRequirements
+            .Select(x => Enum.TryParse<EnvironmentalParameterCode>(x.ParameterCode, true, out var code) ? (EnvironmentalParameterCode?)code : null)
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .Distinct()
+            .Order()
+            .ToList();
+        return new(zoneId, season.Id, season.CurrentGrowthStageId, season.Zone.AreaM2, codes);
     }
 
     public async Task<IReadOnlyList<DeviceRecommendationView>> RecommendAsync(Guid ownerId, Guid tenantId, Guid zoneId, CancellationToken ct)

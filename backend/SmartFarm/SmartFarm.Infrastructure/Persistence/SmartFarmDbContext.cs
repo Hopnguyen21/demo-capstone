@@ -23,6 +23,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<SeasonIrrigationDay> SeasonIrrigationDays => Set<SeasonIrrigationDay>();
     public DbSet<SeasonIrrigationSession> SeasonIrrigationSessions => Set<SeasonIrrigationSession>();
     public DbSet<EnvironmentalRequirement> EnvironmentalRequirements => Set<EnvironmentalRequirement>();
+    public DbSet<EnvironmentalMetricDefinition> EnvironmentalMetricDefinitions => Set<EnvironmentalMetricDefinition>();
     public DbSet<PlantingSeason> PlantingSeasons => Set<PlantingSeason>();
     public DbSet<FarmingSeason> FarmingSeasons => Set<FarmingSeason>();
     public DbSet<SeasonAppliedRequirement> SeasonAppliedRequirements => Set<SeasonAppliedRequirement>();

@@ -159,7 +159,18 @@ public sealed class UpdateCropRequest
 }
 
 public sealed class CreateVarietyRequest { [Required, StringLength(150, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } }
-public sealed class RequirementRequest { [Required] public EnvironmentalParameterCode ParameterCode { get; init; } public decimal MinValue { get; init; } public decimal MaxValue { get; init; } public decimal TargetValue { get; init; } [Required, StringLength(30)] public string Unit { get; init; } = ""; internal RequirementInput ToInput() => new(ParameterCode, MinValue, MaxValue, TargetValue, Unit); }
+public sealed class RequirementRequest
+{
+    [Required, StringLength(50, MinimumLength = 1)] public string ParameterCode { get; init; } = "";
+    [StringLength(150)] public string? MetricName { get; init; }
+    [StringLength(500)] public string? Description { get; init; }
+    public decimal MinValue { get; init; }
+    public decimal MaxValue { get; init; }
+    public decimal TargetValue { get; init; }
+    [Required, StringLength(30)] public string Unit { get; init; } = "";
+    public bool IsEnabled { get; init; } = true;
+    internal RequirementInput ToInput() => new(ParameterCode, MinValue, MaxValue, TargetValue, Unit, MetricName, Description, IsEnabled);
+}
 public sealed class StageRequest { [Required, StringLength(150)] public string Name { get; init; } = ""; [Range(1, 100)] public int StageOrder { get; init; } [Range(1, 1000)] public int DurationDays { get; init; } [Required, MinLength(1)] public List<RequirementRequest> Requirements { get; init; } = []; [StringLength(4000)] public string? Description { get; init; } [StringLength(2000)] public string? FertilizerAction { get; init; } [StringLength(2000)] public string? IpmAction { get; init; } internal StageInput ToInput() => new(Name, StageOrder, DurationDays, Requirements.Select(x => x.ToInput()).ToList(), Description, FertilizerAction, IpmAction); }
 public sealed class CreateGrowthProfileRequest { public Guid CropId { get; init; } public Guid? VarietyId { get; init; } [Required, StringLength(200)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } public bool IsDefault { get; init; } public Guid? SourceProfileId { get; init; } public List<StageRequest>? Stages { get; init; } internal CreateGrowthProfileCommand ToCommand() => new(CropId, VarietyId, Name, Description, IsDefault, SourceProfileId, Stages?.Select(x => x.ToInput()).ToList()); }
 public sealed class UpdateGrowthProfileRequest { [Required, StringLength(200, MinimumLength = 1)] public string Name { get; init; } = ""; [StringLength(4000)] public string? Description { get; init; } public bool IsDefault { get; init; } }

@@ -63,16 +63,17 @@ public sealed class TelemetryAlertService(
             .Include(x => x.AppliedRequirements)
             .SingleOrDefaultAsync(x => x.ZoneId == envelope.ZoneId && x.Status == PlantingSeasonStatus.InProgress, ct);
         var zone = season?.Zone;
-        var requirements = season?.AppliedRequirements.ToDictionary(x => x.ParameterCode)
-            ?? new Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>();
+        var requirements = season?.AppliedRequirements.ToDictionary(x => x.ParameterCode, StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, SeasonAppliedRequirement>(StringComparer.OrdinalIgnoreCase);
         foreach (var reading in envelope.Readings)
         {
             if (season is not null)
             {
-                if (!requirements.TryGetValue(reading.ParameterCode, out var requirement))
-                    throw new RequestValidationException("readings", $"{reading.ParameterCode} is not required by the current Growth Stage.");
-                if (!string.Equals(requirement.Unit, reading.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
-                    throw new RequestValidationException("readings", $"Unit for {reading.ParameterCode} must be '{requirement.Unit}'.");
+                if (requirements.TryGetValue(reading.ParameterCode.ToString(), out var requirement))
+                {
+                    if (!string.Equals(requirement.Unit, reading.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
+                        throw new RequestValidationException("readings", $"Unit for {reading.ParameterCode} must be '{requirement.Unit}'.");
+                }
             }
             ValidateRange(reading);
         }
@@ -115,7 +116,7 @@ public sealed class TelemetryAlertService(
         var activeZone = zone!;
         foreach (var input in envelope.Readings)
         {
-            var requirement = requirements[input.ParameterCode];
+            if (!requirements.TryGetValue(input.ParameterCode.ToString(), out var requirement)) continue;
             var rules = await db.AlertRules
                 .Where(x => x.ZoneId == envelope.ZoneId && x.GrowthStageId == activeSeason.CurrentGrowthStageId &&
                             x.ParameterCode == input.ParameterCode && x.ArchivedAtUtc == null && x.IsActive)
@@ -303,10 +304,19 @@ public sealed class TelemetryAlertService(
     }
 
     /// <summary>Ngưỡng của vụ mùa đang chạy; Zone chưa có vụ mùa thì không có ngưỡng (ThresholdStatus = Unknown) chứ không phải lỗi.</summary>
-    private async Task<Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>> OptionalRequirementsAsync(Guid zoneId, CancellationToken ct) =>
-        (await db.PlantingSeasons.AsNoTracking().Include(x => x.AppliedRequirements)
-            .SingleOrDefaultAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct))
-            ?.AppliedRequirements.ToDictionary(x => x.ParameterCode) ?? [];
+    private async Task<Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>> OptionalRequirementsAsync(Guid zoneId, CancellationToken ct)
+    {
+        var season = await db.PlantingSeasons.AsNoTracking().Include(x => x.AppliedRequirements)
+            .SingleOrDefaultAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct);
+        if (season is null) return [];
+        var result = new Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>();
+        foreach (var r in season.AppliedRequirements)
+        {
+            if (Enum.TryParse<EnvironmentalParameterCode>(r.ParameterCode, true, out var code))
+                result[code] = r;
+        }
+        return result;
+    }
 
     public async Task<TelemetryHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, EnvironmentalParameterCode parameterCode, DateTime fromUtc, DateTime toUtc, string interval, CancellationToken ct)
     {
@@ -368,7 +378,7 @@ public sealed class TelemetryAlertService(
     {
         await EnsureOwnerZoneAsync(ownerId, tenantId, zoneId, ct); ValidateRule(command.MinThreshold, command.MaxThreshold, command.CooldownMinutes);
         var season = await CurrentSeasonAsync(zoneId, ct);
-        if (!season.AppliedRequirements.Any(x => x.ParameterCode == command.ParameterCode)) throw new RequestValidationException("parameterCode", "Parameter is not present in the current Growth Stage.");
+        if (!season.AppliedRequirements.Any(x => string.Equals(x.ParameterCode, command.ParameterCode.ToString(), StringComparison.OrdinalIgnoreCase))) throw new RequestValidationException("parameterCode", "Parameter is not present in the current Growth Stage.");
         if (await db.AlertRules.AnyAsync(x => x.ZoneId == zoneId && x.GrowthStageId == season.CurrentGrowthStageId && x.ParameterCode == command.ParameterCode && x.Severity == command.Severity && x.ArchivedAtUtc == null, ct)) throw new ResourceConflictException("A rule for this metric and severity already exists in the current Growth Stage.");
         var rule = new AlertRule { ZoneId = zoneId, GrowthStageId = season.CurrentGrowthStageId, ParameterCode = command.ParameterCode, MinThreshold = command.MinThreshold, MaxThreshold = command.MaxThreshold, Severity = command.Severity, CooldownMinutes = command.CooldownMinutes };
         db.AlertRules.Add(rule); await db.SaveChangesAsync(ct); return ToView(rule);
@@ -433,7 +443,17 @@ public sealed class TelemetryAlertService(
     private async Task<AlertRule> RuleAsync(Guid zoneId, Guid ruleId, CancellationToken ct) => await db.AlertRules.SingleOrDefaultAsync(x => x.Id == ruleId && x.ZoneId == zoneId && x.ArchivedAtUtc == null, ct) ?? throw new ResourceNotFoundException("Alert Rule was not found.");
     private async Task<Alert> AlertAsync(Guid id, CancellationToken ct) => await db.Alerts.Include(x => x.History).SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Alert was not found.");
     private async Task<PlantingSeason> CurrentSeasonAsync(Guid zoneId, CancellationToken ct) => await db.PlantingSeasons.Include(x => x.AppliedRequirements).SingleOrDefaultAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct) ?? throw new ResourceConflictException("Zone has no in-progress Planting Season.");
-    private async Task<Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>> CurrentRequirementsAsync(Guid zoneId, CancellationToken ct) => (await CurrentSeasonAsync(zoneId, ct)).AppliedRequirements.ToDictionary(x => x.ParameterCode);
+    private async Task<Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>> CurrentRequirementsAsync(Guid zoneId, CancellationToken ct)
+    {
+        var season = await CurrentSeasonAsync(zoneId, ct);
+        var result = new Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>();
+        foreach (var r in season.AppliedRequirements)
+        {
+            if (Enum.TryParse<EnvironmentalParameterCode>(r.ParameterCode, true, out var code))
+                result[code] = r;
+        }
+        return result;
+    }
 
     private async Task EnsureOwnerZoneAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
     {

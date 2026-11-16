@@ -59,15 +59,59 @@ public sealed record CropView(
 public sealed record CreateVarietyCommand(string Name, string? Description);
 public sealed record VarietyView(Guid VarietyId, Guid CropId, string Name, string? Description, bool IsSystemDefined, Guid? TenantId);
 
-public sealed record RequirementInput(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
+public sealed record RequirementInput(
+    string ParameterCode,
+    decimal MinValue,
+    decimal MaxValue,
+    decimal TargetValue,
+    string Unit,
+    string? MetricName = null,
+    string? Description = null,
+    bool IsEnabled = true);
+
 public sealed record StageInput(string Name, int StageOrder, int DurationDays, IReadOnlyList<RequirementInput> Requirements, string? Description = null, string? FertilizerAction = null, string? IpmAction = null);
 public sealed record CreateGrowthProfileCommand(Guid CropId, Guid? VarietyId, string Name, string? Description, bool IsDefault, Guid? SourceProfileId, IReadOnlyList<StageInput>? Stages);
 /// <summary>Sửa thông tin chung của profile; giai đoạn và ngưỡng sửa riêng (requirements).</summary>
 public sealed record UpdateGrowthProfileCommand(string Name, string? Description, bool IsDefault);
-public sealed record RequirementView(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
+
+public sealed record RequirementView(
+    string ParameterCode,
+    decimal MinValue,
+    decimal MaxValue,
+    decimal TargetValue,
+    string Unit,
+    string? MetricName = null,
+    string? Description = null,
+    bool IsEnabled = true,
+    bool HasSensorSupport = false);
+
 public sealed record GrowthStageView(Guid StageId, string Name, int StageOrder, int DurationDays, IReadOnlyList<RequirementView> Requirements, string? Description = null, string? FertilizerAction = null, string? IpmAction = null);
 public sealed record GrowthProfileView(Guid ProfileId, Guid CropId, string CropName, Guid? VarietyId, string? VarietyName, string Name, string? Description, bool IsDefault, bool IsSystemDefined, Guid? TenantId, Guid? SourceProfileId, IReadOnlyList<GrowthStageView> Stages);
 public sealed record RequirementUpdateView(Guid EffectiveProfileId, Guid EffectiveStageId, bool ClonedFromSystem, IReadOnlyList<RequirementView> Requirements);
+
+public sealed record EnvironmentalMetricDefinitionView(
+    Guid Id,
+    string MetricCode,
+    string MetricName,
+    string Unit,
+    string? Description,
+    decimal DefaultMin,
+    decimal DefaultTarget,
+    decimal DefaultMax,
+    bool HasSensorSupport,
+    bool IsSystemDefined,
+    Guid? TenantId,
+    bool IsActive);
+
+public sealed record CreateMetricDefinitionCommand(
+    string MetricCode,
+    string MetricName,
+    string Unit,
+    string? Description,
+    decimal DefaultMin,
+    decimal DefaultTarget,
+    decimal DefaultMax,
+    bool HasSensorSupport = false);
 
 // ── Lịch tưới thuộc Growth Profile (theo giai đoạn) ──
 // StartTime: "HH:mm" giờ ĐỊA PHƯƠNG theo múi giờ Farm. DurationSeconds: 1..1800. Mọi ngày trong giai đoạn lặp hằng ngày.

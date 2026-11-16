@@ -7,7 +7,7 @@ namespace SmartFarm.Application.Features.Ai;
 
 public sealed record AiTelemetryContextItem(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc, bool IsFresh);
 public sealed record AiTelemetryHistoryItem(EnvironmentalParameterCode ParameterCode, decimal Value, string Unit, DateTime CapturedAtUtc);
-public sealed record AiRequirementContextItem(EnvironmentalParameterCode ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
+public sealed record AiRequirementContextItem(string ParameterCode, decimal MinValue, decimal MaxValue, decimal TargetValue, string Unit);
 public sealed record AiActuatorContextItem(Guid ActuatorId, string ActuatorType, int MaxDurationSeconds, bool IsOnline);
 public sealed record AiUpcomingScheduleContextItem(string Name, DateTime NextRunAtUtc, string NextRunTimeFormatted, int DurationSeconds, int MinutesUntilRun);
 public sealed record AiWeatherContext(bool Available, string? Summary, decimal? RainProbabilityNext6HoursMaxPercent, decimal? TemperatureCelsius, DateTime? ObservedAtUtc, string? Limitation);

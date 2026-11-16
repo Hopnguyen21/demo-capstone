@@ -12,8 +12,6 @@ namespace SmartFarm.Infrastructure.CropGrowth;
 
 internal sealed partial class CropGrowthService(SmartFarmDbContext dbContext) : ICropGrowthService
 {
-    private static readonly EnvironmentalParameterCode[] CoreParameters =
-        [EnvironmentalParameterCode.Temperature, EnvironmentalParameterCode.SoilMoisture, EnvironmentalParameterCode.AirHumidity, EnvironmentalParameterCode.Ph];
 
     public async Task<IReadOnlyList<CropView>> ListCropsAsync(Guid userId, Guid? tenantId, bool? systemDefined, CancellationToken ct)
     {
@@ -279,7 +277,7 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
 
     public async Task<RequirementUpdateView> UpdateRequirementsAsync(Guid userId, Guid? tenantId, Guid stageId, IReadOnlyList<RequirementInput> requirements, CancellationToken ct)
     {
-        var user = await EnsureUserAsync(userId, tenantId, true, ct); ValidateRequirements(requirements, false);
+        var user = await EnsureUserAsync(userId, tenantId, true, ct); ValidateRequirements(requirements);
         var stage = await dbContext.GrowthStages.Include(x => x.Requirements).Include(x => x.GrowthProfile).SingleOrDefaultAsync(x => x.Id == stageId, ct)
             ?? throw new ResourceNotFoundException("Growth Stage was not found.");
         var cloned = false;
@@ -298,11 +296,27 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
             }
         }
         else if (user.Role != UserRole.PlatformAdmin && stage.GrowthProfile.TenantId != tenantId) throw new ResourceNotFoundException("Growth Stage was not found in the current Tenant.");
+
+        // Synchronize stage requirements: remove items omitted in new list
+        var inputCodes = requirements.Select(x => x.ParameterCode.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var toRemove = stage.Requirements.Where(x => !inputCodes.Contains(x.ParameterCode)).ToList();
+        foreach (var rem in toRemove) stage.Requirements.Remove(rem);
+
         foreach (var input in requirements)
         {
-            var item = stage.Requirements.SingleOrDefault(x => x.ParameterCode == input.ParameterCode);
-            if (item is null) { item = new EnvironmentalRequirement { ParameterCode = input.ParameterCode }; stage.Requirements.Add(item); }
-            item.MinValue = input.MinValue; item.MaxValue = input.MaxValue; item.TargetValue = input.TargetValue; item.Unit = Required(input.Unit, "unit", 30);
+            var item = stage.Requirements.SingleOrDefault(x => string.Equals(x.ParameterCode, input.ParameterCode, StringComparison.OrdinalIgnoreCase));
+            if (item is null)
+            {
+                item = new EnvironmentalRequirement { ParameterCode = input.ParameterCode.Trim() };
+                stage.Requirements.Add(item);
+            }
+            item.MetricName = string.IsNullOrWhiteSpace(input.MetricName) ? input.ParameterCode.Trim() : input.MetricName.Trim();
+            item.Description = Optional(input.Description, 500);
+            item.MinValue = input.MinValue;
+            item.MaxValue = input.MaxValue;
+            item.TargetValue = input.TargetValue;
+            item.Unit = Required(input.Unit, "unit", 30);
+            item.IsEnabled = input.IsEnabled;
         }
         await dbContext.SaveChangesAsync(ct);
         return new(stage.GrowthProfileId, stage.Id, cloned, stage.Requirements.OrderBy(x => x.ParameterCode).Select(x => x.ToView()).ToList());
@@ -509,17 +523,163 @@ public async Task<GrowthProfileView> CreateProfileAsync(Guid userId, Guid? tenan
     }
     private async Task<Crop> VisibleCropAsync(Guid id, Guid? tenant, CancellationToken ct) => await dbContext.Crops.SingleOrDefaultAsync(x => x.Id == id && (x.TenantId == null || x.TenantId == tenant), ct) ?? throw new ResourceNotFoundException("Crop was not found in the visible catalog.");
     private async Task<CropVariety> VisibleVarietyAsync(Guid id, Guid crop, Guid? tenant, CancellationToken ct) => await dbContext.CropVarieties.SingleOrDefaultAsync(x => x.Id == id && x.CropId == crop && (x.TenantId == null || x.TenantId == tenant), ct) ?? throw new ResourceNotFoundException("Variety was not found for this Crop.");
+    public async Task<IReadOnlyList<EnvironmentalMetricDefinitionView>> ListMetricDefinitionsAsync(Guid userId, Guid? tenantId, CancellationToken ct)
+    {
+        await EnsureUserAsync(userId, tenantId, false, ct);
+        var items = await dbContext.EnvironmentalMetricDefinitions
+            .AsNoTracking()
+            .Where(x => x.IsActive && (x.IsSystemDefined || x.TenantId == tenantId))
+            .OrderByDescending(x => x.IsSystemDefined)
+            .ThenBy(x => x.MetricName)
+            .ToListAsync(ct);
+        return items.Select(x => x.ToView()).ToList();
+    }
+
+    public async Task<EnvironmentalMetricDefinitionView> CreateMetricDefinitionAsync(Guid userId, Guid? tenantId, CreateMetricDefinitionCommand command, CancellationToken ct)
+    {
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
+        var code = Required(command.MetricCode, nameof(command.MetricCode), 50).ToUpperInvariant();
+        var name = Required(command.MetricName, nameof(command.MetricName), 150);
+        var unit = Required(command.Unit, nameof(command.Unit), 30);
+
+        if (command.DefaultMin > command.DefaultTarget || command.DefaultTarget > command.DefaultMax)
+            throw new RequestValidationException("range", "Ngưỡng mặc định phải thỏa mãn Min <= Target <= Max.");
+
+        var isSystem = user.Role == UserRole.PlatformAdmin;
+        var exists = await dbContext.EnvironmentalMetricDefinitions.AnyAsync(x =>
+            x.IsActive && x.MetricCode == code && (x.IsSystemDefined || x.TenantId == tenantId), ct);
+        if (exists)
+            throw new ResourceConflictException($"Chỉ số với mã '{code}' đã tồn tại trong danh mục.");
+
+        var entity = new EnvironmentalMetricDefinition
+        {
+            MetricCode = code,
+            MetricName = name,
+            Unit = unit,
+            Description = Optional(command.Description, 500),
+            DefaultMin = command.DefaultMin,
+            DefaultTarget = command.DefaultTarget,
+            DefaultMax = command.DefaultMax,
+            HasSensorSupport = command.HasSensorSupport,
+            IsSystemDefined = isSystem,
+            TenantId = isSystem ? null : tenantId,
+            IsActive = true
+        };
+        dbContext.EnvironmentalMetricDefinitions.Add(entity);
+        await dbContext.SaveChangesAsync(ct);
+        return entity.ToView();
+    }
+
+    public async Task DeleteMetricDefinitionAsync(Guid userId, Guid? tenantId, Guid metricId, CancellationToken ct)
+    {
+        var user = await EnsureUserAsync(userId, tenantId, true, ct);
+        var entity = await dbContext.EnvironmentalMetricDefinitions.SingleOrDefaultAsync(x =>
+            x.Id == metricId && (user.Role == UserRole.PlatformAdmin || x.TenantId == tenantId), ct)
+            ?? throw new ResourceNotFoundException("Không tìm thấy định nghĩa chỉ số môi trường.");
+
+        if (entity.IsSystemDefined && user.Role != UserRole.PlatformAdmin)
+            throw new AuthorizationException("Không thể xóa chỉ số mặc định của hệ thống.");
+
+        entity.IsActive = false;
+        await dbContext.SaveChangesAsync(ct);
+    }
+
     internal static GrowthProfile Clone(GrowthProfile source, Guid user, Guid tenant, string name, string? description, bool isDefault)
     {
         var result = new GrowthProfile { CropId = source.CropId, VarietyId = source.VarietyId, TenantId = tenant, SourceProfileId = source.Id, CreatedByUserId = user, Name = name, NormalizedName = Normalize(name), Description = Optional(description, 4000), IsDefault = isDefault };
-        foreach (var s in source.Stages.OrderBy(x => x.StageOrder)) { var target = new GrowthStage { Name = s.Name, StageOrder = s.StageOrder, DurationDays = s.DurationDays, Description = s.Description, FertilizerAction = s.FertilizerAction, IpmAction = s.IpmAction }; foreach (var r in s.Requirements) target.Requirements.Add(new EnvironmentalRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit }); result.Stages.Add(target); }
+        foreach (var s in source.Stages.OrderBy(x => x.StageOrder))
+        {
+            var target = new GrowthStage { Name = s.Name, StageOrder = s.StageOrder, DurationDays = s.DurationDays, Description = s.Description, FertilizerAction = s.FertilizerAction, IpmAction = s.IpmAction };
+            foreach (var r in s.Requirements)
+                target.Requirements.Add(new EnvironmentalRequirement
+                {
+                    ParameterCode = r.ParameterCode,
+                    MetricName = r.MetricName,
+                    Description = r.Description,
+                    MinValue = r.MinValue,
+                    MaxValue = r.MaxValue,
+                    TargetValue = r.TargetValue,
+                    Unit = r.Unit,
+                    IsEnabled = r.IsEnabled
+                });
+            result.Stages.Add(target);
+        }
         CloneIrrigation(source, result);
         return result;
     }
-    private static void AddStages(GrowthProfile profile, IEnumerable<StageInput> stages) { foreach (var s in stages.OrderBy(x => x.StageOrder)) { var stage = new GrowthStage { Name = s.Name.Trim(), StageOrder = s.StageOrder, DurationDays = s.DurationDays, Description = Optional(s.Description, 4000), FertilizerAction = Optional(s.FertilizerAction, 2000), IpmAction = Optional(s.IpmAction, 2000) }; foreach (var r in s.Requirements) stage.Requirements.Add(new EnvironmentalRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit.Trim() }); profile.Stages.Add(stage); } }
-    private static void ValidateStages(IReadOnlyList<StageInput> stages) { if (stages.Count == 0 || stages.Select(x => x.StageOrder).Order().Where((x, i) => x != i + 1).Any()) throw new RequestValidationException("stages", "Stage orders must be contiguous and start at 1."); if (stages.Select(x => Normalize(x.Name)).Distinct().Count() != stages.Count) throw new RequestValidationException("stages", "Stage names must be unique."); foreach (var s in stages) { Required(s.Name, "stage.name", 150); if (s.DurationDays <= 0) throw new RequestValidationException("durationDays", "Duration must be positive."); ValidateRequirements(s.Requirements, true); } }
-    private static void ValidateRequirements(IReadOnlyList<RequirementInput> requirements, bool requireCore) { if (requirements.Count == 0 || requirements.Select(x => x.ParameterCode).Distinct().Count() != requirements.Count) throw new RequestValidationException("requirements", "Requirements must be non-empty and parameter codes unique."); foreach (var r in requirements) { if (r.MinValue > r.TargetValue || r.TargetValue > r.MaxValue) throw new RequestValidationException("requirements", "Each range must satisfy min <= target <= max."); Required(r.Unit, "unit", 30); } if (requireCore && CoreParameters.Except(requirements.Select(x => x.ParameterCode)).Any()) throw new RequestValidationException("requirements", "Every stage requires Temperature, SoilMoisture, AirHumidity and Ph thresholds."); }
-    private static void ApplyRequirements(PlantingSeason season, GrowthStage stage) { foreach (var r in stage.Requirements) season.AppliedRequirements.Add(new SeasonAppliedRequirement { ParameterCode = r.ParameterCode, MinValue = r.MinValue, MaxValue = r.MaxValue, TargetValue = r.TargetValue, Unit = r.Unit }); }
+
+    private static void AddStages(GrowthProfile profile, IEnumerable<StageInput> stages)
+    {
+        foreach (var s in stages.OrderBy(x => x.StageOrder))
+        {
+            var stage = new GrowthStage
+            {
+                Name = s.Name.Trim(),
+                StageOrder = s.StageOrder,
+                DurationDays = s.DurationDays,
+                Description = Optional(s.Description, 4000),
+                FertilizerAction = Optional(s.FertilizerAction, 2000),
+                IpmAction = Optional(s.IpmAction, 2000)
+            };
+            foreach (var r in s.Requirements)
+                stage.Requirements.Add(new EnvironmentalRequirement
+                {
+                    ParameterCode = r.ParameterCode.Trim(),
+                    MetricName = string.IsNullOrWhiteSpace(r.MetricName) ? r.ParameterCode.Trim() : r.MetricName.Trim(),
+                    Description = Optional(r.Description, 500),
+                    MinValue = r.MinValue,
+                    MaxValue = r.MaxValue,
+                    TargetValue = r.TargetValue,
+                    Unit = r.Unit.Trim(),
+                    IsEnabled = r.IsEnabled
+                });
+            profile.Stages.Add(stage);
+        }
+    }
+
+    private static void ValidateStages(IReadOnlyList<StageInput> stages)
+    {
+        if (stages.Count == 0 || stages.Select(x => x.StageOrder).Order().Where((x, i) => x != i + 1).Any())
+            throw new RequestValidationException("stages", "Stage orders must be contiguous and start at 1.");
+        if (stages.Select(x => Normalize(x.Name)).Distinct().Count() != stages.Count)
+            throw new RequestValidationException("stages", "Stage names must be unique.");
+        foreach (var s in stages)
+        {
+            Required(s.Name, "stage.name", 150);
+            if (s.DurationDays <= 0) throw new RequestValidationException("durationDays", "Duration must be positive.");
+            ValidateRequirements(s.Requirements);
+        }
+    }
+
+    private static void ValidateRequirements(IReadOnlyList<RequirementInput> requirements)
+    {
+        if (requirements.Count == 0 || requirements.Select(x => x.ParameterCode.Trim().ToUpperInvariant()).Distinct().Count() != requirements.Count)
+            throw new RequestValidationException("requirements", "Chỉ số môi trường không được để trống và mã chỉ số phải duy nhất trong một giai đoạn.");
+        foreach (var r in requirements)
+        {
+            if (string.IsNullOrWhiteSpace(r.ParameterCode)) throw new RequestValidationException("parameterCode", "Mã chỉ số không được để trống.");
+            if (r.MinValue > r.TargetValue || r.TargetValue > r.MaxValue)
+                throw new RequestValidationException("requirements", $"Chỉ số {r.ParameterCode}: Ngưỡng giá trị phải thỏa mãn Min ({r.MinValue}) <= Target ({r.TargetValue}) <= Max ({r.MaxValue}).");
+            Required(r.Unit, "unit", 30);
+        }
+    }
+
+    private static void ApplyRequirements(PlantingSeason season, GrowthStage stage)
+    {
+        foreach (var r in stage.Requirements)
+            season.AppliedRequirements.Add(new SeasonAppliedRequirement
+            {
+                ParameterCode = r.ParameterCode,
+                MetricName = r.MetricName,
+                Description = r.Description,
+                MinValue = r.MinValue,
+                MaxValue = r.MaxValue,
+                TargetValue = r.TargetValue,
+                Unit = r.Unit,
+                IsEnabled = r.IsEnabled
+            });
+    }
+
     private async Task UnsetDefaultsAsync(Guid? tenant, Guid crop, Guid? variety, CancellationToken ct) { var rows = await dbContext.GrowthProfiles.Where(x => x.TenantId == tenant && x.CropId == crop && x.VarietyId == variety && x.IsDefault).ToListAsync(ct); foreach (var x in rows) x.IsDefault = false; }
     private static string Required(string? value, string field, int max) { var result = value?.Trim(); if (string.IsNullOrWhiteSpace(result) || result.Length > max) throw new RequestValidationException(field, $"Value is required and limited to {max} characters."); return result; }
     private static string? Optional(string? value, int max) { if (string.IsNullOrWhiteSpace(value)) return null; var result = value.Trim(); if (result.Length > max) throw new RequestValidationException("value", $"Value is limited to {max} characters."); return result; }

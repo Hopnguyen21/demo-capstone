@@ -1015,7 +1015,7 @@ public sealed class AiAdvisoryTests
         {
             var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
             var stage = await db.GrowthStages.Include(x => x.Requirements).SingleAsync(x => x.Id == Guid.Parse("10000000-0000-0000-0000-000000000004"));
-            foreach (var r in stage.Requirements.Where(x => x.ParameterCode == EnvironmentalParameterCode.Temperature).ToList()) stage.Requirements.Remove(r);
+            foreach (var r in stage.Requirements.Where(x => x.ParameterCode == "Temperature").ToList()) stage.Requirements.Remove(r);
             await db.SaveChangesAsync();
         }
         factory.AiWeatherProvider.Result = new(true, "Trời nhiều mây", 4, 16.4m, DateTime.UtcNow, null);
@@ -1039,9 +1039,9 @@ public sealed class AiAdvisoryTests
         {
             var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
             var stage = await db.GrowthStages.Include(x => x.Requirements).SingleAsync(x => x.Id == Guid.Parse("10000000-0000-0000-0000-000000000004"));
-            var temperature = stage.Requirements.SingleOrDefault(x => x.ParameterCode == EnvironmentalParameterCode.Temperature);
+            var temperature = stage.Requirements.SingleOrDefault(x => x.ParameterCode == "Temperature");
             if (temperature is null)
-                stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = EnvironmentalParameterCode.Temperature, MinValue = 20, MaxValue = 28, TargetValue = 24, Unit = "°C" });
+                stage.Requirements.Add(new EnvironmentalRequirement { GrowthStageId = stage.Id, ParameterCode = "Temperature", MinValue = 20, MaxValue = 28, TargetValue = 24, Unit = "°C" });
             else { temperature.MinValue = 20; temperature.MaxValue = 28; temperature.TargetValue = 24; }
             await db.SaveChangesAsync();
         }

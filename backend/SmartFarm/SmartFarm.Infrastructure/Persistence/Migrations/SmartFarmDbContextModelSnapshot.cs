@@ -2703,6 +2703,300 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.DiscountCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("DiscountType")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("DiscountValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("EndDateUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("MaxDiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MinContractValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("StartDateUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("UsageLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.ToTable("DiscountCodes", (string)null);
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.EnvironmentalMetricDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<decimal>("DefaultMax")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)")
+                        .HasColumnName("default_max");
+
+                    b.Property<decimal>("DefaultMin")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)")
+                        .HasColumnName("default_min");
+
+                    b.Property<decimal>("DefaultTarget")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)")
+                        .HasColumnName("default_target");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("HasSensorSupport")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_sensor_support");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsSystemDefined")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_system_defined");
+
+                    b.Property<string>("MetricCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("metric_code");
+
+                    b.Property<string>("MetricName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("metric_name");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("unit");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "MetricCode")
+                        .IsUnique();
+
+                    b.ToTable("environmental_metric_definitions", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111001"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 75m,
+                            DefaultMin = 60m,
+                            DefaultTarget = 70m,
+                            Description = "Độ ẩm đất đo bằng cảm biến điện dung",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "SoilMoisture",
+                            MetricName = "Độ ẩm đất",
+                            Unit = "%"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111002"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 28m,
+                            DefaultMin = 20m,
+                            DefaultTarget = 24m,
+                            Description = "Nhiệt độ môi trường không khí nhà màng",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "Temperature",
+                            MetricName = "Nhiệt độ không khí",
+                            Unit = "°C"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111003"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 80m,
+                            DefaultMin = 60m,
+                            DefaultTarget = 70m,
+                            Description = "Độ ẩm tương đối của không khí",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "AirHumidity",
+                            MetricName = "Độ ẩm không khí",
+                            Unit = "%"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111004"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 5000m,
+                            DefaultMin = 1000m,
+                            DefaultTarget = 3000m,
+                            Description = "Cường độ ánh sáng quang hợp",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "LightIntensity",
+                            MetricName = "Cường độ ánh sáng",
+                            Unit = "Lux"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111005"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 6.5m,
+                            DefaultMin = 5.5m,
+                            DefaultTarget = 6.0m,
+                            Description = "Độ chua pH của đất hoặc dung dịch tưới",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "Ph",
+                            MetricName = "Độ pH đất / dung dịch",
+                            Unit = "pH"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111006"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 2.5m,
+                            DefaultMin = 1.2m,
+                            DefaultTarget = 1.8m,
+                            Description = "Nồng độ dinh dưỡng và muối khoáng hòa tan",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "Ec",
+                            MetricName = "Độ dẫn điện EC",
+                            Unit = "mS/cm"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111007"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 26m,
+                            DefaultMin = 18m,
+                            DefaultTarget = 22m,
+                            Description = "Nhiệt độ vùng rễ cây",
+                            HasSensorSupport = true,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "SoilTemperature",
+                            MetricName = "Nhiệt độ đất",
+                            Unit = "°C"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111008"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 1200m,
+                            DefaultMin = 400m,
+                            DefaultTarget = 800m,
+                            Description = "Nồng độ khí Carbon Dioxide trong nhà màng",
+                            HasSensorSupport = false,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "CO2",
+                            MetricName = "Nồng độ CO2",
+                            Unit = "ppm"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111009"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 5m,
+                            DefaultMin = 0m,
+                            DefaultTarget = 2m,
+                            Description = "Tốc độ gió lưu thông trong nhà màng",
+                            HasSensorSupport = false,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "WIND_SPEED",
+                            MetricName = "Tốc độ gió",
+                            Unit = "m/s"
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-1111-1111-1111-111111111010"),
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultMax = 100m,
+                            DefaultMin = 10m,
+                            DefaultTarget = 50m,
+                            Description = "Lưu lượng dòng chảy hệ thống tưới nhỏ giọt",
+                            HasSensorSupport = false,
+                            IsActive = true,
+                            IsSystemDefined = true,
+                            MetricCode = "WATER_FLOW",
+                            MetricName = "Lưu lượng nước tưới",
+                            Unit = "L/h"
+                        });
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.EnvironmentalRequirement", b =>
                 {
                     b.Property<Guid>("GrowthStageId")
@@ -2710,14 +3004,28 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnName("growth_stage_id");
 
                     b.Property<string>("ParameterCode")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("parameter_code");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
 
                     b.Property<decimal>("MaxValue")
                         .HasPrecision(12, 3)
                         .HasColumnType("numeric(12,3)")
                         .HasColumnName("max_value");
+
+                    b.Property<string>("MetricName")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("metric_name");
 
                     b.Property<decimal>("MinValue")
                         .HasPrecision(12, 3)
@@ -2747,16 +3055,20 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000004"),
                             ParameterCode = "Temperature",
+                            IsEnabled = true,
                             MaxValue = 28m,
+                            MetricName = "Nhiệt độ không khí",
                             MinValue = 20m,
                             TargetValue = 24m,
-                            Unit = "C"
+                            Unit = "°C"
                         },
                         new
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000004"),
                             ParameterCode = "SoilMoisture",
+                            IsEnabled = true,
                             MaxValue = 80m,
+                            MetricName = "Độ ẩm đất",
                             MinValue = 65m,
                             TargetValue = 72m,
                             Unit = "%"
@@ -2765,7 +3077,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000004"),
                             ParameterCode = "AirHumidity",
+                            IsEnabled = true,
                             MaxValue = 75m,
+                            MetricName = "Độ ẩm không khí",
                             MinValue = 60m,
                             TargetValue = 70m,
                             Unit = "%"
@@ -2774,7 +3088,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000004"),
                             ParameterCode = "Ph",
+                            IsEnabled = true,
                             MaxValue = 6.5m,
+                            MetricName = "Độ pH đất",
                             MinValue = 5.5m,
                             TargetValue = 6m,
                             Unit = "pH"
@@ -2783,16 +3099,20 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000005"),
                             ParameterCode = "Temperature",
+                            IsEnabled = true,
                             MaxValue = 30m,
+                            MetricName = "Nhiệt độ không khí",
                             MinValue = 21m,
                             TargetValue = 25m,
-                            Unit = "C"
+                            Unit = "°C"
                         },
                         new
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000005"),
                             ParameterCode = "SoilMoisture",
+                            IsEnabled = true,
                             MaxValue = 78m,
+                            MetricName = "Độ ẩm đất",
                             MinValue = 60m,
                             TargetValue = 70m,
                             Unit = "%"
@@ -2801,7 +3121,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000005"),
                             ParameterCode = "AirHumidity",
+                            IsEnabled = true,
                             MaxValue = 75m,
+                            MetricName = "Độ ẩm không khí",
                             MinValue = 55m,
                             TargetValue = 65m,
                             Unit = "%"
@@ -2810,7 +3132,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         {
                             GrowthStageId = new Guid("10000000-0000-0000-0000-000000000005"),
                             ParameterCode = "Ph",
+                            IsEnabled = true,
                             MaxValue = 6.8m,
+                            MetricName = "Độ pH đất",
                             MinValue = 5.5m,
                             TargetValue = 6.2m,
                             Unit = "pH"
@@ -4428,14 +4752,28 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnName("planting_season_id");
 
                     b.Property<string>("ParameterCode")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
                         .HasColumnName("parameter_code");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
 
                     b.Property<decimal>("MaxValue")
                         .HasPrecision(12, 3)
                         .HasColumnType("numeric(12,3)")
                         .HasColumnName("max_value");
+
+                    b.Property<string>("MetricName")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("metric_name");
 
                     b.Property<decimal>("MinValue")
                         .HasPrecision(12, 3)
@@ -6415,6 +6753,17 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Device");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.DiscountCode", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.EnvironmentalRequirement", b =>

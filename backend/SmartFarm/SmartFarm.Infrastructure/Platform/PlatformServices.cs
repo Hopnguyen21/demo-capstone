@@ -1474,20 +1474,20 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
 
             if (activeSeason?.AppliedRequirements != null && activeSeason.AppliedRequirements.Any())
             {
-                var soilReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.SoilMoisture);
+                var soilReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "SoilMoisture", StringComparison.OrdinalIgnoreCase));
                 if (soilReq != null)
                 {
                     targetSoil = soilReq.TargetValue;
                     minSoil = soilReq.MinValue;
                     maxSoil = soilReq.MaxValue;
                 }
-                var tempReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.Temperature);
+                var tempReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "Temperature", StringComparison.OrdinalIgnoreCase));
                 if (tempReq != null) maxTemp = tempReq.MaxValue;
 
-                var humReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.AirHumidity);
+                var humReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "AirHumidity", StringComparison.OrdinalIgnoreCase));
                 if (humReq != null) targetHum = humReq.TargetValue;
 
-                var luxReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.LightIntensity);
+                var luxReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "LightIntensity", StringComparison.OrdinalIgnoreCase));
                 if (luxReq != null) targetLux = luxReq.TargetValue;
             }
 
@@ -1530,7 +1530,7 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
 
         if (activeSeason != null)
         {
-            var soilReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.SoilMoisture);
+            var soilReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "SoilMoisture", StringComparison.OrdinalIgnoreCase));
             if (soilReq != null)
             {
                 soilReq.TargetValue = command.TargetSoilMoisture;
@@ -1542,7 +1542,8 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
                 activeSeason.AppliedRequirements.Add(new SeasonAppliedRequirement
                 {
                     PlantingSeasonId = activeSeason.Id,
-                    ParameterCode = EnvironmentalParameterCode.SoilMoisture,
+                    ParameterCode = "SoilMoisture",
+                    MetricName = "Độ ẩm đất",
                     MinValue = command.MinSoilMoisture,
                     MaxValue = command.MaxSoilMoisture,
                     TargetValue = command.TargetSoilMoisture,
@@ -1550,13 +1551,13 @@ public sealed class ControlAutomationService(SmartFarmDbContext db) : IControlAu
                 });
             }
 
-            var tempReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.Temperature);
+            var tempReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "Temperature", StringComparison.OrdinalIgnoreCase));
             if (tempReq != null) tempReq.MaxValue = command.MaxTemperature;
 
-            var humReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.AirHumidity);
+            var humReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "AirHumidity", StringComparison.OrdinalIgnoreCase));
             if (humReq != null) humReq.TargetValue = command.TargetHumidity;
 
-            var luxReq = activeSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == EnvironmentalParameterCode.LightIntensity);
+            var luxReq = activeSeason.AppliedRequirements.FirstOrDefault(r => string.Equals(r.ParameterCode, "LightIntensity", StringComparison.OrdinalIgnoreCase));
             if (luxReq != null) luxReq.TargetValue = command.TargetLux;
 
             await db.SaveChangesAsync(ct);

@@ -32,4 +32,7 @@ public interface ICropGrowthService
     Task<PlantingSeasonView> TransitionStageAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, TransitionStageCommand command, CancellationToken cancellationToken);
     Task<PlantingSeasonView> CloseSeasonAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, CloseSeasonCommand command, CancellationToken cancellationToken);
     Task<PlantingSeasonView> RecordSeasonYieldAsync(Guid userId, Guid tenantId, Guid zoneId, Guid seasonId, RecordSeasonYieldCommand command, CancellationToken cancellationToken);
+    Task<IReadOnlyList<EnvironmentalMetricDefinitionView>> ListMetricDefinitionsAsync(Guid userId, Guid? tenantId, CancellationToken cancellationToken);
+    Task<EnvironmentalMetricDefinitionView> CreateMetricDefinitionAsync(Guid userId, Guid? tenantId, CreateMetricDefinitionCommand command, CancellationToken cancellationToken);
+    Task DeleteMetricDefinitionAsync(Guid userId, Guid? tenantId, Guid metricId, CancellationToken cancellationToken);
 }

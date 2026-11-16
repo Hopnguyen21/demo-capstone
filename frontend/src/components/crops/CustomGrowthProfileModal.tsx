@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   Sprout, Plus, Trash2, Check, ArrowRight, ArrowLeft,
-  Sliders, ShieldCheck, Thermometer, Droplets, Sun, Zap, Info, AlertCircle, RefreshCw, X
+  Sliders, ShieldCheck, Thermometer, Droplets, Sun, Zap, Info, AlertCircle, RefreshCw, X, Radio, Wind, Gauge, Activity
 } from 'lucide-react';
-import { cropService } from '../../services';
+import { cropService, environmentalMetricService, EnvironmentalMetricDefinition } from '../../services';
 
 export interface CustomGrowthProfileModalProps {
   isOpen: boolean;
@@ -14,27 +14,36 @@ export interface CustomGrowthProfileModalProps {
   templateProfile?: any;
 }
 
+export interface MetricDraft {
+  parameterCode: string;
+  metricName: string;
+  unit: string;
+  description?: string;
+  minValue: number;
+  targetValue: number;
+  maxValue: number;
+  enabled: boolean;
+  hasSensorSupport: boolean;
+}
+
 interface StageDraft {
   name: string;
   durationDays: number;
   description?: string;
-  requirements: {
-    parameterCode: string;
-    minValue: number;
-    targetValue: number;
-    maxValue: number;
-    unit: string;
-    enabled: boolean;
-  }[];
+  requirements: MetricDraft[];
 }
 
-const DEFAULT_PARAMETERS = [
-  { code: 'SoilMoisture', name: 'Độ ẩm đất', unit: '%', defaultMin: 60, defaultTarget: 70, defaultMax: 80, icon: Droplets, color: 'text-sky-600' },
-  { code: 'Temperature', name: 'Nhiệt độ không khí', unit: '°C', defaultMin: 20, defaultTarget: 25, defaultMax: 30, icon: Thermometer, color: 'text-amber-600' },
-  { code: 'AirHumidity', name: 'Độ ẩm không khí', unit: '%', defaultMin: 55, defaultTarget: 68, defaultMax: 80, icon: Droplets, color: 'text-cyan-600' },
-  { code: 'LightIntensity', name: 'Cường độ ánh sáng', unit: 'Lux', defaultMin: 10000, defaultTarget: 25000, defaultMax: 45000, icon: Sun, color: 'text-yellow-600' },
-  { code: 'Ph', name: 'Độ pH đất', unit: 'pH', defaultMin: 5.5, defaultTarget: 6.2, defaultMax: 6.8, icon: Sliders, color: 'text-emerald-600' },
-  { code: 'Ec', name: 'Độ dẫn điện EC', unit: 'mS/cm', defaultMin: 1.2, defaultTarget: 1.8, defaultMax: 2.5, icon: Zap, color: 'text-indigo-600' }
+const DEFAULT_METRIC_CATALOG: EnvironmentalMetricDefinition[] = [
+  { id: '1', metricCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', defaultMin: 60, defaultTarget: 70, defaultMax: 75, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '2', metricCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', defaultMin: 20, defaultTarget: 24, defaultMax: 28, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '3', metricCode: 'AirHumidity', metricName: 'Độ ẩm không khí', unit: '%', defaultMin: 60, defaultTarget: 70, defaultMax: 80, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '4', metricCode: 'LightIntensity', metricName: 'Cường độ ánh sáng', unit: 'Lux', defaultMin: 1000, defaultTarget: 3000, defaultMax: 5000, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '5', metricCode: 'Ph', metricName: 'Độ pH đất / dung dịch', unit: 'pH', defaultMin: 5.5, defaultTarget: 6.0, defaultMax: 6.5, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '6', metricCode: 'Ec', metricName: 'Độ dẫn điện EC', unit: 'mS/cm', defaultMin: 1.2, defaultTarget: 1.8, defaultMax: 2.5, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '7', metricCode: 'SoilTemperature', metricName: 'Nhiệt độ đất', unit: '°C', defaultMin: 18, defaultTarget: 22, defaultMax: 26, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '8', metricCode: 'CO2', metricName: 'Nồng độ CO2', unit: 'ppm', defaultMin: 400, defaultTarget: 800, defaultMax: 1200, hasSensorSupport: false, isSystemDefined: true, isActive: true },
+  { id: '9', metricCode: 'WIND_SPEED', metricName: 'Tốc độ gió', unit: 'm/s', defaultMin: 0, defaultTarget: 2, defaultMax: 5, hasSensorSupport: false, isSystemDefined: true, isActive: true },
+  { id: '10', metricCode: 'WATER_FLOW', metricName: 'Lưu lượng nước tưới', unit: 'L/h', defaultMin: 10, defaultTarget: 50, defaultMax: 100, hasSensorSupport: false, isSystemDefined: true, isActive: true }
 ];
 
 export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> = ({
@@ -48,6 +57,7 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
   const [step, setStep] = useState<number>(1);
   const [crops, setCrops] = useState<any[]>([]);
   const [varieties, setVarieties] = useState<any[]>([]);
+  const [metricCatalog, setMetricCatalog] = useState<EnvironmentalMetricDefinition[]>(DEFAULT_METRIC_CATALOG);
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -59,75 +69,89 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
   const [description, setDescription] = useState<string>('');
   const [isDefault, setIsDefault] = useState<boolean>(false);
 
-  // Stages State
+  // Custom Metric Creator Modal State
+  const [isAddMetricOpen, setIsAddMetricOpen] = useState<boolean>(false);
+  const [isCreateMetricModalOpen, setIsCreateMetricModalOpen] = useState<boolean>(false);
+  const [creatingMetric, setCreatingMetric] = useState<boolean>(false);
+  const [newMetricForm, setNewMetricForm] = useState({
+    metricCode: '',
+    metricName: '',
+    unit: '',
+    description: '',
+    defaultMin: 0,
+    defaultTarget: 10,
+    defaultMax: 20,
+    hasSensorSupport: false
+  });
+
+  // Stages State with independent metrics per stage
   const [stages, setStages] = useState<StageDraft[]>([
     {
       name: 'Giai đoạn 1: Cây con (Seedling)',
       durationDays: 20,
       description: 'Giai đoạn nảy mầm và phát triển bộ rễ ban đầu',
-      requirements: DEFAULT_PARAMETERS.map(p => ({
-        parameterCode: p.code,
-        minValue: p.defaultMin,
-        targetValue: p.defaultTarget,
-        maxValue: p.defaultMax,
-        unit: p.unit,
-        enabled: true
-      }))
+      requirements: [
+        { parameterCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', minValue: 65, targetValue: 72, maxValue: 80, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', minValue: 20, targetValue: 24, maxValue: 28, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'AirHumidity', metricName: 'Độ ẩm không khí', unit: '%', minValue: 60, targetValue: 70, maxValue: 75, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Ph', metricName: 'Độ pH đất / dung dịch', unit: 'pH', minValue: 5.5, targetValue: 6.0, maxValue: 6.5, enabled: true, hasSensorSupport: true }
+      ]
     },
     {
       name: 'Giai đoạn 2: Sinh trưởng (Vegetative)',
       durationDays: 30,
       description: 'Giai đoạn phát triển thân lá và sinh khối',
-      requirements: DEFAULT_PARAMETERS.map(p => ({
-        parameterCode: p.code,
-        minValue: p.defaultMin,
-        targetValue: p.defaultTarget,
-        maxValue: p.defaultMax,
-        unit: p.unit,
-        enabled: true
-      }))
+      requirements: [
+        { parameterCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', minValue: 60, targetValue: 70, maxValue: 78, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', minValue: 21, targetValue: 25, maxValue: 30, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'AirHumidity', metricName: 'Độ ẩm không khí', unit: '%', minValue: 55, targetValue: 65, maxValue: 75, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Ph', metricName: 'Độ pH đất / dung dịch', unit: 'pH', minValue: 5.5, targetValue: 6.2, maxValue: 6.8, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Ec', metricName: 'Độ dẫn điện EC', unit: 'mS/cm', minValue: 1.2, targetValue: 1.8, maxValue: 2.2, enabled: true, hasSensorSupport: true }
+      ]
     },
     {
       name: 'Giai đoạn 3: Ra hoa & Đậu quả (Flowering)',
       durationDays: 25,
       description: 'Phân hóa mầm hoa và thụ phấn',
-      requirements: DEFAULT_PARAMETERS.map(p => ({
-        parameterCode: p.code,
-        minValue: p.defaultMin,
-        targetValue: p.defaultTarget,
-        maxValue: p.defaultMax,
-        unit: p.unit,
-        enabled: true
-      }))
+      requirements: [
+        { parameterCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', minValue: 55, targetValue: 65, maxValue: 72, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', minValue: 22, targetValue: 26, maxValue: 29, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'AirHumidity', metricName: 'Độ ẩm không khí', unit: '%', minValue: 50, targetValue: 62, maxValue: 70, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Ec', metricName: 'Độ dẫn điện EC', unit: 'mS/cm', minValue: 1.8, targetValue: 2.2, maxValue: 2.6, enabled: true, hasSensorSupport: true }
+      ]
     },
     {
       name: 'Giai đoạn 4: Thu hoạch (Harvest)',
       durationDays: 30,
       description: 'Trái chín và thu hoạch định kỳ',
-      requirements: DEFAULT_PARAMETERS.map(p => ({
-        parameterCode: p.code,
-        minValue: p.defaultMin,
-        targetValue: p.defaultTarget,
-        maxValue: p.defaultMax,
-        unit: p.unit,
-        enabled: true
-      }))
+      requirements: [
+        { parameterCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', minValue: 50, targetValue: 60, maxValue: 68, enabled: true, hasSensorSupport: true },
+        { parameterCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', minValue: 20, targetValue: 25, maxValue: 30, enabled: true, hasSensorSupport: true }
+      ]
     }
   ]);
 
   const [activeStageIdx, setActiveStageIdx] = useState<number>(0);
 
-  // Load Crops
+  // Load Crops & Metric Definitions
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    cropService.getCrops().then((cList: any[]) => {
+
+    Promise.all([
+      cropService.getCrops(),
+      environmentalMetricService.getMetricDefinitions().catch(() => DEFAULT_METRIC_CATALOG)
+    ]).then(([cList, defs]) => {
       const validCrops = Array.isArray(cList) ? cList : [];
       setCrops(validCrops);
       const targetCropId = initialCropId || (validCrops[0]?.cropId || '');
       setCropId(targetCropId);
+
+      if (Array.isArray(defs) && defs.length > 0) {
+        setMetricCatalog(defs);
+      }
     }).catch(err => {
-      console.error('Lỗi tải danh mục cây trồng:', err);
+      console.error('Lỗi tải dữ liệu:', err);
     }).finally(() => {
       setLoading(false);
     });
@@ -163,19 +187,17 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
         name: st.name || `Giai đoạn ${idx + 1}`,
         durationDays: Number(st.durationDays) || 20,
         description: st.description || '',
-        requirements: DEFAULT_PARAMETERS.map(param => {
-          const matched = (st.requirements || []).find((r: any) =>
-            (r.parameterCode || '').toLowerCase() === param.code.toLowerCase()
-          );
-          return {
-            parameterCode: param.code,
-            minValue: matched ? Number(matched.minValue) : param.defaultMin,
-            targetValue: matched ? Number(matched.targetValue) : param.defaultTarget,
-            maxValue: matched ? Number(matched.maxValue) : param.defaultMax,
-            unit: matched?.unit || param.unit,
-            enabled: !!matched
-          };
-        })
+        requirements: (st.requirements || []).map((r: any) => ({
+          parameterCode: r.parameterCode,
+          metricName: r.metricName || r.name || r.parameterCode,
+          unit: r.unit || '%',
+          description: r.description || '',
+          minValue: Number(r.minValue),
+          targetValue: Number(r.targetValue),
+          maxValue: Number(r.maxValue),
+          enabled: r.isEnabled ?? true,
+          hasSensorSupport: r.hasSensorSupport ?? ['SoilMoisture', 'Temperature', 'AirHumidity', 'LightIntensity', 'Ph', 'Ec', 'SoilTemperature'].includes(r.parameterCode)
+        }))
       })));
     }
   }, [templateProfile, isOpen]);
@@ -183,6 +205,7 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
   if (!isOpen) return null;
 
   const totalCycleDays = stages.reduce((acc, st) => acc + (Number(st.durationDays) || 0), 0);
+  const activeStage = stages[activeStageIdx] || stages[0];
 
   const handleAddStage = () => {
     const nextOrder = stages.length + 1;
@@ -192,14 +215,10 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
         name: `Giai đoạn ${nextOrder}`,
         durationDays: 15,
         description: '',
-        requirements: DEFAULT_PARAMETERS.map(p => ({
-          parameterCode: p.code,
-          minValue: p.defaultMin,
-          targetValue: p.defaultTarget,
-          maxValue: p.defaultMax,
-          unit: p.unit,
-          enabled: true
-        }))
+        requirements: [
+          { parameterCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', minValue: 60, targetValue: 70, maxValue: 75, enabled: true, hasSensorSupport: true },
+          { parameterCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', minValue: 20, targetValue: 24, maxValue: 28, enabled: true, hasSensorSupport: true }
+        ]
       }
     ]);
     setActiveStageIdx(stages.length);
@@ -224,7 +243,7 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
     });
   };
 
-  const updateRequirement = (stageIdx: number, paramCode: string, field: 'minValue' | 'targetValue' | 'maxValue' | 'enabled', value: any) => {
+  const updateMetricInStage = (stageIdx: number, paramCode: string, field: keyof MetricDraft, value: any) => {
     setStages(prev => {
       const copy = [...prev];
       const stage = { ...copy[stageIdx] };
@@ -237,6 +256,98 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
       copy[stageIdx] = stage;
       return copy;
     });
+  };
+
+  const removeMetricFromStage = (stageIdx: number, paramCode: string) => {
+    setStages(prev => {
+      const copy = [...prev];
+      const stage = { ...copy[stageIdx] };
+      stage.requirements = stage.requirements.filter(r => r.parameterCode !== paramCode);
+      copy[stageIdx] = stage;
+      return copy;
+    });
+  };
+
+  const addMetricToCurrentStage = (def: EnvironmentalMetricDefinition) => {
+    if (!activeStage) return;
+    if (activeStage.requirements.some(r => r.parameterCode.toUpperCase() === def.metricCode.toUpperCase())) {
+      setErrorMsg(`Chỉ số "${def.metricName}" đã có trong giai đoạn này.`);
+      return;
+    }
+
+    const newReq: MetricDraft = {
+      parameterCode: def.metricCode,
+      metricName: def.metricName,
+      unit: def.unit,
+      description: def.description || '',
+      minValue: Number(def.defaultMin),
+      targetValue: Number(def.defaultTarget),
+      maxValue: Number(def.defaultMax),
+      enabled: true,
+      hasSensorSupport: def.hasSensorSupport
+    };
+
+    setStages(prev => {
+      const copy = [...prev];
+      const stage = { ...copy[activeStageIdx] };
+      stage.requirements = [...stage.requirements, newReq];
+      copy[activeStageIdx] = stage;
+      return copy;
+    });
+    setIsAddMetricOpen(false);
+    setErrorMsg('');
+  };
+
+  const handleCreateNewMetricDefinition = async () => {
+    if (!newMetricForm.metricName.trim() || !newMetricForm.metricCode.trim() || !newMetricForm.unit.trim()) {
+      setErrorMsg('Vui lòng nhập đầy đủ Tên chỉ số, Mã chỉ số và Đơn vị tính.');
+      return;
+    }
+    if (newMetricForm.defaultMin > newMetricForm.defaultTarget || newMetricForm.defaultTarget > newMetricForm.defaultMax) {
+      setErrorMsg('Ngưỡng mặc định phải thỏa mãn Min <= Target <= Max.');
+      return;
+    }
+
+    setCreatingMetric(true);
+    setErrorMsg('');
+    try {
+      const code = newMetricForm.metricCode.trim().toUpperCase();
+      const res = await environmentalMetricService.createMetricDefinition({
+        metricCode: code,
+        metricName: newMetricForm.metricName.trim(),
+        unit: newMetricForm.unit.trim(),
+        description: newMetricForm.description.trim() || undefined,
+        defaultMin: Number(newMetricForm.defaultMin),
+        defaultTarget: Number(newMetricForm.defaultTarget),
+        defaultMax: Number(newMetricForm.defaultMax),
+        hasSensorSupport: newMetricForm.hasSensorSupport
+      });
+
+      // Update catalog
+      const updatedCatalog = [...metricCatalog.filter(m => m.metricCode !== res.metricCode), res];
+      setMetricCatalog(updatedCatalog);
+
+      // Add directly to active stage
+      addMetricToCurrentStage(res);
+
+      setIsCreateMetricModalOpen(false);
+      setNewMetricForm({
+        metricCode: '',
+        metricName: '',
+        unit: '',
+        description: '',
+        defaultMin: 0,
+        defaultTarget: 10,
+        defaultMax: 20,
+        hasSensorSupport: false
+      });
+    } catch (err: any) {
+      console.error('Lỗi tạo chỉ số mới:', err);
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Không thể tạo chỉ số mới.';
+      setErrorMsg(msg);
+    } finally {
+      setCreatingMetric(false);
+    }
   };
 
   const validateAll = (): boolean => {
@@ -269,11 +380,17 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
         setStep(2);
         return false;
       }
+      if (st.requirements.length === 0) {
+        setErrorMsg(`Giai đoạn "${st.name}" chưa có chỉ số môi trường nào. Vui lòng thêm ít nhất 1 chỉ số.`);
+        setActiveStageIdx(i);
+        setStep(3);
+        return false;
+      }
 
       for (const req of st.requirements) {
         if (!req.enabled) continue;
         if (req.minValue > req.targetValue || req.targetValue > req.maxValue) {
-          setErrorMsg(`Ngưỡng ${req.parameterCode} ở giai đoạn "${st.name}" không hợp lệ: Yêu cầu Min (${req.minValue}) <= Mục tiêu (${req.targetValue}) <= Max (${req.maxValue}).`);
+          setErrorMsg(`Ngưỡng "${req.metricName || req.parameterCode}" ở giai đoạn "${st.name}" không hợp lệ: Yêu cầu Min (${req.minValue}) <= Mục tiêu (${req.targetValue}) <= Max (${req.maxValue}).`);
           setActiveStageIdx(i);
           setStep(3);
           return false;
@@ -298,10 +415,13 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
           .filter(r => r.enabled)
           .map(r => ({
             parameterCode: r.parameterCode,
+            metricName: r.metricName,
+            description: r.description || undefined,
             minValue: Number(r.minValue),
             targetValue: Number(r.targetValue),
             maxValue: Number(r.maxValue),
-            unit: r.unit
+            unit: r.unit,
+            isEnabled: r.enabled
           }))
       }));
 
@@ -325,6 +445,11 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
     }
   };
 
+  // Metrics in catalog not yet added to current stage
+  const availableToAdd = metricCatalog.filter(def =>
+    !activeStage?.requirements.some(r => r.parameterCode.toUpperCase() === def.metricCode.toUpperCase())
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
       <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -340,7 +465,7 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
                 Tự Tạo Cấu Hình Canh Tác Riêng (Growth Profile)
               </h2>
               <p className="text-xs text-slate-500">
-                Thiết lập quy trình sinh trưởng và dải ngưỡng vi khí hậu thích ứng tự động cho Farm
+                Thiết lập quy trình sinh trưởng và chỉ số vi khí hậu động thích ứng tự động cho Farm
               </p>
             </div>
           </div>
@@ -353,53 +478,71 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
           </button>
         </div>
 
-        {/* Stepper Tabs */}
-        <div className="grid grid-cols-4 border-b border-slate-200 bg-white text-xs font-bold text-slate-600">
-          {[
-            { s: 1, title: '1. Thông tin cây' },
-            { s: 2, title: '2. Các giai đoạn' },
-            { s: 3, title: '3. Ngưỡng vi khí hậu' },
-            { s: 4, title: '4. Xác nhận & Lưu' }
-          ].map(tab => (
+        {/* Wizard Steps indicator */}
+        <div className="px-6 py-3 bg-slate-100/60 border-b border-slate-200/80 flex items-center justify-between text-xs font-semibold">
+          <div className="flex items-center gap-2 sm:gap-6 overflow-x-auto">
             <button
-              key={tab.s}
               type="button"
-              onClick={() => setStep(tab.s)}
-              className={`py-3 text-center border-b-2 transition cursor-pointer ${
-                step === tab.s
-                  ? 'border-emerald-600 text-emerald-700 bg-emerald-50/40'
-                  : 'border-transparent hover:bg-slate-50 text-slate-500'
+              onClick={() => setStep(1)}
+              className={`flex items-center gap-2 pb-1 border-b-2 transition cursor-pointer ${
+                step === 1 ? 'border-emerald-600 text-emerald-800 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              {tab.title}
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>1</span>
+              <span>Thông tin chung</span>
             </button>
-          ))}
+
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className={`flex items-center gap-2 pb-1 border-b-2 transition cursor-pointer ${
+                step === 2 ? 'border-emerald-600 text-emerald-800 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>2</span>
+              <span>Giai đoạn sinh trưởng ({stages.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              className={`flex items-center gap-2 pb-1 border-b-2 transition cursor-pointer ${
+                step === 3 ? 'border-emerald-600 text-emerald-800 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 3 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>3</span>
+              <span>Chỉ số môi trường động ({activeStage?.requirements.length || 0})</span>
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 text-slate-500 text-[11px]">
+            <span>Tổng chu kỳ:</span>
+            <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              {totalCycleDays} ngày
+            </span>
+          </div>
         </div>
 
-        {/* Alert Error Box */}
-        {errorMsg && (
-          <div className="mx-6 mt-4 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
-            <AlertCircle size={16} className="text-rose-600 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0 text-rose-600" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
 
-        {/* Body Content */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1">
-          {/* STEP 1: Basic Info */}
+          {/* STEP 1: General Info */}
           {step === 1 && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Loài cây trồng (Crop) *
-                  </label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Loài cây trồng *</label>
                   <select
                     value={cropId}
                     onChange={e => setCropId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="">-- Chọn loài cây --</option>
                     {crops.map(c => (
                       <option key={c.cropId} value={c.cropId}>
                         {c.name} {c.scientificName ? `(${c.scientificName})` : ''}
@@ -409,18 +552,16 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Giống thương mại / Variety (Tùy chọn)
-                  </label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Giống thương mại (Tùy chọn)</label>
                   <select
                     value={varietyId}
                     onChange={e => setVarietyId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="">-- Áp dụng chung cho tất cả các giống --</option>
+                    <option value="">Áp dụng chung cho loài (Tất cả giống)</option>
                     {varieties.map(v => (
                       <option key={v.varietyId} value={v.varietyId}>
-                        {v.name} {v.description ? `— ${v.description}` : ''}
+                        {v.name}
                       </option>
                     ))}
                   </select>
@@ -428,22 +569,18 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tên cấu hình quy trình canh tác *
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tên cấu hình canh tác *</label>
                 <input
                   type="text"
                   value={profileName}
                   onChange={e => setProfileName(e.target.value)}
-                  placeholder="VD: Quy trình Dưa lưới VietGAP Mùa Khô - Nông trại Xanh"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+                  placeholder="Ví dụ: Quy trình Dưa lưới Chuẩn VietGAP - Farm Bình An"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Mô tả / Ghi chú kỹ thuật canh tác
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mô tả quy trình & hướng dẫn kỹ thuật</label>
                 <textarea
                   rows={3}
                   value={description}
@@ -477,7 +614,7 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
                     Các giai đoạn sinh trưởng ({stages.length} giai đoạn • Tổng {totalCycleDays} ngày)
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Sắp xếp theo trình tự sinh trưởng từ lúc xuống giống đến khi thu hoạch.
+                    Mỗi giai đoạn sẽ sở hữu danh sách chỉ số môi trường hoàn toàn độc lập ở Bước 3.
                   </p>
                 </div>
                 <button
@@ -542,166 +679,180 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
                       placeholder="Mô tả đặc điểm giai đoạn (ví dụ: tưới kích rễ, giữ ẩm nhẹ, che sáng...)"
                       className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600 focus:outline-none focus:border-emerald-500"
                     />
+
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                      <span>Đang có <strong>{st.requirements.length}</strong> chỉ số môi trường</span>
+                      <span>•</span>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveStageIdx(idx); setStep(3); }}
+                        className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                      >
+                        Chỉnh sửa chỉ số giai đoạn này ➔
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* STEP 3: Environmental Thresholds */}
+          {/* STEP 3: Environmental Thresholds (DYNAMIC) */}
           {step === 3 && (
             <div className="space-y-4">
               {/* Stage selector tabs */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-100">
-                {stages.map((st, idx) => (
+              <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                <div className="flex items-center gap-2 overflow-x-auto flex-1 mr-2">
+                  {stages.map((st, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setActiveStageIdx(idx)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                        activeStageIdx === idx
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      GĐ {idx + 1}: {st.name} ({st.requirements.length} chỉ số)
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddMetricOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer shrink-0 transition"
+                >
+                  <Plus size={14} /> Thêm chỉ số cho giai đoạn
+                </button>
+              </div>
+
+              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed flex items-start gap-2">
+                <Info size={16} className="text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Cấu hình độc lập theo giai đoạn:</strong> Bạn có thể thêm, bớt hoặc đặt ngưỡng riêng cho giai đoạn <em>"{activeStage?.name}"</em> mà không làm ảnh hưởng các giai đoạn khác. Các chỉ số có <span className="text-emerald-700 font-bold">📡 Cảm biến online</span> sẽ kích hoạt cảnh báo & tự động hóa; chỉ số chưa có cảm biến vẫn được lưu trữ làm chuẩn quy trình canh tác.
+                </div>
+              </div>
+
+              {/* Requirements List for active stage */}
+              {activeStage?.requirements.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-3">
+                  <Sliders size={32} className="mx-auto text-slate-400" />
+                  <p className="text-xs text-slate-600 font-medium">Giai đoạn này chưa có chỉ số môi trường nào được cấu hình.</p>
                   <button
-                    key={idx}
                     type="button"
-                    onClick={() => setActiveStageIdx(idx)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-                      activeStageIdx === idx
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                    onClick={() => setIsAddMetricOpen(true)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
                   >
-                    GĐ {idx + 1}: {st.name} ({st.durationDays}d)
+                    <Plus size={14} /> Thêm chỉ số đầu tiên
                   </button>
-                ))}
-              </div>
-
-              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
-                💡 <strong>Quy chuẩn Min &le; Target &le; Max:</strong> Alert Engine và thiết bị Rơ-le điều khiển sẽ dựa vào dải ngưỡng của giai đoạn này để kích hoạt bơm/quạt và gửi cảnh báo khi vi phạm.
-              </div>
-
-              {/* Requirements Grid for active stage */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {stages[activeStageIdx]?.requirements.map(req => {
-                  const meta = DEFAULT_PARAMETERS.find(p => p.code === req.parameterCode);
-                  const Icon = meta?.icon || Sliders;
-
-                  return (
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {activeStage?.requirements.map(req => (
                     <div
                       key={req.parameterCode}
                       className={`p-3.5 rounded-2xl border transition-all ${
                         req.enabled ? 'bg-white border-slate-300 shadow-2xs' : 'bg-slate-50/80 border-slate-200 opacity-60'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2.5">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Icon size={14} className={meta?.color || 'text-slate-600'} />
-                          {meta?.name || req.parameterCode}
-                        </span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Sliders size={14} className="text-emerald-700" />
+                          <span className="text-xs font-bold text-slate-800">
+                            {req.metricName || req.parameterCode}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">({req.parameterCode})</span>
+                        </div>
+
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                             {req.unit}
                           </span>
                           <input
                             type="checkbox"
                             checked={req.enabled}
-                            onChange={e => updateRequirement(activeStageIdx, req.parameterCode, 'enabled', e.target.checked)}
-                            className="w-3.5 h-3.5 text-emerald-600 rounded cursor-pointer"
+                            onChange={e => updateMetricInStage(activeStageIdx, req.parameterCode, 'enabled', e.target.checked)}
+                            className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
                             title="Bật/Tắt áp dụng chỉ số này"
                           />
+                          <button
+                            type="button"
+                            onClick={() => removeMetricFromStage(activeStageIdx, req.parameterCode)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Xóa chỉ số này khỏi giai đoạn"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
 
-                      {req.enabled ? (
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-500 block mb-1">Min</span>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={req.minValue}
-                              onChange={e => updateRequirement(activeStageIdx, req.parameterCode, 'minValue', parseFloat(e.target.value) || 0)}
-                              className="w-full text-xs font-bold px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu</span>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={req.targetValue}
-                              onChange={e => updateRequirement(activeStageIdx, req.parameterCode, 'targetValue', parseFloat(e.target.value) || 0)}
-                              className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-50 border border-emerald-400 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-500 block mb-1">Max</span>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={req.maxValue}
-                              onChange={e => updateRequirement(activeStageIdx, req.parameterCode, 'maxValue', parseFloat(e.target.value) || 0)}
-                              className="w-full text-xs font-bold px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-2 text-[11px] text-slate-400 font-medium">
-                          Chỉ số này đang tắt cho giai đoạn này
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: Summary & Review */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                  TỔNG QUAN CẤU HÌNH CANH TÁC
-                </span>
-                <h3 className="text-base font-bold text-slate-900">{profileName}</h3>
-                <p className="text-xs text-slate-600">{description || 'Không có mô tả thêm.'}</p>
-                <div className="flex flex-wrap gap-4 pt-2 text-xs text-slate-700 font-medium">
-                  <span>Loài cây: <strong className="text-slate-900">{crops.find(c => c.cropId === cropId)?.name || 'Cây trồng'}</strong></span>
-                  <span>• Giống: <strong className="text-slate-900">{varieties.find(v => v.varietyId === varietyId)?.name || 'Chung cho mọi giống'}</strong></span>
-                  <span>• Tổng chu kỳ: <strong className="text-emerald-700 font-bold">{totalCycleDays} ngày</strong></span>
-                  <span>• Số giai đoạn: <strong className="text-slate-900">{stages.length}</strong></span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Tóm tắt các giai đoạn &amp; dải thông số
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {stages.map((st, idx) => (
-                    <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 text-xs">
-                      <div className="flex items-center justify-between font-bold text-slate-900">
-                        <span>{idx + 1}. {st.name}</span>
-                        <span className="text-emerald-700 font-mono">{st.durationDays} ngày</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">{st.description || 'Chưa có ghi chú'}</p>
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {st.requirements.filter(r => r.enabled).map(r => (
-                          <span key={r.parameterCode} className="text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
-                            {r.parameterCode}: {r.minValue}-{r.maxValue}{r.unit}
+                      {/* Sensor status badge */}
+                      <div className="mb-2.5">
+                        {req.hasSensorSupport ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <Radio size={11} className="text-emerald-700" />
+                            📡 Cảm biến online (Tự động kích hoạt Rơ-le & Cảnh báo)
                           </span>
-                        ))}
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                            ⚠️ Chưa có cảm biến kết nối (Chỉ lưu cấu hình mục tiêu)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Threshold Inputs */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                          <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Tối thiểu (Min)</label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={req.minValue}
+                            onChange={e => updateMetricInStage(activeStageIdx, req.parameterCode, 'minValue', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div className="bg-emerald-50/50 p-2 rounded-xl border border-emerald-200">
+                          <label className="block text-[10px] text-emerald-800 font-semibold mb-0.5">Mục tiêu (Target)</label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={req.targetValue}
+                            onChange={e => updateMetricInStage(activeStageIdx, req.parameterCode, 'targetValue', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-white border border-emerald-400 rounded px-1.5 py-1 text-xs font-bold text-emerald-900 focus:outline-none focus:border-emerald-600"
+                          />
+                        </div>
+
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                          <label className="block text-[10px] text-slate-500 font-semibold mb-0.5">Tối đa (Max)</label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={req.maxValue}
+                            onChange={e => updateMetricInStage(activeStageIdx, req.parameterCode, 'maxValue', parseFloat(e.target.value) || 0)}
+                            className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Footer Navigation */}
-        <div className="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+        {/* Footer Actions */}
+        <div className="px-6 py-4 border-t border-slate-200/80 bg-slate-50 flex items-center justify-between">
           <div>
             {step > 1 && (
               <button
                 type="button"
-                onClick={() => setStep(s => s - 1)}
-                className="px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5"
+                onClick={() => setStep(step - 1)}
+                className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
               >
                 <ArrowLeft size={14} /> Quay lại
               </button>
@@ -712,12 +863,12 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+              className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer"
             >
               Hủy
             </button>
 
-            {step < 4 ? (
+            {step < 3 ? (
               <button
                 type="button"
                 onClick={() => {
@@ -726,28 +877,26 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
                     return;
                   }
                   setErrorMsg('');
-                  setStep(s => s + 1);
+                  setStep(step + 1);
                 }}
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
               >
                 Tiếp tục <ArrowRight size={14} />
               </button>
             ) : (
               <button
                 type="button"
-                onClick={handleSave}
                 disabled={saving}
-                className="px-6 py-2 rounded-xl bg-[#119653] hover:bg-[#0e7d45] text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                onClick={handleSave}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
               >
                 {saving ? (
                   <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    Đang lưu cấu hình...
+                    <RefreshCw size={14} className="animate-spin" /> Đang lưu cấu hình...
                   </>
                 ) : (
                   <>
-                    <Check size={14} />
-                    Hoàn tất &amp; Lưu cấu hình
+                    <Check size={14} /> Hoàn tất & Lưu Cấu Hình
                   </>
                 )}
               </button>
@@ -756,6 +905,216 @@ export const CustomGrowthProfileModal: React.FC<CustomGrowthProfileModalProps> =
         </div>
 
       </div>
+
+      {/* POPUP: SELECT METRIC FROM CATALOG TO ADD TO ACTIVE STAGE */}
+      {isAddMetricOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-5 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Thêm chỉ số vào "{activeStage?.name}"</h3>
+                <p className="text-[11px] text-slate-500">Chọn từ danh mục hệ thống hoặc tự tạo chỉ số mới</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddMetricOpen(false)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {availableToAdd.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-xl">
+                  Tất cả chỉ số trong danh mục đã được thêm vào giai đoạn này.
+                </div>
+              ) : (
+                availableToAdd.map(def => (
+                  <div
+                    key={def.metricCode}
+                    onClick={() => addMetricToCurrentStage(def)}
+                    className="p-2.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 cursor-pointer transition flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 group-hover:text-emerald-800">
+                        {def.metricName} <span className="font-mono text-[10px] text-slate-400 font-normal">({def.metricCode})</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Ngưỡng chuẩn: {def.defaultMin} - {def.defaultMax} {def.unit} • {def.hasSensorSupport ? '📡 Cảm biến online' : '⚠️ Cấu hình mục tiêu'}
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-600 group-hover:translate-x-0.5 transition-transform">+ Thêm</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddMetricOpen(false);
+                  setIsCreateMetricModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} /> + Tự tạo chỉ số mới hoàn toàn
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddMetricOpen(false)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-medium"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP: CREATE A COMPLETELY NEW METRIC DEFINITION */}
+      {isCreateMetricModalOpen && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Tạo Chỉ Số Môi Trường Tùy Chỉnh Mới</h3>
+                <p className="text-[11px] text-slate-500">Chỉ số này sẽ được lưu vào CSDL của Farm và có thể tái sử dụng</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateMetricModalOpen(false)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Tên chỉ số *</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Tốc độ gió, Nồng độ CO2, Độ dẫn điện..."
+                  value={newMetricForm.metricName}
+                  onChange={e => {
+                    const name = e.target.value;
+                    const autoCode = name
+                      .normalize('NFD')
+                      .replace(/[\u0300-\u036f]/g, '')
+                      .replace(/[^a-zA-Z0-9]/g, '_')
+                      .toUpperCase();
+                    setNewMetricForm(prev => ({
+                      ...prev,
+                      metricName: name,
+                      metricCode: prev.metricCode ? prev.metricCode : autoCode
+                    }));
+                  }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã định danh (Code/Key) *</label>
+                  <input
+                    type="text"
+                    placeholder="WIND_SPEED"
+                    value={newMetricForm.metricCode}
+                    onChange={e => setNewMetricForm({ ...newMetricForm, metricCode: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-slate-800 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Đơn vị đo (Unit) *</label>
+                  <input
+                    type="text"
+                    placeholder="m/s, ppm, Lux..."
+                    value={newMetricForm.unit}
+                    onChange={e => setNewMetricForm({ ...newMetricForm, unit: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mô tả ý nghĩa</label>
+                <input
+                  type="text"
+                  placeholder="Ý nghĩa nông học và phương pháp đo..."
+                  value={newMetricForm.description}
+                  onChange={e => setNewMetricForm({ ...newMetricForm, description: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Dải ngưỡng mặc định (Min &le; Target &le; Max)</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Min"
+                    value={newMetricForm.defaultMin}
+                    onChange={e => setNewMetricForm({ ...newMetricForm, defaultMin: parseFloat(e.target.value) || 0 })}
+                    className="bg-slate-50 border border-slate-300 rounded px-2 py-1 text-center font-bold"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Target"
+                    value={newMetricForm.defaultTarget}
+                    onChange={e => setNewMetricForm({ ...newMetricForm, defaultTarget: parseFloat(e.target.value) || 0 })}
+                    className="bg-emerald-50 border border-emerald-300 rounded px-2 py-1 text-center font-bold text-emerald-800"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Max"
+                    value={newMetricForm.defaultMax}
+                    onChange={e => setNewMetricForm({ ...newMetricForm, defaultMax: parseFloat(e.target.value) || 0 })}
+                    className="bg-slate-50 border border-slate-300 rounded px-2 py-1 text-center font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="hasSensor"
+                  checked={newMetricForm.hasSensorSupport}
+                  onChange={e => setNewMetricForm({ ...newMetricForm, hasSensorSupport: e.target.checked })}
+                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                />
+                <label htmlFor="hasSensor" className="text-[11px] text-slate-700 font-medium cursor-pointer">
+                  Trang trại có gắn cảm biến vật lý online cho chỉ số này
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateMetricModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-medium"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={creatingMetric}
+                onClick={handleCreateNewMetricDefinition}
+                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+              >
+                {creatingMetric ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />} Lưu & Thêm vào giai đoạn
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

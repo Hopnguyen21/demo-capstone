@@ -108,9 +108,9 @@ public sealed class CropGrowthSeasonTests
 
         response.EnsureSuccessStatusCode();
         using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
-        Assert.Equal(21m, (await db.EnvironmentalRequirements.SingleAsync(x => x.GrowthStageId == VegetativeStage && x.ParameterCode == EnvironmentalParameterCode.Temperature)).MinValue); // profile hệ thống không đổi
+        Assert.Equal(21m, (await db.EnvironmentalRequirements.SingleAsync(x => x.GrowthStageId == VegetativeStage && x.ParameterCode == "Temperature")).MinValue); // profile hệ thống không đổi
         Assert.True(await db.GrowthProfiles.AnyAsync(x => x.SourceProfileId == SystemProfile && x.TenantId != null)); // bản sao của trang trại
-        var applied = await db.SeasonAppliedRequirements.Where(x => x.ParameterCode == EnvironmentalParameterCode.Temperature).Select(x => x.MinValue).ToListAsync();
+        var applied = await db.SeasonAppliedRequirements.Where(x => x.ParameterCode == "Temperature").Select(x => x.MinValue).ToListAsync();
         Assert.DoesNotContain(22m, applied); // vụ đang chạy giữ ngưỡng đã chụp
     }
 

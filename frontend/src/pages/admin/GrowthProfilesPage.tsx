@@ -2,9 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { CropRangeBand } from '../../components/ui/BaseUI';
 import {
   Activity, Clock, CheckCircle, Sliders, RefreshCw, Sprout,
-  Layers, ShieldCheck, Thermometer, Droplets, Zap, Sun, Edit3, X, Check, AlertCircle, Save
+  Layers, ShieldCheck, Thermometer, Droplets, Zap, Sun, Edit3, X, Check,
+  AlertCircle, Save, Plus, Trash2, Radio, Wind, Gauge, Info, Filter
 } from 'lucide-react';
-import { cropService } from '../../services';
+import { cropService, environmentalMetricService, EnvironmentalMetricDefinition } from '../../services';
+
+export interface EditableMetric {
+  parameterCode: string;
+  metricName: string;
+  unit: string;
+  description?: string;
+  min: number | '';
+  target: number | '';
+  max: number | '';
+  isEnabled: boolean;
+  hasSensorSupport?: boolean;
+}
+
+const DEFAULT_METRIC_CATALOG: EnvironmentalMetricDefinition[] = [
+  { id: '1', metricCode: 'SoilMoisture', metricName: 'Độ ẩm đất', unit: '%', defaultMin: 60, defaultTarget: 70, defaultMax: 75, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '2', metricCode: 'Temperature', metricName: 'Nhiệt độ không khí', unit: '°C', defaultMin: 20, defaultTarget: 24, defaultMax: 28, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '3', metricCode: 'AirHumidity', metricName: 'Độ ẩm không khí', unit: '%', defaultMin: 60, defaultTarget: 70, defaultMax: 80, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '4', metricCode: 'LightIntensity', metricName: 'Cường độ ánh sáng', unit: 'Lux', defaultMin: 1000, defaultTarget: 3000, defaultMax: 5000, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '5', metricCode: 'Ph', metricName: 'Độ pH đất / dung dịch', unit: 'pH', defaultMin: 5.5, defaultTarget: 6.0, defaultMax: 6.5, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '6', metricCode: 'Ec', metricName: 'Độ dẫn điện EC', unit: 'mS/cm', defaultMin: 1.2, defaultTarget: 1.8, defaultMax: 2.5, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '7', metricCode: 'SoilTemperature', metricName: 'Nhiệt độ đất', unit: '°C', defaultMin: 18, defaultTarget: 22, defaultMax: 26, hasSensorSupport: true, isSystemDefined: true, isActive: true },
+  { id: '8', metricCode: 'CO2', metricName: 'Nồng độ CO2', unit: 'ppm', defaultMin: 400, defaultTarget: 800, defaultMax: 1200, hasSensorSupport: false, isSystemDefined: true, isActive: true },
+  { id: '9', metricCode: 'WIND_SPEED', metricName: 'Tốc độ gió', unit: 'm/s', defaultMin: 0, defaultTarget: 2, defaultMax: 5, hasSensorSupport: false, isSystemDefined: true, isActive: true },
+  { id: '10', metricCode: 'WATER_FLOW', metricName: 'Lưu lượng nước tưới', unit: 'L/h', defaultMin: 10, defaultTarget: 50, defaultMax: 100, hasSensorSupport: false, isSystemDefined: true, isActive: true }
+];
 
 export const GrowthProfilesPage: React.FC = () => {
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -14,7 +40,25 @@ export const GrowthProfilesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingStages, setLoadingStages] = useState(false);
 
-  // Trạng thái modal chỉnh sửa Dải ngưỡng vi khí hậu cho Giai đoạn
+  // Danh mục định nghĩa chỉ số & chỉ số động cho giai đoạn đang chọn
+  const [metricCatalog, setMetricCatalog] = useState<EnvironmentalMetricDefinition[]>(DEFAULT_METRIC_CATALOG);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [editableMetrics, setEditableMetrics] = useState<EditableMetric[]>([]);
+  const [isAddMetricOpen, setIsAddMetricOpen] = useState(false);
+  const [isCreateMetricOpen, setIsCreateMetricOpen] = useState(false);
+  const [creatingMetric, setCreatingMetric] = useState(false);
+  const [newMetricForm, setNewMetricForm] = useState({
+    metricCode: '',
+    metricName: '',
+    unit: '',
+    description: '',
+    defaultMin: 0,
+    defaultTarget: 10,
+    defaultMax: 20,
+    hasSensorSupport: false
+  });
+
+  // Trạng thái chỉnh sửa
   const [isEditingThresholds, setIsEditingThresholds] = useState(false);
   const [isInlineEditing, setIsInlineEditing] = useState(false);
   const [isAddingStage, setIsAddingStage] = useState(false);
@@ -24,26 +68,23 @@ export const GrowthProfilesPage: React.FC = () => {
   const [isSavingThresholds, setIsSavingThresholds] = useState(false);
   const [thresholdError, setThresholdError] = useState('');
   const [thresholdSuccess, setThresholdSuccess] = useState('');
-  type ThresholdField = { min: number | ''; target: number | ''; max: number | ''; unit: string };
-  const emptyField = (unit: string): ThresholdField => ({ min: '', target: '', max: '', unit });
-  const [thresholdForm, setThresholdForm] = useState<Record<'soilMoisture' | 'temperature' | 'airHumidity' | 'lightIntensity' | 'ph' | 'ec', ThresholdField>>({
-    soilMoisture: emptyField('%'),
-    temperature: emptyField('°C'),
-    airHumidity: emptyField('%'),
-    lightIntensity: emptyField('Lux'),
-    ph: emptyField('pH'),
-    ec: emptyField('mS/cm'),
-  });
 
-  // Nạp danh sách tất cả Growth Profiles từ Backend API CSDL
+  // Nạp danh sách Growth Profiles và Danh mục Metric Definitions từ CSDL
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
 
-    cropService.getAllGrowthProfiles().then(async (data: any[]) => {
+    Promise.all([
+      cropService.getAllGrowthProfiles().catch(() => []),
+      environmentalMetricService.getMetricDefinitions().catch(() => DEFAULT_METRIC_CATALOG)
+    ]).then(async ([data, defs]) => {
       if (!isMounted) return;
+
+      if (Array.isArray(defs) && defs.length > 0) {
+        setMetricCatalog(defs);
+      }
+
       if (Array.isArray(data) && data.length > 0) {
-        // Chuẩn hóa danh sách profiles từ backend
         const normalizedProfiles = data.map((p, idx) => ({
           ...p,
           growthProfileId: p.profileId || p.id || `profile-${idx}`,
@@ -54,7 +95,6 @@ export const GrowthProfilesPage: React.FC = () => {
           isSystemDefined: p.isSystemDefined ?? false
         }));
 
-        // Giữ đầy đủ tất cả hồ sơ (cả Hệ thống và Nông trại), ưu tiên hồ sơ Mặc định và Hệ thống lên trước
         const finalProfiles = [...normalizedProfiles].sort((a, b) => {
           if (a.isDefault && !b.isDefault) return -1;
           if (!a.isDefault && b.isDefault) return 1;
@@ -65,7 +105,6 @@ export const GrowthProfilesPage: React.FC = () => {
 
         setProfiles(finalProfiles);
 
-        // Đọc tham số URL query (?cropId=... hoặc ?profileId=...) để đồng bộ mở đúng hồ sơ
         const urlParams = new URLSearchParams(window.location.search);
         const targetCropId = urlParams.get('cropId');
         const targetProfileId = urlParams.get('profileId');
@@ -135,6 +174,7 @@ export const GrowthProfilesPage: React.FC = () => {
         });
 
         setSelectedStageId(mappedStages[0].growthStageId);
+        populateEditableMetrics(mappedStages[0]);
       } else {
         setActiveProfile({
           ...targetProfile,
@@ -142,6 +182,7 @@ export const GrowthProfilesPage: React.FC = () => {
           totalDays: 0,
           stages: []
         });
+        setEditableMetrics([]);
       }
     } catch (e) {
       console.warn('Lỗi tải stages từ CSDL:', e);
@@ -151,7 +192,22 @@ export const GrowthProfilesPage: React.FC = () => {
     }
   };
 
-  // Chuyển đổi khi người dùng chọn Profile khác
+  const populateEditableMetrics = (stage: any) => {
+    const reqs = stage?.requirements || [];
+    const list: EditableMetric[] = reqs.map((r: any) => ({
+      parameterCode: r.parameterCode,
+      metricName: r.metricName || r.name || r.parameterCode,
+      unit: r.unit || '%',
+      description: r.description || '',
+      min: r.minValue !== undefined && r.minValue !== null ? Number(r.minValue) : '',
+      target: r.targetValue !== undefined && r.targetValue !== null ? Number(r.targetValue) : '',
+      max: r.maxValue !== undefined && r.maxValue !== null ? Number(r.maxValue) : '',
+      isEnabled: r.isEnabled ?? true,
+      hasSensorSupport: r.hasSensorSupport ?? ['SoilMoisture', 'Temperature', 'AirHumidity', 'LightIntensity', 'Ph', 'Ec', 'SoilTemperature'].some(k => k.toLowerCase() === (r.parameterCode || '').toLowerCase())
+    }));
+    setEditableMetrics(list);
+  };
+
   const handleSelectProfile = async (profId: string) => {
     setIsEditingThresholds(false);
     setIsInlineEditing(false);
@@ -166,52 +222,19 @@ export const GrowthProfilesPage: React.FC = () => {
     }
   };
 
-  if (loading && !activeProfile) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
-        <RefreshCw className="animate-spin text-emerald-600" size={32} />
-        <span className="text-sm font-medium text-slate-600">Đang tải hồ sơ sinh trưởng từ CSDL hệ thống...</span>
-      </div>
-    );
-  }
-
-  if (!activeProfile) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
-        <Sprout className="text-slate-400" size={40} />
-        <span className="text-sm font-semibold text-slate-700">Chưa tìm thấy hồ sơ sinh trưởng nào trong CSDL.</span>
-      </div>
-    );
-  }
-
   const profile = activeProfile;
-  const stages = profile.stages || [];
+  const stages = profile?.stages || [];
   const currentStage = stages.find((s: any) => s.growthStageId === selectedStageId || String(s.stageOrder) === String(selectedStageId)) || stages[0];
 
-  // Trích xuất dải ngưỡng yêu cầu của giai đoạn hiện tại
-  const rawRequirements = currentStage?.requirements || [];
-  const getParam = (code: string) => rawRequirements.find((r: any) => {
-    const c = (r.parameterCode || r.parameterName || '').toUpperCase();
-    return c === code.toUpperCase() || c.includes(code.toUpperCase());
-  });
+  useEffect(() => {
+    if (currentStage) {
+      populateEditableMetrics(currentStage);
+    }
+  }, [selectedStageId, activeProfile]);
 
-  const soilMoist = getParam('SOIL_MOISTURE') || getParam('SOILMOISTURE');
-  const airTemp = getParam('TEMPERATURE') || getParam('TEMP');
-  const airHumid = getParam('AIR_HUMIDITY') || getParam('AIRHUMIDITY') || getParam('HUMIDITY');
-  const light = getParam('LIGHT_INTENSITY') || getParam('LIGHTINTENSITY') || getParam('LIGHT');
-  const phVal = getParam('PH');
-  const ecVal = getParam('EC');
-
-  // Giá trị đo giả lập tiệm cận điểm mục tiêu
-  const calcCurrent = (target: number, min: number, max: number) => {
-    const val = Number(target) || ((Number(min) + Number(max)) / 2);
-    return Math.round(val * 10) / 10;
-  };
-
-  // Bật/tắt chế độ sửa trực tiếp trên thẻ
   const toggleInlineEditing = () => {
     if (!isInlineEditing) {
-      openEditThresholds();
+      populateEditableMetrics(currentStage);
       setIsEditingThresholds(false);
       setIsInlineEditing(true);
     } else {
@@ -219,25 +242,80 @@ export const GrowthProfilesPage: React.FC = () => {
     }
   };
 
-  // Mở modal cấu hình dải ngưỡng vi khí hậu
   const openEditThresholds = () => {
-    const fill = (req: any, unit: string): ThresholdField => req
-      ? { min: Number(req.minValue), target: Number(req.targetValue), max: Number(req.maxValue), unit: req.unit || unit }
-      : emptyField(unit);
-    setThresholdForm({
-      soilMoisture: fill(soilMoist, '%'),
-      temperature: fill(airTemp, '°C'),
-      airHumidity: fill(airHumid, '%'),
-      lightIntensity: fill(light, 'Lux'),
-      ph: fill(phVal, 'pH'),
-      ec: fill(ecVal, 'mS/cm'),
-    });
+    populateEditableMetrics(currentStage);
     setThresholdError('');
     setThresholdSuccess('');
     setIsEditingThresholds(true);
   };
 
-  // Lưu cấu hình dải ngưỡng vi khí hậu xuống CSDL thông qua API
+  const handleAddMetricToStage = (def: EnvironmentalMetricDefinition) => {
+    if (editableMetrics.some(m => m.parameterCode.toUpperCase() === def.metricCode.toUpperCase())) {
+      setThresholdError(`Chỉ số "${def.metricName}" đã có trong giai đoạn này.`);
+      return;
+    }
+    const item: EditableMetric = {
+      parameterCode: def.metricCode,
+      metricName: def.metricName,
+      unit: def.unit,
+      description: def.description || '',
+      min: Number(def.defaultMin),
+      target: Number(def.defaultTarget),
+      max: Number(def.defaultMax),
+      isEnabled: true,
+      hasSensorSupport: def.hasSensorSupport
+    };
+    setEditableMetrics(prev => [...prev, item]);
+    setIsAddMetricOpen(false);
+    setThresholdError('');
+  };
+
+  const handleRemoveMetric = (paramCode: string) => {
+    setEditableMetrics(prev => prev.filter(m => m.parameterCode !== paramCode));
+  };
+
+  const updateMetricField = (paramCode: string, field: keyof EditableMetric, value: any) => {
+    setEditableMetrics(prev => prev.map(m => m.parameterCode === paramCode ? { ...m, [field]: value } : m));
+  };
+
+  const handleCreateNewMetricDefinition = async () => {
+    if (!newMetricForm.metricName.trim() || !newMetricForm.metricCode.trim() || !newMetricForm.unit.trim()) {
+      setThresholdError('Vui lòng nhập đủ Tên chỉ số, Mã định danh (Code) và Đơn vị tính.');
+      return;
+    }
+    setCreatingMetric(true);
+    try {
+      const code = newMetricForm.metricCode.trim().toUpperCase();
+      const res = await environmentalMetricService.createMetricDefinition({
+        metricCode: code,
+        metricName: newMetricForm.metricName.trim(),
+        unit: newMetricForm.unit.trim(),
+        description: newMetricForm.description.trim() || undefined,
+        defaultMin: Number(newMetricForm.defaultMin),
+        defaultTarget: Number(newMetricForm.defaultTarget),
+        defaultMax: Number(newMetricForm.defaultMax),
+        hasSensorSupport: newMetricForm.hasSensorSupport
+      });
+      setMetricCatalog(prev => [...prev.filter(m => m.metricCode !== res.metricCode), res]);
+      handleAddMetricToStage(res);
+      setIsCreateMetricOpen(false);
+      setNewMetricForm({
+        metricCode: '',
+        metricName: '',
+        unit: '',
+        description: '',
+        defaultMin: 0,
+        defaultTarget: 10,
+        defaultMax: 20,
+        hasSensorSupport: false
+      });
+    } catch (err: any) {
+      setThresholdError(err?.response?.data?.message || err?.message || 'Lỗi khi tạo định nghĩa chỉ số mới.');
+    } finally {
+      setCreatingMetric(false);
+    }
+  };
+
   const handleAddStage = async () => {
     const profId = activeProfile?.profileId || activeProfile?.growthProfileId || activeProfile?.id;
     if (!profId) return;
@@ -259,7 +337,7 @@ export const GrowthProfilesPage: React.FC = () => {
       setIsAddingStage(false);
     } catch (err: any) {
       const data = err?.response?.data;
-      setStageError(data?.detail || data?.message || (data?.errors ? Object.values(data.errors).flat().join(' ') : '') || 'Không thêm được giai đoạn (cần quyền sửa hồ sơ này).');
+      setStageError(data?.detail || data?.message || 'Không thêm được giai đoạn (cần quyền sửa hồ sơ này).');
     } finally {
       setIsSavingStage(false);
     }
@@ -269,89 +347,104 @@ export const GrowthProfilesPage: React.FC = () => {
     const stageId = currentStage?.growthStageId || currentStage?.stageId;
     if (!stageId) return;
 
+    if (editableMetrics.length === 0) {
+      setThresholdError('Cần có ít nhất một chỉ số môi trường cho giai đoạn.');
+      return;
+    }
+
+    for (const m of editableMetrics) {
+      if (!m.isEnabled) continue;
+      if (m.min === '' || m.target === '' || m.max === '') {
+        setThresholdError(`Vui lòng nhập đủ Min, Target và Max cho chỉ số "${m.metricName || m.parameterCode}".`);
+        return;
+      }
+      const min = Number(m.min);
+      const tgt = Number(m.target);
+      const max = Number(m.max);
+      if (isNaN(min) || isNaN(tgt) || isNaN(max)) {
+        setThresholdError(`Giá trị ngưỡng của "${m.metricName || m.parameterCode}" phải là số.`);
+        return;
+      }
+      if (min > tgt || tgt > max) {
+        setThresholdError(`Lỗi dải ngưỡng tại "${m.metricName || m.parameterCode}": Yêu cầu Min (${min}) ≤ Target (${tgt}) ≤ Max (${max}).`);
+        return;
+      }
+    }
+
     setIsSavingThresholds(true);
     setThresholdError('');
     setThresholdSuccess('');
 
-    const configs = [
-      { key: 'soilMoisture', label: 'Độ ẩm đất (Soil Moisture)', data: thresholdForm.soilMoisture, code: 'SoilMoisture' },
-      { key: 'temperature', label: 'Nhiệt độ không khí (Temperature)', data: thresholdForm.temperature, code: 'Temperature' },
-      { key: 'airHumidity', label: 'Độ ẩm không khí (Air Humidity)', data: thresholdForm.airHumidity, code: 'AirHumidity' },
-      { key: 'lightIntensity', label: 'Cường độ ánh sáng (Light Intensity)', data: thresholdForm.lightIntensity, code: 'LightIntensity' },
-      { key: 'ph', label: 'Độ pH đất / giá thể', data: thresholdForm.ph, code: 'Ph' },
-      { key: 'ec', label: 'Độ dẫn điện EC', data: thresholdForm.ec, code: 'Ec' },
-    ];
-
-    const filledConfigs = [] as typeof configs;
-    for (const c of configs) {
-      const raw = [c.data.min, c.data.target, c.data.max];
-      const blanks = raw.filter(v => v === '' || v === null || v === undefined).length;
-      if (blanks === 3) continue; // để trống = hồ sơ không có ngưỡng cho thông số này
-      if (blanks > 0) {
-        setThresholdError(`Vui lòng nhập đủ Tối thiểu, Mục tiêu và Tối đa cho ${c.label}, hoặc để trống cả ba ô nếu hồ sơ không có ngưỡng này.`);
-        setIsSavingThresholds(false);
-        return;
-      }
-      const min = Number(c.data.min);
-      const tgt = Number(c.data.target);
-      const max = Number(c.data.max);
-      if (isNaN(min) || isNaN(tgt) || isNaN(max)) {
-        setThresholdError(`Vui lòng nhập đầy đủ giá trị số cho ${c.label}.`);
-        setIsSavingThresholds(false);
-        return;
-      }
-      if (min > tgt || tgt > max) {
-        setThresholdError(`Lỗi dải ngưỡng tại "${c.label}": Yêu cầu Tối thiểu (${min}) ≤ Mục tiêu (${tgt}) ≤ Tối đa (${max}).`);
-        setIsSavingThresholds(false);
-        return;
-      }
-      filledConfigs.push(c);
-    }
-    if (filledConfigs.length === 0) {
-      setThresholdError('Cần có ít nhất một thông số có ngưỡng.');
-      setIsSavingThresholds(false);
-      return;
-    }
-
-    const payload = filledConfigs.map(c => ({
-      parameterCode: c.code,
-      minValue: Number(c.data.min),
-      targetValue: Number(c.data.target),
-      maxValue: Number(c.data.max),
-      unit: c.data.unit || '',
+    const payload = editableMetrics.map(m => ({
+      parameterCode: m.parameterCode,
+      metricName: m.metricName,
+      description: m.description,
+      minValue: Number(m.min),
+      targetValue: Number(m.target),
+      maxValue: Number(m.max),
+      unit: m.unit,
+      isEnabled: m.isEnabled
     }));
 
     try {
       const res = await cropService.updateStageRequirements(stageId, payload);
       setThresholdSuccess('Đã cập nhật dải ngưỡng vi khí hậu thành công vào CSDL!');
 
-      // Cập nhật state activeProfile cho giai đoạn hiện tại
       const updatedReqs = res?.requirements || payload;
       setActiveProfile((prev: any) => {
         if (!prev || !prev.stages) return prev;
-        const newStages = prev.stages.map((st: any) => {
-          if ((st.growthStageId || st.stageId) === stageId) {
-            return {
-              ...st,
-              requirements: updatedReqs,
-            };
-          }
-          return st;
-        });
-        return { ...prev, stages: newStages };
+        return {
+          ...prev,
+          stages: prev.stages.map((st: any) =>
+            (st.growthStageId === stageId || st.stageId === stageId)
+              ? { ...st, requirements: updatedReqs }
+              : st
+          )
+        };
       });
-
       setTimeout(() => {
+        setIsInlineEditing(false);
         setIsEditingThresholds(false);
         setThresholdSuccess('');
-      }, 1000);
+      }, 1200);
     } catch (err: any) {
       const data = err?.response?.data;
-      setThresholdError(data?.detail || data?.message || (data?.errors ? Object.values(data.errors).flat().join(' ') : '') || 'Không thể lưu ngưỡng vi khí hậu.');
+      setThresholdError(data?.detail || data?.message || 'Không thể lưu ngưỡng vi khí hậu.');
     } finally {
       setIsSavingThresholds(false);
     }
   };
+
+  const getMetricIcon = (code: string) => {
+    const c = (code || '').toUpperCase();
+    if (c.includes('SOIL') && c.includes('MOIST')) return <Droplets size={16} className="text-blue-600" />;
+    if (c.includes('TEMP')) return <Thermometer size={16} className="text-amber-600" />;
+    if (c.includes('HUMID')) return <Droplets size={16} className="text-sky-600" />;
+    if (c.includes('LIGHT') || c.includes('LUX')) return <Sun size={16} className="text-amber-500" />;
+    if (c.includes('PH')) return <Sprout size={16} className="text-emerald-600" />;
+    if (c.includes('EC')) return <Zap size={16} className="text-yellow-600" />;
+    if (c.includes('WIND')) return <Wind size={16} className="text-teal-600" />;
+    if (c.includes('CO2') || c.includes('GAS')) return <Gauge size={16} className="text-purple-600" />;
+    return <Activity size={16} className="text-slate-600" />;
+  };
+
+  if (loading && !activeProfile) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+        <RefreshCw className="animate-spin text-emerald-600" size={32} />
+        <span className="text-sm font-medium text-slate-600">Đang tải hồ sơ sinh trưởng từ CSDL hệ thống...</span>
+      </div>
+    );
+  }
+
+  if (!activeProfile) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+        <Sprout className="text-slate-400" size={40} />
+        <span className="text-sm font-semibold text-slate-700">Chưa tìm thấy hồ sơ sinh trưởng nào trong CSDL.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -435,7 +528,7 @@ export const GrowthProfilesPage: React.FC = () => {
             <button
               type="button"
               onClick={() => { setIsAddingStage(v => !v); setStageError(''); }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-600 bg-white text-emerald-800 font-bold text-xs hover:bg-emerald-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-600 bg-white text-emerald-800 font-bold text-xs hover:bg-emerald-50 cursor-pointer"
             >
               + Thêm giai đoạn
             </button>
@@ -461,11 +554,11 @@ export const GrowthProfilesPage: React.FC = () => {
                 </select>
               </label>
             </div>
-            <p className="text-[11px] text-slate-600">Giai đoạn mới chưa có ngưỡng vi khí hậu: chọn giai đoạn đó rồi dùng "Sửa trực tiếp các ngưỡng" để bổ sung. Vụ đang chạy giữ nguyên giai đoạn hiện tại, chỉ vụ tạo sau mới dùng giai đoạn mới.</p>
+            <p className="text-[11px] text-slate-600">Giai đoạn mới chưa có ngưỡng vi khí hậu: chọn giai đoạn đó rồi dùng "Sửa trực tiếp các ngưỡng" để bổ sung.</p>
             {stageError && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-2.5 text-xs font-semibold text-rose-800">{stageError}</div>}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => { setIsAddingStage(false); setStageError(''); }} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700">Hủy</button>
-              <button type="button" disabled={isSavingStage} onClick={handleAddStage} className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold disabled:opacity-50">{isSavingStage ? 'Đang thêm…' : 'Thêm giai đoạn'}</button>
+              <button type="button" onClick={() => { setIsAddingStage(false); setStageError(''); }} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 cursor-pointer">Hủy</button>
+              <button type="button" disabled={isSavingStage} onClick={handleAddStage} className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-bold disabled:opacity-50 cursor-pointer">{isSavingStage ? 'Đang thêm…' : 'Thêm giai đoạn'}</button>
             </div>
           </div>
         )}
@@ -504,7 +597,7 @@ export const GrowthProfilesPage: React.FC = () => {
 
                 {isSelected && (
                   <div className="mt-3 pt-2 border-t border-emerald-200/80 flex items-center gap-1 text-[11px] font-bold text-emerald-700">
-                    <CheckCircle className="w-3.5 h-3.5" /> Đang kích hoạt vi khí hậu
+                    <CheckCircle className="w-3.5 h-3.5" /> Đang xem ngưỡng
                   </div>
                 )}
               </button>
@@ -522,7 +615,7 @@ export const GrowthProfilesPage: React.FC = () => {
               Dải ngưỡng Vi khí hậu Giai đoạn: <span className="text-emerald-700 font-extrabold">{currentStage?.name}</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Tự động cập nhật vào Alert Engine & Relay Control khi vụ mùa bước sang giai đoạn này.
+              Hệ thống chỉ số môi trường động: Có thể thêm, bớt và cấu hình độc lập cho từng giai đoạn sinh trưởng.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -538,7 +631,7 @@ export const GrowthProfilesPage: React.FC = () => {
                 }`}
             >
               <Edit3 size={13} />
-              {isInlineEditing ? 'Đang sửa trực tiếp trên thẻ' : 'Sửa trực tiếp các ngưỡng'}
+              {isInlineEditing ? 'Đóng chế độ sửa' : 'Sửa trực tiếp các ngưỡng'}
             </button>
             <button
               type="button"
@@ -551,279 +644,151 @@ export const GrowthProfilesPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Thông báo lỗi / thành công khi sửa trực tiếp */}
-        {isInlineEditing && thresholdError && (
+        {/* Thông báo lỗi / thành công khi sửa */}
+        {thresholdError && (
           <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
             <AlertCircle size={16} className="shrink-0" />
             <span>{thresholdError}</span>
           </div>
         )}
-        {isInlineEditing && thresholdSuccess && (
+        {thresholdSuccess && (
           <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-2">
             <Check size={16} className="shrink-0" />
             <span>{thresholdSuccess}</span>
           </div>
         )}
 
-        {/* 6 Khối Thông Số Vi Khí Hậu Range Bands: Chế độ Xem hoặc Chế độ Sửa trực tiếp */}
+        {/* Chế độ Sửa trực tiếp (Inline Editing) */}
         {isInlineEditing ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* 1. Độ ẩm đất */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Droplets size={15} className="text-blue-600" /> Độ ẩm đất (Soil Moisture)
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">%</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.soilMoisture.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.soilMoisture.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.soilMoisture.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
+            {/* Thanh công cụ thêm chỉ số */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Info size={15} className="text-emerald-600 shrink-0" />
+                <span>Bạn đang cấu hình <strong>{editableMetrics.length}</strong> chỉ số cho riêng giai đoạn này.</span>
               </div>
-
-              {/* 2. Nhiệt độ không khí */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Thermometer size={15} className="text-amber-600" /> Nhiệt độ không khí (Air Temp)
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">°C</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.temperature.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.temperature.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.temperature.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Độ ẩm không khí */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Droplets size={15} className="text-sky-600" /> Độ ẩm không khí (Humidity)
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">%</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.airHumidity.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.airHumidity.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={thresholdForm.airHumidity.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. Cường độ ánh sáng */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Sun size={15} className="text-amber-500" /> Cường độ ánh sáng (Lux)
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">lux</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                    <input
-                      type="number"
-                      step="50"
-                      value={thresholdForm.lightIntensity.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                    <input
-                      type="number"
-                      step="50"
-                      value={thresholdForm.lightIntensity.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                    <input
-                      type="number"
-                      step="50"
-                      value={thresholdForm.lightIntensity.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 5. Độ pH */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Sprout size={15} className="text-emerald-600" /> Độ pH đất / giá thể
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">pH</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={thresholdForm.ph.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={thresholdForm.ph.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={thresholdForm.ph.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 6. Độ dẫn điện EC */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Zap size={15} className="text-yellow-600" /> Độ dẫn điện EC
-                  </span>
-                  <span className="text-xs font-mono font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">mS/cm</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={thresholdForm.ec.min}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={thresholdForm.ec.target}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-100/60 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={thresholdForm.ec.max}
-                      onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                      className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setCatalogSearch(''); setIsAddMetricOpen(true); }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                >
+                  <Plus size={14} /> Thêm chỉ số từ danh mục
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateMetricOpen(true)}
+                  className="px-3 py-1.5 bg-white border border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                >
+                  <Plus size={14} /> Tự tạo chỉ số mới
+                </button>
               </div>
             </div>
 
-            {/* Thanh tác vụ lưu trực tiếp */}
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+            {/* Danh sách các chỉ số môi trường động */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {editableMetrics.map((m) => (
+                <div
+                  key={m.parameterCode}
+                  className={`p-4 rounded-xl border transition-all space-y-3 ${
+                    m.isEnabled
+                      ? 'border-emerald-300 bg-white shadow-xs'
+                      : 'border-slate-200 bg-slate-50/70 opacity-60'
+                  }`}
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      {getMetricIcon(m.parameterCode)}
+                      <div>
+                        <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                          <span>{m.metricName}</span>
+                          <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {m.unit}
+                          </span>
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-400">
+                          {m.parameterCode}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <label className="flex items-center gap-1 cursor-pointer text-[11px] font-medium text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={m.isEnabled}
+                          onChange={(e) => updateMetricField(m.parameterCode, 'isEnabled', e.target.checked)}
+                          className="w-3.5 h-3.5 text-emerald-600 rounded"
+                        />
+                        <span>{m.isEnabled ? 'Bật' : 'Tắt'}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMetric(m.parameterCode)}
+                        title="Xóa chỉ số khỏi giai đoạn"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer transition"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sensor Badge */}
+                  <div>
+                    {m.hasSensorSupport ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        <Radio size={10} className="animate-pulse" /> 📡 Cảm biến online
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                        ⚠️ Chưa có cảm biến (Chỉ lưu cấu hình)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Min / Target / Max Inputs */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={m.min}
+                        onChange={(e) => updateMetricField(m.parameterCode, 'min', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        disabled={!m.isEnabled}
+                        className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none disabled:bg-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={m.target}
+                        onChange={(e) => updateMetricField(m.parameterCode, 'target', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        disabled={!m.isEnabled}
+                        className="w-full text-xs font-bold px-2 py-1.5 bg-emerald-50 border border-emerald-500 rounded-lg text-center text-emerald-900 focus:border-emerald-600 focus:outline-none disabled:bg-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={m.max}
+                        onChange={(e) => updateMetricField(m.parameterCode, 'max', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        disabled={!m.isEnabled}
+                        className="w-full text-xs font-bold px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-center focus:border-emerald-500 focus:outline-none disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsInlineEditing(false)}
@@ -853,29 +818,55 @@ export const GrowthProfilesPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { label: 'Độ ẩm đất (Soil Moisture)', req: soilMoist, unit: '%' },
-              { label: 'Nhiệt độ không khí (Air Temp)', req: airTemp, unit: '°C' },
-              { label: 'Độ ẩm không khí (Humidity)', req: airHumid, unit: '%' },
-              { label: 'Cường độ ánh sáng (Lux)', req: light, unit: 'Lux' },
-              { label: 'Độ pH đất / giá thể (pH)', req: phVal, unit: 'pH' },
-              { label: 'Độ dẫn điện EC (mS/cm)', req: ecVal, unit: 'mS/cm' },
-            ].map(p => p.req ? (
-              <CropRangeBand
-                key={p.label}
-                label={p.label}
-                min={Number(p.req.minValue)}
-                max={Number(p.req.maxValue)}
-                target={Number(p.req.targetValue)}
-                unit={p.req.unit || p.unit}
-              />
-            ) : (
-              <div key={p.label} className="p-3.5 rounded-xl border border-dashed border-slate-300 bg-slate-50/60">
-                <span className="text-xs font-medium text-slate-700">{p.label}</span>
-                <p className="mt-2 text-[11px] text-slate-500">Hồ sơ chưa có ngưỡng cho thông số này. Dùng "Sửa trực tiếp các ngưỡng" để bổ sung khi đã có nguồn số liệu.</p>
+          /* Chế độ Xem (View Mode) */
+          <div>
+            {(currentStage?.requirements && currentStage.requirements.length > 0) ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentStage.requirements.map((req: any) => {
+                  const isSensor = req.hasSensorSupport ?? ['SoilMoisture', 'Temperature', 'AirHumidity', 'LightIntensity', 'Ph', 'Ec', 'SoilTemperature'].some(k => k.toLowerCase() === (req.parameterCode || '').toLowerCase());
+                  const displayName = req.metricName || req.name || req.parameterCode;
+
+                  return (
+                    <div key={req.parameterCode || req.id} className="relative">
+                      <CropRangeBand
+                        label={displayName}
+                        min={Number(req.minValue)}
+                        max={Number(req.maxValue)}
+                        target={Number(req.targetValue)}
+                        unit={req.unit || ''}
+                      />
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] px-1">
+                        <span className="font-mono text-slate-400">{req.parameterCode}</span>
+                        {isSensor ? (
+                          <span className="text-emerald-700 font-bold flex items-center gap-1">
+                            <Radio size={9} className="animate-pulse" /> 📡 Cảm biến online
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 font-medium">
+                            ⚠️ Cấu hình nông học (Chưa có cảm biến)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            ) : (
+              <div className="p-8 text-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 space-y-3">
+                <Sliders className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-sm font-semibold text-slate-700">Chưa có chỉ số vi khí hậu nào cho giai đoạn này.</p>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Bạn có thể bổ sung các chỉ số tùy chỉnh linh hoạt phù hợp với giống cây và mùa vụ mà không bị gò bó danh sách cứng.
+                </p>
+                <button
+                  type="button"
+                  onClick={toggleInlineEditing}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  + Thiết lập chỉ số ngay
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -908,7 +899,7 @@ export const GrowthProfilesPage: React.FC = () => {
         )}
       </div>
 
-      {/* Modal Chỉnh sửa Dải ngưỡng Vi khí hậu */}
+      {/* Modal Chỉnh sửa Dải ngưỡng Vi khí hậu Popup */}
       {isEditingThresholds && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-150">
@@ -920,7 +911,7 @@ export const GrowthProfilesPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Chỉnh sửa Dải ngưỡng Vi khí hậu
+                    Chỉnh sửa Dải ngưỡng Vi khí hậu Động
                   </h3>
                   <p className="text-xs text-slate-500">
                     Giai đoạn: <strong className="text-emerald-700 font-extrabold">{currentStage?.name}</strong> • Chu kỳ {currentStage?.durationDays} ngày
@@ -938,8 +929,26 @@ export const GrowthProfilesPage: React.FC = () => {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-4">
-              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-3 text-xs text-emerald-800 leading-relaxed">
-                💡 <strong>Quy tắc ngưỡng:</strong> Giá trị <strong>Tối thiểu (Min)</strong> phải nhỏ hơn hoặc bằng <strong>Mục tiêu (Target)</strong>, và <strong>Mục tiêu</strong> phải nhỏ hơn hoặc bằng <strong>Tối đa (Max)</strong>. Dải ngưỡng này sẽ tự động cập nhật vào Alert Engine cảnh báo vi khí hậu và kích hoạt điều khiển Relay / Actuator IoT.
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl">
+                <div className="text-xs text-emerald-800 leading-relaxed">
+                  💡 <strong>Quy tắc ngưỡng:</strong> Yêu cầu <strong>Tối thiểu (Min)</strong> ≤ <strong>Mục tiêu (Target)</strong> ≤ <strong>Tối đa (Max)</strong>. Dải ngưỡng cập nhật trực tiếp vào Alert Engine và Actuator Rule.
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setCatalogSearch(''); setIsAddMetricOpen(true); }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                  >
+                    <Plus size={13} /> Thêm chỉ số
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateMetricOpen(true)}
+                    className="px-3 py-1.5 bg-white border border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                  >
+                    <Plus size={13} /> Tạo mới
+                  </button>
+                </div>
               </div>
 
               {thresholdError && (
@@ -957,269 +966,93 @@ export const GrowthProfilesPage: React.FC = () => {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* 1. Độ ẩm đất */}
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Droplets size={14} className="text-blue-600" /> Độ ẩm đất (Soil Moisture)
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      %
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.soilMoisture.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
+                {editableMetrics.map((m) => (
+                  <div
+                    key={m.parameterCode}
+                    className={`p-3.5 rounded-xl border space-y-2.5 ${
+                      m.isEnabled ? 'border-slate-200 bg-slate-50/50' : 'border-slate-200 bg-slate-100/60 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        {getMetricIcon(m.parameterCode)}
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">{m.metricName}</div>
+                          <div className="text-[10px] font-mono text-slate-400">{m.parameterCode}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                          {m.unit}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMetric(m.parameterCode)}
+                          className="text-slate-400 hover:text-rose-600 p-1"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.soilMoisture.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.soilMoisture.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, soilMoisture: { ...thresholdForm.soilMoisture, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
 
-                {/* 2. Nhiệt độ không khí */}
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Thermometer size={14} className="text-amber-600" /> Nhiệt độ không khí (Air Temp)
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      °C
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.temperature.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
+                    <div className="flex items-center justify-between">
+                      {m.hasSensorSupport ? (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          📡 Cảm biến online
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                          ⚠️ Chưa có cảm biến
+                        </span>
+                      )}
+                      <label className="flex items-center gap-1 cursor-pointer text-[10px] font-medium text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={m.isEnabled}
+                          onChange={(e) => updateMetricField(m.parameterCode, 'isEnabled', e.target.checked)}
+                          className="w-3 h-3 text-emerald-600 rounded"
+                        />
+                        <span>{m.isEnabled ? 'Áp dụng' : 'Tắt'}</span>
+                      </label>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.temperature.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.temperature.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, temperature: { ...thresholdForm.temperature, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
 
-                {/* 3. Độ ẩm không khí */}
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Droplets size={14} className="text-sky-600" /> Độ ẩm không khí (Humidity)
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      %
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.airHumidity.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.airHumidity.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.airHumidity.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, airHumidity: { ...thresholdForm.airHumidity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Min</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={m.min}
+                          onChange={(e) => updateMetricField(m.parameterCode, 'min', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          disabled={!m.isEnabled}
+                          className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center disabled:bg-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-emerald-700 block mb-0.5">Target</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={m.target}
+                          onChange={(e) => updateMetricField(m.parameterCode, 'target', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          disabled={!m.isEnabled}
+                          className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/60 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center disabled:bg-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Max</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={m.max}
+                          onChange={(e) => updateMetricField(m.parameterCode, 'max', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          disabled={!m.isEnabled}
+                          className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center disabled:bg-slate-100"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                {/* 4. Cường độ ánh sáng */}
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Sun size={14} className="text-amber-500" /> Cường độ ánh sáng (Lux)
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      lux
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                      <input
-                        type="number"
-                        step="10"
-                        value={thresholdForm.lightIntensity.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                      <input
-                        type="number"
-                        step="10"
-                        value={thresholdForm.lightIntensity.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                      <input
-                        type="number"
-                        step="10"
-                        value={thresholdForm.lightIntensity.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, lightIntensity: { ...thresholdForm.lightIntensity, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. Độ pH */}
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Sprout size={14} className="text-emerald-600" /> Độ pH đất / giá thể
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      pH
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.ph.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.ph.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.ph.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ph: { ...thresholdForm.ph, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 6. Độ dẫn điện EC */}
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Zap size={14} className="text-yellow-600" /> Độ dẫn điện EC
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      mS/cm
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối thiểu (Min)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.ec.min}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, min: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-emerald-700 block mb-1">Mục tiêu (Target)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.ec.target}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, target: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-emerald-50/50 border border-emerald-400 rounded-lg text-emerald-900 focus:outline-none focus:border-emerald-600 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Tối đa (Max)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={thresholdForm.ec.max}
-                        onChange={e => setThresholdForm({ ...thresholdForm, ec: { ...thresholdForm.ec, max: e.target.value === '' ? '' : parseFloat(e.target.value) } })}
-                        className="w-full text-xs font-semibold px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -1250,6 +1083,235 @@ export const GrowthProfilesPage: React.FC = () => {
                     Lưu dải ngưỡng vi khí hậu
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Chọn Chỉ số từ Danh mục */}
+      {isAddMetricOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-150">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Danh mục Chỉ số Môi trường</h3>
+                <p className="text-xs text-slate-500">Chọn chỉ số để bổ sung vào giai đoạn {currentStage?.name}</p>
+              </div>
+              <button
+                onClick={() => setIsAddMetricOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo tên chỉ số hoặc mã code..."
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+              />
+              <button
+                onClick={() => { setIsAddMetricOpen(false); setIsCreateMetricOpen(true); }}
+                className="px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold hover:bg-emerald-100 flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={14} /> Tạo mới
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto max-h-[50vh] space-y-2">
+              {metricCatalog
+                .filter(m =>
+                  !catalogSearch ||
+                  m.metricName.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+                  m.metricCode.toLowerCase().includes(catalogSearch.toLowerCase())
+                )
+                .map(m => {
+                  const isAlreadyAdded = editableMetrics.some(em => em.parameterCode.toUpperCase() === m.metricCode.toUpperCase());
+                  return (
+                    <div
+                      key={m.metricCode}
+                      className="p-3 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 flex items-center justify-between transition-all"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-slate-900">{m.metricName}</span>
+                          <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {m.unit}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400">
+                            ({m.metricCode})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                          <span>Mặc định: {m.defaultMin} – {m.defaultTarget} – {m.defaultMax} {m.unit}</span>
+                          {m.hasSensorSupport ? (
+                            <span className="text-emerald-700 font-medium">📡 Cảm biến IoT</span>
+                          ) : (
+                            <span className="text-amber-700 font-medium">⚠️ Chưa có cảm biến</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        disabled={isAlreadyAdded}
+                        onClick={() => handleAddMetricToStage(m)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                          isAlreadyAdded
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs'
+                        }`}
+                      >
+                        {isAlreadyAdded ? 'Đã thêm' : <><Plus size={13} /> Thêm</>}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tự Tạo Chỉ Số Mới Hoàn Toàn */}
+      {isCreateMetricOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in duration-150">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Tạo Chỉ số Môi trường Mới</h3>
+                <p className="text-xs text-slate-500">Lưu vào danh mục của trang trại và tự động thêm vào giai đoạn</p>
+              </div>
+              <button
+                onClick={() => setIsCreateMetricOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Tên chỉ số *</label>
+                  <input
+                    type="text"
+                    value={newMetricForm.metricName}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      const code = name
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-zA-Z0-9]/g, '_')
+                        .toUpperCase();
+                      setNewMetricForm(prev => ({
+                        ...prev,
+                        metricName: name,
+                        metricCode: prev.metricCode || code
+                      }));
+                    }}
+                    placeholder="VD: Nồng độ CO2, Tốc độ gió"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Mã định danh (Code/Key) *</label>
+                  <input
+                    type="text"
+                    value={newMetricForm.metricCode}
+                    onChange={(e) => setNewMetricForm(prev => ({ ...prev, metricCode: e.target.value.toUpperCase() }))}
+                    placeholder="VD: CO2, WIND_SPEED"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Đơn vị đo *</label>
+                  <input
+                    type="text"
+                    value={newMetricForm.unit}
+                    onChange={(e) => setNewMetricForm(prev => ({ ...prev, unit: e.target.value }))}
+                    placeholder="VD: ppm, m/s, lux, %"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Loại hỗ trợ phần cứng</label>
+                  <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newMetricForm.hasSensorSupport}
+                      onChange={(e) => setNewMetricForm(prev => ({ ...prev, hasSensorSupport: e.target.checked }))}
+                      className="w-4 h-4 text-emerald-600 rounded"
+                    />
+                    <span className="text-xs text-slate-700">Có cảm biến IoT vật lý</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Min mặc định</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={newMetricForm.defaultMin}
+                    onChange={(e) => setNewMetricForm(prev => ({ ...prev, defaultMin: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-center text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-emerald-700 block mb-1">Target mặc định</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={newMetricForm.defaultTarget}
+                    onChange={(e) => setNewMetricForm(prev => ({ ...prev, defaultTarget: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-emerald-50 border border-emerald-300 rounded-lg p-2 text-xs text-center text-emerald-900 focus:outline-none focus:border-emerald-600 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">Max mặc định</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={newMetricForm.defaultMax}
+                    onChange={(e) => setNewMetricForm(prev => ({ ...prev, defaultMax: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-center text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Mô tả ý nghĩa nông học (Tùy chọn)</label>
+                <textarea
+                  rows={2}
+                  value={newMetricForm.description}
+                  onChange={(e) => setNewMetricForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Mô tả ý nghĩa của chỉ số đối với cây trồng..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50">
+              <button
+                onClick={() => setIsCreateMetricOpen(false)}
+                className="px-3.5 py-1.5 border border-slate-300 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                disabled={creatingMetric}
+                onClick={handleCreateNewMetricDefinition}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {creatingMetric ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+                Tạo và áp dụng ngay
               </button>
             </div>
           </div>

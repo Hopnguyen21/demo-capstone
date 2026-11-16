@@ -631,10 +631,13 @@ export const cropService = {
           }
           return {
             parameterCode: code,
+            metricName: r.metricName || r.name || code,
+            description: r.description || undefined,
             minValue: min,
             maxValue: max,
             targetValue: target,
-            unit: r.unit || (code === 'Temperature' || code === 'SoilTemperature' ? '°C' : code === 'Ph' ? 'pH' : code === 'Ec' ? 'mS/cm' : code === 'LightIntensity' ? 'Lux' : '%')
+            unit: r.unit || (code === 'Temperature' || code === 'SoilTemperature' ? '°C' : code === 'Ph' ? 'pH' : code === 'Ec' ? 'mS/cm' : code === 'LightIntensity' ? 'Lux' : '%'),
+            isEnabled: r.isEnabled ?? true,
           };
         });
         return {
@@ -679,10 +682,13 @@ export const cropService = {
   /** PUT /api/v1/growth-stages/{stageId}/requirements — sửa dải ngưỡng vi khí hậu của giai đoạn */
   updateStageRequirements: async (stageId: string, requirements: Array<{
     parameterCode: string;
+    metricName?: string;
+    description?: string;
     minValue: number;
     maxValue: number;
     targetValue: number;
     unit: string;
+    isEnabled?: boolean;
   }>) => {
     const res = await apiClient.put(`/api/v1/growth-stages/${stageId}/requirements`, { requirements });
     return res.data;
@@ -2824,4 +2830,43 @@ export const discountService = {
     return res.data?.value ?? res.data;
   },
 };
+
+export interface EnvironmentalMetricDefinition {
+  id: string;
+  metricCode: string;
+  metricName: string;
+  unit: string;
+  description?: string;
+  defaultMin: number;
+  defaultTarget: number;
+  defaultMax: number;
+  hasSensorSupport: boolean;
+  isSystemDefined: boolean;
+  tenantId?: string | null;
+  isActive: boolean;
+}
+
+export const environmentalMetricService = {
+  getMetricDefinitions: async (): Promise<EnvironmentalMetricDefinition[]> => {
+    const res = await apiClient.get('/api/v1/environmental-metrics');
+    return res.data?.value ?? res.data ?? [];
+  },
+  createMetricDefinition: async (data: {
+    metricCode: string;
+    metricName: string;
+    unit: string;
+    description?: string;
+    defaultMin: number;
+    defaultTarget: number;
+    defaultMax: number;
+    hasSensorSupport?: boolean;
+  }): Promise<EnvironmentalMetricDefinition> => {
+    const res = await apiClient.post('/api/v1/environmental-metrics', data);
+    return res.data?.value ?? res.data;
+  },
+  deleteMetricDefinition: async (id: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/environmental-metrics/${id}`);
+  }
+};
+
 

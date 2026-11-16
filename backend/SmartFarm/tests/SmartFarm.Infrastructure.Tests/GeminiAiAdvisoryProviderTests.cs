@@ -80,7 +80,7 @@ public sealed class GeminiAiAdvisoryProviderTests
     private static AiZoneContext Context(Guid actuatorId) => new(
         Guid.NewGuid(), "Farm", "Asia/Ho_Chi_Minh", Guid.NewGuid(), "Field", Guid.NewGuid(), "Zone", 100,
         Guid.NewGuid(), "Cucumber", "F1", Guid.NewGuid(), "Profile", 10, Guid.NewGuid(), "Vegetative",
-        [new(EnvironmentalParameterCode.SoilMoisture, 55, 75, 65, "%")],
+        [new(EnvironmentalParameterCode.SoilMoisture.ToString(), 55, 75, 65, "%")],
         [new(EnvironmentalParameterCode.SoilMoisture, 40, "%", DateTime.UtcNow, true)],
         [new(actuatorId, "Pump", 1800, true)],
         [],

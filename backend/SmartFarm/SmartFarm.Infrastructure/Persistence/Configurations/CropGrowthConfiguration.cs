@@ -187,11 +187,14 @@ internal sealed class EnvironmentalRequirementConfiguration : IEntityTypeConfigu
             "ck_environmental_requirement_range", "min_value <= target_value AND target_value <= max_value"));
         builder.HasKey(x => new { x.GrowthStageId, x.ParameterCode });
         builder.Property(x => x.GrowthStageId).HasColumnName("growth_stage_id");
-        builder.Property(x => x.ParameterCode).HasColumnName("parameter_code").HasConversion<string>().HasMaxLength(30);
+        builder.Property(x => x.ParameterCode).HasColumnName("parameter_code").HasMaxLength(50);
+        builder.Property(x => x.MetricName).HasColumnName("metric_name").HasMaxLength(150);
+        builder.Property(x => x.Description).HasColumnName("description").HasMaxLength(500);
         builder.Property(x => x.MinValue).HasColumnName("min_value").HasPrecision(12, 3);
         builder.Property(x => x.MaxValue).HasColumnName("max_value").HasPrecision(12, 3);
         builder.Property(x => x.TargetValue).HasColumnName("target_value").HasPrecision(12, 3);
         builder.Property(x => x.Unit).HasColumnName("unit").HasMaxLength(30).IsRequired();
+        builder.Property(x => x.IsEnabled).HasColumnName("is_enabled");
         builder.HasOne(x => x.GrowthStage).WithMany(x => x.Requirements).HasForeignKey(x => x.GrowthStageId).OnDelete(DeleteBehavior.Cascade);
         builder.HasData(DefaultRequirements(CropGrowthSeed.SeedlingStageId, 20, 28, 24, 65, 80, 72, 60, 75, 70, 5.5m, 6.5m, 6)
             .Concat(DefaultRequirements(CropGrowthSeed.VegetativeStageId, 21, 30, 25, 60, 78, 70, 55, 75, 65, 5.5m, 6.8m, 6.2m)).ToArray());
@@ -203,14 +206,51 @@ internal sealed class EnvironmentalRequirementConfiguration : IEntityTypeConfigu
         decimal airMin, decimal airMax, decimal airTarget,
         decimal phMin, decimal phMax, decimal phTarget) =>
     [
-        Row(stageId, EnvironmentalParameterCode.Temperature, tempMin, tempMax, tempTarget, "C"),
-        Row(stageId, EnvironmentalParameterCode.SoilMoisture, soilMin, soilMax, soilTarget, "%"),
-        Row(stageId, EnvironmentalParameterCode.AirHumidity, airMin, airMax, airTarget, "%"),
-        Row(stageId, EnvironmentalParameterCode.Ph, phMin, phMax, phTarget, "pH")
+        Row(stageId, "Temperature", "Nhiệt độ không khí", tempMin, tempMax, tempTarget, "°C"),
+        Row(stageId, "SoilMoisture", "Độ ẩm đất", soilMin, soilMax, soilTarget, "%"),
+        Row(stageId, "AirHumidity", "Độ ẩm không khí", airMin, airMax, airTarget, "%"),
+        Row(stageId, "Ph", "Độ pH đất", phMin, phMax, phTarget, "pH")
     ];
 
-    private static object Row(Guid stageId, EnvironmentalParameterCode code, decimal min, decimal max, decimal target, string unit) =>
-        new { GrowthStageId = stageId, ParameterCode = code, MinValue = min, MaxValue = max, TargetValue = target, Unit = unit };
+    private static object Row(Guid stageId, string code, string name, decimal min, decimal max, decimal target, string unit) =>
+        new { GrowthStageId = stageId, ParameterCode = code, MetricName = name, MinValue = min, MaxValue = max, TargetValue = target, Unit = unit, IsEnabled = true };
+}
+
+internal sealed class EnvironmentalMetricDefinitionConfiguration : IEntityTypeConfiguration<EnvironmentalMetricDefinition>
+{
+    public void Configure(EntityTypeBuilder<EnvironmentalMetricDefinition> builder)
+    {
+        builder.ToTable("environmental_metric_definitions");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id).HasColumnName("id");
+        builder.Property(x => x.MetricCode).HasColumnName("metric_code").HasMaxLength(50).IsRequired();
+        builder.Property(x => x.MetricName).HasColumnName("metric_name").HasMaxLength(150).IsRequired();
+        builder.Property(x => x.Unit).HasColumnName("unit").HasMaxLength(30).IsRequired();
+        builder.Property(x => x.Description).HasColumnName("description").HasMaxLength(500);
+        builder.Property(x => x.DefaultMin).HasColumnName("default_min").HasPrecision(12, 3);
+        builder.Property(x => x.DefaultTarget).HasColumnName("default_target").HasPrecision(12, 3);
+        builder.Property(x => x.DefaultMax).HasColumnName("default_max").HasPrecision(12, 3);
+        builder.Property(x => x.HasSensorSupport).HasColumnName("has_sensor_support");
+        builder.Property(x => x.IsSystemDefined).HasColumnName("is_system_defined");
+        builder.Property(x => x.TenantId).HasColumnName("tenant_id");
+        builder.Property(x => x.IsActive).HasColumnName("is_active");
+        builder.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
+        builder.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc");
+
+        builder.HasIndex(x => new { x.TenantId, x.MetricCode }).IsUnique();
+        builder.HasData(
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111001"), MetricCode = "SoilMoisture", MetricName = "Độ ẩm đất", Unit = "%", Description = "Độ ẩm đất đo bằng cảm biến điện dung", DefaultMin = 60, DefaultTarget = 70, DefaultMax = 75, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111002"), MetricCode = "Temperature", MetricName = "Nhiệt độ không khí", Unit = "°C", Description = "Nhiệt độ môi trường không khí nhà màng", DefaultMin = 20, DefaultTarget = 24, DefaultMax = 28, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111003"), MetricCode = "AirHumidity", MetricName = "Độ ẩm không khí", Unit = "%", Description = "Độ ẩm tương đối của không khí", DefaultMin = 60, DefaultTarget = 70, DefaultMax = 80, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111004"), MetricCode = "LightIntensity", MetricName = "Cường độ ánh sáng", Unit = "Lux", Description = "Cường độ ánh sáng quang hợp", DefaultMin = 1000, DefaultTarget = 3000, DefaultMax = 5000, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111005"), MetricCode = "Ph", MetricName = "Độ pH đất / dung dịch", Unit = "pH", Description = "Độ chua pH của đất hoặc dung dịch tưới", DefaultMin = 5.5m, DefaultTarget = 6.0m, DefaultMax = 6.5m, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111006"), MetricCode = "Ec", MetricName = "Độ dẫn điện EC", Unit = "mS/cm", Description = "Nồng độ dinh dưỡng và muối khoáng hòa tan", DefaultMin = 1.2m, DefaultTarget = 1.8m, DefaultMax = 2.5m, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111007"), MetricCode = "SoilTemperature", MetricName = "Nhiệt độ đất", Unit = "°C", Description = "Nhiệt độ vùng rễ cây", DefaultMin = 18, DefaultTarget = 22, DefaultMax = 26, HasSensorSupport = true, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111008"), MetricCode = "CO2", MetricName = "Nồng độ CO2", Unit = "ppm", Description = "Nồng độ khí Carbon Dioxide trong nhà màng", DefaultMin = 400, DefaultTarget = 800, DefaultMax = 1200, HasSensorSupport = false, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111009"), MetricCode = "WIND_SPEED", MetricName = "Tốc độ gió", Unit = "m/s", Description = "Tốc độ gió lưu thông trong nhà màng", DefaultMin = 0, DefaultTarget = 2, DefaultMax = 5, HasSensorSupport = false, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt },
+            new EnvironmentalMetricDefinition { Id = Guid.Parse("11111111-1111-1111-1111-111111111010"), MetricCode = "WATER_FLOW", MetricName = "Lưu lượng nước tưới", Unit = "L/h", Description = "Lưu lượng dòng chảy hệ thống tưới nhỏ giọt", DefaultMin = 10, DefaultTarget = 50, DefaultMax = 100, HasSensorSupport = false, IsSystemDefined = true, IsActive = true, CreatedAtUtc = CropGrowthSeed.SeededAt }
+        );
+    }
 }
 
 internal sealed class PlantingSeasonConfiguration : IEntityTypeConfiguration<PlantingSeason>
@@ -255,11 +295,14 @@ internal sealed class SeasonAppliedRequirementConfiguration : IEntityTypeConfigu
             "ck_season_applied_requirement_range", "min_value <= target_value AND target_value <= max_value"));
         builder.HasKey(x => new { x.PlantingSeasonId, x.ParameterCode });
         builder.Property(x => x.PlantingSeasonId).HasColumnName("planting_season_id");
-        builder.Property(x => x.ParameterCode).HasColumnName("parameter_code").HasConversion<string>().HasMaxLength(30);
+        builder.Property(x => x.ParameterCode).HasColumnName("parameter_code").HasMaxLength(50);
+        builder.Property(x => x.MetricName).HasColumnName("metric_name").HasMaxLength(150);
+        builder.Property(x => x.Description).HasColumnName("description").HasMaxLength(500);
         builder.Property(x => x.MinValue).HasColumnName("min_value").HasPrecision(12, 3);
         builder.Property(x => x.MaxValue).HasColumnName("max_value").HasPrecision(12, 3);
         builder.Property(x => x.TargetValue).HasColumnName("target_value").HasPrecision(12, 3);
         builder.Property(x => x.Unit).HasColumnName("unit").HasMaxLength(30).IsRequired();
+        builder.Property(x => x.IsEnabled).HasColumnName("is_enabled");
         builder.HasOne(x => x.PlantingSeason).WithMany(x => x.AppliedRequirements).HasForeignKey(x => x.PlantingSeasonId).OnDelete(DeleteBehavior.Cascade);
     }
 }

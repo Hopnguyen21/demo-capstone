@@ -397,7 +397,7 @@ public class LocationAndDataPrivacyTests
             SeasonAgeDays: 20,
             GrowthStageId: Guid.NewGuid(),
             GrowthStageName: "Cây con & Bén rễ",
-            Requirements: [new AiRequirementContextItem(EnvironmentalParameterCode.SoilMoisture, 60, 80, 70, "%")],
+            Requirements: [new AiRequirementContextItem(EnvironmentalParameterCode.SoilMoisture.ToString(), 60, 80, 70, "%")],
             Telemetry: [new AiTelemetryContextItem(EnvironmentalParameterCode.SoilMoisture, 65, "%", now, true)],
             Actuators: [new AiActuatorContextItem(Guid.NewGuid(), "IrrigationPump", 600, true)],
             UpcomingSchedules: [new AiUpcomingScheduleContextItem("Lịch tưới chiều", now.AddHours(2), "16:00", 600, 120)],
@@ -446,9 +446,9 @@ public class LocationAndDataPrivacyTests
             GrowthStageId: null,
             GrowthStageName: null,
             Requirements: [
-                new AiRequirementContextItem(EnvironmentalParameterCode.Temperature, 18, 30, 24, "°C"),
-                new AiRequirementContextItem(EnvironmentalParameterCode.SoilMoisture, 60, 80, 70, "%"),
-                new AiRequirementContextItem(EnvironmentalParameterCode.Ph, 6.0m, 7.0m, 6.5m, "pH")
+                new AiRequirementContextItem(EnvironmentalParameterCode.Temperature.ToString(), 18, 30, 24, "°C"),
+                new AiRequirementContextItem(EnvironmentalParameterCode.SoilMoisture.ToString(), 60, 80, 70, "%"),
+                new AiRequirementContextItem(EnvironmentalParameterCode.Ph.ToString(), 6.0m, 7.0m, 6.5m, "pH")
             ],
             Telemetry: [
                 new AiTelemetryContextItem(EnvironmentalParameterCode.Temperature, 25.5m, "°C", now, true),
@@ -494,10 +494,10 @@ public class LocationAndDataPrivacyTests
             GrowthStageId: Guid.NewGuid(),
             GrowthStageName: "Cây con & Bén rễ",
             Requirements: [
-                new AiRequirementContextItem(EnvironmentalParameterCode.Temperature, 18, 32, 25, "°C"),
-                new AiRequirementContextItem(EnvironmentalParameterCode.AirHumidity, 60, 85, 70, "%"),
-                new AiRequirementContextItem(EnvironmentalParameterCode.Ph, 6.0m, 6.8m, 6.5m, "pH"),
-                new AiRequirementContextItem(EnvironmentalParameterCode.SoilMoisture, 60, 80, 70, "%")
+                new AiRequirementContextItem(EnvironmentalParameterCode.Temperature.ToString(), 18, 32, 25, "°C"),
+                new AiRequirementContextItem(EnvironmentalParameterCode.AirHumidity.ToString(), 60, 85, 70, "%"),
+                new AiRequirementContextItem(EnvironmentalParameterCode.Ph.ToString(), 6.0m, 6.8m, 6.5m, "pH"),
+                new AiRequirementContextItem(EnvironmentalParameterCode.SoilMoisture.ToString(), 60, 80, 70, "%")
             ],
             Telemetry: [
                 new AiTelemetryContextItem(EnvironmentalParameterCode.Temperature, 26, "°C", now, true),

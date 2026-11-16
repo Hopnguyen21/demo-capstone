@@ -153,6 +153,7 @@ export const router = createBrowserRouter([
       { path: '/owner/farms/create', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><CreateFarmWizard /></RequireRole> },
       { path: '/owner/fields', element: <Navigate to="/owner/farms" replace /> },
       { path: '/owner/zones', element: <Navigate to="/owner/farms" replace /> },
+      { path: '/owner/growth-profiles', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><GrowthProfilesPage /></RequireRole> },
       { path: '/owner/planting-seasons', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><PlantingSeasonsPage /></RequireRole> },
       { path: '/owner/monitoring/realtime', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><MonitoringRealtime /></RequireRole> },
       { path: '/owner/monitoring/history', element: <RequireRole allowedRoles={['FARM_OWNER', 'PLATFORM_ADMIN']}><MonitoringHistory /></RequireRole> },

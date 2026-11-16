@@ -424,7 +424,7 @@ public sealed class AiAdvisoryService(
                     goto Persist;
                 }
 
-                var hasProfileSoilMoistureRequirement = context.Requirements.Any(x => x.ParameterCode == EnvironmentalParameterCode.SoilMoisture);
+                var hasProfileSoilMoistureRequirement = context.Requirements.Any(x => string.Equals(x.ParameterCode, "SoilMoisture", StringComparison.OrdinalIgnoreCase));
                 if (intent.Has(QuestionTopics.IrrigationOrControl) && passages is { Count: 0 } && !hasProfileSoilMoistureRequirement)
                 {
                     recommendation = CreateLimited(request, context, AiRecommendationStatus.InsufficientData,
@@ -1014,7 +1014,7 @@ public sealed class AiAdvisoryService(
         };
         if (match is not { Success: true } ||
             !decimal.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)) return null;
-        var req = context.Requirements.FirstOrDefault(r => r.ParameterCode == code);
+        var req = context.Requirements.FirstOrDefault(r => string.Equals(r.ParameterCode, code.ToString(), StringComparison.OrdinalIgnoreCase));
         if (req is null) return null;
         var unit = req.Unit;
         var verdict = value > req.MaxValue ? $"CAO HƠN mức tối đa {Num(req.MaxValue)} {unit} (vượt {Num(value - req.MaxValue)} {unit})"
@@ -1034,7 +1034,7 @@ public sealed class AiAdvisoryService(
     private static string? ConfiguredThresholdList(QuestionIntent intent, AiZoneContext context)
     {
         if (intent.Parameters.Count == 0) return null;
-        var lines = context.Requirements.Where(r => intent.Parameters.Contains(r.ParameterCode)).OrderBy(r => r.ParameterCode)
+        var lines = context.Requirements.Where(r => intent.Parameters.Any(p => string.Equals(r.ParameterCode, p.ToString(), StringComparison.OrdinalIgnoreCase))).OrderBy(r => r.ParameterCode)
             .Select(r => $"• {ParameterLabel(r.ParameterCode)}: {Num(r.MinValue)}–{Num(r.MaxValue)} {r.Unit} (mục tiêu {Num(r.TargetValue)} {r.Unit})").ToList();
         if (lines.Count == 0) return null;
         var stage = string.IsNullOrWhiteSpace(context.GrowthStageName) ? "giai đoạn hiện tại" : $"giai đoạn {context.GrowthStageName}";
@@ -1742,7 +1742,7 @@ public sealed class AiAdvisoryService(
         var measured = current is null ? string.Empty : $" Nhiệt độ đo tại Zone: {current.Value.ToString("0.#", CultureInfo.InvariantCulture)} {current.Unit}.";
 
         // Mức độ phù hợp chỉ đánh giá được theo ngưỡng nhiệt độ của giai đoạn hiện tại (hồ sơ sinh trưởng), không theo cảm nhận.
-        var requirement = context.Requirements.FirstOrDefault(x => x.ParameterCode == EnvironmentalParameterCode.Temperature);
+        var requirement = context.Requirements.FirstOrDefault(x => string.Equals(x.ParameterCode, "Temperature", StringComparison.OrdinalIgnoreCase));
         if (requirement is null || w.TemperatureCelsius is null)
             return new ZoneDataAnswer(AiRecommendationStatus.InsufficientData, "Chưa đủ căn cứ để đánh giá mức độ phù hợp của thời tiết",
                 $"{forecast}{measured} Chưa thể đánh giá thời tiết có phù hợp với cây hay không vì Zone chưa có ngưỡng nhiệt độ của giai đoạn sinh trưởng hiện tại" +
@@ -1762,6 +1762,9 @@ public sealed class AiAdvisoryService(
             $"{forecast}{measured} {verdict}{rainNote}",
             ["Chỉ đánh giá theo ngưỡng nhiệt độ của hồ sơ sinh trưởng; các yếu tố khác (độ ẩm, gió, ánh sáng) chưa được đánh giá.", "Dự báo chỉ gồm nhiệt độ và xác suất mưa trong vài giờ tới; chưa có dự báo nhiều ngày."]);
     }
+
+    private static string ParameterLabel(string code) =>
+        Enum.TryParse<EnvironmentalParameterCode>(code, true, out var p) ? ParameterLabel(p) : code;
 
     private static string ParameterLabel(EnvironmentalParameterCode parameterCode) => parameterCode switch
     {
@@ -1932,7 +1935,7 @@ public sealed class AiAdvisoryService(
         var requirement = await db.EnvironmentalRequirements.AsNoTracking()
             .Where(x => x.GrowthStageId == activeSeason.CurrentGrowthStageId &&
                         x.GrowthStage.GrowthProfileId == activeSeason.GrowthProfileId &&
-                        x.ParameterCode == EnvironmentalParameterCode.SoilMoisture)
+                        x.ParameterCode == "SoilMoisture")
             .Select(x => new { x.MinValue, x.MaxValue, x.TargetValue, x.Unit })
             .SingleOrDefaultAsync(cancellationToken);
 
