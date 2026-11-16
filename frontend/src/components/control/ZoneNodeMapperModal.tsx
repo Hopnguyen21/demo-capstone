@@ -627,7 +627,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           mac: d.hardwareAddress || d.macAddress || '',
           hardwareItemId: d.hardwareItemId || d.hardwareItem?.id,
         } as UnassignedDevice));
-        const visibleRealUnassigned = configuredGatewayHardwareAddresses === null
+        const visibleRealUnassigned = (!configuredGatewayHardwareAddresses || configuredGatewayHardwareAddresses.length === 0)
           ? realUnassigned
           : realUnassigned.filter(d => configuredGatewayHardwareAddresses.includes(String(d.mac).toUpperCase()));
 
@@ -724,10 +724,15 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         }
 
         // INTELLIGENT UNASSIGNED LIST:
-        // If loadedNodes already has 8 nodes (matching expanded), 0 remain to be pinned!
+        // Use real provisioned nodes if available; otherwise fallback to contract devices (expanded)
+        // so the technician can always place the contract nodes on the GIS map even before gateway pairing.
         const mappedIds = new Set(loadedNodes.map(node => node.nodeId));
         const mappedHardware = new Set(loadedNodes.map(node => String(node.serialNumber || '').toUpperCase()));
-        const waitingRealNodes = Array.from(new Map(visibleRealUnassigned
+        const sourceDevices = (visibleRealUnassigned.length > 0 || realUnassigned.length > 0)
+          ? (visibleRealUnassigned.length > 0 ? visibleRealUnassigned : realUnassigned)
+          : expanded;
+
+        const waitingRealNodes = Array.from(new Map(sourceDevices
           .filter(d => !mappedIds.has(d.deviceId) && !mappedHardware.has(String(d.mac || '').toUpperCase()))
           .map(device => [String(device.deviceId || device.mac || device.code).toUpperCase(), device]))
           .values());
@@ -812,10 +817,14 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       if (initialGatewayId) {
         const persisted = await deviceService.getGatewayFirmwareConfig(initialGatewayId).catch(() => null);
         const persistedNodes = Array.isArray(persisted?.nodes) ? persisted.nodes : [];
-        setConfiguredGatewayHardwareAddresses(persistedNodes.map((node: any) => String(node.hardwareAddress || '').toUpperCase()).filter(Boolean));
+        if (persistedNodes.length > 0) {
+          setConfiguredGatewayHardwareAddresses(persistedNodes.map((node: any) => String(node.hardwareAddress || '').toUpperCase()).filter(Boolean));
+        } else {
+          setConfiguredGatewayHardwareAddresses(null);
+        }
         setGisReloadToken(previous => previous + 1);
       } else {
-        setConfiguredGatewayHardwareAddresses([]);
+        setConfiguredGatewayHardwareAddresses(null);
         setGisReloadToken(previous => previous + 1);
       }
       // Keep the selected Gateway after GIS data is reloaded. Previously the
