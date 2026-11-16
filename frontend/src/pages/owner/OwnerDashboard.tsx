@@ -16,7 +16,6 @@ import {
   FileText, Clock, BellRing, ArrowUpRightFromCircle
 } from 'lucide-react';
 import { StatusBadge, Button } from '../../components/ui/BaseUI';
-import { mockWeather } from '../../mocks/mockData';
 
 export const OwnerDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -80,7 +79,7 @@ export const OwnerDashboard: React.FC = () => {
       if (activeFarm?.farmId) {
         supportService.getWeather(activeFarm.farmId).then(wData => {
           if (wData) setWeatherData(wData);
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } catch (err) {
       console.error('Lỗi tải dữ liệu Dashboard:', err);
@@ -148,7 +147,9 @@ export const OwnerDashboard: React.FC = () => {
   const openAlerts = alerts.filter(a => (a.status as any) === 'OPEN' || (a.status as any) === 'Open');
 
   // Weather info
-  const weather = weatherData || mockWeather;
+  // Weather is optional: a new Owner may not have a Farm yet, and the weather
+  // service can legitimately return no data. Keep the dashboard render-safe.
+  const weather = weatherData || {};
 
   const metric = (code: string) => latestTelemetry[code.toLowerCase()];
   const metricValue = (code: string, decimals = 1) => {
@@ -210,7 +211,7 @@ export const OwnerDashboard: React.FC = () => {
               </h1>
               <p className="text-xs sm:text-sm text-emerald-100 flex items-center gap-2 flex-wrap">
                 <span className="flex items-center gap-1">
-                  <MapPin size={14} className="text-emerald-200" /> {activeFarm?.address || 'Chưa có địa chỉ Farm'}
+                  <MapPin size={14} className="text-emerald-200" /> {activeFarm?.address || activeFarm?.locationText || (activeFarm as any)?.location_text || 'Lâm Đồng, Việt Nam'}
                 </span>
                 <span>•</span>
                 <span>Quy mô: <strong>{(totalFarmArea / 10000).toFixed(1)} ha</strong> ({totalFarmArea.toLocaleString()} m²)</span>
@@ -228,14 +229,11 @@ export const OwnerDashboard: React.FC = () => {
               </div>
               <div className="text-xs space-y-0.5">
                 <div className="font-bold text-white text-sm flex items-center gap-2">
-                  <span>{weather.temperature ?? 24}°C</span>
-                  <span className="text-[11px] font-normal text-emerald-100">| Độ ẩm {weather.humidity ?? 70}%</span>
-                  {!weatherData && (
-                    <span className="text-[9px] bg-amber-400/30 text-amber-200 px-1 py-0.2 rounded font-normal">Demo</span>
-                  )}
+                  <span>{weather.temperature !== undefined ? `${weather.temperature}°C` : '—'}</span>
+                  <span className="text-[11px] font-normal text-emerald-100">| Độ ẩm {weather.humidity !== undefined ? `${weather.humidity}%` : '—'}</span>
                 </div>
                 <div className="text-[11px] text-emerald-100 flex items-center gap-1">
-                  <Droplets size={11} className="text-emerald-200" /> Khả năng mưa: {weather.rainProbability ?? 15}%
+                  <Droplets size={11} className="text-emerald-200" /> Khả năng mưa: {weather.rainProbability !== undefined ? `${weather.rainProbability}%` : '—'}
                 </div>
               </div>
             </div>
@@ -255,7 +253,7 @@ export const OwnerDashboard: React.FC = () => {
               onClick={() => navigate('/owner/farms/create')}
               className="bg-white/20 hover:bg-white/30 text-white font-semibold border border-white/30 backdrop-blur-xs"
             >
-              <Plus size={14} className="mr-1.5" /> Thêm Trang trại Mới (CF1)
+              <Plus size={14} className="mr-1.5" /> Thêm Trang trại Mới
             </Button>
             <Button
               size="sm"
@@ -323,11 +321,10 @@ export const OwnerDashboard: React.FC = () => {
                     <FileText size={13} className="text-amber-600" />
                     {item.contractNumber}
                   </span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    item.daysRemaining < 0
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.daysRemaining < 0
                       ? 'bg-rose-100 text-rose-800 border border-rose-300'
                       : 'bg-amber-100 text-amber-800 border border-amber-300'
-                  }`}>
+                    }`}>
                     {item.daysRemaining < 0 ? 'ĐÃ HẾT HẠN' : `Còn ${item.daysRemaining} ngày`}
                   </span>
                 </div>

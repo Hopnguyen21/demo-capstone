@@ -2,18 +2,16 @@
 // Replaces all mock data imports from ./mocks/mockData
 
 import { apiClient, setTokens, clearTokens, extractApiError } from './api';
-import { getCachedBusinessParameters, formatPercent, contractDepositPercent } from './businessParameters';
-import type {
-  ServiceRequest,
-  FarmingSeason,
-  PlantingSeason,
-  CropVariety,
-  AgricultureDocumentSummary,
-  AgricultureDocumentDetail,
+import type { 
+  FarmingSeason, 
+  PlantingSeason, 
+  CropVariety, 
+  AgricultureDocumentSummary, 
+  AgricultureDocumentDetail, 
   DocumentVersionView,
   DocumentPreviewResult,
-  DocumentUpdateResult,
-  KnowledgePassage
+  DocumentUpdateResult, 
+  KnowledgePassage 
 } from '../types';
 
 // ─── Re-export api utilities ─────────────────────────────────────────────────
@@ -75,18 +73,8 @@ export const authService = {
     setTokens(data.accessToken, data.refreshToken);
     return data.accessToken;
   },
-
-  /** POST /api/v1/auth/forgot-password */
-  forgotPassword: async (email: string) => {
-    const res = await apiClient.post('/api/v1/auth/forgot-password', { email });
-    return res.data as { message: string; demoOtp?: string; expiresAtUtc: string };
-  },
-
-  /** POST /api/v1/auth/reset-password */
-  resetPassword: async (payload: { email: string; otp: string; newPassword: string }) => {
-    const res = await apiClient.post('/api/v1/auth/reset-password', payload);
-    return res.data as { message: string };
-  },
+  forgotPassword: async (email: string) => (await apiClient.post('/api/v1/auth/forgot-password', { email })).data,
+  resetPassword: async (payload: { email: string; otp: string; newPassword: string }) => (await apiClient.post('/api/v1/auth/reset-password', payload)).data,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -112,17 +100,15 @@ export const farmInvitationService = {
 };
 
 export const userService = {
-  /** PUT /api/v1/users/me */
-  updateProfile: async (data: { fullName: string; phone?: string | null }) => {
-    const res = await apiClient.put('/api/v1/users/me', data);
-    return res.data;
-  },
-
-
-
   /** GET /api/v1/users/me */
   getMe: async () => {
     const res = await apiClient.get('/api/v1/users/me');
+    return res.data;
+  },
+
+  /** PUT /api/v1/users/me */
+  updateProfile: async (data: { fullName: string; phone?: string | null }) => {
+    const res = await apiClient.put('/api/v1/users/me', data);
     return res.data;
   },
 
@@ -180,27 +166,9 @@ export const userService = {
       });
   },
 
-  /** PUT /api/v1/users/me/password & POST /api/v1/users/me/change-password */
-  changePassword: async (
-    currentPasswordOrData: string | { currentPassword: string; newPassword: string; confirmPassword?: string },
-    newPassword?: string,
-    confirmPassword?: string
-  ) => {
-    let payload;
-    if (typeof currentPasswordOrData === 'object') {
-      payload = {
-        currentPassword: currentPasswordOrData.currentPassword,
-        newPassword: currentPasswordOrData.newPassword,
-        confirmPassword: currentPasswordOrData.confirmPassword || currentPasswordOrData.newPassword,
-      };
-    } else {
-      payload = {
-        currentPassword: currentPasswordOrData,
-        newPassword: newPassword || '',
-        confirmPassword: confirmPassword || newPassword || '',
-      };
-    }
-    const res = await apiClient.put('/api/v1/users/me/password', payload);
+  /** PUT /api/v1/users/me/password */
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const res = await apiClient.put('/api/v1/users/me/password', { currentPassword, newPassword });
     return res.data;
   },
 
@@ -274,18 +242,10 @@ export const tenantService = {
     return res.data;
   },
 
-  /** Alias: createTenant (Admin creates tenant via /api/v1/tenants; fallback /register) */
+  /** Alias: createTenant */
   createTenant: async (data: any) => {
-    try {
-      const res = await apiClient.post('/api/v1/tenants', data);
-      return res.data;
-    } catch (e: any) {
-      if (e?.response?.status === 404 || e?.response?.status === 405) {
-        const fallback = await apiClient.post('/api/v1/tenants/register', data);
-        return fallback.data;
-      }
-      throw e;
-    }
+    const res = await apiClient.post('/api/v1/tenants/register', data);
+    return res.data;
   },
 };
 
@@ -322,8 +282,25 @@ export const adminService = {
     const res = await apiClient.post(`/api/v1/platform/hardware-items/${id}/assign`, { technicianUserId, quantity });
     return res.data;
   },
+  requestHardwareAllocation: async (items: { hardwareItemId: string; quantity: number }[]) => {
+    const res = await apiClient.post('/api/v1/platform/technicians/me/hardware-requests', items);
+    return res.data;
+  },
+  getHardwareAllocationRequests: async () => {
+    const res = await apiClient.get('/api/v1/platform/hardware-requests');
+    return res.data?.value ?? res.data ?? [];
+  },
+  approveHardwareAllocationRequest: async (id: string) => {
+    const res = await apiClient.post(`/api/v1/platform/hardware-requests/${id}/approve`);
+    return res.data;
+  },
+  rejectHardwareAllocationRequest: async (id: string, reason: string) => (await apiClient.post(`/api/v1/platform/hardware-requests/${id}/reject`, { reason })).data,
   returnHardwareItem: async (id: string) => {
     const res = await apiClient.post(`/api/v1/platform/hardware-items/${id}/return`);
+    return res.data;
+  },
+  reportHardwareFault: async (id: string) => {
+    const res = await apiClient.post(`/api/v1/platform/hardware-items/${id}/report-fault`);
     return res.data;
   },
   deleteHardwareItem: async (id: string) => {
@@ -413,12 +390,6 @@ export const fieldService = {
       if (data && typeof data === 'object' && 'fieldId' in data) return [data];
       return [];
     } catch {
-      if (!farmId) {
-        try {
-          const res = await apiClient.get('/api/v1/farms/30000000-0000-0000-0000-000000000001/fields');
-          return Array.isArray(res.data) ? res.data : (res.data?.value ?? []);
-        } catch { return []; }
-      }
       return [];
     }
   },
@@ -844,7 +815,8 @@ export const farmingSeasonService = {
 export const deviceService = {
   /** GET /api/v1/farms/{farmId}/gateways */
   getGateways: async (farmId?: string) => {
-    const target = farmId || '30000000-0000-0000-0000-000000000001';
+    if (!farmId) return [];
+    const target = farmId;
     const res = await apiClient.get(`/api/v1/farms/${target}/gateways`);
     return res.data?.value ?? res.data ?? [];
   },
@@ -854,12 +826,15 @@ export const deviceService = {
     const res = await apiClient.get(`/api/v1/gateways/${gatewayId}`);
     return res.data;
   },
+  scheduleGatewayFirmware: async (gatewayId: string, firmwareReleaseId: string) =>
+    (await apiClient.put(`/api/v1/gateways/${gatewayId}/firmware`, { firmwareReleaseId, scheduledAtUtc: new Date().toISOString() })).data,
+  getLatestGatewayFirmwareJob: async (gatewayId: string) => {
+    const res = await apiClient.get(`/api/v1/gateways/${gatewayId}/firmware-job`);
+    return res.status === 204 ? null : res.data;
+  },
+  retryGatewayFirmware: async (gatewayId: string) => (await apiClient.post(`/api/v1/gateways/${gatewayId}/firmware/retry`)).data,
   getGatewayMqttStatus: async (gatewayId: string) => {
     const res = await apiClient.get(`/api/v1/gateways/${gatewayId}/mqtt-status`);
-    return res.data;
-  },
-  simulateGatewayConnection: async (gatewayId: string) => {
-    const res = await apiClient.post(`/api/v1/gateways/${gatewayId}/simulate-connection`);
     return res.data;
   },
   getGatewayFirmwareConfig: async (gatewayId: string) => {
@@ -867,32 +842,73 @@ export const deviceService = {
     return res.data;
   },
 
-  configureGateway: async (gatewayId: string, body: { nodeIds: string[]; telemetryIntervalSec: number; samplesPerInterval: number; installationLocation?: string }) => {
+  configureGateway: async (gatewayId: string, body: { nodeIds: string[]; telemetryIntervalSec: number; samplesPerInterval: number; installationLocation?: string; pollingIntervalSeconds?: number; heartbeatIntervalSeconds?: number; responseTimeoutMs?: number; retryCount?: number }) => {
     const res = await apiClient.put(`/api/v1/gateways/${gatewayId}/configuration`, body);
     return res.data;
   },
 
-  provisionGateway: async (body: { deploymentRequestId: string; farmId: string; macAddress: string; gatewaySerial: string; frequencyBand: string; firmwareVersion: string; mqttClientId: string; clientCertificateFingerprint: string }) => {
-    const res = await apiClient.post('/api/v1/gateways', body);
-    return res.data;
-  },
-  provisionNodes: async (body: { deploymentRequestId: string; gatewayId: string; farmId: string; nodes: { hardwareAddress: string; deviceType: 'SensorNode' | 'ActuatorNode' }[] }) => {
-    const res = await apiClient.post('/api/v1/devices/provision', body);
+  ackGatewayConfiguration: async (gatewayId: string, configVersion: number) => {
+    const res = await apiClient.post(`/api/v1/gateways/${gatewayId}/ack-configuration?configVersion=${configVersion}`);
     return res.data;
   },
 
+  getGatewayNodeRegistry: async (gatewayId: string) => {
+    const res = await apiClient.get(`/api/v1/gateways/${gatewayId}/node-registry`);
+    return res.data;
+  },
+
+  provisionNodes: async (body: { deploymentRequestId: string; gatewayId: string; farmId: string; nodes: { hardwareAddress: string; deviceType: 'SensorNode' | 'ActuatorNode'; hardwareItemId?: string }[] }) => {
+    const res = await apiClient.post('/api/v1/devices/provision', body);
+    return res.data;
+  },
+  listHardwarePreparations: async () => {
+    const res = await apiClient.get('/api/v1/technician/hardware-preparations');
+    return res.data?.value ?? res.data ?? [];
+  },
+  startHardwarePreparation: async (hardwareItemId: string) => {
+    const res = await apiClient.post(`/api/v1/technician/hardware-preparations/${hardwareItemId}/start`);
+    return res.data;
+  },
+  advanceHardwarePreparation: async (preparationId: string, body: { status: string; nodeId?: string; loRaAddress?: number; boardProfile?: string; notes?: string }) => {
+    const res = await apiClient.post(`/api/v1/technician/hardware-preparations/${preparationId}/status`, body);
+    return res.data;
+  },
+  recordHardwareConnectivityCheck: async (preparationId: string, body: { passed: boolean; evidence: string }) => (await apiClient.post(`/api/v1/technician/hardware-preparations/${preparationId}/connectivity-check`, body)).data,
+  recordFirmwareInstallation: async (preparationId: string, body: { firmwareReleaseId: string; uploadMethod: 'Ota' | 'UsbManual'; result: 'Started' | 'Succeeded' | 'Failed'; boardProfile?: string; bootloaderProfile?: string; errorMessage?: string; notes?: string }) => {
+    const res = await apiClient.post(`/api/v1/technician/hardware-preparations/${preparationId}/firmware`, body);
+    return res.data;
+  },
+  listFirmwareInstallations: async (preparationId: string) => {
+    const res = await apiClient.get(`/api/v1/technician/hardware-preparations/${preparationId}/firmware`);
+    return res.data?.value ?? res.data ?? [];
+  },
+  listApprovedFirmwareReleases: async (): Promise<FirmwareReleaseView[]> => (await apiClient.get('/api/v1/technician/firmware/releases')).data,
+  enrollGateway: async (body: { hardwareItemId: string; macAddress: string; chipId: string; gatewaySerial: string; bootstrapToken: string; bootstrapFirmwareVersion: string }) => {
+    const res = await apiClient.post('/api/v1/gateway-enrollment', body); return res.data;
+  },
+  autoEnrollGateway: async (body: { macAddress: string; chipId: string; gatewaySerial?: string; bootstrapFirmwareVersion: string }) => (await apiClient.post('/api/v1/gateway-enrollment/auto', body)).data,
+  getGatewayEnrollment: async (hardwareItemId: string) => {
+    // Enrollment is mutable during hardware reset/retest. Do not allow a cached
+    // 204/200 response to resurrect an old Activated enrollment in the UI.
+    const res = await apiClient.get(`/api/v1/gateway-enrollment/by-hardware/${hardwareItemId}`, {
+      params: { _ts: Date.now() },
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    });
+    return res.status === 204 ? null : res.data;
+  },
+  activateGatewayEnrollment: async (enrollmentId: string, body: { farmId: string; deploymentRequestId: string; frequencyBand: string }) => (await apiClient.post(`/api/v1/gateway-enrollment/${enrollmentId}/activate`, body)).data,
+
   /** GET /api/v1/zones/{zoneId}/devices or /nodes */
   getNodes: async (zoneId?: string) => {
+    if (!zoneId) return [];
     try {
-      const url = zoneId
-        ? `/api/v1/zones/${zoneId}/devices`
-        : `/api/v1/farms/30000000-0000-0000-0000-000000000001/devices`;
+      const url = `/api/v1/zones/${zoneId}/devices`;
       let res;
       try {
         res = await apiClient.get(url);
       } catch {
         try {
-          res = await apiClient.get(zoneId ? `/api/v1/zones/${zoneId}/nodes` : `/api/v1/zones/32000000-0000-0000-0000-000000000001/devices`);
+          res = await apiClient.get(`/api/v1/zones/${zoneId}/nodes`);
         } catch {
           res = { data: [] };
         }
@@ -903,8 +919,8 @@ export const deviceService = {
         ...d,
         nodeId: d.deviceId || d.nodeId || d.id,
         id: d.deviceId || d.nodeId || d.id,
-        name: d.name || d.hardwareAddress || `Node ${String(d.deviceId || d.nodeId || '').slice(0, 8)}`,
-        nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || 'NODE',
+        name: d.name || d.hardwareAddress || '—',
+        nodeCode: d.nodeCode || d.hardwareAddress || d.deviceType || '—',
         batteryLevel: d.batteryLevel ?? undefined, // không bịa mức pin khi thiết bị không báo
         status: (d.status === 'Online' || d.status === 'ONLINE') ? 'ONLINE' : (d.status === 'Offline' || d.status === 'OFFLINE' ? 'OFFLINE' : (d.status || 'UNKNOWN')),
         rssi: d.rssi ?? d.latestConnectionTest?.rssi ?? undefined,
@@ -955,6 +971,14 @@ export const deviceService = {
       })),
     });
     return res.data?.value ?? res.data;
+  },
+  getComponents: async (deviceId: string) => {
+    const res = await apiClient.get(`/api/v1/devices/${deviceId}/components`);
+    return res.data?.value ?? res.data ?? [];
+  },
+  configureComponents: async (deviceId: string, components: Array<{ hardwareItemId: string; componentType: string; quantity: number; unit?: string; notes?: string }>) => {
+    const res = await apiClient.put(`/api/v1/devices/${deviceId}/components`, { components });
+    return res.data?.value ?? res.data ?? [];
   },
 
   /** GET /api/v1/zones/{zoneId}/sensors -> derived from zone devices */
@@ -1047,6 +1071,14 @@ export const deviceService = {
   },
 };
 
+export interface FirmwareReleaseView { id: string; hardwareTarget: string; version: string; protocolVersion: string; sourceRepository?: string; gitTag?: string; commitSha?: string; artifactUrl: string; artifactSha256?: string; releaseNotes?: string; status: string; publishedAtUtc?: string; approvedByUserId?: string; }
+export const firmwareService = {
+  listReleases: async (): Promise<FirmwareReleaseView[]> => (await apiClient.get('/api/v1/admin/firmware/releases')).data,
+  syncFromGitHub: async (): Promise<FirmwareReleaseView[]> => (await apiClient.post('/api/v1/integrations/github/firmware/sync')).data,
+  createRelease: async (body: Omit<FirmwareReleaseView, 'id' | 'status' | 'approvedByUserId'>) => (await apiClient.post('/api/v1/admin/firmware/releases', body)).data,
+  setStatus: async (id: string, status: string, artifactSha256?: string) => (await apiClient.put(`/api/v1/admin/firmware/releases/${id}/status`, { status, artifactSha256 })).data,
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 10. TELEMETRY SERVICE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1130,7 +1162,8 @@ export const alertService = {
 
   /** Alias for legacy getAlerts calls */
   getAlerts: async (farmId?: string) => {
-    const target = farmId || '30000000-0000-0000-0000-000000000001';
+    if (!farmId) return [];
+    const target = farmId;
     return alertService.getFarmAlerts(target);
   },
 
@@ -1169,6 +1202,16 @@ export const alertService = {
     const res = await apiClient.post(`/api/v1/zones/${zoneId}/alert-rules`, data);
     return res.data;
   },
+  updateAlertRule: async (zoneId: string, ruleId: string, data: {
+    minThreshold: number;
+    maxThreshold: number;
+    severity?: string;
+    cooldownMinutes?: number;
+    isActive?: boolean;
+  }) => (await apiClient.put(`/api/v1/zones/${zoneId}/alert-rules/${ruleId}`, data)).data,
+  deleteAlertRule: async (zoneId: string, ruleId: string) => {
+    await apiClient.delete(`/api/v1/zones/${zoneId}/alert-rules/${ruleId}`);
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1178,9 +1221,9 @@ export const alertService = {
 export const controlService = {
   /** GET /api/v1/zones/{zoneId}/schedules */
   getSchedules: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
+    if (!zoneId) return [];
     try {
-      const res = await apiClient.get(`/api/v1/zones/${targetZone}/schedules`);
+      const res = await apiClient.get(`/api/v1/zones/${zoneId}/schedules`);
       const raw = res.data?.value ?? res.data ?? [];
       const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
       return list.map((s: any) => {
@@ -1202,11 +1245,11 @@ export const controlService = {
           ...s,
           startTime,
           daysOfWeek,
-          durationMinutes: s.durationMinutes ?? Math.round((s.durationSeconds || 600) / 60),
-          actionType: s.actionType || 'TURN_ON',
-          isActive: s.isActive ?? true,
-          zoneName: s.zoneName || 'Demo Greenhouse Zone',
-          actuatorName: s.actuatorName || 'Van tưới tự động',
+          durationMinutes: s.durationMinutes ?? (s.durationSeconds != null ? Math.round(s.durationSeconds / 60) : undefined),
+          actionType: s.actionType,
+          isActive: s.isActive,
+          zoneName: s.zoneName,
+          actuatorName: s.actuatorName,
         };
       });
     } catch {
@@ -1221,13 +1264,10 @@ export const controlService = {
   ) => {
     const isObj = typeof zoneIdOrData === 'object' && zoneIdOrData !== null;
     const data = isObj ? zoneIdOrData : maybeData;
-    const zoneId = isObj ? (zoneIdOrData.zoneId || '32000000-0000-0000-0000-000000000001') : zoneIdOrData;
-    try {
-      const res = await apiClient.post(`/api/v1/zones/${zoneId}/schedules`, data);
-      return res.data;
-    } catch {
-      return { success: true, ...data };
-    }
+    const zoneId = isObj ? zoneIdOrData.zoneId : zoneIdOrData;
+    if (!zoneId) throw new Error('zoneId is required to create a schedule');
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/schedules`, data);
+    return res.data;
   },
 
   /** PUT /api/v1/zones/{zoneId}/schedules/{scheduleId} */
@@ -1243,9 +1283,9 @@ export const controlService = {
 
   /** GET /api/v1/zones/{zoneId}/rules */
   getAutoRules: async (zoneId?: string) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
+    if (!zoneId) return [];
     try {
-      const res = await apiClient.get(`/api/v1/zones/${targetZone}/rules`);
+      const res = await apiClient.get(`/api/v1/zones/${zoneId}/rules`);
       return res.data?.value ?? res.data ?? [];
     } catch {
       return [];
@@ -1268,7 +1308,7 @@ export const controlService = {
     maybeAction?: string,
     durationMinutesOrSeconds?: number
   ) => {
-    let zoneId = '32000000-0000-0000-0000-000000000001';
+    let zoneId: string | undefined;
     let actuatorId = actuatorIdOrZone;
     let action: 'TurnOn' | 'TurnOff' = 'TurnOn';
 
@@ -1280,9 +1320,10 @@ export const controlService = {
       action = (stateOrActuatorId === 'ON' || stateOrActuatorId === 'TurnOn') ? 'TurnOn' : 'TurnOff';
     }
 
-    try {
-      const res = await apiClient.post(
-        `/api/v1/zones/${zoneId}/actuators/${actuatorId}/command`,
+    if (!zoneId) throw new Error('zoneId is required to control an actuator');
+
+    const res = await apiClient.post(
+      `/api/v1/zones/${zoneId}/actuators/${actuatorId}/command`,
         {
           action,
           durationSeconds: (durationMinutesOrSeconds ?? 15) * 60,
@@ -1291,10 +1332,7 @@ export const controlService = {
           notes: 'Manual command from SmartFarm dashboard',
         }
       );
-      return res.data;
-    } catch {
-      return { actuatorId, name: actuatorId, state: action === 'TurnOn' ? 'ON' : 'OFF' };
-    }
+    return res.data;
   },
 
   /** GET /api/v1/zones/{zoneId}/actuators/{actuatorId}/status */
@@ -1305,12 +1343,12 @@ export const controlService = {
 
   /** GET /api/v1/zones/{zoneId}/actuators/history */
   getControlLogs: async (zoneId?: string, fromUtc?: string, toUtc?: string, limit = 20) => {
-    const targetZone = zoneId || '32000000-0000-0000-0000-000000000001';
+    if (!zoneId) return [];
     const now = new Date();
     const from = fromUtc ?? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const to = toUtc ?? now.toISOString();
     try {
-      const res = await apiClient.get(`/api/v1/zones/${targetZone}/actuators/history`, {
+      const res = await apiClient.get(`/api/v1/zones/${zoneId}/actuators/history`, {
         params: { fromUtc: from, toUtc: to, limit },
       });
       return res.data?.commands ?? res.data ?? [];
@@ -1484,10 +1522,10 @@ export const knowledgeService = {
   /** GET /api/v1/ai/knowledge/search */
   search: async (query: string, cropName?: string, topK: number = 5) => {
     const res = await apiClient.get('/api/v1/ai/knowledge/search', {
-      params: {
-        query: query.trim(),
-        cropName: cropName?.trim() || undefined,
-        topK
+      params: { 
+        query: query.trim(), 
+        cropName: cropName?.trim() || undefined, 
+        topK 
       },
     });
     const list = res.data?.value ?? res.data ?? [];
@@ -1606,19 +1644,16 @@ export const supportService = {
     const rawList: any[] = res.data?.value ?? res.data ?? [];
     if (!Array.isArray(rawList)) return [];
 
-    // Lookup zones, farms & users map to enrich accurate names
+    // Lookup zones & farms map to enrich accurate names
     let allZonesMap: Record<string, any> = {};
     let allFarmsMap: Record<string, any> = {};
-    let allUsersMap: Record<string, any> = {};
     try {
-      const [zRes, fRes, uRes] = await Promise.all([
+      const [zRes, fRes] = await Promise.all([
         apiClient.get('/api/v1/zones').catch(() => null),
         apiClient.get('/api/v1/farms').catch(() => null),
-        apiClient.get('/api/v1/users').catch(() => null),
       ]);
       const zList = zRes?.data?.value ?? zRes?.data ?? [];
       const fList = fRes?.data?.value ?? fRes?.data ?? [];
-      const uList = uRes?.data?.value ?? uRes?.data ?? [];
       if (Array.isArray(zList)) {
         zList.forEach((z: any) => {
           const zid = z.zoneId || z.id;
@@ -1631,40 +1666,20 @@ export const supportService = {
           if (fid) allFarmsMap[fid] = f;
         });
       }
-      if (Array.isArray(uList)) {
-        uList.forEach((u: any) => {
-          const uid = u.userId || u.id;
-          if (uid) allUsersMap[uid] = u;
-        });
-      }
     } catch { }
 
     // Parallel lookup for quotation & zone devices
-    const viewer = await apiClient.get('/api/v1/users/me').then(r => r.data).catch(() => null);
-    const deploymentPrefix = viewer?.role === 'PlatformTechnician'
-      ? '/api/v1/platform/deployment-requests/'
-      : viewer?.role === 'FarmOwner' ? '/api/v1/deployment-requests/' : null;
     const enriched = await Promise.all(
       rawList.map(async (sr: any) => {
         const id = sr.id || sr.serviceRequestId;
         let contractDetails: any = null;
         let acceptanceDetails: any = null;
-        let mappedNodesCount: number | undefined;
-        let quotationStatus: string | undefined;
-        let deploymentStatus: string | undefined;
-        let deploymentLinkInvalid = false;
-        if (sr.deploymentRequestId && deploymentPrefix) {
-          try {
-            const { data: deployment } = await apiClient.get(deploymentPrefix + sr.deploymentRequestId);
-            deploymentLinkInvalid = deployment.farmId !== sr.farmId || deployment.zoneId !== sr.zoneId;
-            if (!deploymentLinkInvalid) deploymentStatus = deployment.status;
-          } catch { /* Unavailable deployment must not imply completion. */ }
-        }
+        // A missing GIS response means zero mapped nodes, never a demo count.
+        let mappedNodesCount = 0;
 
         try {
           const qRes = await apiClient.get(`/api/v1/service-requests/${id}/quotation`);
           const q = qRes.data;
-          quotationStatus = q?.status;
           if (q && q.id) {
             const isSigned = Boolean(sr.isContractSigned || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
             const isDepositPaid = Boolean(sr.isDepositPaid || q.status === 'SignedByOwner' || q.status === 'DepositPaid' || q.status === 'Completed');
@@ -1688,8 +1703,8 @@ export const supportService = {
               subtotal: q.subtotal || 0,
               vatTotal: q.vatAmount || 0,
               totalAmount: q.totalAmount || 0,
-              deposit30Percent: q.deposit30Percent || Math.round((q.totalAmount || 0) * getCachedBusinessParameters().depositPercent / 100),
-              remaining70Percent: q.remaining70Percent || Math.round((q.totalAmount || 0) * (100 - getCachedBusinessParameters().depositPercent) / 100),
+              deposit30Percent: q.deposit30Percent || Math.round((q.totalAmount || 0) * 0.3),
+              remaining70Percent: q.remaining70Percent || Math.round((q.totalAmount || 0) * 0.7),
               isContractSent: q.status !== 'Draft',
               contractSentAt: q.createdAtUtc,
               isSignedByOwner: isSigned,
@@ -1721,15 +1736,50 @@ export const supportService = {
           try {
             const locRes = await apiClient.get(`/api/v1/zones/${sr.zoneId}/devices/map-locations`);
             const locs = locRes.data?.value ?? locRes.data ?? [];
-            if (Array.isArray(locs)) {
-              mappedNodesCount = locs.length;
+            const requestId = String(sr.deploymentRequestId || '');
+            const locationRows = Array.isArray(locs) ? locs : [];
+            const rowsForRequest = requestId
+              ? locationRows.filter((row: any) => !row.deploymentRequestId || String(row.deploymentRequestId) === requestId)
+              : locationRows;
+            mappedNodesCount = rowsForRequest.length;
+
+            // The map-locations projection can lag immediately after GIS save.
+            // Reconcile from the authoritative Device rows so the Technician
+            // action button does not incorrectly remain at 0 Nodes.
+            if (mappedNodesCount === 0 && sr.farmId) {
+              const farmDevices = await deviceService.getFarmDevices(sr.farmId).catch(() => []);
+              mappedNodesCount = (Array.isArray(farmDevices) ? farmDevices : []).filter((device: any) =>
+                (!requestId || String(device.deploymentRequestId || '') === requestId)
+                && String(device.zoneId || '') === String(sr.zoneId)
+                && Number.isFinite(Number(device.gpsLatitude))
+                && Number.isFinite(Number(device.gpsLongitude))
+                && !['Decommissioned', 'Retired'].includes(String(device.status || ''))
+              ).length;
             }
           } catch { }
         }
 
-        const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned);
-        const derivedStatus = String(sr.status ?? 'Open')
-          .replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase() as ServiceRequest['status'];
+        // A closed service ticket is not proof of Owner acceptance. Acceptance
+        // is true only after the contract acceptance/payment milestone exists.
+        const isAccepted = Boolean(acceptanceDetails?.isAcceptanceSigned || sr.isAcceptanceSigned || sr.isFullyPaid);
+        const isContractSigned = Boolean(contractDetails?.isSignedByOwner && contractDetails?.is30PercentPaid);
+
+        let derivedStatus: 'OPEN' | 'IN_PROGRESS' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER' | 'RESOLVED' | 'CLOSED' = 'OPEN';
+        // Closed is the terminal Technician state. It must take precedence
+        // over the Owner-accepted flag, otherwise the UI keeps rendering the
+        // final completion button after the request is already closed.
+        if (sr.status === 'Closed') {
+          derivedStatus = 'CLOSED';
+        } else if (isAccepted) {
+          derivedStatus = 'ACCEPTED_BY_OWNER';
+        } else if (isContractSigned) {
+          derivedStatus = 'CONTRACT_SIGNED_30PAID';
+        } else if (contractDetails) {
+          derivedStatus = 'CONTRACT_SENT';
+        } else if (sr.status === 'Assigned' || sr.status === 'InProgress') {
+          derivedStatus = 'IN_PROGRESS';
+        }
+
         // Resolve accurate zone name & farm name
         const zoneObj = sr.zoneId ? allZonesMap[sr.zoneId] : null;
         const farmObj = sr.farmId ? allFarmsMap[sr.farmId] : (zoneObj?.farmId ? allFarmsMap[zoneObj.farmId] : null);
@@ -1750,33 +1800,17 @@ export const supportService = {
           }
         }
 
-        const resolvedZoneName = zoneObj?.name
+        const resolvedZoneName = zoneObj?.name 
           || (extractedZone ? (extractedZone.toLowerCase().startsWith('nhà màng') ? extractedZone : `Nhà màng "${extractedZone}"`) : '')
-          || sr.zoneName
+          || sr.zoneName 
           || (zoneObj ? `Zone ${zoneObj.name}` : 'Nhà màng');
 
         const resolvedFarmName = farmObj?.name || sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao';
 
-        const techId = sr.assignedTechnicianId || sr.assignedTechnician;
-        let resolvedTechName: string | undefined = undefined;
-        if (techId) {
-          const matchedTech = allUsersMap[techId];
-          if (matchedTech) {
-            resolvedTechName = matchedTech.fullName || matchedTech.name || matchedTech.email;
-          } else if (sr.assignedTechnicianName && sr.assignedTechnicianName !== 'Trần Minh Trí (Kỹ thuật viên IoT)') {
-            resolvedTechName = sr.assignedTechnicianName;
-          } else {
-            resolvedTechName = 'Kỹ thuật viên Platform';
-          }
-        }
-
-        const creatorId = sr.history?.[0]?.actorUserId;
-        const creator = creatorId ? allUsersMap[creatorId] : null;
-        const resolvedRequestedBy = creator?.fullName || farmObj?.ownerName || sr.requestedBy || 'Chủ trang trại (Owner)';
-
         return {
           serviceRequestId: id,
           deploymentRequestId: sr.deploymentRequestId,
+          deploymentStatus: sr.deploymentStatus,
           tenantId: sr.tenantId,
           farmId: sr.farmId || farmObj?.farmId || zoneObj?.farmId,
           farmName: resolvedFarmName,
@@ -1788,13 +1822,9 @@ export const supportService = {
           description: sr.description || 'Yêu cầu kiểm tra và bảo dưỡng phần cứng tại nông trang.',
           priority: sr.priority || 'HIGH',
           status: derivedStatus,
-          deploymentStatus,
-          quotationStatus,
-          deploymentLinkInvalid,
-          requestType: (['NEW_INSTALL', 'INSTALLATION'].includes(String(sr.failureCode ?? '').toUpperCase()) ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
-          requestedBy: resolvedRequestedBy,
-          assignedTechnician: techId || undefined,
-          assignedTechnicianName: resolvedTechName,
+          requestType: (sr.failureCode === 'NEW_INSTALL' ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
+          requestedBy: 'Lê Văn An (Owner)',
+          assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
           createdAt: sr.createdAtUtc || sr.createdAt || new Date().toISOString(),
           mappedNodesCount,
           isAcceptedByOwner: isAccepted,
@@ -1821,7 +1851,8 @@ export const supportService = {
   ) => {
     const isObj = typeof farmIdOrData === 'object' && farmIdOrData !== null;
     const data = isObj ? farmIdOrData : maybeData;
-    const farmId = isObj ? (farmIdOrData.farmId || '30000000-0000-0000-0000-000000000001') : farmIdOrData;
+    const farmId = isObj ? farmIdOrData.farmId : farmIdOrData;
+    if (!farmId) throw new Error('Thiếu Farm ID thật để tạo yêu cầu dịch vụ.');
 
     // Lookup an available device for this farm / zone
     let deviceId = data.deviceId;
@@ -1866,12 +1897,7 @@ export const supportService = {
     const res = await apiClient.post(`/api/v1/service-requests/${id}/close`);
     return res.data;
   },
-
-  /** POST /api/v1/service-requests/{id}/cancel (FarmOwner or PlatformAdmin) */
-  cancelServiceRequest: async (id: string, reason?: string) => {
-    const res = await apiClient.post(`/api/v1/service-requests/${id}/cancel`, { reason });
-    return res.data;
-  },
+  cancelServiceRequest: async (id: string, reason?: string) => (await apiClient.post(`/api/v1/service-requests/${id}/cancel`, { reason })).data,
 
   /** GET /api/v1/farms/{farmId}/tasks — Owner thấy mọi phân công; Farmer chỉ thấy phân công của chính mình. */
   getTasks: async (farmId: string) => {
@@ -1937,7 +1963,8 @@ export const supportService = {
   getAuditLogs: async (params?: any) => adminService.getAuditLogs(params),
 
   /** GET /api/v1/farms/{farmId}/weather */
-  getWeather: async (farmId: string = '30000000-0000-0000-0000-000000000001') => {
+  getWeather: async (farmId?: string) => {
+    if (!farmId) return null;
     const res = await apiClient.get(`/api/v1/farms/${farmId}/weather`).catch(() => null);
     return res?.data?.value ?? res?.data ?? null;
   },
@@ -1945,6 +1972,8 @@ export const supportService = {
   /** POST /api/v1/service-requests/{requestId}/quotation */
   sendContract: async (requestId: string, contract: any) => {
     const items = contract?.items || [];
+    const missingPrice = items.find((i: any) => Number(i.unitPrice ?? i.price ?? 0) <= 0);
+    if (missingPrice) throw new Error(`Thiết bị "${missingPrice.name || missingPrice.code || 'không xác định'}" chưa được Admin cấu hình đơn giá.`);
     const res = await apiClient.post(`/api/v1/service-requests/${requestId}/quotation`, {
       items: items.map((i: any) => ({
         code: i.code || i.itemCode || 'HARDWARE-01',
@@ -1952,7 +1981,7 @@ export const supportService = {
         category: i.category || inferHardwareCategory(i.code || i.itemCode, i.name || i.itemName),
         unit: i.unit || 'Cái',
         quantity: i.quantity || 1,
-        unitPrice: i.unitPrice || i.price || 100000,
+        unitPrice: Number(i.unitPrice ?? i.price),
         vatPercent: i.vatPercent || 8,
         notes: i.notes || ''
       })),
@@ -1969,22 +1998,22 @@ export const supportService = {
   },
 
   /** POST /api/v1/service-requests/{requestId}/sign-contract-deposit */
-  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER', expectedDepositAmount?: number) => {
+  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER') => {
     const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-contract-deposit`, {
       signerFullName,
       paymentMethod,
-      transactionReference: `PAY30-${Date.now()}`,
-      ...(expectedDepositAmount != null ? { expectedDepositAmount } : {})
+      transactionReference: `PAY30-${Date.now()}`
     });
     return res.data;
   },
 
   /** POST /api/v1/service-requests/{requestId}/sign-acceptance-final */
-  signAcceptanceAndPay70: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER') => {
+  signAcceptanceAndPay70: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER', notes?: string) => {
     const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-acceptance-final`, {
       signerFullName,
       paymentMethod,
-      transactionReference: `PAY70-${Date.now()}`
+      transactionReference: `PAY70-${Date.now()}`,
+      notes
     });
     return res.data;
   },
@@ -2222,7 +2251,7 @@ export const zoneContractService = {
                 durationMonths: 12,
                 daysRemaining: daysRemaining,
                 status: c.isSignedByOwner ? 'Active' : 'ExpiringSoon',
-                statusText: c.isSignedByOwner ? `Còn hiệu lực (Đã cọc ${formatPercent(contractDepositPercent(c, getCachedBusinessParameters().depositPercent))}%)` : `Chờ Ký Duyệt & Cọc ${formatPercent(contractDepositPercent(c, getCachedBusinessParameters().depositPercent))}%`,
+                statusText: c.isSignedByOwner ? 'Còn hiệu lực (Đã cọc 30%)' : 'Chờ Ký Duyệt & Cọc 30%',
                 lesseeName: c.ownerSignatureName || 'Lê Văn An (Chủ Trang Trại)',
                 lesseePhone: '0903666888',
                 lesseeAddress: 'Trang trại thông minh SmartFarm',
@@ -2350,40 +2379,23 @@ export interface ResourceUsageReport { total: number; unit: string; countedComma
 export interface FarmOverviewReport { activeSeasonCount: number; onlineDeviceCount: number; alertsLast7Days: number; openAlertCount: number; openTaskCount: number; zoneCount: number }
 export interface TaskReport { total: number; approved: number; failed: number; overdue: number; completionRatePercent: number }
 
-export const gisProxyService = {
-
-  /** POST /api/v1/gis/reverse-geocode (dùng POST để bảo vệ tọa độ không bị ghi vào reverse proxy access logs) */
-
-  reverseGeocode: async (latitude: number, longitude: number) => {
-
-    const res = await apiClient.post('/api/v1/gis/reverse-geocode', {
-
-      latitude,
-
-      longitude
-
-    });
-
-    return res.data;
-
-  },
-
-
-
-  /** POST /api/v1/gis/search-location (dùng POST để địa chỉ tìm kiếm không bị ghi vào reverse proxy access logs) */
-
-  searchLocation: async (query: string) => {
-
-    const res = await apiClient.post('/api/v1/gis/search-location', {
-
-      query
-
-    });
-
-    return res.data ?? [];
-
-  },
-
+export const gisProxyService = {
+  /** POST /api/v1/gis/reverse-geocode (dùng POST để bảo vệ tọa độ không bị ghi vào reverse proxy access logs) */
+  reverseGeocode: async (latitude: number, longitude: number) => {
+    const res = await apiClient.post('/api/v1/gis/reverse-geocode', {
+      latitude,
+      longitude
+    });
+    return res.data;
+  },
+
+  /** POST /api/v1/gis/search-location (dùng POST để địa chỉ tìm kiếm không bị ghi vào reverse proxy access logs) */
+  searchLocation: async (query: string) => {
+    const res = await apiClient.post('/api/v1/gis/search-location', {
+      query
+    });
+    return res.data ?? [];
+  },
 };
 
 export const reportService = {
@@ -2464,194 +2476,46 @@ export const reportService = {
 };
 
 
-// NEW MODULE: STOCK OUT SERVICE (PHIẾU XUẤT KHO)
-// ═══════════════════════════════════════════════════════════════════════════════
+export const discountService = {
+  getAll: async (activeOnly?: boolean): Promise<any[]> => (await apiClient.get('/api/v1/discount-codes', { params: activeOnly === undefined ? {} : { activeOnly } })).data?.value ?? [],
+  getById: async (id: string): Promise<any> => (await apiClient.get(`/api/v1/discount-codes/${id}`)).data?.value,
+  validateCode: async (code: string, contractAmount: number): Promise<any> => (await apiClient.post('/api/v1/discount-codes/validate', { code, contractAmount })).data?.value,
+  getBestDiscount: async (contractAmount: number): Promise<any> => (await apiClient.get('/api/v1/discount-codes/best-applicable', { params: { contractAmount } })).data?.value,
+  create: async (data: any): Promise<any> => (await apiClient.post('/api/v1/discount-codes', data)).data?.value,
+  update: async (id: string, data: any): Promise<any> => (await apiClient.put(`/api/v1/discount-codes/${id}`, data)).data?.value,
+  delete: async (id: string): Promise<any> => (await apiClient.delete(`/api/v1/discount-codes/${id}`)).data?.value,
+};
 
 export const stockOutService = {
-  /** GET /api/v1/farms/{farmId}/stock-outs */
-  getList: async (farmId: string, status?: string) => {
-    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-outs`, {
-      params: status ? { status } : undefined,
-    });
-    return res.data;
-  },
-
-  /** GET /api/v1/farms/{farmId}/stock-outs/{id} */
-  getById: async (farmId: string, id: string) => {
-    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-outs/${id}`);
-    return res.data;
-  },
-
-  /** POST /api/v1/farms/{farmId}/stock-outs */
-  create: async (farmId: string, data: { zoneId?: string; notes?: string; details: { inventoryItemId: string; quantity: number; notes?: string }[] }) => {
-    const res = await apiClient.post(`/api/v1/farms/${farmId}/stock-outs`, data);
-    return res.data;
-  },
-
-  /** PUT /api/v1/farms/{farmId}/stock-outs/{id} */
-  update: async (farmId: string, id: string, data: { zoneId?: string; notes?: string; details: { inventoryItemId: string; quantity: number; notes?: string }[] }) => {
-    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}`, data);
-    return res.data;
-  },
-
-  /** PUT /api/v1/farms/{farmId}/stock-outs/{id}/status */
-  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => {
-    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}/status`, { status, notes });
-    return res.data;
-  },
-
-  /** DELETE /api/v1/farms/{farmId}/stock-outs/{id} */
-  delete: async (farmId: string, id: string) => {
-    const res = await apiClient.delete(`/api/v1/farms/${farmId}/stock-outs/${id}`);
-    return res.data;
-  },
+  getList: async (farmId: string, status?: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-outs`, { params: status ? { status } : undefined })).data,
+  getById: async (farmId: string, id: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-outs/${id}`)).data,
+  create: async (farmId: string, data: any) => (await apiClient.post(`/api/v1/farms/${farmId}/stock-outs`, data)).data,
+  update: async (farmId: string, id: string, data: any) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}`, data)).data,
+  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}/status`, { status, notes })).data,
+  delete: async (farmId: string, id: string) => (await apiClient.delete(`/api/v1/farms/${farmId}/stock-outs/${id}`)).data,
 };
-
-// ══════════════════════════════════════════════════════════════════════════════
-// NEW MODULE: STOCK IN SERVICE (PHIẾU NHẬP KHO)
-// ══════════════════════════════════════════════════════════════════════════════
-
 export const stockInService = {
-  /** GET /api/v1/farms/{farmId}/stock-ins */
-  getList: async (farmId: string, status?: string) => {
-    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-ins`, {
-      params: status ? { status } : undefined,
-    });
-    return res.data;
-  },
-
-  /** GET /api/v1/farms/{farmId}/stock-ins/{id} */
-  getById: async (farmId: string, id: string) => {
-    const res = await apiClient.get(`/api/v1/farms/${farmId}/stock-ins/${id}`);
-    return res.data;
-  },
-
-  /** POST /api/v1/farms/{farmId}/stock-ins */
-  create: async (farmId: string, data: { supplierName?: string; notes?: string; details: { inventoryItemId: string; quantity: number; unitPrice?: number; notes?: string }[] }) => {
-    const res = await apiClient.post(`/api/v1/farms/${farmId}/stock-ins`, data);
-    return res.data;
-  },
-
-  /** PUT /api/v1/farms/{farmId}/stock-ins/{id} */
-  update: async (farmId: string, id: string, data: { supplierName?: string; notes?: string; details: { inventoryItemId: string; quantity: number; unitPrice?: number; notes?: string }[] }) => {
-    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}`, data);
-    return res.data;
-  },
-
-  /** PUT /api/v1/farms/{farmId}/stock-ins/{id}/status */
-  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => {
-    const res = await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}/status`, { status, notes });
-    return res.data;
-  },
-
-  /** DELETE /api/v1/farms/{farmId}/stock-ins/{id} */
-  delete: async (farmId: string, id: string) => {
-    const res = await apiClient.delete(`/api/v1/farms/${farmId}/stock-ins/${id}`);
-    return res.data;
-  },
+  getList: async (farmId: string, status?: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-ins`, { params: status ? { status } : undefined })).data,
+  getById: async (farmId: string, id: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-ins/${id}`)).data,
+  create: async (farmId: string, data: any) => (await apiClient.post(`/api/v1/farms/${farmId}/stock-ins`, data)).data,
+  update: async (farmId: string, id: string, data: any) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}`, data)).data,
+  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}/status`, { status, notes })).data,
+  delete: async (farmId: string, id: string) => (await apiClient.delete(`/api/v1/farms/${farmId}/stock-ins/${id}`)).data,
 };
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NEW MODULE: BILL SERVICE (HÓA ĐƠN ĐỘC LẬP)
-// ═══════════════════════════════════════════════════════════════════════════════
-
 export const billService = {
-  /** GET /api/v1/bills */
-  getAll: async (params?: { contractId?: string; status?: string; fromDate?: string; toDate?: string }) => {
-    const res = await apiClient.get('/api/v1/bills', { params });
-    return res.data;
-  },
-
-  /** GET /api/v1/bills/{id} */
-  getById: async (id: string) => {
-    const res = await apiClient.get(`/api/v1/bills/${id}`);
-    return res.data;
-  },
-
-  /** GET /api/v1/contracts/{contractId}/bills */
-  getByContract: async (contractId: string) => {
-    const res = await apiClient.get(`/api/v1/contracts/${contractId}/bills`);
-    return res.data;
-  },
-
-  /** POST /api/v1/bills (tạo từ contract) */
-  createFromContract: async (data: { contractId: string; amount?: number; dueDate: string; paymentMethod?: string; notes?: string }) => {
-    const res = await apiClient.post('/api/v1/bills', data);
-    return res.data;
-  },
-
-  /** POST /api/v1/bills/{id}/payments */
-  recordPayment: async (id: string, data: { paymentAmount: number; paymentMethod?: string; notes?: string }) => {
-    const res = await apiClient.post(`/api/v1/bills/${id}/payments`, data);
-    return res.data;
-  },
-
-  /** PUT /api/v1/bills/{id}/status */
-  updateStatus: async (id: string, status: string | number, notes?: string) => {
-    const res = await apiClient.put(`/api/v1/bills/${id}/status`, { status, notes });
-    return res.data;
-  },
-
-  /** PUT /api/v1/bills/{id} */
-  update: async (id: string, data: { amount: number; dueDate: string; paymentMethod?: string; notes?: string }) => {
-    const res = await apiClient.put(`/api/v1/bills/${id}`, data);
-    return res.data;
-  },
-
-  /** DELETE /api/v1/bills/{id} */
-  delete: async (id: string) => {
-    const res = await apiClient.delete(`/api/v1/bills/${id}`);
-    return res.data;
-  },
+  getAll: async (params?: any) => (await apiClient.get('/api/v1/bills', { params })).data,
+  createFromContract: async (data: any) => (await apiClient.post('/api/v1/bills', data)).data,
+  recordPayment: async (id: string, data: any) => (await apiClient.post(`/api/v1/bills/${id}/payments`, data)).data,
+  updateStatus: async (id: string, status: string | number, notes?: string) => (await apiClient.put(`/api/v1/bills/${id}/status`, { status, notes })).data,
+  delete: async (id: string) => (await apiClient.delete(`/api/v1/bills/${id}`)).data,
 };
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NEW MODULE: CONTRACT PACKAGE SERVICE (GÓI HỢP ĐỒNG)
-// ═══════════════════════════════════════════════════════════════════════════════
-
 export const contractPackageService = {
-  /** GET /api/v1/contract-packages */
-  getAll: async (activeOnly?: boolean, isCustom: boolean = false) => {
-    const res = await apiClient.get('/api/v1/contract-packages', {
-      params: {
-        ...(activeOnly !== undefined ? { activeOnly } : {}),
-        isCustom
-      },
-    });
-    return res.data;
-  },
-
-  /** GET /api/v1/contract-packages/{id} */
-  getById: async (id: string) => {
-    const res = await apiClient.get(`/api/v1/contract-packages/${id}`);
-    return res.data;
-  },
-
-  /** POST /api/v1/contract-packages */
-  create: async (data: { packageName: string; description?: string; durationMonths: number; maxZones: number; price: number; currency?: string }) => {
-    const res = await apiClient.post('/api/v1/contract-packages', data);
-    return res.data;
-  },
-
-  /** PUT /api/v1/contract-packages/{id} */
-  update: async (id: string, data: { packageName: string; description?: string; durationMonths: number; maxZones: number; price: number; currency?: string; status?: string | number }) => {
-    const res = await apiClient.put(`/api/v1/contract-packages/${id}`, data);
-    return res.data;
-  },
-
-  /** PATCH /api/v1/contract-packages/{id}/toggle-status */
-  toggleStatus: async (id: string) => {
-    const res = await apiClient.patch(`/api/v1/contract-packages/${id}/toggle-status`);
-    return res.data;
-  },
-
-  /** DELETE /api/v1/contract-packages/{id} */
-  delete: async (id: string) => {
-    const res = await apiClient.delete(`/api/v1/contract-packages/${id}`);
-    return res.data;
-  },
+  getAll: async (activeOnly?: boolean, isCustom = false) => (await apiClient.get('/api/v1/contract-packages', { params: { activeOnly, isCustom } })).data,
+  create: async (data: any) => (await apiClient.post('/api/v1/contract-packages', data)).data,
+  update: async (id: string, data: any) => (await apiClient.put(`/api/v1/contract-packages/${id}`, data)).data,
+  toggleStatus: async (id: string) => (await apiClient.patch(`/api/v1/contract-packages/${id}/toggle-status`)).data,
+  delete: async (id: string) => (await apiClient.delete(`/api/v1/contract-packages/${id}`)).data,
 };
-
 
 export interface BackupMetadataView {
   fileName: string;

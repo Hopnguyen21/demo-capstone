@@ -1,5 +1,3 @@
-import { ServiceRequestStatus, serviceStatusLabels, deploymentLabels } from '../../components/ui/ServiceRequestStatus';
-import { useBusinessParameters, contractDepositPercent } from '../../services/businessParameters';
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
 import { ServiceRequest, ZoneContract } from '../../types';
@@ -10,12 +8,11 @@ import {
   Headphones, Plus, CheckSquare, CheckCircle2, Clock, Wrench,
   Building2, User, AlertCircle, Info, Layers, FileText, DollarSign,
   QrCode, CreditCard, ShieldCheck, Lock, ChevronDown, ChevronUp, Package,
-  RefreshCw, Loader2, Sparkles, ArrowUpRight, ExternalLink, Sprout, XCircle, Truck
+  RefreshCw, Loader2, Sparkles, ArrowUpRight, ExternalLink, Sprout
 } from 'lucide-react';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
 export const SupportPage: React.FC = () => {
-  const bp = useBusinessParameters(); const depositPct = bp.depositPercent;
   const navigate = useNavigate();
   const location = useLocation();
   const { farms, zones, user } = useAuth();
@@ -26,26 +23,6 @@ export const SupportPage: React.FC = () => {
   const [expandedRequestIds, setExpandedRequestIds] = useState<Record<string, boolean>>({});
   // State for contract terms agreement checkbox per request
   const [agreedTerms, setAgreedTerms] = useState<Record<string, boolean>>({});
-  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [isCancelling, setIsCancelling] = useState(false);
-
-  const handleCancelRequest = async () => {
-    if (!cancellingRequestId) return;
-    setIsCancelling(true);
-    try {
-      await supportService.cancelServiceRequest(cancellingRequestId, cancelReason.trim() || 'Chủ trang trại chủ động hủy');
-      await loadRequests();
-      setSuccessMsg('Đã hủy phiếu yêu cầu dịch vụ thành công!');
-      setCancellingRequestId(null);
-      setCancelReason('');
-    } catch (err: any) {
-      alert(err?.response?.data?.detail || err?.response?.data?.message || 'Hủy yêu cầu thất bại.');
-    } finally {
-      setIsCancelling(false);
-      setTimeout(() => setSuccessMsg(null), 3500);
-    }
-  };
 
   const toggleExpand = (id: string) => {
     setExpandedRequestIds(prev => ({
@@ -95,9 +72,6 @@ export const SupportPage: React.FC = () => {
 
   useEffect(() => {
     loadRequests();
-    const refresh = () => { void loadRequests(); };
-    window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
   }, []);
 
   useEffect(() => {
@@ -129,7 +103,6 @@ export const SupportPage: React.FC = () => {
 
   // State for Payment Success Screen / Receipt Modal
   interface PaymentSuccessModalData {
-    depositPercent?: number;
     stage: 'DEPOSIT_30' | 'FINAL_70';
     requestId: string;
     title: string;
@@ -151,22 +124,28 @@ export const SupportPage: React.FC = () => {
   // Form states for Owner Acceptance & 70% Final Payment
   const [acceptanceSignatures, setAcceptanceSignatures] = useState<Record<string, string>>({});
   const [paymentMethods70, setPaymentMethods70] = useState<Record<string, 'CASH' | 'BANK_TRANSFER'>>({});
+  const [acceptanceChecks, setAcceptanceChecks] = useState<Record<string, { nodes: boolean; contract: boolean; telemetry: boolean }>>({});
 
   // Modal Owner Create Support / Maintenance Request
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'INSTALLATION' | 'MAINTENANCE'>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [newReq, setNewReq] = useState({
-    farmId: '30000000-0000-0000-0000-000000000001',
-    zoneId: '32000000-0000-0000-0000-000000000001',
+    farmId: '',
+    zoneId: '',
     requestType: 'MAINTENANCE' as 'INSTALLATION' | 'MAINTENANCE',
     title: '',
     description: '',
     priority: 'HIGH' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
   });
 
-  // Tỷ lệ cọc của CHÍNH hợp đồng của yêu cầu này (đã chốt khi Owner xem/ký), không theo cấu hình hiện hành.
-  const depositPctOf = (requestId: string) => contractDepositPercent(requests.find(r => r.serviceRequestId === requestId)?.contractDetails, bp.depositPercent);
+  useEffect(() => {
+    setNewReq(previous => ({
+      ...previous,
+      farmId: previous.farmId || farms[0]?.farmId || '',
+      zoneId: previous.zoneId || zones[0]?.zoneId || '',
+    }));
+  }, [farms, zones]);
 
   const handleSignContractAndPay30 = async (requestId: string) => {
     const signature = ownerSignatures[requestId] || defaultSignatureName;
@@ -175,7 +154,7 @@ export const SupportPage: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      const paymentRes = await supportService.signContractAndPay30(requestId, signature, method, requests.find(r => r.serviceRequestId === requestId)?.contractDetails?.deposit30Percent);
+      const paymentRes = await supportService.signContractAndPay30(requestId, signature, method);
       const req = requests.find(r => r.serviceRequestId === requestId);
       const amount = paymentRes?.amount || req?.contractDetails?.deposit30Percent || 0;
 
@@ -183,8 +162,7 @@ export const SupportPage: React.FC = () => {
       setPaymentSuccessData({
         stage: 'DEPOSIT_30',
         requestId,
-        title: `KÝ HỢP ĐỒNG & THANH TOÁN ${depositPctOf(requestId)}% TẠM ỨNG THÀNH CÔNG`,
-        depositPercent: depositPctOf(requestId),
+        title: 'KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG',
         amount,
         paymentMethod: paymentRes?.paymentMethod || method,
         signerFullName: paymentRes?.signerFullName || signature,
@@ -192,11 +170,11 @@ export const SupportPage: React.FC = () => {
         paidAt: paymentRes?.paidAtUtc || new Date().toISOString(),
         status: paymentRes?.status || 'Confirmed',
         contractTotal: req?.contractDetails?.totalAmount,
-        notes: `Hệ thống SmartFarm đã ghi nhận thanh toán tạm ứng ${depositPctOf(requestId)}% và Hợp đồng đã có hiệu lực. Nút Ký hợp đồng & Thanh toán đã được KHÓA. Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).`,
+        notes: 'Hệ thống SmartFarm đã ghi nhận thanh toán tạm ứng 30% và Hợp đồng đã có hiệu lực. Nút Ký hợp đồng & Thanh toán đã được KHÓA. Kỹ thuật viên hiện đã có thể tiếp tục Vào Zone Chấm Node (Node Mapper).',
       });
 
       await loadRequests();
-      setSuccessMsg(`🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN ${depositPctOf(requestId)}% TẠM ỨNG THÀNH CÔNG!`);
+      setSuccessMsg('🎉 ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% TẠM ỨNG THÀNH CÔNG!');
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to sign contract deposit:', err);
@@ -209,18 +187,20 @@ export const SupportPage: React.FC = () => {
   };
 
   const handleSignAcceptanceAndPay70 = async (requestId: string) => {
-    const request = requests.find(r => r.serviceRequestId === requestId);
-    if (request?.deploymentLinkInvalid || request?.deploymentStatus !== 'Completed') {
-      setErrorMsg('Chỉ nghiệm thu sau khi triển khai đúng farm/zone đã hoàn tất. Tải lại dữ liệu để kiểm tra trạng thái.');
-      return;
-    }
     const signature = acceptanceSignatures[requestId] || defaultSignatureName;
     const method = paymentMethods70[requestId] || 'BANK_TRANSFER';
     setIsProcessingId(requestId);
     setErrorMsg(null);
 
     try {
-      const paymentRes = await supportService.signAcceptanceAndPay70(requestId, signature, method);
+      const checks = acceptanceChecks[requestId];
+      if (!checks?.nodes || !checks.contract || !checks.telemetry) {
+        setErrorMsg('⚠️ Vui lòng xác nhận đủ checklist nghiệm thu theo hợp đồng trước khi thanh toán.');
+        setIsProcessingId(null);
+        return;
+      }
+      const evaluation = 'Đạt: đủ Node theo hợp đồng; GIS đã đồng bộ; Gateway/Node có kết nối và telemetry. Owner xác nhận nghiệm thu trước thanh toán 70%.';
+      const paymentRes = await supportService.signAcceptanceAndPay70(requestId, signature, method, evaluation);
       const req = requests.find(r => r.serviceRequestId === requestId);
       const amount = paymentRes?.amount || req?.contractDetails?.remaining70Percent || 0;
 
@@ -228,8 +208,7 @@ export const SupportPage: React.FC = () => {
       setPaymentSuccessData({
         stage: 'FINAL_70',
         requestId,
-        title: `NGHIỆM THU BÀN GIAO & QUYẾT TOÁN ${100 - depositPctOf(requestId)}% THÀNH CÔNG`,
-        depositPercent: depositPctOf(requestId),
+        title: 'NGHIỆM THU BÀN GIAO & QUYẾT TOÁN 70% THÀNH CÔNG',
         amount,
         paymentMethod: paymentRes?.paymentMethod || method,
         signerFullName: paymentRes?.signerFullName || signature,
@@ -241,7 +220,7 @@ export const SupportPage: React.FC = () => {
       });
 
       await loadRequests();
-      setSuccessMsg(`✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN ${100 - depositPctOf(requestId)}% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.`);
+      setSuccessMsg('✅ ĐÃ KÝ NGHIỆM THU BÀN GIAO & THANH TOÁN 70% CÒN LẠI! Phiếu yêu cầu đã hoàn tất 100%.');
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to sign acceptance:', err);
@@ -282,11 +261,12 @@ export const SupportPage: React.FC = () => {
         priority: newReq.priority,
         requestedBy: `${currentOwnerName} (Owner)`,
         assignedOwnerName: currentOwnerName,
+        assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
       });
 
       await loadRequests();
       setIsModalOpen(false);
-      setNewReq({ farmId: '30000000-0000-0000-0000-000000000001', zoneId: '32000000-0000-0000-0000-000000000001', requestType: 'MAINTENANCE', title: '', description: '', priority: 'HIGH' });
+      setNewReq({ farmId: farms[0]?.farmId || '', zoneId: zones[0]?.zoneId || '', requestType: 'MAINTENANCE', title: '', description: '', priority: 'HIGH' });
       setSuccessMsg('Đã gửi phiếu Yêu cầu Kỹ thuật thành công lên API máy chủ!');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
@@ -310,7 +290,7 @@ export const SupportPage: React.FC = () => {
             Quản lý Yêu cầu Dịch vụ, Ký Hợp đồng & Nghiệm thu (Owner Portal)
           </h1>
           <p className="text-xs text-emerald-100 mt-1">
-            Chủ trang trại nhận Hợp đồng báo giá, ký tên & cọc {depositPct}% tiền mặt/chuyển khoản để cho phép Kỹ thuật viên chấm Node, sau đó ký Nghiệm thu và thanh toán {100 - depositPct}% còn lại.
+            Chủ trang trại nhận Hợp đồng báo giá, ký tên & cọc 30% tiền mặt/chuyển khoản để cho phép Kỹ thuật viên chấm Node, sau đó ký Nghiệm thu và thanh toán 70% còn lại.
           </p>
         </div>
 
@@ -425,7 +405,10 @@ export const SupportPage: React.FC = () => {
             className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-semibold focus:outline-none focus:border-emerald-600"
           >
             <option value="ALL">Tất cả trạng thái</option>
-            {Object.entries(serviceStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            <option value="OPEN">Chờ tiếp nhận (Open)</option>
+            <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
+            <option value="ACCEPTED_BY_OWNER">Đã nghiệm thu (Accepted)</option>
+            <option value="RESOLVED">Đã hoàn tất (Resolved)</option>
           </select>
         </div>
       </div>
@@ -474,18 +457,8 @@ export const SupportPage: React.FC = () => {
               filteredRequests.map(req => {
                 const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
                 const contract = req.contractDetails;
-                // Tỷ lệ cọc của CHÍNH hợp đồng này (đã chốt khi cọc); cấu hình Platform đổi sau đó không làm đổi hợp đồng đã cọc.
-                const cardDepositPct = contractDepositPercent(contract, bp.depositPercent);
-                const isContractSigned = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || req.isContractSigned || req.isDepositPaid || req.isFullyPaid);
-                const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER');
-                const isCompleted = Boolean(
-                  isAcceptanceDone ||
-                  ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted', 'VERIFIED', 'Verified', 'COMPLETED', 'Completed'].includes(req.status as string) ||
-                  req.deploymentStatus === 'Completed' ||
-                  req.deploymentStatus === 'COMPLETED' ||
-                  req.quotationStatus === 'Completed' ||
-                  req.quotationStatus === 'COMPLETED'
-                );
+                const isContractSigned = Boolean(contract?.isSignedByOwner && contract?.is30PercentPaid);
+                const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned);
                 const isExpanded = !!expandedRequestIds[req.serviceRequestId];
 
                 // Resolve exact Zone name of the contract
@@ -537,22 +510,15 @@ export const SupportPage: React.FC = () => {
                           }`}>
                             {isInstallation ? '⚡ LẮP ĐẶT THIẾT BỊ MỚI' : '🛠️ BẢO TRÌ & BẢO DƯỠNG'}
                           </span>
-                          <ServiceRequestStatus request={req} />
-
-                          {Boolean(req.assignedTechnicianName && ['ASSIGNED', 'Assigned'].includes(req.status)) && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 font-bold text-[10px] flex items-center gap-1 shadow-2xs animate-pulse">
-                              <Truck size={12} className="text-sky-600" />
-                              <span>Nhân viên kỹ thuật đang tới ({req.assignedTechnicianName})</span>
-                            </span>
-                          )}
+                          <StatusBadge status={req.status} />
 
                           {isContractSigned ? (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px] flex items-center gap-1">
-                              <CheckCircle2 size={12} /> ĐÃ KÝ HĐ & CỌC {cardDepositPct}%
+                              <CheckCircle2 size={12} /> ĐÃ KÝ HĐ & CỌC 30%
                             </span>
                           ) : (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300 animate-pulse">
-                              ⏳ Chờ Ký HĐ & Cọc {cardDepositPct}%
+                              ⏳ Chờ Ký HĐ & Cọc 30%
                             </span>
                           )}
 
@@ -598,13 +564,7 @@ export const SupportPage: React.FC = () => {
                             <ArrowUpRight size={13} className="text-emerald-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
                           </button>
                           <span>•</span>
-                          <span>Kỹ thuật viên: <strong className={req.assignedTechnicianName ? "text-sky-800 font-bold" : "text-amber-600"}>
-                            {req.assignedTechnicianName
-                              ? ['ASSIGNED', 'Assigned'].includes(req.status)
-                                ? `${req.assignedTechnicianName} (Nhân viên kỹ thuật đang tới)`
-                                : req.assignedTechnicianName
-                              : 'Chờ phân công'}
-                          </strong></span>
+                          <span>Kỹ thuật viên: <strong>{req.assignedTechnicianName || 'Trần Minh Trí'}</strong></span>
                           <span>•</span>
                           <span className="text-slate-400 font-mono">Ngày gửi: {new Date(req.createdAt).toLocaleDateString('vi-VN')}</span>
                         </div>
@@ -612,28 +572,6 @@ export const SupportPage: React.FC = () => {
 
                       {/* Right Action Button */}
                       <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
-                        {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCancellingRequestId(req.serviceRequestId);
-                              setCancelReason('');
-                            }}
-                            className="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                            title="Hủy phiếu yêu cầu dịch vụ này"
-                          >
-                            <XCircle size={14} />
-                            <span className="hidden sm:inline">Hủy Yêu Cầu</span>
-                          </button>
-                        )}
-
-                        {['CANCELLED', 'Cancelled'].includes(req.status) && (
-                          <span className="px-2.5 py-1 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 border border-slate-200 flex items-center gap-1">
-                            <XCircle size={13} /> Đã Hủy
-                          </span>
-                        )}
-
                         <button
                           type="button"
                           onClick={(e) => {
@@ -672,24 +610,6 @@ export const SupportPage: React.FC = () => {
                           <strong>Mô tả yêu cầu:</strong> {req.description}
                         </p>
 
-                        {/* Alert: Technician on the way to the farm */}
-                        {Boolean(req.assignedTechnicianName && ['ASSIGNED', 'Assigned'].includes(req.status)) && (
-                          <div className="p-3.5 bg-sky-50 border border-sky-200 rounded-xl flex items-start gap-3 text-sky-950 shadow-2xs">
-                            <div className="p-2 bg-sky-100 rounded-lg text-sky-700 shrink-0 mt-0.5">
-                              <Truck size={20} className="animate-pulse" />
-                            </div>
-                            <div className="space-y-1 text-xs">
-                              <div className="font-bold text-sky-950 flex items-center gap-2">
-                                <span>🚀 Nhân viên kỹ thuật đang tới trang trại của bạn!</span>
-                                <span className="px-2 py-0.5 rounded-full bg-sky-200 text-sky-800 text-[10px] font-bold">Đang di chuyển</span>
-                              </div>
-                              <p className="text-sky-800 leading-relaxed">
-                                Admin đã phân công yêu cầu này cho kỹ thuật viên <strong className="text-sky-950 font-bold">{req.assignedTechnicianName}</strong>. Nhân viên kỹ thuật đang trên đường di chuyển đến thực địa nông trại của bạn để tiếp nhận và triển khai công việc. Quý khách vui lòng giữ liên lạc điện thoại để kỹ thuật viên liên hệ khi tới nơi!
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
                         <div className="space-y-4 pt-2">
                 {/* ========================================================================= */}
                 {/* SECTION 1: HỢP ĐỒNG & BÁO GIÁ LẮP ĐẶT (BƯỚC 1: KÝ HĐ & THANH TOÁN TẠM ỨNG 30%) */}
@@ -698,7 +618,7 @@ export const SupportPage: React.FC = () => {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h4 className="font-bold text-amber-950 flex items-center gap-2 text-xs uppercase tracking-wider">
                       <FileText size={16} className="text-amber-700" />
-                      1. Hợp đồng Báo giá Thiết bị & Thanh toán Tạm ứng {cardDepositPct}%
+                      1. Hợp đồng Báo giá Thiết bị & Thanh toán Tạm ứng 30%
                     </h4>
                     <div className="flex items-center gap-2">
                       <button
@@ -722,11 +642,11 @@ export const SupportPage: React.FC = () => {
                       </button>
                       {isContractSigned ? (
                         <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[10px] flex items-center gap-1">
-                          <CheckCircle2 size={12} /> Đã Ký & Thanh toán {cardDepositPct}%
+                          <CheckCircle2 size={12} /> Đã Ký & Thanh toán 30%
                         </span>
                       ) : (
                         <span className="px-2.5 py-0.5 rounded bg-amber-200 text-amber-950 font-bold text-[10px]">
-                          Cần Owner Ký tên & Cọc {cardDepositPct}%
+                          Cần Owner Ký tên & Cọc 30%
                         </span>
                       )}
                     </div>
@@ -782,7 +702,7 @@ export const SupportPage: React.FC = () => {
                           <strong className="font-mono text-slate-900">{contract.totalAmount.toLocaleString('vi-VN')} VNĐ</strong>
                         </div>
                         <div className="flex justify-between font-bold text-amber-900 text-sm pt-1 border-t border-slate-100">
-                          <span>SỐ TIỀN TẠM ỨNG {cardDepositPct}% CẦN THANH TOÁN TẠI ĐÂY:</span>
+                          <span>SỐ TIỀN TẠM ỨNG 30% CẦN THANH TOÁN TẠI ĐÂY:</span>
                           <span className="font-mono text-amber-900 text-base">{contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ</span>
                         </div>
                       </div>
@@ -792,7 +712,7 @@ export const SupportPage: React.FC = () => {
                         <div className="p-3.5 bg-white border-2 border-amber-400 rounded-xl space-y-3 shadow-xs">
                           <h5 className="font-bold text-amber-950 flex items-center gap-1.5 text-xs">
                             <ShieldCheck size={16} className="text-amber-600" />
-                            Xác nhận Ký Hợp đồng & Thanh toán {cardDepositPct}% Tạm ứng ({contract.deposit30Percent.toLocaleString('vi-VN')}đ)
+                            Xác nhận Ký Hợp đồng & Thanh toán 30% Tạm ứng ({contract.deposit30Percent.toLocaleString('vi-VN')}đ)
                           </h5>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -806,7 +726,7 @@ export const SupportPage: React.FC = () => {
                             </div>
 
                             <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán {cardDepositPct}% Cọc *</label>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán 30% Cọc *</label>
                               <div className="flex gap-2">
                                 <button
                                   type="button"
@@ -863,10 +783,10 @@ export const SupportPage: React.FC = () => {
                             </div>
 
                             <div className="p-2.5 bg-white border border-amber-200 rounded-lg text-[11px] text-slate-600 space-y-1.5 max-h-32 overflow-y-auto leading-relaxed shadow-2xs">
-                              <p>• <strong>Điều 1 (Tạm ứng & Triển khai):</strong> Bên A đồng ý thanh toán tạm ứng {cardDepositPct}% giá trị hợp đồng để Bên B tiến hành xuất kho thiết bị, điều động nhân sự kỹ thuật và tiến hành lắp đặt trên thực địa phân khu.</p>
-                              <p>• <strong>Điều 2 (Nghiệm thu & Quyết toán):</strong> Sau khi Bên B thi công hoàn tất, đo kiểm kết nối vi khí hậu đạt chuẩn và bàn giao thực địa, Bên A sẽ ký biên bản nghiệm thu và thanh toán {100 - cardDepositPct}% còn lại trong vòng 03 ngày làm việc.</p>
+                              <p>• <strong>Điều 1 (Tạm ứng & Triển khai):</strong> Bên A đồng ý thanh toán tạm ứng 30% giá trị hợp đồng để Bên B tiến hành xuất kho thiết bị, điều động nhân sự kỹ thuật và tiến hành lắp đặt trên thực địa phân khu.</p>
+                              <p>• <strong>Điều 2 (Nghiệm thu & Quyết toán):</strong> Sau khi Bên B thi công hoàn tất, đo kiểm kết nối vi khí hậu đạt chuẩn và bàn giao thực địa, Bên A sẽ ký biên bản nghiệm thu và thanh toán 70% còn lại trong vòng 03 ngày làm việc.</p>
                               <p>• <strong>Điều 3 (Bảo hành & Bảo dưỡng):</strong> Toàn bộ cảm biến, trạm node và thiết bị điều khiển tự động được bảo hành chính hãng 12 tháng, bảo dưỡng định kỳ và hỗ trợ kỹ thuật 24/7 theo tiêu chuẩn SmartFarm.</p>
-                              <p>• <strong>Điều 4 (Kích hoạt số hóa phân khu):</strong> Phân khu sẽ được kích hoạt quyền quản lý hợp đồng chính thức, mở khóa bản đồ GIS và điều khiển tự động ngay khi khoản cọc {cardDepositPct}% được xác nhận.</p>
+                              <p>• <strong>Điều 4 (Kích hoạt số hóa phân khu):</strong> Phân khu sẽ được kích hoạt quyền quản lý hợp đồng chính thức, mở khóa bản đồ GIS và điều khiển tự động ngay khi khoản cọc 30% được xác nhận.</p>
                             </div>
 
                             <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
@@ -880,7 +800,7 @@ export const SupportPage: React.FC = () => {
                                 className="mt-0.5 w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500 cursor-pointer shrink-0"
                               />
                               <span className="text-[11px] text-slate-800 font-semibold leading-snug">
-                                Tôi đã đọc, hiểu rõ và <span className="text-amber-900 font-bold underline">đồng ý với toàn bộ các điều khoản hợp đồng nêu trên</span>, đồng thời cam kết thanh toán tạm ứng {cardDepositPct}% để tiến hành triển khai.
+                                Tôi đã đọc, hiểu rõ và <span className="text-amber-900 font-bold underline">đồng ý với toàn bộ các điều khoản hợp đồng nêu trên</span>, đồng thời cam kết thanh toán tạm ứng 30% để tiến hành triển khai.
                               </span>
                             </label>
                           </div>
@@ -898,12 +818,12 @@ export const SupportPage: React.FC = () => {
                             {isProcessingId === req.serviceRequestId ? (
                               <>
                                 <Loader2 size={16} className="animate-spin" />
-                                Đang xác thực Ký HĐ & Ghi nhận Cọc {cardDepositPct}% qua API...
+                                Đang xác thực Ký HĐ & Ghi nhận Cọc 30% qua API...
                               </>
                             ) : (
                               <>
                                 <CheckSquare size={16} />
-                                KÝ HỢP ĐỒNG & THANH TOÁN {cardDepositPct}% CỌC ({contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ)
+                                KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC ({contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ)
                               </>
                             )}
                           </Button>
@@ -919,7 +839,7 @@ export const SupportPage: React.FC = () => {
                           <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-200 pb-2">
                             <span className="flex items-center gap-2 text-sm text-emerald-800">
                               <CheckCircle2 size={18} className="text-emerald-600" />
-                              ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN {cardDepositPct}% CỌC THÀNH CÔNG
+                              ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC THÀNH CÔNG
                             </span>
                             <span className="text-[11px] bg-emerald-200 text-emerald-950 px-2.5 py-1 rounded-full font-mono font-bold flex items-center gap-1">
                               <Lock size={12} /> Đã khóa thao tác
@@ -932,7 +852,7 @@ export const SupportPage: React.FC = () => {
                               <strong>{contract.ownerSignatureName || defaultSignatureName}</strong>
                             </div>
                             <div>
-                              <span className="text-slate-500 block">Số tiền tạm ứng {cardDepositPct}%:</span>
+                              <span className="text-slate-500 block">Số tiền tạm ứng 30%:</span>
                               <strong className="text-emerald-700 font-mono text-xs">{contract.deposit30Percent.toLocaleString('vi-VN')} VNĐ</strong>
                             </div>
                             <div>
@@ -950,10 +870,10 @@ export const SupportPage: React.FC = () => {
                             type="button"
                             disabled={true}
                             className="w-full bg-slate-100 text-slate-400 font-bold py-2.5 px-4 rounded-xl border border-slate-300 text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-90 shadow-2xs"
-                            title={`Hợp đồng đã được ký và thanh toán ${cardDepositPct}% cọc thành công. Nút này đã bị khóa.`}
+                            title="Hợp đồng đã được ký và thanh toán 30% cọc thành công. Nút này đã bị khóa."
                           >
                             <Lock size={15} className="text-slate-400" />
-                            ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN {cardDepositPct}% CỌC (NÚT ĐÃ KHÓA HOÀN TOÀN)
+                            ĐÃ KÝ HỢP ĐỒNG & THANH TOÁN 30% CỌC (NÚT ĐÃ KHÓA HOÀN TOÀN)
                           </button>
 
                           <p className="text-[11px] text-emerald-900 font-semibold pt-0.5 flex items-center justify-between gap-2 flex-wrap">
@@ -996,7 +916,7 @@ export const SupportPage: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-emerald-950 flex items-center gap-2 text-xs uppercase tracking-wider">
                       <CheckSquare size={16} className="text-emerald-700" />
-                      2. Biên bản Nghiệm thu Công trình & Thanh toán {100 - cardDepositPct}% còn lại
+                      2. Biên bản Nghiệm thu Công trình & Thanh toán 70% còn lại
                     </h4>
                     {isAcceptanceDone ? (
                       <span className="px-2.5 py-0.5 rounded bg-emerald-700 text-white font-bold text-[10px]">
@@ -1011,21 +931,21 @@ export const SupportPage: React.FC = () => {
 
                   {!isContractSigned ? (
                     <div className="p-3 bg-slate-100 text-slate-500 rounded-xl text-center italic text-xs">
-                      🔒 Bước này bị khóa. Cần ký Hợp đồng & thanh toán {cardDepositPct}% cọc tại Bước 1 trước khi nghiệm thu.
+                      🔒 Bước này bị khóa. Cần ký Hợp đồng & thanh toán 30% cọc tại Bước 1 trước khi nghiệm thu.
                     </div>
                   ) : !isAcceptanceDone ? (
                     <div className="p-3.5 bg-white border-2 border-emerald-400 rounded-xl space-y-3 shadow-xs text-xs">
                       <div className="flex items-center justify-between text-emerald-900 font-bold">
                         <span>Tiến độ chấm Node thực địa:</span>
                         <span className="font-mono bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded">
-                          {req.mappedNodesCount ?? 'Chưa tải'} Nodes đã chấm trên GIS Map
+                          {req.mappedNodesCount || 0} Nodes đã chấm trên GIS Map
                         </span>
                       </div>
 
                       <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between font-bold text-slate-900">
-                        <span>SỐ TIỀN {100 - cardDepositPct}% CÒN LẠI CẦN THANH TOÁN KHI NGHIỆM THU:</span>
+                        <span>SỐ TIỀN 70% CÒN LẠI CẦN THANH TOÁN KHI NGHIỆM THU:</span>
                         <span className="font-mono text-emerald-950 text-sm">
-                          {(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ
+                          {(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ
                         </span>
                       </div>
 
@@ -1040,7 +960,7 @@ export const SupportPage: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán {100 - cardDepositPct}% còn lại *</label>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Phương thức Thanh toán 70% còn lại *</label>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -1068,34 +988,42 @@ export const SupportPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {req.deploymentStatus && req.deploymentStatus !== 'Completed' && (
-                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs flex items-center gap-2">
-                          <AlertCircle size={15} className="text-amber-600 shrink-0" />
-                          <span>
-                            Tiến độ triển khai hiện tại: <strong>{deploymentLabels[req.deploymentStatus] || req.deploymentStatus}</strong>. Biên bản nghiệm thu sẽ mở sau khi Kỹ thuật viên hoàn tất lắp đặt & đo kiểm tra kết nối thiết bị.
-                          </span>
-                        </div>
-                      )}
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                        <div className="font-bold text-amber-900">Checklist đánh giá nghiệm thu theo hợp đồng</div>
+                        {([
+                          ['nodes', `Đủ ${req.mappedNodesCount || 0} Node đã chấm đúng trên GIS`],
+                          ['contract', 'Thiết bị và cấu hình đúng phạm vi hợp đồng'],
+                          ['telemetry', 'Gateway/Node kết nối và có bằng chứng telemetry'],
+                        ] as const).map(([key, label]) => (
+                          <label key={key} className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(acceptanceChecks[req.serviceRequestId]?.[key])}
+                              onChange={e => setAcceptanceChecks(prev => ({
+                                ...prev,
+                                [req.serviceRequestId]: { ...(prev[req.serviceRequestId] || { nodes: false, contract: false, telemetry: false }), [key]: e.target.checked }
+                              }))}
+                              className="mt-0.5 accent-emerald-700"
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
 
                       <Button
-                        disabled={isProcessingId === req.serviceRequestId || (Boolean(req.deploymentStatus) && req.deploymentStatus !== 'Completed')}
+                        disabled={isProcessingId === req.serviceRequestId || !acceptanceChecks[req.serviceRequestId]?.nodes || !acceptanceChecks[req.serviceRequestId]?.contract || !acceptanceChecks[req.serviceRequestId]?.telemetry}
                         onClick={() => handleSignAcceptanceAndPay70(req.serviceRequestId)}
-                        title={req.deploymentStatus !== 'Completed' || req.deploymentLinkInvalid ? 'Cần hoàn tất triển khai đúng farm/zone trước khi nghiệm thu' : undefined}
-                        className={`w-full font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2 ${
-                          Boolean(req.deploymentStatus) && req.deploymentStatus !== 'Completed'
-                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                            : 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                        }`}
+                        className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
                       >
                         {isProcessingId === req.serviceRequestId ? (
                           <>
                             <Loader2 size={16} className="animate-spin" />
-                            Đang xác nhận Ký Nghiệm thu & Ghi nhận {100 - cardDepositPct}% qua API...
+                            Đang xác nhận Ký Nghiệm thu & Ghi nhận 70% qua API...
                           </>
                         ) : (
                           <>
                             <CheckSquare size={16} />
-                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN {100 - cardDepositPct}% CÒN LẠI ({(contract?.remaining70Percent?.toLocaleString('vi-VN') ?? 'Chưa có dữ liệu')} VNĐ)
+                            KÝ BÀN GIAO NGHIỆM THU & THANH TOÁN 70% CÒN LẠI ({(contract?.remaining70Percent || 9450000).toLocaleString('vi-VN')} VNĐ)
                           </>
                         )}
                       </Button>
@@ -1117,7 +1045,7 @@ export const SupportPage: React.FC = () => {
                           <strong>{req.acceptanceDetails?.ownerSignatureName || defaultSignatureName}</strong>
                         </div>
                         <div>
-                          <span className="text-slate-500 block">Số tiền thanh toán {100 - cardDepositPct}%:</span>
+                          <span className="text-slate-500 block">Số tiền thanh toán 70%:</span>
                           <strong className="text-emerald-700 font-mono text-xs">{(contract?.remaining70Percent || 0).toLocaleString('vi-VN')} VNĐ</strong>
                         </div>
                         <div>
@@ -1328,8 +1256,8 @@ export const SupportPage: React.FC = () => {
               </div>
               <span className="text-[10px] text-emerald-700 mt-1 inline-block font-medium">
                 {paymentSuccessData.stage === 'DEPOSIT_30'
-                  ? `Giai đoạn: Tạm ứng ${paymentSuccessData.depositPercent ?? depositPct}% Hợp đồng triển khai`
-                  : `Giai đoạn: Quyết toán ${100 - (paymentSuccessData.depositPercent ?? depositPct)}% Bàn giao nghiệm thu`}
+                  ? 'Giai đoạn: Tạm ứng 30% Hợp đồng triển khai'
+                  : 'Giai đoạn: Quyết toán 70% Bàn giao nghiệm thu'}
               </span>
             </div>
 
@@ -1389,43 +1317,6 @@ export const SupportPage: React.FC = () => {
           </div>
         </Modal>
       )}
-      {/* Modal Owner Cancel Request */}
-      <Modal isOpen={!!cancellingRequestId} onClose={() => setCancellingRequestId(null)} title="Hủy Phiếu Yêu Cầu Dịch Vụ">
-        <div className="space-y-4 text-xs">
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 flex items-start gap-2">
-            <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <strong>Xác nhận hủy yêu cầu dịch vụ #{cancellingRequestId?.substring(0, 8)}</strong>
-              <p className="mt-1 text-rose-700">Sau khi xác nhận hủy, yêu cầu sẽ chuyển sang trạng thái ĐÃ HỦY và kỹ thuật viên sẽ không thực hiện yêu cầu này nữa.</p>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-slate-700 font-bold mb-1">Lý do hủy yêu cầu (tùy chọn)</label>
-            <textarea
-              rows={3}
-              value={cancelReason}
-              onChange={e => setCancelReason(e.target.value)}
-              placeholder="VD: Đã khắc phục được sự cố, thay đổi kế hoạch sản xuất..."
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-rose-500"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="ghost" onClick={() => setCancellingRequestId(null)} disabled={isCancelling}>
-              Đóng
-            </Button>
-            <Button
-              onClick={handleCancelRequest}
-              disabled={isCancelling}
-              className="bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-1.5"
-            >
-              <XCircle size={15} />
-              <span>{isCancelling ? 'Đang xử lý...' : 'Xác Nhận Hủy Yêu Cầu'}</span>
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 };

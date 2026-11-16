@@ -84,15 +84,15 @@ export const RegisterPage: React.FC = () => {
         {/* Left column: Branding & Feature summary */}
         <div className="p-5 sm:p-8 bg-gradient-to-br from-[#119653] via-emerald-700 to-emerald-800 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-emerald-600/40">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs shrink-0">
+            <Link to="/" className="inline-flex items-center gap-3 cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all select-none group" title="Về trang chủ">
+              <div className="p-2 sm:p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs shrink-0 group-hover:bg-white/25 transition-colors">
                 <Sprout size={24} className="sm:w-7 sm:h-7" />
               </div>
               <div>
                 <span className="font-bold text-lg sm:text-xl tracking-tight text-white block">SmartFarm SaaS</span>
                 <span className="text-[10px] text-emerald-200/90 uppercase tracking-widest font-mono">Đăng ký tài khoản</span>
               </div>
-            </div>
+            </Link>
 
             <h1 className="mt-4 sm:mt-8 text-xl sm:text-2xl font-bold text-white leading-tight">
               Khởi tạo Nông trang Công nghệ cao cùng SmartFarm

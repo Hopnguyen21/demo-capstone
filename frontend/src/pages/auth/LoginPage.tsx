@@ -15,8 +15,8 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [email, setEmail] = useState('owner@smartfarm.demo');
-  const [password, setPassword] = useState('Demo@12345');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -61,17 +61,25 @@ export const LoginPage: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-4xl grid md:grid-cols-2 bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden text-slate-800">
+    <div className="min-h-screen relative flex items-center justify-center p-3 sm:p-4 bg-slate-900 overflow-hidden">
+      {/* Background landscape image with subtle dark overlay */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat transform scale-105 transition-transform duration-1000"
+        style={{ backgroundImage: `url('/login-bg.jpg')` }}
+      />
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" />
+
+      {/* Main Login Card */}
+      <div className="relative z-10 w-full max-w-4xl grid md:grid-cols-2 bg-white/95 backdrop-blur-md border border-white/40 rounded-3xl shadow-2xl overflow-hidden text-slate-800 ring-1 ring-black/10">
         {/* Left column: Branding & Feature summary */}
         <div className="p-5 sm:p-8 bg-gradient-to-br from-[#119653] via-emerald-700 to-emerald-800 text-white flex flex-col justify-between border-b md:border-b-0 md:border-r border-emerald-600/40">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs shrink-0">
+            <Link to="/" className="inline-flex items-center gap-3 cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all select-none group" title="Về trang chủ">
+              <div className="p-2 sm:p-2.5 rounded-xl bg-white/20 border border-white/30 text-white backdrop-blur-xs shrink-0 group-hover:bg-white/25 transition-colors">
                 <Sprout size={24} className="sm:w-7 sm:h-7" />
               </div>
               <span className="font-bold text-lg sm:text-xl tracking-tight text-white">SmartFarm SaaS</span>
-            </div>
+            </Link>
 
             <h1 className="mt-4 sm:mt-8 text-xl sm:text-2xl font-bold text-white leading-tight">
               Nền tảng Quản lý Nông nghiệp Thông minh Tích hợp AI

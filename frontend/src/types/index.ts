@@ -325,6 +325,8 @@ export interface Gateway {
 
 export interface SensorNode {
   nodeId: string;
+  hardwareItemId?: string;
+  contractCode?: string;
   gatewayId?: string;
   farmId: string;
   fieldId?: string;
@@ -598,7 +600,7 @@ export interface ServiceRequest {
   title: string;
   description: string;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'DIAGNOSED' | 'WORK_COMPLETED' | 'VERIFIED' | 'RESOLVED' | 'CLOSED';
+  status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'DIAGNOSED' | 'WORK_COMPLETED' | 'VERIFIED' | 'RESOLVED' | 'CLOSED' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER';
   requestType: 'INSTALLATION' | 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT' | 'INITIAL_SETUP';
   isAcceptedByOwner?: boolean;
   acceptedAtByOwner?: string;
@@ -1086,6 +1088,49 @@ export interface CustomPackageRequest {
   maxZones: number;
   price: number;
   currency?: string;
+}
+
+// ─── Module 4: Mã Giảm Giá & Khuyến Mãi (Discount Codes) ─────────────────────
+export type DiscountType = 'Percentage' | 'FixedAmount' | 1 | 2;
+
+export interface DiscountCode {
+  id: string;
+  code: string;
+  description: string;
+  discountType: DiscountType;
+  discountTypeText: string;
+  discountValue: number;
+  minContractValue: number;
+  maxDiscountAmount?: number | null;
+  startDateUtc?: string | null;
+  endDateUtc?: string | null;
+  usageLimit?: number | null;
+  usedCount: number;
+  isActive: boolean;
+  createdByUserId: string;
+  createdByName: string;
+  createdAtUtc: string;
+}
+
+export interface ValidateDiscountResult {
+  isValid: boolean;
+  message?: string;
+  code?: string;
+  discountType?: DiscountType;
+  discountPercent: number;
+  discountAmount: number;
+  finalAmount: number;
+}
+
+export interface BestDiscountResult {
+  hasDiscount: boolean;
+  code?: string;
+  description?: string;
+  discountType?: DiscountType;
+  discountPercent: number;
+  discountAmount: number;
+  finalAmount: number;
+  note?: string;
 }
 
 

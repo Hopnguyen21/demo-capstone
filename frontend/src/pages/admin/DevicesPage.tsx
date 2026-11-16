@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
 import { adminService, userService } from '../../services';
 import {
   Package, Cpu, Radio, Activity, Wifi, Battery, Plus, Search,
-  Filter, CheckCircle2, ShieldCheck, Wrench, Layers, Tag, MapPin, Trash2, Edit
+  Filter, CheckCircle2, ShieldCheck, Wrench, Layers, Tag, MapPin, Trash2, Edit, Eye
 } from 'lucide-react';
 
 export interface InventoryDevice {
@@ -16,8 +16,10 @@ export interface InventoryDevice {
   model: string;
   manufacturer: string;
   quantityInStock: number;
+  unitPrice: number;
+  unit: string;
   locationRack: string;
-  status: 'AVAILABLE' | 'FIELD_INSTALLED' | 'MAINTENANCE' | 'ISSUED';
+  status: 'InWarehouse' | 'Allocated' | 'InTechnicianStock' | 'Deployed' | 'Maintenance' | 'Faulty' | 'Returned';
   assignedTechnicianId?: string;
   addedAt: string;
 }
@@ -32,10 +34,13 @@ const normalizeCategory = (value: unknown): InventoryDevice['category'] => {
 
 const normalizeStatus = (value: unknown): InventoryDevice['status'] => {
   const v = String(value || '').toUpperCase();
-  if (v.includes('DEPLOY') || v.includes('FIELD')) return 'FIELD_INSTALLED';
-  if (v.includes('ISSU')) return 'ISSUED';
-  if (v.includes('MAINT')) return 'MAINTENANCE';
-  return 'AVAILABLE';
+  if (v.includes('FAULT')) return 'Faulty';
+  if (v.includes('TECHNICIAN')) return 'InTechnicianStock';
+  if (v.includes('DEPLOY') || v.includes('FIELD')) return 'Deployed';
+  if (v.includes('ALLOCAT') || v.includes('ISSU')) return 'Allocated';
+  if (v.includes('MAINT')) return 'Maintenance';
+  if (v.includes('RETURN')) return 'Returned';
+  return 'InWarehouse';
 };
 
 const normalizeMac = (value: string) => value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -59,6 +64,11 @@ export const DevicesPage: React.FC = () => {
   const [bulkDeviceStatus, setBulkDeviceStatus] = useState('ALL');
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [selectedDeviceQuantities, setSelectedDeviceQuantities] = useState<Record<string, number>>({});
+  const [allocationRequests, setAllocationRequests] = useState<any[]>([]);
+  const [selectedAllocationRequest, setSelectedAllocationRequest] = useState<any | null>(null);
+  const [activeInventoryTab, setActiveInventoryTab] = useState<'INVENTORY' | 'PRICES' | 'REQUESTS'>('INVENTORY');
+  const [bulkPrices, setBulkPrices] = useState<Record<string, number>>({});
+  const [savingPriceCode, setSavingPriceCode] = useState<string | null>(null);
   const [issueQuantity, setIssueQuantity] = useState(1);
 
   // Initial Inventory Devices Stock List
@@ -190,6 +200,8 @@ export const DevicesPage: React.FC = () => {
           model: i.model || '',
           manufacturer: i.manufacturer || '',
           quantityInStock: i.quantityInStock || 0,
+          unitPrice: Number(i.unitPrice || 0),
+          unit: i.unit || (normalizeCategory(i.category) === 'GATEWAY' || normalizeCategory(i.category) === 'NODE_MODULE' ? 'Cái' : 'Bộ'),
           locationRack: i.locationRack || '',
           status: normalizeStatus(i.status),
           assignedTechnicianId: i.assignedTechnicianId,
@@ -199,6 +211,20 @@ export const DevicesPage: React.FC = () => {
     }).catch(() => {});
   }, []);
 
+  const loadAllocationRequests = () => adminService.getHardwareAllocationRequests().then((items: any[]) => setAllocationRequests(Array.isArray(items) ? items : [])).catch(() => setAllocationRequests([]));
+  useEffect(() => { loadAllocationRequests(); }, []);
+
+  const approveAllocationRequest = async (requestId: string) => {
+    try {
+      await adminService.approveHardwareAllocationRequest(requestId);
+      setSuccessNotice('Đã duyệt đơn và chuyển thiết bị vào tồn kho kỹ thuật viên.');
+      loadAllocationRequests();
+      const refreshed = await adminService.getHardwareItems();
+      if (Array.isArray(refreshed)) setDevices(refreshed.map((i: any) => ({ id: i.id, code: i.code, name: i.name, category: normalizeCategory(i.category), serialNumber: i.serialNumber || '', macAddress: i.macAddress || '', model: i.model || '', manufacturer: i.manufacturer || '', quantityInStock: i.quantityInStock || 0, unitPrice: Number(i.unitPrice || 0), unit: i.unit || 'Cái', locationRack: i.locationRack || '', status: normalizeStatus(i.status), assignedTechnicianId: i.assignedTechnicianId, addedAt: i.createdAtUtc ? i.createdAtUtc.substring(0, 10) : '' })));
+    } catch (err: any) { alert(`❌ Không thể duyệt đơn: ${err?.response?.data?.detail || err?.message || 'Lỗi không xác định'}`); }
+  };
+  const rejectAllocationRequest = async (requestId: string) => { const reason = window.prompt('Lý do từ chối đơn cấp phát:'); if (!reason?.trim()) return; try { await adminService.rejectHardwareAllocationRequest(requestId, reason.trim()); setSuccessNotice('Đã từ chối đơn cấp phát.'); loadAllocationRequests(); } catch (err: any) { alert(`Không thể từ chối đơn: ${err?.response?.data?.detail || err?.message || 'Lỗi không xác định'}`); } };
+
   useEffect(() => {
     userService.getUsers().then((users: any[]) => setTechnicians((users || []).filter(u => String(u.role || u.userRole || '').toUpperCase().includes('TECHNICIAN')))).catch(() => setTechnicians([]));
   }, []);
@@ -207,12 +233,14 @@ export const DevicesPage: React.FC = () => {
   const [newItem, setNewItem] = useState({
     code: '',
     name: '',
-      category: 'GATEWAY' as InventoryDevice['category'],
+    category: 'GATEWAY' as InventoryDevice['category'],
     serialNumber: '',
     macAddress: '',
     model: '',
     manufacturer: '',
     quantityInStock: 1,
+    unitPrice: 0,
+    unit: 'Cái',
     locationRack: 'Kệ A1 - Kho Trung tâm',
   });
 
@@ -227,8 +255,23 @@ export const DevicesPage: React.FC = () => {
     const normalizedMac = normalizeMac(newItem.macAddress);
     const requiresUniqueRecord = newItem.category === 'GATEWAY' || newItem.category === 'NODE_MODULE';
 
-    if (newItem.category === 'GATEWAY' && !normalizedMac) {
-      alert('⚠️ Gateway bắt buộc phải có Địa chỉ MAC.');
+    if (newItem.category === 'GATEWAY') {
+      if (!newItem.serialNumber.trim()) {
+        alert('⚠️ Gateway bắt buộc phải có Serial Number.');
+        return;
+      }
+      if (!normalizedMac) {
+        alert('⚠️ Gateway bắt buộc phải có Địa chỉ MAC.');
+        return;
+      }
+      if (normalizedMac.length !== 12 || !/^[0-9A-F]{12}$/.test(normalizedMac)) {
+        alert('⚠️ Địa chỉ MAC Gateway không hợp lệ. Phải gồm 12 ký tự hex (ví dụ: 24:DC:C3:98:A1:04).');
+        return;
+      }
+    }
+
+    if (newItem.category === 'NODE_MODULE' && !newItem.serialNumber.trim()) {
+      alert('⚠️ Node/Controller bắt buộc phải có mã định danh riêng.');
       return;
     }
 
@@ -242,93 +285,132 @@ export const DevicesPage: React.FC = () => {
       return;
     }
 
-    const created: InventoryDevice = {
-      id: `inv-${Date.now()}`,
+    const isNonGatewayOrNode = newItem.category !== 'GATEWAY' && newItem.category !== 'NODE_MODULE';
+    const effectiveUnit = isNonGatewayOrNode ? (newItem.unit?.trim() || 'Bộ') : 'Cái';
+
+    const payload = {
       code: normalizedCode,
-      name: newItem.name,
+      name: newItem.name.trim(),
       category: newItem.category,
-      serialNumber: newItem.serialNumber || `SN-${Date.now().toString().slice(-6)}`,
-      macAddress: newItem.category === 'NODE_MODULE' ? newItem.macAddress.trim() : normalizedMac,
-      model: newItem.model || 'Tiêu chuẩn Công nghiệp',
-      manufacturer: newItem.manufacturer || 'Satech IoT Hardware',
+      model: newItem.model?.trim() || 'Tiêu chuẩn Công nghiệp',
+      manufacturer: newItem.manufacturer?.trim() || 'Satech IoT Hardware',
+      serialNumber: newItem.serialNumber.trim(),
+      macAddress: newItem.category === 'NODE_MODULE' ? '' : (newItem.category === 'GATEWAY' ? normalizedMac.match(/.{1,2}/g)?.join(':') || normalizedMac : newItem.macAddress?.trim() || ''),
       quantityInStock: requiresUniqueRecord ? 1 : Number(newItem.quantityInStock) || 1,
-      locationRack: newItem.locationRack || 'Kệ A1 - Kho Trung tâm',
-      status: 'AVAILABLE',
-      addedAt: new Date().toISOString().split('T')[0],
+      unitPrice: Number(newItem.unitPrice) || 0,
+      unit: effectiveUnit,
+      locationRack: newItem.locationRack?.trim() || 'Kệ A1 - Kho Trung tâm',
+      status: 'InWarehouse',
     };
 
     try {
-      await adminService.createHardwareItem({
-        code: created.code,
-        name: created.name,
-        category: created.category,
-        model: created.model,
-        manufacturer: created.manufacturer,
-        serialNumber: created.serialNumber,
-        macAddress: created.macAddress,
-        quantityInStock: created.quantityInStock,
-        locationRack: created.locationRack,
-        unitPrice: 0,
-        status: created.status,
+      const result = await adminService.createHardwareItem(payload);
+      const createdItem: InventoryDevice = {
+        id: result?.id || `inv-${Date.now()}`,
+        code: result?.code || payload.code,
+        name: result?.name || payload.name,
+        category: normalizeCategory(result?.category || payload.category),
+        serialNumber: result?.serialNumber || payload.serialNumber,
+        macAddress: result?.macAddress || payload.macAddress,
+        model: result?.model || payload.model,
+        manufacturer: result?.manufacturer || payload.manufacturer,
+        quantityInStock: result?.quantityInStock ?? payload.quantityInStock,
+        unitPrice: Number(result?.unitPrice ?? payload.unitPrice),
+        unit: result?.unit || payload.unit,
+        locationRack: result?.locationRack || payload.locationRack,
+        status: normalizeStatus(result?.status || payload.status),
+        addedAt: new Date().toISOString().split('T')[0],
+      };
+
+      setDevices(prev => [createdItem, ...prev]);
+      setIsAddModalOpen(false);
+      setSuccessNotice(`Đã thêm mới thành công thiết bị [${createdItem.code}] - ${createdItem.name} vào Kho!`);
+      setTimeout(() => setSuccessNotice(null), 4000);
+
+      // Reset Form
+      setNewItem({
+        code: '',
+        name: '',
+        category: 'GATEWAY',
+        serialNumber: '',
+        macAddress: '',
+        model: '',
+        manufacturer: '',
+        quantityInStock: 1,
+      unitPrice: 0,
+        unit: 'Cái',
+        locationRack: 'Kệ A1 - Kho Trung tâm',
       });
-    } catch {
-      // Keep optimistic update
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || 'Lỗi khi lưu thiết bị vào kho.';
+      alert(`❌ Không thể thêm thiết bị vào kho: ${errMsg}`);
     }
-
-    setDevices(prev => [created, ...prev]);
-    setIsAddModalOpen(false);
-    setSuccessNotice(`Đã thêm mới thành công thiết bị [${created.code}] - ${created.name} vào Kho!`);
-    setTimeout(() => setSuccessNotice(null), 4000);
-
-    // Reset Form
-    setNewItem({
-      code: '',
-      name: '',
-      category: 'GATEWAY',
-      serialNumber: '',
-      macAddress: '',
-      model: '',
-      manufacturer: '',
-      quantityInStock: 1,
-      locationRack: 'Kệ A1 - Kho Trung tâm',
-    });
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingItem) return;
 
-    try {
-      if (editingItem.id && editingItem.id.length === 36 && editingItem.id.includes('-')) {
-        await adminService.updateHardwareItem(editingItem.id, {
-          name: editingItem.name,
-          category: editingItem.category,
-          model: editingItem.model,
-          manufacturer: editingItem.manufacturer,
-          serialNumber: editingItem.serialNumber,
-          macAddress: editingItem.macAddress,
-          quantityInStock: editingItem.category === 'GATEWAY' || editingItem.category === 'NODE_MODULE' ? 1 : Number(editingItem.quantityInStock),
-          locationRack: editingItem.locationRack,
-          status: editingItem.status,
-        });
-      }
-    } catch (err) {
-      console.warn('API update hardware item fallback to local state:', err);
+    if ((editingItem.category === 'GATEWAY' || editingItem.category === 'NODE_MODULE') && !editingItem.serialNumber.trim()) {
+      alert(editingItem.category === 'GATEWAY'
+        ? '⚠️ Gateway bắt buộc phải có Serial Number.'
+        : '⚠️ Node/Controller bắt buộc phải có mã định danh riêng.');
+      return;
+    }
+    if (editingItem.category === 'GATEWAY' && !normalizeMac(editingItem.macAddress)) {
+      alert('⚠️ Gateway bắt buộc phải có Địa chỉ MAC.');
+      return;
     }
 
-    setDevices(prev => prev.map(d => d.id === editingItem.id ? editingItem : d));
-    setSuccessNotice(`✅ Đã cập nhật thành công thông tin kho cho [${editingItem.code}]!`);
-    setIsEditModalOpen(false);
-    setEditingItem(null);
-    setTimeout(() => setSuccessNotice(null), 3000);
+    const isNonGatewayOrNode = editingItem.category !== 'GATEWAY' && editingItem.category !== 'NODE_MODULE';
+    const effectiveUnit = isNonGatewayOrNode ? (editingItem.unit?.trim() || 'Bộ') : 'Cái';
+
+    const payload = {
+      name: editingItem.name.trim(),
+      category: editingItem.category,
+      model: editingItem.model?.trim() || '',
+      manufacturer: editingItem.manufacturer?.trim() || '',
+      serialNumber: editingItem.serialNumber?.trim() || '',
+      macAddress: editingItem.macAddress?.trim() || '',
+      quantityInStock: editingItem.category === 'GATEWAY' || editingItem.category === 'NODE_MODULE' ? 1 : Number(editingItem.quantityInStock),
+      unitPrice: Number(editingItem.unitPrice) || 0,
+      unit: effectiveUnit,
+      locationRack: editingItem.locationRack?.trim() || '',
+      status: editingItem.status,
+    };
+
+    try {
+      if (editingItem.id && editingItem.id.length === 36 && editingItem.id.includes('-')) {
+        await adminService.updateHardwareItem(editingItem.id, payload);
+      }
+      setDevices(prev => prev.map(d => d.id === editingItem.id ? { ...editingItem, ...payload } : d));
+      setSuccessNotice(`✅ Đã cập nhật thành công thông tin kho cho [${editingItem.code}]!`);
+      setIsEditModalOpen(false);
+      setEditingItem(null);
+      setTimeout(() => setSuccessNotice(null), 3000);
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || 'Lỗi khi cập nhật thiết bị.';
+      alert(`❌ Không thể cập nhật thiết bị: ${errMsg}`);
+    }
   };
 
   const issueDevices = async (ids: string[]) => {
     if (!selectedTechnicianId || ids.length === 0) { alert('⚠️ Vui lòng chọn kỹ thuật viên và ít nhất một thiết bị.'); return; }
     try {
       const assigned = await Promise.all(ids.filter(id => id.length === 36).map(id => adminService.assignHardwareItem(id, selectedTechnicianId, selectedDeviceQuantities[id] || (issueItem?.id === id ? issueQuantity : 1))));
-      setDevices(prev => prev.map(item => assigned.find(a => a.id === item.id) || item));
-      setSuccessNotice(`Đã cấp phát ${ids.length} thiết bị cho kỹ thuật viên.`);
+      setDevices(prev => prev.map(item => {
+        const found = assigned.find(a => a.id === item.id);
+        if (found) {
+          return {
+            ...item,
+            status: normalizeStatus(found.status),
+            quantityInStock: found.quantityInStock,
+            assignedTechnicianId: found.assignedTechnicianId
+          };
+        }
+        return item;
+      }));
+      setSuccessNotice(`Đã cấp phát ${ids.length} thiết bị cho kỹ thuật viên (trạng thái: InTechnicianStock).`);
       setIsIssueModalOpen(false); setIsBulkIssueModalOpen(false); setIssueItem(null); setSelectedDeviceIds([]); setSelectedDeviceQuantities({}); setSelectedTechnicianId(''); setIssueQuantity(1);
     } catch { alert('❌ Không thể cấp phát thiết bị. Vui lòng thử lại.'); }
   };
@@ -351,10 +433,10 @@ export const DevicesPage: React.FC = () => {
   });
 
   // Calculate Counters
-  const totalItemsCount = devices.reduce((sum, d) => sum + (d.status === 'AVAILABLE' ? d.quantityInStock : 1), 0);
-  const totalAvailableStock = devices.filter(d => d.status === 'AVAILABLE').reduce((sum, d) => sum + d.quantityInStock, 0);
+  const totalItemsCount = devices.reduce((sum, d) => sum + (d.status === 'InWarehouse' ? d.quantityInStock : 1), 0);
+  const totalAvailableStock = devices.filter(d => d.status === 'InWarehouse').reduce((sum, d) => sum + d.quantityInStock, 0);
   const totalGatewaysCount = devices.filter(d => d.category === 'GATEWAY').length;
-  const totalDeployedCount = devices.filter(d => d.status === 'FIELD_INSTALLED').length;
+  const totalDeployedCount = devices.filter(d => d.status === 'Deployed').length;
 
   const getCategoryLabel = (category: InventoryDevice['category']) => {
     switch (category) {
@@ -369,6 +451,42 @@ export const DevicesPage: React.FC = () => {
       default:
         return <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">📟 Sensor Node</span>;
     }
+  };
+
+  const getPriceGroup = (item: InventoryDevice) => {
+    const text = `${item.code} ${item.name} ${item.model} ${item.category}`.toUpperCase();
+    const groups: Array<[string, RegExp]> = [
+      ['DHT', /\bDHT\d*\b|SHT\d*/], ['LORA', /LORA|SX12|RA-02/], ['SOIL', /SOIL|ĐẤT|MOISTURE|EC[_ -]?PH/],
+      ['RELAY', /RELAY/], ['VALVE', /VALVE|VAN/], ['PUMP', /PUMP|BƠM/], ['GATEWAY', /GATEWAY|ESP32/],
+      ['NODE', /NODE|MÔ-ĐUN NÚT/], ['CABLE', /CABLE|DÂY|WIRE/], ['RESISTOR', /RESISTOR|ĐIỆN TRỞ/]
+    ];
+    return groups.find(([, pattern]) => pattern.test(text))?.[0] || item.category;
+  };
+  const priceGroupLabel = (key: string) => ({ DHT: 'DHT / SHT – nhiệt độ, độ ẩm', LORA: 'LoRa / module truyền thông', SOIL: 'Cảm biến đất / EC / pH', RELAY: 'Relay', VALVE: 'Van tưới', PUMP: 'Bơm', GATEWAY: 'Gateway ESP32', NODE: 'Mô-đun Node', CABLE: 'Dây / cáp', RESISTOR: 'Điện trở' } as Record<string, string>)[key] || key;
+  const priceGroups = useMemo(() => {
+    const groups = new Map<string, InventoryDevice[]>();
+    devices.forEach(item => {
+      const key = getPriceGroup(item);
+      groups.set(key, [...(groups.get(key) || []), item]);
+    });
+    return Array.from(groups.entries()).map(([key, items]) => ({ key, items, price: Number(items[0]?.unitPrice || 0) }));
+  }, [devices]);
+
+  const saveBulkPrice = async (group: { key: string; items: InventoryDevice[]; price: number }) => {
+    const price = Number(bulkPrices[group.key] ?? group.price);
+    if (!Number.isFinite(price) || price <= 0) { alert('Đơn giá phải lớn hơn 0 VNĐ.'); return; }
+    setSavingPriceCode(group.key);
+    try {
+      await Promise.all(group.items.map(item => adminService.updateHardwareItem(item.id, {
+        name: item.name, category: item.category, model: item.model, manufacturer: item.manufacturer,
+        serialNumber: item.serialNumber, macAddress: item.macAddress, quantityInStock: item.quantityInStock,
+        unitPrice: price, unit: item.unit, locationRack: item.locationRack, status: item.status
+      })));
+      setDevices(previous => previous.map(item => getPriceGroup(item) === group.key ? { ...item, unitPrice: price } : item));
+      setBulkPrices(previous => ({ ...previous, [group.key]: price }));
+      setSuccessNotice(`Đã cập nhật đơn giá cho toàn bộ nhóm ${priceGroupLabel(group.key)}.`);
+    } catch (err: any) { alert(`Không thể lưu đơn giá: ${err?.response?.data?.detail || err?.message || 'Lỗi không xác định'}`); }
+    finally { setSavingPriceCode(null); }
   };
 
   return (
@@ -404,6 +522,59 @@ export const DevicesPage: React.FC = () => {
           <span>{successNotice}</span>
         </div>
       )}
+
+      <div className="flex items-center gap-2 border-b border-slate-200">
+        <button type="button" onClick={() => setActiveInventoryTab('INVENTORY')} className={`px-4 py-3 text-sm font-bold border-b-2 ${activeInventoryTab === 'INVENTORY' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500'}`}>Kho thiết bị</button>
+        <button type="button" onClick={() => setActiveInventoryTab('PRICES')} className={`px-4 py-3 text-sm font-bold border-b-2 ${activeInventoryTab === 'PRICES' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500'}`}>Cấu hình giá thiết bị</button>
+        <button type="button" onClick={() => setActiveInventoryTab('REQUESTS')} className={`px-4 py-3 text-sm font-bold border-b-2 ${activeInventoryTab === 'REQUESTS' ? 'border-amber-500 text-amber-700' : 'border-transparent text-slate-500'}`}>Đơn cấp phát chờ duyệt {allocationRequests.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs">{allocationRequests.length}</span>}</button>
+      </div>
+
+      {activeInventoryTab === 'REQUESTS' && <div className="bg-white border border-amber-200 rounded-2xl shadow-sm p-4 space-y-3">
+        <div className="flex items-center justify-between"><h2 className="font-bold text-slate-900">Đơn lấy thiết bị chờ duyệt</h2><span className="text-xs text-amber-700 font-semibold">{allocationRequests.length} đơn</span></div>
+        {allocationRequests.length === 0 && <p className="text-sm text-slate-500 py-4">Không có đơn cấp phát đang chờ duyệt.</p>}
+        {allocationRequests.map(request => <div key={request.id} className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
+          <div className="text-xs"><div className="font-bold text-slate-900">Kỹ thuật viên: {request.technicianName || 'Chưa xác định'}</div><div className="text-slate-600">{(request.items || []).length} loại thiết bị · {new Date(request.createdAtUtc).toLocaleString('vi-VN')}</div></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" className="border-slate-300 text-slate-700" onClick={() => setSelectedAllocationRequest(request)}><Eye size={14} /> Xem chi tiết</Button>
+            {request.status === 'Pending' ? <><Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={() => approveAllocationRequest(request.id)}>Duyệt và cấp phát</Button><Button size="sm" variant="outline" className="border-rose-300 text-rose-700" onClick={() => rejectAllocationRequest(request.id)}>Từ chối</Button></> : <span className="text-xs font-bold text-slate-600">{request.status}</span>}
+          </div>
+        </div>)}
+      </div>}
+
+      {activeInventoryTab === 'PRICES' && <div className="bg-white border border-emerald-200 rounded-2xl shadow-sm p-4 space-y-4">
+        <div><h2 className="font-bold text-slate-900">Cấu hình giá thiết bị</h2><p className="text-sm text-slate-500 mt-1">Mỗi mã thiết bị chỉ nhập một giá. Khi lưu, giá được cập nhật cho toàn bộ bản ghi cùng mã để làm cơ sở lập hợp đồng.</p></div>
+        <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+          {priceGroups.map(group => <div key={group.key} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
+            <div><div className="font-bold text-emerald-800">{priceGroupLabel(group.key)}</div><div className="text-sm text-slate-800">{group.items.map(item => item.name).filter((name, index, all) => all.indexOf(name) === index).slice(0, 3).join(' · ')}</div><div className="text-xs text-slate-500">{group.items.length} thiết bị thuộc nhóm · áp dụng chung, không theo mã</div></div>
+            <div className="flex items-end gap-2"><label className="text-xs font-semibold text-slate-600">Đơn giá nhóm (VNĐ)<Input type="number" min={1} step={1000} value={bulkPrices[group.key] ?? (group.price || '')} onChange={event => setBulkPrices(previous => ({ ...previous, [group.key]: Number(event.target.value) || 0 }))} /></label><Button type="button" className="bg-emerald-600 text-white" disabled={savingPriceCode === group.key} onClick={() => saveBulkPrice(group)}>{savingPriceCode === group.key ? 'Đang lưu...' : 'Lưu giá nhóm'}</Button></div>
+          </div>)}
+          {priceGroups.length === 0 && <div className="p-6 text-center text-slate-500">Chưa có thiết bị trong kho.</div>}
+        </div>
+      </div>}
+
+      <Modal isOpen={Boolean(selectedAllocationRequest)} onClose={() => setSelectedAllocationRequest(null)} title="Chi tiết yêu cầu bổ sung thiết bị" size="lg">
+        {selectedAllocationRequest && <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Kỹ thuật viên</div><div className="font-bold text-slate-900">{selectedAllocationRequest.technicianName || 'Chưa xác định'}</div></div>
+            <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Thời gian gửi</div><div className="font-semibold text-slate-900">{new Date(selectedAllocationRequest.createdAtUtc).toLocaleString('vi-VN')}</div></div>
+            <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">Trạng thái</div><div className="font-bold text-amber-700">{selectedAllocationRequest.status}</div></div>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="grid grid-cols-[1fr_7rem_6rem] gap-3 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600"><span>Thiết bị</span><span className="text-right">Số lượng</span><span className="text-right">Tồn hiện tại</span></div>
+            {(selectedAllocationRequest.items || []).map((item: any) => {
+              const device = devices.find(d => d.id === item.hardwareItemId);
+              return <div key={item.hardwareItemId} className="grid grid-cols-[1fr_7rem_6rem] gap-3 border-t border-slate-100 px-4 py-3 text-sm">
+                <div><div className="font-bold text-slate-900">{device?.name || 'Thiết bị không còn trong danh mục'}</div><div className="text-xs text-slate-500">{device?.code || item.hardwareItemId}{device?.model ? ` · ${device.model}` : ''}</div></div>
+                <div className="text-right font-bold text-slate-900">{item.quantity}</div>
+                <div className="text-right text-slate-600">{device?.quantityInStock ?? '—'}</div>
+              </div>;
+            })}
+          </div>
+          <div className="flex justify-end"><Button variant="outline" onClick={() => setSelectedAllocationRequest(null)}>Đóng</Button></div>
+        </div>}
+      </Modal>
+
+      {activeInventoryTab === 'INVENTORY' && <>
 
       {/* KPI Inventory Counter Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
@@ -481,10 +652,13 @@ export const DevicesPage: React.FC = () => {
             ))}
             <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="px-2.5 py-1 rounded-lg bg-slate-100 border-0 text-xs text-slate-700">
               <option value="ALL">Tất cả trạng thái</option>
-              <option value="AVAILABLE">Có sẵn</option>
-              <option value="FIELD_INSTALLED">Đã lắp đặt thực địa</option>
-              <option value="MAINTENANCE">Đang bảo trì</option>
-              <option value="ISSUED">Đã cấp phát khỏi kho</option>
+              <option value="InWarehouse">InWarehouse (Đang ở kho)</option>
+              <option value="Allocated">Allocated (Đã cấp phát)</option>
+              <option value="InTechnicianStock">InTechnicianStock (KTV đang giữ)</option>
+              <option value="Deployed">Deployed (Đã triển khai)</option>
+              <option value="Maintenance">Maintenance (Đang bảo trì)</option>
+              <option value="Faulty">Faulty (Thiết bị lỗi)</option>
+              <option value="Returned">Returned (Đã trả về kho)</option>
             </select>
           </div>
         </div>
@@ -508,6 +682,7 @@ export const DevicesPage: React.FC = () => {
                 <th className="p-3.5">Địa chỉ MAC / Serial</th>
                 <th className="p-3.5">Model & Nhà sản xuất</th>
                 <th className="p-3.5 text-center">Tồn kho</th>
+                <th className="p-3.5 text-right">Đơn giá (VNĐ)</th>
                 <th className="p-3.5">Vị trí Kệ Kho</th>
                 <th className="p-3.5">Trạng thái</th>
                 <th className="p-3.5 text-right">Thao tác</th>
@@ -516,7 +691,7 @@ export const DevicesPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredDevices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400">
+                  <td colSpan={9} className="p-8 text-center text-slate-400">
                     Không tìm thấy linh kiện nào phù hợp với bộ lọc.
                   </td>
                 </tr>
@@ -537,13 +712,18 @@ export const DevicesPage: React.FC = () => {
                       <div className="text-[10px] text-slate-500">{item.manufacturer}</div>
                     </td>
                     <td className="p-3.5 text-center font-mono">
-                      {item.status === 'AVAILABLE' ? (
+                      {item.status === 'InWarehouse' ? (
                         <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-900 font-bold text-xs">
-                          {item.quantityInStock} bộ
+                          {item.quantityInStock} {item.category !== 'GATEWAY' && item.category !== 'NODE_MODULE' ? item.unit || 'Bộ' : 'Cái'}
                         </span>
                       ) : (
-                        <span className="text-slate-400 font-medium text-[11px]">0 bộ (Thực địa)</span>
+                        <span className="text-slate-400 font-medium text-[11px]">
+                          0 {item.category !== 'GATEWAY' && item.category !== 'NODE_MODULE' ? item.unit || 'Bộ' : 'Cái'} ({item.status})
+                        </span>
                       )}
+                    </td>
+                    <td className="p-3.5 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                      {Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ
                     </td>
                     <td className="p-3.5 text-slate-600 font-mono text-[11px]">
                       <span className="flex items-center gap-1">
@@ -551,10 +731,26 @@ export const DevicesPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="p-3.5">
-                      <StatusBadge status={item.status} />
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                        item.status === 'InWarehouse' ? 'bg-emerald-100 text-emerald-800' :
+                        item.status === 'Allocated' ? 'bg-blue-100 text-blue-800' :
+                        item.status === 'InTechnicianStock' ? 'bg-cyan-100 text-cyan-800' :
+                        item.status === 'Deployed' ? 'bg-purple-100 text-purple-800' :
+                        item.status === 'Maintenance' ? 'bg-amber-100 text-amber-800' :
+                        item.status === 'Faulty' ? 'bg-red-100 text-red-800 font-extrabold' :
+                        'bg-slate-100 text-slate-800'
+                      }`}>
+                        {item.status === 'InWarehouse' ? 'InWarehouse (Đang ở kho)' :
+                         item.status === 'Allocated' ? 'Allocated (Đã cấp phát)' :
+                         item.status === 'InTechnicianStock' ? 'InTechnicianStock (KTV giữ)' :
+                         item.status === 'Deployed' ? 'Deployed (Đã triển khai)' :
+                         item.status === 'Maintenance' ? 'Maintenance (Đang bảo trì)' :
+                         item.status === 'Faulty' ? 'Faulty (Thiết bị lỗi)' :
+                         'Returned (Đã trả về kho)'}
+                      </span>
                       {item.assignedTechnicianId && <div className="mt-1 text-[10px] text-slate-500">Người giữ: {technicianName(item.assignedTechnicianId)}</div>}
                     </td>
-                    <td className="p-3.5 text-right space-x-1">
+                    <td className="p-3.5 text-right space-x-1 sticky right-0 bg-white/95">
                       <button
                         type="button"
                         onClick={() => {
@@ -574,6 +770,8 @@ export const DevicesPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      </>}
 
       {/* Admin Modal: Add New Hardware Component into Inventory */}
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="➕ Thêm Thiết bị / Linh kiện Mới vào Kho Admin">
@@ -605,6 +803,12 @@ export const DevicesPage: React.FC = () => {
                 required
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-800 mb-1">Đơn giá nhập / đơn giá hợp đồng (VNĐ) *</label>
+            <Input type="number" min={0} step={1000} value={newItem.unitPrice} onChange={e => setNewItem({ ...newItem, unitPrice: Math.max(0, Number(e.target.value) || 0) })} placeholder="Ví dụ: 950000" required />
+            <p className="mt-1 text-[10px] text-slate-500">Giá này được dùng làm đơn giá mặc định khi lập hợp đồng.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -643,10 +847,13 @@ export const DevicesPage: React.FC = () => {
                 onChange={e => setNewItem({ ...newItem, serialNumber: e.target.value })}
                 placeholder="Ví dụ: SN-2026-NPK-88"
               />
+              {(newItem.category === 'GATEWAY' || newItem.category === 'NODE_MODULE') && <p className="mt-1 text-[10px] text-amber-700">Bắt buộc đối với Gateway và Node/Controller.</p>}
             </div>
 
             <div>
-              <label className="block font-bold text-slate-800 mb-1">Số lượng Nhập kho (Bộ)</label>
+              <label className="block font-bold text-slate-800 mb-1">
+                Số lượng Nhập kho {newItem.category !== 'GATEWAY' && newItem.category !== 'NODE_MODULE' ? `(${newItem.unit || 'Bộ'})` : '(Cái)'} *
+              </label>
               <Input
                 type="number"
                 value={newItem.category === 'GATEWAY' || newItem.category === 'NODE_MODULE' ? 1 : newItem.quantityInStock}
@@ -661,6 +868,18 @@ export const DevicesPage: React.FC = () => {
                 : <p className="mt-1 text-[10px] text-slate-500">Số lượng tồn kho theo lô nhập.</p>}
             </div>
           </div>
+
+          {newItem.category !== 'GATEWAY' && newItem.category !== 'NODE_MODULE' && (
+            <div>
+              <label className="block font-bold text-slate-800 mb-1">Đơn vị đo lường (Chỉ áp dụng cho linh kiện / cảm biến / ngoại vi) *</label>
+              <Input
+                value={newItem.unit}
+                onChange={e => setNewItem({ ...newItem, unit: e.target.value })}
+                placeholder="Ví dụ: Bộ, Cái, Mét, Cuộn, Chiếc, Cặp..."
+                required
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -728,7 +947,9 @@ export const DevicesPage: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Số lượng tồn kho (bộ) *</label>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Số lượng tồn kho {editingItem.category !== 'GATEWAY' && editingItem.category !== 'NODE_MODULE' ? `(${editingItem.unit || 'Bộ'})` : '(Cái)'} *
+                </label>
                 <Input
                   type="number"
                   min="0"
@@ -739,19 +960,38 @@ export const DevicesPage: React.FC = () => {
                 />
               </div>
               <div>
+                <label className="block text-slate-700 font-semibold mb-1">Đơn giá (VNĐ) *</label>
+                <Input type="number" min="0" step="1000" value={editingItem.unitPrice} onChange={e => setEditingItem({ ...editingItem, unitPrice: Math.max(0, Number(e.target.value) || 0) })} required />
+              </div>
+              <div>
                 <label className="block text-slate-700 font-semibold mb-1">Trạng thái thiết bị</label>
                 <select
                   value={editingItem.status}
                   onChange={e => setEditingItem({ ...editingItem, status: e.target.value as any })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800"
                 >
-                  <option value="AVAILABLE">Có sẵn trong kho</option>
-                  <option value="ISSUED">Đã cấp phát khỏi kho</option>
-                  <option value="FIELD_INSTALLED">Đã lắp đặt thực địa</option>
-                  <option value="MAINTENANCE">Đang bảo trì</option>
+                  <option value="InWarehouse">InWarehouse (Đang ở kho)</option>
+                  <option value="Allocated">Allocated (Đã cấp phát)</option>
+                  <option value="InTechnicianStock">InTechnicianStock (KTV đang giữ)</option>
+                  <option value="Deployed">Deployed (Đã triển khai)</option>
+                  <option value="Maintenance">Maintenance (Đang bảo trì)</option>
+                  <option value="Faulty">Faulty (Thiết bị lỗi)</option>
+                  <option value="Returned">Returned (Đã trả về kho)</option>
                 </select>
               </div>
             </div>
+
+            {editingItem.category !== 'GATEWAY' && editingItem.category !== 'NODE_MODULE' && (
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Đơn vị đo lường (Chỉ áp dụng cho linh kiện / cảm biến / ngoại vi) *</label>
+                <Input
+                  value={editingItem.unit || ''}
+                  onChange={e => setEditingItem({ ...editingItem, unit: e.target.value })}
+                  placeholder="Ví dụ: Bộ, Cái, Mét, Cuộn, Chiếc, Cặp..."
+                  required
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-slate-700 font-semibold mb-1">Vị trí kệ kho (Rack Location)</label>
@@ -780,9 +1020,33 @@ export const DevicesPage: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap justify-end gap-2 pt-3 border-t border-slate-200">
-              {editingItem.status === 'AVAILABLE' && <Button type="button" size="sm" className="bg-red-600 text-white hover:bg-red-700" onClick={async () => { if (editingItem.id.length === 36) await adminService.deleteHardwareItem(editingItem.id); setDevices(prev => prev.filter(d => d.id !== editingItem.id)); setIsEditModalOpen(false); setEditingItem(null); }}>Xóa khỏi kho</Button>}
+              <Button
+                type="button"
+                size="sm"
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={async () => {
+                  if (confirm(`Bạn có chắc muốn xóa vĩnh viễn thiết bị [${editingItem.code}] khỏi kho không?`)) {
+                    try {
+                      if (editingItem.id && editingItem.id.length === 36 && editingItem.id.includes('-')) {
+                        await adminService.deleteHardwareItem(editingItem.id);
+                      }
+                      setDevices(prev => prev.filter(d => d.id !== editingItem.id));
+                      setSuccessNotice(`Đã xóa thành công [${editingItem.code}] khỏi cơ sở dữ liệu kho!`);
+                      setIsEditModalOpen(false);
+                      setEditingItem(null);
+                      setTimeout(() => setSuccessNotice(null), 3000);
+                    } catch (err: any) {
+                      const errMsg = err?.response?.data?.message || err?.message || 'Lỗi khi xóa thiết bị khỏi database.';
+                      alert(`❌ Không thể xóa thiết bị: ${errMsg}`);
+                    }
+                  }
+                }}
+              >
+                Xóa khỏi kho
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => { setIssueItem(editingItem); setIsIssueModalOpen(true); }}>Cấp phát</Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditingItem({ ...editingItem, status: 'MAINTENANCE' })}>Bảo trì</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditingItem({ ...editingItem, status: 'Maintenance' })}>Bảo trì</Button>
+              <Button type="button" size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" onClick={() => setEditingItem({ ...editingItem, status: 'Faulty' })}>Báo lỗi</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => { setIsEditModalOpen(false); setEditingItem(null); }}>
                 Hủy bỏ
               </Button>
@@ -829,7 +1093,14 @@ export const DevicesPage: React.FC = () => {
                 <option value="ALL">Tất cả danh mục</option><option value="GATEWAY">Gateway</option><option value="NODE_MODULE">Mô-đun nút</option><option value="SENSOR">Cảm biến</option><option value="PERIPHERAL">Thiết bị ngoại vi</option>
               </select>
               <select value={bulkDeviceStatus} onChange={e => setBulkDeviceStatus(e.target.value)} className="border rounded-lg p-2">
-                <option value="ALL">Tất cả trạng thái</option><option value="AVAILABLE">Có sẵn</option><option value="ISSUED">Đã cấp phát</option><option value="FIELD_INSTALLED">Đã lắp đặt</option><option value="MAINTENANCE">Đang bảo trì</option>
+                <option value="ALL">Tất cả trạng thái</option>
+                <option value="InWarehouse">InWarehouse (Đang ở kho)</option>
+                <option value="Allocated">Allocated (Đã cấp phát)</option>
+                <option value="InTechnicianStock">InTechnicianStock (KTV đang giữ)</option>
+                <option value="Deployed">Deployed (Đã triển khai)</option>
+                <option value="Maintenance">Maintenance (Đang bảo trì)</option>
+                <option value="Faulty">Faulty (Thiết bị lỗi)</option>
+                <option value="Returned">Returned (Đã trả về kho)</option>
               </select>
             </div>
           <div className="max-h-64 overflow-y-auto border rounded-lg divide-y">

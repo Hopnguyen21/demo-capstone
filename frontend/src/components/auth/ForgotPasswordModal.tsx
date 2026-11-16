@@ -101,9 +101,8 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
         {/* Step indicator */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-              step === 1 ? 'bg-[#119653] text-white' : 'bg-emerald-100 text-[#119653]'
-            }`}>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${step === 1 ? 'bg-[#119653] text-white' : 'bg-emerald-100 text-[#119653]'
+              }`}>
               1
             </span>
             <span className={`font-semibold ${step === 1 ? 'text-slate-900' : 'text-slate-400'}`}>
@@ -112,9 +111,8 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
           </div>
           <div className="h-0.5 w-12 bg-slate-200" />
           <div className="flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-              step === 2 ? 'bg-[#119653] text-white' : 'bg-slate-100 text-slate-400'
-            }`}>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${step === 2 ? 'bg-[#119653] text-white' : 'bg-slate-100 text-slate-400'
+              }`}>
               2
             </span>
             <span className={`font-semibold ${step === 2 ? 'text-slate-900' : 'text-slate-400'}`}>

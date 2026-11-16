@@ -28,6 +28,7 @@ public sealed class TelemetryAlertService(
 
         var device = await db.Devices.AsNoTracking()
             .Include(x => x.Farm)
+            .Include(x => x.Sensors)
             .SingleOrDefaultAsync(x => x.Id == envelope.DeviceId, ct)
             ?? throw new ResourceNotFoundException("Device was not found.");
         if (device.GatewayId != authenticatedGatewayId)
@@ -65,8 +66,18 @@ public sealed class TelemetryAlertService(
         var zone = season?.Zone;
         var requirements = season?.AppliedRequirements.ToDictionary(x => x.ParameterCode)
             ?? new Dictionary<EnvironmentalParameterCode, SeasonAppliedRequirement>();
+        // DeviceSensors is a declaration of the physical sensors installed by
+        // the Technician. It is not firmware provisioning, but it is the
+        // allow-list used to prevent a Node from claiming arbitrary metrics.
+        var declaredParameters = device.Sensors
+            .Select(x => Enum.TryParse<EnvironmentalParameterCode>(x.SensorType, true, out var code) ? (EnvironmentalParameterCode?)code : null)
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .ToHashSet();
         foreach (var reading in envelope.Readings)
         {
+            if (declaredParameters.Count > 0 && !declaredParameters.Contains(reading.ParameterCode))
+                throw new RequestValidationException("readings", $"{reading.ParameterCode} is not declared on this Node.");
             if (season is not null)
             {
                 if (!requirements.TryGetValue(reading.ParameterCode, out var requirement))
@@ -84,10 +95,19 @@ public sealed class TelemetryAlertService(
         var parameters = envelope.Readings.Select(x => x.ParameterCode).ToList();
         var duplicateMessage = await db.TelemetryReadings.AnyAsync(x => x.DeviceId == device.Id && x.MessageId == envelope.MessageId, ct);
         var duplicateSample = await db.TelemetryReadings.AnyAsync(x => x.DeviceId == device.Id && x.CapturedAtUtc == envelope.CapturedAtUtc && parameters.Contains(x.ParameterCode), ct);
-        if (duplicateMessage || duplicateSample)
+        
+        var gatewayEntity = await db.Gateways.SingleOrDefaultAsync(x => x.Id == authenticatedGatewayId, ct);
+        var isSequenceDuplicate = envelope.SequenceNumber.HasValue && gatewayEntity != null && envelope.SequenceNumber.Value <= gatewayEntity.LastAckedSequenceNumber && gatewayEntity.LastAckedSequenceNumber > 0;
+
+        if (duplicateMessage || duplicateSample || isSequenceDuplicate)
         {
             if (transaction is not null) await transaction.CommitAsync(ct);
             return new(authenticatedGatewayId, device.Id, envelope.ZoneId, envelope.MessageId, true, 0, 0);
+        }
+
+        if (envelope.SequenceNumber.HasValue && gatewayEntity != null && envelope.SequenceNumber.Value > gatewayEntity.LastAckedSequenceNumber)
+        {
+            gatewayEntity.LastAckedSequenceNumber = envelope.SequenceNumber.Value;
         }
 
         foreach (var input in envelope.Readings)

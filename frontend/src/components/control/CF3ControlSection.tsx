@@ -67,6 +67,14 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
+  // Never present a decorative "online" state.  The control surface may only
+  // claim a live gateway when the API has supplied an explicit MQTT heartbeat.
+  const hasLiveGateway = (nodes || []).some((node: any) =>
+    node?.mqttConnected === true ||
+    node?.gatewayConnected === true ||
+    String(node?.gatewayStatus || '').toUpperCase() === 'ONLINE'
+  );
+
   // Crop schedule sync modal state & calendar view toggle
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
   const [selectedCropIdForSync, setSelectedCropIdForSync] = useState<string>('crop-tomato');
@@ -77,7 +85,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
     if (scopeLevel === 'FARMER') {
       const farmerZones = authZones.map(z => z.zoneId);
       if (zoneId) return farmerZones.filter(z => z === zoneId);
-      return farmerZones.length > 0 ? farmerZones : ['32000000-0000-0000-0000-000000000001'];
+      return farmerZones;
     }
     if (zoneId) return [zoneId];
     if (fieldId) {
@@ -175,7 +183,11 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   };
 
   const handleSyncCropToZone = async () => {
-    const targetZoneId = zoneId || getScopedZoneIds()[0] || '32000000-0000-0000-0000-000000000001';
+    const targetZoneId = zoneId || getScopedZoneIds()[0];
+    if (!targetZoneId) {
+      setNotification({ type: 'error', message: 'Chưa có Zone thật để đồng bộ lịch cây trồng.' });
+      return;
+    }
     try {
       const res = await cropService.syncCropScheduleToZone(selectedCropIdForSync, targetZoneId);
       if (res?.success) {
@@ -255,7 +267,8 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
             {/* Live indicators */}
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-black/20 text-white border border-white/25 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" /> LoRa Gateway Online
+                <span className={`w-2 h-2 rounded-full ${hasLiveGateway ? 'bg-emerald-300 animate-pulse' : 'bg-slate-300'}`} />
+                {hasLiveGateway ? 'LoRa Gateway Online' : 'Gateway chưa xác nhận online'}
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-black/20 text-white border border-white/25">
                 Failsafe 30m Active

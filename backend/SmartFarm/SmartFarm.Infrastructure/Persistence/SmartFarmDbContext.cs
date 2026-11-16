@@ -36,9 +36,14 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<DeploymentDecisionHistory> DeploymentDecisionHistory => Set<DeploymentDecisionHistory>();
     public DbSet<Gateway> Gateways => Set<Gateway>();
     public DbSet<FirmwareJob> FirmwareJobs => Set<FirmwareJob>();
+    public DbSet<FirmwareRelease> FirmwareReleases => Set<FirmwareRelease>();
+    public DbSet<HardwarePreparationSession> HardwarePreparationSessions => Set<HardwarePreparationSession>();
+    public DbSet<FirmwareInstallation> FirmwareInstallations => Set<FirmwareInstallation>();
+    public DbSet<GatewayEnrollment> GatewayEnrollments => Set<GatewayEnrollment>();
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<DeviceSensor> DeviceSensors => Set<DeviceSensor>();
     public DbSet<DeviceActuator> DeviceActuators => Set<DeviceActuator>();
+    public DbSet<DeviceComponent> DeviceComponents => Set<DeviceComponent>();
     public DbSet<DeviceAssignmentHistory> DeviceAssignmentHistory => Set<DeviceAssignmentHistory>();
     public DbSet<DeviceConnectionTest> DeviceConnectionTests => Set<DeviceConnectionTest>();
     public DbSet<DeviceDiagnosticJob> DeviceDiagnosticJobs => Set<DeviceDiagnosticJob>();
@@ -85,6 +90,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<StockInDetail> StockInDetails => Set<StockInDetail>();
     public DbSet<Bill> Bills => Set<Bill>();
     public DbSet<ContractPackage> ContractPackages => Set<ContractPackage>();
+    public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
 
     // ─── RAG Knowledge Base ──────────────────────────────────────────────────
     public DbSet<AgricultureDocument> AgricultureDocuments => Set<AgricultureDocument>();

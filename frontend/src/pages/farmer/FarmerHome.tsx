@@ -239,7 +239,7 @@ export const FarmerHome: React.FC = () => {
                 Xin chào, {user?.fullName || 'Nông dân'}!
               </h1>
               <p className="text-emerald-100 text-xs sm:text-sm max-w-xl leading-relaxed">
-                Hôm nay bạn đang phụ trách <strong>{zones.length} khu vực nhà màng</strong>. Có <strong>{todoTasks.length} công việc cần thực hiện</strong> ({overdueTasks.length > 0 ? `${overdueTasks.length} việc quá hạn` : 'tất cả đúng tiến độ'}).
+                Hôm nay bạn đang phụ trách <strong>{zones.length} khu vực đất trồng</strong>. Có <strong>{todoTasks.length} công việc cần thực hiện</strong> ({overdueTasks.length > 0 ? `${overdueTasks.length} việc quá hạn` : 'tất cả đúng tiến độ'}).
               </p>
             </div>
 
@@ -424,9 +424,8 @@ export const FarmerHome: React.FC = () => {
 
       {/* Feedback Toast */}
       {taskFeedback && (
-        <div className={`p-4 rounded-xl border flex items-center justify-between text-xs font-semibold ${
-          taskFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : 'bg-rose-50 text-rose-900 border-rose-300'
-        }`}>
+        <div className={`p-4 rounded-xl border flex items-center justify-between text-xs font-semibold ${taskFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-300' : 'bg-rose-50 text-rose-900 border-rose-300'
+          }`}>
           <div className="flex items-center gap-2">
             {taskFeedback.type === 'success' ? <CheckCircle2 size={16} className="text-[#119653]" /> : <AlertTriangle size={16} className="text-rose-600" />}
             <span>{taskFeedback.message}</span>
@@ -456,33 +455,29 @@ export const FarmerHome: React.FC = () => {
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl self-start sm:self-auto overflow-x-auto">
             <button
               onClick={() => setTaskFilter('TODO')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                taskFilter === 'TODO' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${taskFilter === 'TODO' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Cần làm ({todoTasks.length})
             </button>
             <button
               onClick={() => setTaskFilter('REVIEW')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                taskFilter === 'REVIEW' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${taskFilter === 'REVIEW' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Chờ duyệt ({reviewTasks.length})
             </button>
             <button
               onClick={() => setTaskFilter('DONE')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                taskFilter === 'DONE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${taskFilter === 'DONE' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Đã duyệt ({doneTasks.length})
             </button>
             <button
               onClick={() => setTaskFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                taskFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${taskFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Tất cả ({myTasks.length})
             </button>
@@ -513,13 +508,12 @@ export const FarmerHome: React.FC = () => {
               return (
                 <div
                   key={t.taskId || t.id}
-                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
-                    isOverdue
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${isOverdue
                       ? 'bg-rose-50/40 border-rose-300 shadow-xs'
                       : isReview
-                      ? 'bg-amber-50/30 border-amber-300 shadow-xs'
-                      : 'bg-white border-slate-200 hover:border-emerald-400 hover:shadow-xs'
-                  }`}
+                        ? 'bg-amber-50/30 border-amber-300 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-emerald-400 hover:shadow-xs'
+                    }`}
                 >
                   <div className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -593,7 +587,7 @@ export const FarmerHome: React.FC = () => {
                 ASSIGNED GREENHOUSES
               </span>
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Sprout className="text-[#119653]" size={20} /> Khu vực Nhà màng Phân công Kỹ thuật ({zones.length})
+                <Sprout className="text-[#119653]" size={20} /> Khu vực đất trồng Phân công Kỹ thuật ({zones.length})
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-1">
@@ -617,7 +611,7 @@ export const FarmerHome: React.FC = () => {
         {/* Zones Grid */}
         {filteredZones.length === 0 ? (
           <div className="text-center py-10 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-xs text-slate-500">
-            Không tìm thấy khu vực nhà màng phù hợp.
+            Không tìm thấy khu vực đất trồng phù hợp.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -781,7 +775,7 @@ export const FarmerHome: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-800 mb-1">Chọn Khu vực Nhà màng:</label>
+            <label className="block text-xs font-bold text-slate-800 mb-1">Chọn Khu vực đất trồng:</label>
             <select
               value={selectedIrrigationZoneId}
               onChange={e => setSelectedIrrigationZoneId(e.target.value)}
@@ -826,11 +820,10 @@ export const FarmerHome: React.FC = () => {
                   key={min}
                   type="button"
                   onClick={() => setIrrigationMinutes(min)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                    irrigationMinutes === min
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${irrigationMinutes === min
                       ? 'bg-[#119653] text-white border-[#119653]'
                       : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
-                  }`}
+                    }`}
                 >
                   {min}p
                 </button>

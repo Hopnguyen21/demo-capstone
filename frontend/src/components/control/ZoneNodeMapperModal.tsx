@@ -8,9 +8,9 @@ import {
   Sparkles, Check, Droplets, BatteryCharging, Wifi
 } from 'lucide-react';
 import { Button, Modal } from '../ui/BaseUI';
-import { supportService, zoneService, fieldService, deviceService, telemetryService, extractApiError } from '../../services';
+import { supportService, zoneService, fieldService, deviceService, telemetryService } from '../../services';
 import { extractPolygonPoints, calculatePolygonAreaM2, toGeoJsonPolygon } from '../maps/GISLocationPicker';
-import { useAuth } from '../../app/providers/AuthContext';
+import { GatewayConfigModal } from './GatewayConfigModal';
 
 interface ZoneNodeMapperModalProps {
   isOpen: boolean;
@@ -26,6 +26,7 @@ interface UnassignedDevice {
   name: string;
   type: 'GATEWAY' | 'SOIL_SENSOR' | 'AIR_SENSOR' | 'VALVE' | 'PUMP';
   mac: string;
+  hardwareItemId?: string;
 }
 
 // ─── Custom Leaflet Pins ────────────────────────────────────────────────────────
@@ -265,64 +266,15 @@ const DraggableNodeMarker: React.FC<{
               </button>
             </div>
           </div>
-          <button type="button" onClick={() => onConfigureSensors(node)} className="w-full rounded bg-emerald-600 text-white px-2 py-1 font-bold">Cấu hình cảm biến</button>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => onConfigureSensors(node)} className="w-full rounded bg-slate-100 hover:bg-slate-200 text-slate-800 px-2 py-1 font-bold text-[11px]">Cấu hình cảm biến</button>
+            <div className="w-full rounded bg-slate-100 text-slate-500 px-2 py-1 font-bold text-[11px] text-center">Kiểm tra tại Hardware Preparation</div>
+          </div>
         </div>
       </Popup>
     </Marker>
   );
 };
-
-// Default Contract Items (7 items matching official quotation)
-const DEFAULT_CONTRACT_ITEMS = [
-  {
-    id: 'item-valve-01',
-    code: 'ACT-VALVE-01',
-    name: 'Node Điều khiển Van Solenoid Tưới nhỏ giọt 4 Cổng',
-    unit: 'Bộ',
-    unitPrice: 2150000,
-    vatPercent: 8,
-    quantity: 2,
-    totalAmount: 4644000,
-    notes: '4 Relay 12V/24V, Hỗ trợ phản hồi trạng thái công tắc',
-    isSelected: true,
-  },
-  {
-    id: 'item-gw-01',
-    code: 'GW-ESP32-DL01',
-    name: 'Trạm Central Gateway ESP32-LoRa Dual Antenna',
-    unit: 'Trạm',
-    unitPrice: 3800000,
-    vatPercent: 8,
-    quantity: 1,
-    totalAmount: 4104000,
-    notes: 'LoRa 915MHz, Chống nước IP67, Bảo hành 24 tháng',
-    isSelected: true,
-  },
-  {
-    id: 'item-air-02',
-    code: 'SN-AIR-02',
-    name: 'Node Cảm biến Vi khí hậu Không khí SHT30',
-    unit: 'Node',
-    unitPrice: 950000,
-    vatPercent: 8,
-    quantity: 2,
-    totalAmount: 2052000,
-    notes: 'Sensirion SHT30, Đo Nhiệt độ, Độ ẩm & CO2',
-    isSelected: true,
-  },
-  {
-    id: 'item-soil-01',
-    code: 'SN-SOIL-01',
-    name: 'Node Cảm biến Độ ẩm & Nhiệt độ Đất RS485 Probe',
-    unit: 'Node',
-    unitPrice: 1250000,
-    vatPercent: 8,
-    quantity: 2,
-    totalAmount: 2700000,
-    notes: 'Đầu đo 3-in-1 (Nhiệt, Ẩm, EC Đất), Giảm 5%',
-    isSelected: true,
-  },
-];
 
 const determineDeviceType = (code?: string, category?: string, name?: string): 'GATEWAY' | 'SOIL_SENSOR' | 'AIR_SENSOR' | 'VALVE' | 'PUMP' => {
   const upper = `${code || ''} ${category || ''} ${name || ''}`.toUpperCase();
@@ -345,13 +297,23 @@ const formatSensorReading = (sensor: any) => {
   return `${label}: ${sensor?.value ?? '—'}${sensor?.unit ? ` ${sensor.unit}` : ''}`;
 };
 
-const generateMacAddress = (code: string, index: number = 1): string => {
-  const upper = (code || '').toUpperCase();
-  if (upper.includes('GW')) return `24:DC:C3:88:00:${String(index).padStart(2, '0')}`;
-  if (upper.includes('VALVE')) return `24:DC:C3:44:01:${String(index).padStart(2, '0')}`;
-  if (upper.includes('AIR')) return `24:DC:C3:77:02:${String(index).padStart(2, '0')}`;
-  if (upper.includes('SOIL')) return `24:DC:C3:66:01:${String(index).padStart(2, '0')}`;
-  return `24:DC:C3:11:00:${String(index).padStart(2, '0')}`;
+const normalizeSensorKey = (value: any) => String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// The node configuration is the source of truth for which telemetry fields are
+// shown. A gateway may return extra metrics, but those must not appear as if
+// they were sensors installed on this node.
+const mergeConfiguredTelemetry = (configured: any[] = [], live: any[] = []) => {
+  const readings = Array.isArray(live) ? live : [];
+  return (Array.isArray(configured) ? configured : []).map((sensor: any) => {
+    const configuredKey = normalizeSensorKey(sensor.code || sensor.sensorType || sensor.name);
+    const match = readings.find((metric: any) => {
+      const liveKey = normalizeSensorKey(metric.parameterCode || metric.code || metric.sensorType || metric.name);
+      return liveKey === configuredKey || liveKey.includes(configuredKey) || configuredKey.includes(liveKey);
+    });
+    return match
+      ? { ...sensor, value: match.value ?? match.reading ?? sensor.value, unit: match.unit || sensor.unit }
+      : sensor;
+  });
 };
 
 const normalizeMacAddress = (value: any): string => {
@@ -366,7 +328,7 @@ const generateGatewayFingerprint = async (gateway: any, deploymentRequestId: str
 };
 
 const expandContractDevices = (rawItems: any[]): UnassignedDevice[] => {
-  const items = Array.isArray(rawItems) && rawItems.length > 0 ? rawItems : DEFAULT_CONTRACT_ITEMS;
+  const items = Array.isArray(rawItems) ? rawItems : [];
   const list: UnassignedDevice[] = [];
 
   items.forEach((item: any, itemIdx: number) => {
@@ -378,8 +340,8 @@ const expandContractDevices = (rawItems: any[]): UnassignedDevice[] => {
     for (let q = 1; q <= qty; q++) {
       const code = qty > 1 ? `${baseCode} #${q}` : baseCode;
       const name = qty > 1 ? `${baseName} (#${q})` : baseName;
-      const mac = item.mac || item.macAddress || generateMacAddress(baseCode, q);
-      const devId = `contract-node-${item.id || baseCode}-${q}`;
+      const mac = item.mac || item.macAddress || '';
+      const devId = item.id ? `${item.id}-${q}` : '';
 
       list.push({
         deviceId: devId,
@@ -387,6 +349,7 @@ const expandContractDevices = (rawItems: any[]): UnassignedDevice[] => {
         name,
         type,
         mac,
+        hardwareItemId: item.hardwareItemId || item.id,
       });
     }
   });
@@ -401,9 +364,6 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   onSaveMapping,
   selectedHardwareItems,
 }) => {
-  // Chỉ chủ trang trại được sửa ranh giới Zone (PUT /zones/{id} là API của FarmOwner); kỹ thuật viên chỉ lưu vị trí Node.
-  const { role: authRole } = useAuth();
-  const canEditZoneBoundary = authRole === 'FARM_OWNER';
   // Center of Zone
   const [center, setCenter] = useState<[number, number]>([11.9404, 108.4583]);
   const [mapType, setMapType] = useState<'osm' | 'street' | 'satellite'>('osm');
@@ -437,12 +397,16 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   const [selectedDevice, setSelectedDevice] = useState<UnassignedDevice | null>(null);
   const [activePinNode, setActivePinNode] = useState<SensorNode | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
-  const [contractRequirements, setContractRequirements] = useState<{ code: string; name: string; quantity: number; installed: number; available: number }[]>([]);
+  const [contractRequirements, setContractRequirements] = useState<{ code: string; name: string; quantity: number; installed: number; available: number; hardwareItemId?: string }[]>([]);
   const [inventoryShortage, setInventoryShortage] = useState<string[]>([]);
   const [contractSensorRequirements, setContractSensorRequirements] = useState<any[]>([]);
+  const [contractDisplayDevices, setContractDisplayDevices] = useState<UnassignedDevice[]>([]);
   const [technicianSensorStock, setTechnicianSensorStock] = useState<any[]>([]);
+  const [technicianComponentStock, setTechnicianComponentStock] = useState<any[]>([]);
   const [sensorConfigNode, setSensorConfigNode] = useState<SensorNode | null>(null);
   const [selectedSensorCodes, setSelectedSensorCodes] = useState<string[]>([]);
+  const [componentConfigTab, setComponentConfigTab] = useState<'SENSORS' | 'COMPONENTS'>('SENSORS');
+  const [selectedComponentQuantities, setSelectedComponentQuantities] = useState<Record<string, number>>({});
   const [gateways, setGateways] = useState<any[]>([]);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
@@ -452,13 +416,16 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   const [gatewaySamples, setGatewaySamples] = useState(1);
   const [selectedGatewayNodeIds, setSelectedGatewayNodeIds] = useState<string[]>([]);
   const [gatewayConfigNodes, setGatewayConfigNodes] = useState<any[]>([]);
-  const [provisioningGateway, setProvisioningGateway] = useState<any | null>(null);
+  const [readyGatewayNodes, setReadyGatewayNodes] = useState<any[]>([]);
+  const [configuredGatewayHardwareAddresses, setConfiguredGatewayHardwareAddresses] = useState<string[] | null>(null);
   const [deploymentRequestId, setDeploymentRequestId] = useState('');
-  const [provisionForm, setProvisionForm] = useState({ frequencyBand: '915MHz', firmwareVersion: '1.0.0', mqttClientId: '', certificateFingerprint: '' });
   const [isCheckingGateway, setIsCheckingGateway] = useState(false);
   const [isManualCoordinateOpen, setIsManualCoordinateOpen] = useState(false);
   const [manualLatitude, setManualLatitude] = useState('');
   const [manualLongitude, setManualLongitude] = useState('');
+  const [selectedGatewayForConfig, setSelectedGatewayForConfig] = useState<any | null>(null);
+  const [isGatewayConfigOpen, setIsGatewayConfigOpen] = useState(false);
+  const [gisReloadToken, setGisReloadToken] = useState(0);
 
   // Fetch real Zone, Parent Field, and Mapped Nodes
   useEffect(() => {
@@ -466,8 +433,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     const fetchZoneGISData = async () => {
       try {
         setIsLoading(true);
+        if (!request.zoneId) throw new Error('Deployment request chưa có Zone hợp lệ.');
         const zoneId = request.zoneId;
-        if (!zoneId || request.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
 
         // 1. Fetch Zone details from backend
         let loadedZonePts: [number, number][] = [];
@@ -527,7 +494,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         // GIS placement is only for node modules. Gateways, loose sensors, relays
         // and pumps are handled by their own workflows.
         const allContractDevices = expandContractDevices(nodeContractItems);
-        const requirementMap = new Map<string, { code: string; name: string; quantity: number; installed: number; available: number }>();
+        setContractDisplayDevices(expandContractDevices(contractItems || []));
+        const requirementMap = new Map<string, { code: string; name: string; quantity: number; installed: number; available: number; hardwareItemId?: string }>();
         setContractSensorRequirements([]);
         (contractItems || []).forEach((item: any) => {
           const code = item.code || item.hardwareItemCode || item.name || 'THIET-BI';
@@ -542,14 +510,44 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             return;
           }
           const previous = requirementMap.get(code);
-          requirementMap.set(code, { code, name: item.name || item.hardwareItemName || code, quantity: (previous?.quantity || 0) + (Number(item.quantity) || 1), installed: 0, available: 0 });
+          requirementMap.set(code, { code, name: item.name || item.hardwareItemName || code, quantity: (previous?.quantity || 0) + (Number(item.quantity) || 1), installed: 0, available: 0, hardwareItemId: previous?.hardwareItemId || item.hardwareItemId || item.id });
         });
         setContractRequirements(Array.from(requirementMap.values()));
         const spareParts = await supportService.getTechnicianSpareParts().catch(() => []);
-        setTechnicianSensorStock((spareParts || []).filter((part: any) => {
+        const sensorStockByCode = new Map<string, any>();
+        (spareParts || []).filter((part: any) => {
           const text = `${part.category || ''} ${part.type || ''} ${part.code || ''} ${part.name || ''}`.toUpperCase();
-          return /SENSOR|CẢM BIẾN|DHT|SHT|CO2|RS485|NHIỆT|ẨM|VI KHÍ HẬU/.test(text) && Number(part.quantityInStock || part.quantity || 0) > 0;
-        }));
+          // Keep zero-stock Technician rows visible so the operator can see
+          // that the sensor was already consumed, but they remain disabled in
+          // the configuration picker below. Central-warehouse rows are still
+          // excluded by the API and must go through allocation approval.
+          return /SENSOR|CẢM BIẾN|DHT|SHT|CO2|RS485|NHIỆT|ẨM|VI KHÍ HẬU/.test(text);
+        }).forEach((part: any) => {
+          const code = String(part.code || part.serialNumber || part.name || '').trim().toUpperCase();
+          if (!code) return;
+          const previous = sensorStockByCode.get(code);
+          if (previous) previous.quantityInStock = Number(previous.quantityInStock || 0) + Number(part.quantityInStock ?? part.quantity ?? 0);
+          else sensorStockByCode.set(code, { ...part, code, quantityInStock: Number(part.quantityInStock ?? part.quantity ?? 0) });
+        });
+        setTechnicianSensorStock(Array.from(sensorStockByCode.values()));
+        const componentStockByCode = new Map<string, any>();
+        (spareParts || []).filter((part: any) => {
+          const text = `${part.category || ''} ${part.type || ''} ${part.code || ''} ${part.name || ''}`.toUpperCase();
+          // Components are consumables/support materials only. Actuators stay in DeviceActuators.
+          // NODE_MODULE is also used by the inventory for LoRa/support modules,
+          // so do not reject that category by itself. Reject only actual node
+          // identities and gateway/actuator identities.
+          const isNodeOrGateway = /SIM[-_ ]?NODE|\bNODE\b|GATEWAY|ESP32|ACTUATOR|VALVE|PUMP|RELAY/.test(text);
+          return !isNodeOrGateway && !/SENSOR|CẢM BIẾN|DHT|SHT|CO2|RS485|NHIỆT|ẨM|VI KHÍ HẬU/.test(text)
+            && /LORA|WIRE|DÂY|RESISTOR|ĐIỆN TRỞ|CONNECTOR|ĐẦU NỐI|MODULE|MẠCH|ANTEN|CABLE/.test(text);
+        }).forEach((part: any) => {
+          const code = String(part.code || part.serialNumber || part.name || '').trim().toUpperCase();
+          if (!code) return;
+          const previous = componentStockByCode.get(code);
+          if (previous) previous.quantityInStock = Number(previous.quantityInStock || 0) + Number(part.quantityInStock ?? part.quantity ?? 0);
+          else componentStockByCode.set(code, { ...part, code, quantityInStock: Number(part.quantityInStock ?? part.quantity ?? 0) });
+        });
+        setTechnicianComponentStock(Array.from(componentStockByCode.values()));
         const inventoryByCode = new Map<string, number>();
         (spareParts || []).forEach((part: any) => {
           const code = String(part.code || '').trim().toUpperCase();
@@ -599,11 +597,25 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           deviceService.getFarmDevices(request.farmId).catch(() => []),
           deviceService.getTechnicianDeploymentRequests().catch(() => []),
         ]);
-        const linkedDeployments = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) =>
-          String(item.requestId || item.deploymentRequestId || item.id) === String(request.deploymentRequestId || '') &&
-          String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId));
-        const requestIdsForThisService = new Set(linkedDeployments.map((item: any) => String(item.requestId || item.deploymentRequestId || item.id)));        const realNodeDevices = (Array.isArray(realDevices) ? realDevices : []).filter((d: any) =>
-          !String(d.hardwareAddress || d.macAddress || '').toUpperCase().startsWith('SIM-') &&
+        const requestIdsForThisService = new Set(
+          (Array.isArray(deploymentRequests) ? deploymentRequests : [])
+            .filter((item: any) => String(item.serviceRequestId || item.serviceRequest?.id || '') === String(request.serviceRequestId || ''))
+            .map((item: any) => item.requestId || item.deploymentRequestId || item.id)
+            .filter(Boolean)
+            .map(String)
+        );
+        if (requestIdsForThisService.size === 0) {
+          (Array.isArray(deploymentRequests) ? deploymentRequests : [])
+            .filter((item: any) => String(item.farmId || '') === String(request.farmId || '') && String(item.zoneId || '') === String(request.zoneId || ''))
+            .map((item: any) => item.requestId || item.deploymentRequestId || item.id)
+            .filter(Boolean)
+            .forEach((id: any) => requestIdsForThisService.add(String(id)));
+        }
+        // Some API versions expose the deployment request itself as the
+        // serviceRequestId prop. Keep both shapes compatible.
+        requestIdsForThisService.add(String(request.serviceRequestId || ''));
+        requestIdsForThisService.add(String(request.deploymentRequestId || ''));
+        const realNodeDevices = (Array.isArray(realDevices) ? realDevices : []).filter((d: any) =>
           requestIdsForThisService.has(String(d.deploymentRequestId || d.requestId || d.deployment?.id || '')) &&
           ['SensorNode', 'ActuatorNode'].includes(String(d.deviceType || ''))
         );
@@ -613,60 +625,100 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           name: d.name || d.hardwareAddress || 'Node thật',
           type: determineDeviceType(d.nodeCode || d.hardwareAddress, d.deviceType, d.name),
           mac: d.hardwareAddress || d.macAddress || '',
+          hardwareItemId: d.hardwareItemId || d.hardwareItem?.id,
         } as UnassignedDevice));
+        const visibleRealUnassigned = configuredGatewayHardwareAddresses === null
+          ? realUnassigned
+          : realUnassigned.filter(d => configuredGatewayHardwareAddresses.includes(String(d.mac).toUpperCase()));
 
         // 4. Fetch nodes already pinned in this Zone. The API intentionally
         // returns only devices with real persisted coordinates.
-        const [locs, liveTelemetry] = await Promise.all([
+        let [locs, liveTelemetry] = await Promise.all([
           supportService.getMappedNodes(zoneId).catch(() => []),
           telemetryService.getLatestByDevice(zoneId).catch(() => null),
         ]);
+        // Fallback to the persisted Device GPS when the map-locations view is
+        // temporarily stale or unavailable. The database Device row remains
+        // the source of truth, so a saved partial GIS mapping must not vanish
+        // from the UI.
+        if ((!Array.isArray(locs) || locs.length === 0) && Array.isArray(realDevices)) {
+          locs = realDevices
+            .filter((device: any) => String(device.zoneId) === String(zoneId) && Number.isFinite(Number(device.gpsLatitude)) && Number.isFinite(Number(device.gpsLongitude)))
+            .map((device: any) => ({
+              deviceId: device.deviceId || device.id,
+              hardwareAddress: device.hardwareAddress || device.macAddress,
+              deviceName: device.name || device.hardwareAddress,
+              deviceType: device.deviceType,
+              latitude: Number(device.gpsLatitude),
+              longitude: Number(device.gpsLongitude),
+              status: device.status,
+            }));
+        }
         const liveDevices = Array.isArray(liveTelemetry?.devices) ? liveTelemetry.devices : [];
         let loadedNodes: SensorNode[] = [];
 
         if (Array.isArray(locs) && locs.length > 0) {
           loadedNodes = locs.map((loc: any, idx: number) => {
-            const hasLat = typeof loc.latitude === 'number' && Number.isFinite(loc.latitude);
-            const hasLng = typeof loc.longitude === 'number' && Number.isFinite(loc.longitude);
-            if (!hasLat || !hasLng) return null;
+            const latitude = Number(loc.latitude);
+            const longitude = Number(loc.longitude);
+            const hasLat = Number.isFinite(latitude);
+            const hasLng = Number.isFinite(longitude);
+            if (!hasLat || !hasLng || !loc.deviceId) return null;
 
-            const matchedContract = expanded[idx] || null;
             const matchedDevice = (Array.isArray(realDevices) ? realDevices : []).find((device: any) =>
               String(device.deviceId || device.id || device.nodeId || '') === String(loc.deviceId || loc.id || '') ||
               String(device.hardwareAddress || '').toUpperCase() === String(loc.hardwareAddress || '').toUpperCase()
             );
+            const matchedContract = expanded.find((contractDevice: any) => {
+              const contractHardwareId = String(contractDevice.hardwareItemId || '').toUpperCase();
+              const deviceHardwareId = String(matchedDevice?.hardwareItemId || matchedDevice?.hardwareItem?.id || '').toUpperCase();
+              if (contractHardwareId && deviceHardwareId && contractHardwareId === deviceHardwareId) return true;
+              const contractCode = String(contractDevice.code || '').split(' #')[0].trim().toUpperCase();
+              const deviceCode = String(matchedDevice?.nodeCode || loc.hardwareAddress || '').split(' #')[0].trim().toUpperCase();
+              return Boolean(contractCode && deviceCode && (contractCode === deviceCode || deviceCode.includes(contractCode) || contractCode.includes(deviceCode)));
+            }) || expanded[idx] || null;
             const liveDevice = liveDevices.find((device: any) =>
               String(device.deviceId || '') === String(loc.deviceId || loc.id || '') ||
               String(device.hardwareAddress || '').toUpperCase() === String(loc.hardwareAddress || '').toUpperCase()
             );
-            const nodeCode = matchedContract?.code || loc.hardwareAddress || `NODE-0${idx + 1}`;
-            const name = matchedContract?.name || loc.deviceName || `Node Thiết bị #${idx + 1}`;
-            const serialNumber = loc.hardwareAddress || matchedContract?.mac || `24:DC:C3:00:00:${String(idx + 1).padStart(2, '0')}`;
+            const liveStatus = liveDevice ? normalizeNodeStatus(liveDevice.status) : 'OFFLINE';
+            const nodeCode = matchedContract?.code || loc.hardwareAddress || 'NODE';
+            const name = matchedContract?.name || loc.deviceName || 'Node thiết bị';
+            const serialNumber = loc.hardwareAddress || matchedContract?.mac || '—';
 
             return {
-              nodeId: loc.deviceId || `loaded-node-${idx}-${Date.now()}`,
-              farmId: request.farmId || '30000000-0000-0000-0000-000000000001',
+              nodeId: loc.deviceId,
+              hardwareItemId: matchedDevice?.hardwareItemId || matchedDevice?.hardwareItem?.id,
+              contractCode: matchedContract?.code,
+              farmId: request.farmId,
               zoneId: zoneId,
-              zoneName: request.zoneName || currentZoneData?.name || 'Nhà màng Z01',
+              zoneName: request.zoneName || currentZoneData?.name || '—',
               name: name,
               nodeCode: nodeCode,
               serialNumber: serialNumber,
-              latitude: loc.latitude,
-              longitude: loc.longitude,
-              status: normalizeNodeStatus(liveDevice?.status ?? loc.status) as any,
+              latitude,
+              longitude,
+              status: liveStatus as any,
               firmwareVersion: loc.firmwareVersion || 'Chưa có dữ liệu',
-              batteryLevel: loc.batteryLevel ?? 0,
+              batteryLevel: liveDevice?.batteryLevel ?? loc.batteryLevel ?? null,
               rssi: loc.rssi ?? 0,
               lastSeenAt: loc.lastSeenAt || 'Chưa nhận dữ liệu',
               sensorsCount: (loc.sensors || loc.sensorParameters || matchedDevice?.sensors || matchedDevice?.sensorParameters || []).length,
               actuatorsCount: (loc.deviceType === 'ActuatorNode' || nodeCode.includes('VALVE') || nodeCode.includes('ACT')) ? 1 : 0,
-              sensorParameters: liveDevice?.metrics?.length
-                ? liveDevice.metrics.map((metric: any) => ({ code: metric.parameterCode, name: metric.parameterCode, value: metric.value, unit: metric.unit }))
-                : (liveDevice?.sensors?.length ? liveDevice.sensors.map((sensor: any) => ({ code: sensor, name: sensor, value: '—' })) : (loc.sensors || loc.sensorParameters || matchedDevice?.sensors || matchedDevice?.sensorParameters || [])),
+              sensorParameters: mergeConfiguredTelemetry(
+                (loc.sensors || loc.sensorParameters || matchedDevice?.sensors || matchedDevice?.sensorParameters || []).map((sensor: any) => typeof sensor === 'string' ? ({ code: sensor, name: sensor, value: '—' }) : sensor),
+                liveDevice?.metrics || []
+              ),
             };
           }).filter(Boolean) as SensorNode[];
-          setNodes(loadedNodes);
-          setContractRequirements(prev => prev.map(req => ({ ...req, installed: loadedNodes.filter(node => node.nodeCode.startsWith(req.code)).length })));
+          // A device can arrive from both the persisted GIS location and the
+          // farm-device fallback. Keep one physical node only.
+          const uniqueLoadedNodes = Array.from(new Map(loadedNodes.map(node => [
+            String(node.nodeId || node.serialNumber || node.nodeCode).toUpperCase(),
+            node,
+          ])).values());
+          loadedNodes = uniqueLoadedNodes;
+          setNodes(uniqueLoadedNodes);
         } else {
           setNodes([]);
         }
@@ -675,7 +727,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         // If loadedNodes already has 8 nodes (matching expanded), 0 remain to be pinned!
         const mappedIds = new Set(loadedNodes.map(node => node.nodeId));
         const mappedHardware = new Set(loadedNodes.map(node => String(node.serialNumber || '').toUpperCase()));
-        const waitingRealNodes = realUnassigned.filter(d => !mappedIds.has(d.deviceId) && !mappedHardware.has(String(d.mac || '').toUpperCase()));
+        const waitingRealNodes = Array.from(new Map(visibleRealUnassigned
+          .filter(d => !mappedIds.has(d.deviceId) && !mappedHardware.has(String(d.mac || '').toUpperCase()))
+          .map(device => [String(device.deviceId || device.mac || device.code).toUpperCase(), device]))
+          .values());
         if (waitingRealNodes.length > 0) {
           setUnassignedDevices(waitingRealNodes);
           setSelectedDevice(waitingRealNodes[0] || null);
@@ -693,18 +748,21 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     };
 
     fetchZoneGISData();
-  }, [isOpen, request.zoneId, request.serviceRequestId, selectedHardwareItems]);
+  }, [isOpen, request.zoneId, request.serviceRequestId, selectedHardwareItems, gisReloadToken]);
 
   useEffect(() => {
     if (!isOpen || !request.zoneId) return;
     const refreshLiveNodeState = async () => {
       const liveResponse = await telemetryService.getLatestByDevice(request.zoneId!).catch(() => null);
       const live = Array.isArray(liveResponse?.devices) ? liveResponse.devices : [];
-      if (live.length === 0) return;
+      if (live.length === 0) {
+        setNodes(previous => previous.map(node => ({ ...node, status: 'OFFLINE' })));
+        return;
+      }
       setNodes(previous => previous.map(node => {
         const source = live.find((item: any) => (item.deviceId || item.nodeId) === node.nodeId || item.hardwareAddress === node.serialNumber);
         if (!source) return { ...node, status: 'OFFLINE' };
-        return { ...node, status: normalizeNodeStatus(source.status) as any, batteryLevel: source.batteryLevel ?? node.batteryLevel, rssi: source.rssi ?? node.rssi, sensorParameters: source.metrics?.length ? source.metrics.map((metric: any) => ({ code: metric.parameterCode, name: metric.parameterCode, value: metric.value, unit: metric.unit })) : (source.sensors?.length ? source.sensors.map((sensor: any) => ({ code: sensor, name: sensor, value: '—' })) : node.sensorParameters) };
+        return { ...node, status: normalizeNodeStatus(source.status) as any, batteryLevel: source.batteryLevel ?? node.batteryLevel, rssi: source.rssi ?? node.rssi, sensorParameters: mergeConfiguredTelemetry(node.sensorParameters, source.metrics || []) };
       }));
     };
     refreshLiveNodeState();
@@ -719,14 +777,13 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         deviceService.getGateways(request.farmId).catch(() => []),
         deviceService.getTechnicianDeploymentRequests().catch(() => [])
       ]);
-      const validDeploymentRequests = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) => String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId) && String(item.requestId || item.deploymentRequestId) === String(request.deploymentRequestId || '') && item.status === 'Installing');
+      const validDeploymentRequests = (Array.isArray(deploymentRequests) ? deploymentRequests : []).filter((item: any) => String(item.farmId) === String(request.farmId) && String(item.zoneId) === String(request.zoneId) && !['Draft', 'Completed', 'MaintenanceRequired'].includes(String(item.status)));
       const validRequestIds = new Set(validDeploymentRequests.map((item: any) => item.requestId || item.deploymentRequestId).filter(Boolean).map(String));
       const matchedRequest = validDeploymentRequests[0];
       const matchedRequestId = matchedRequest?.requestId || matchedRequest?.deploymentRequestId || '';
       setDeploymentRequestId(matchedRequestId);
 
-      // Chỉ Gateway đã provision mới được dùng để kết nối. Hàng trong kho
-      // không phải là Gateway của Farm và không được đưa vào select này.
+      // GIS chỉ nhận Gateway đã hoàn tất Hardware Preparation và sẵn sàng triển khai.
       const contractItems = selectedHardwareItems?.length
         ? selectedHardwareItems
         : (request.contractDetails?.items || []);
@@ -741,8 +798,8 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         const belongsToFarm = String(gatewayFarmId || request.farmId) === String(request.farmId);
         const belongsToZone = !gatewayZoneId || String(gatewayZoneId) === String(request.zoneId);
         const belongsToRequest = Boolean(gatewayRequestId) && validRequestIds.has(String(gatewayRequestId));
-        const isProvisioned = !gateway.inventorySource && Boolean(gateway.gatewayId || gateway.id);
-        return isProvisioned && belongsToFarm && belongsToZone && belongsToRequest && contractRequiresGateway;
+        const isReady = !gateway.inventorySource && Boolean(gateway.gatewayId || gateway.id) && ['READYFORDEPLOYMENT', 'PROVISIONED', 'ONLINE'].includes(String(gateway.readinessStatus || gateway.status || '').replace(/[_\s-]/g, '').toUpperCase());
+        return isReady && belongsToFarm && belongsToZone && belongsToRequest && contractRequiresGateway;
       });
       const byId = new Map<string, any>();
       registeredGateways.forEach((gateway: any) => {
@@ -751,6 +808,16 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       });
       const gatewayList = Array.from(byId.values());
       setGateways(gatewayList);
+      const initialGatewayId = String(gatewayList[0]?.gatewayId || gatewayList[0]?.id || '');
+      if (initialGatewayId) {
+        const persisted = await deviceService.getGatewayFirmwareConfig(initialGatewayId).catch(() => null);
+        const persistedNodes = Array.isArray(persisted?.nodes) ? persisted.nodes : [];
+        setConfiguredGatewayHardwareAddresses(persistedNodes.map((node: any) => String(node.hardwareAddress || '').toUpperCase()).filter(Boolean));
+        setGisReloadToken(previous => previous + 1);
+      } else {
+        setConfiguredGatewayHardwareAddresses([]);
+        setGisReloadToken(previous => previous + 1);
+      }
       // Keep the selected Gateway after GIS data is reloaded. Previously the
       // modal only kept this in memory, so a save/reload made a connected
       // Gateway appear as "CHƯA KẾT NỐI" again.
@@ -801,19 +868,6 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     } finally { setIsCheckingGateway(false); }
   };
 
-  const simulateGatewayConnection = async () => {
-    if (!selectedGatewayId) { alert('⚠️ Vui lòng chọn Gateway.'); return; }
-    try {
-      const updated = await deviceService.simulateGatewayConnection(selectedGatewayId);
-      setGateways(previous => previous.map(item => (item.gatewayId || item.id) === selectedGatewayId ? { ...item, ...updated } : item));
-      setGatewayConnected(true);
-      setSuccessToast('Đã mô phỏng Gateway Online. Đây không phải kết nối MQTT thật.');
-      window.setTimeout(() => setSuccessToast(null), 3500);
-    } catch (error: any) {
-      alert(`Mô phỏng Gateway thất bại: ${error?.response?.data?.detail || error?.response?.data?.message || error?.message || 'Vui lòng thử lại.'}`);
-    }
-  };
-
   const downloadGatewayFirmwareConfig = async () => {
     if (!selectedGatewayId) { alert('⚠️ Vui lòng chọn Gateway.'); return; }
     try {
@@ -843,71 +897,104 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     }
   };
 
-  const openProvisionGateway = async (gateway: any) => {
-    setProvisioningGateway(gateway);
-    const mqttClientId = `smartfarm-gateway-${gateway.gatewayId || gateway.id || gateway.serialNumber || gateway.code || gateway.macAddress}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 150);
-    setProvisionForm({
-      frequencyBand: gateway.frequencyBand || '915MHz',
-      firmwareVersion: gateway.firmwareVersion || gateway.model || '1.0.0',
-      mqttClientId,
-      certificateFingerprint: '',
-    });
-    try {
-      const certificateFingerprint = await generateGatewayFingerprint(gateway, deploymentRequestId, request.farmId);
-      setProvisionForm(previous => ({ ...previous, certificateFingerprint }));
-    } catch {
-      setProvisionForm(previous => ({ ...previous, certificateFingerprint: 'A'.repeat(64) }));
-    }
-  };
-
-  const provisionSelectedGateway = async () => {
-    if (!provisioningGateway || !deploymentRequestId) { alert('Chưa tìm thấy Deployment Request đang Installing cho Zone này.'); return; }
-    if (!provisionForm.certificateFingerprint || provisionForm.certificateFingerprint.replace(/:/g, '').length !== 64) { alert('Certificate fingerprint phải là SHA-256 gồm 64 ký tự hex.'); return; }
-    try {
-      const gateway = await deviceService.provisionGateway({
-        deploymentRequestId,
-        farmId: request.farmId,
-        macAddress: normalizeMacAddress(provisioningGateway.macAddress),
-        gatewaySerial: provisioningGateway.gatewaySerial || provisioningGateway.serialNumber || provisioningGateway.code,
-        frequencyBand: provisionForm.frequencyBand,
-        firmwareVersion: provisionForm.firmwareVersion,
-        mqttClientId: provisionForm.mqttClientId,
-        clientCertificateFingerprint: provisionForm.certificateFingerprint,
-      });
-      setGateways(previous => [...previous.filter(item => !item.inventorySource || item.macAddress?.toUpperCase() !== provisioningGateway.macAddress?.toUpperCase()), gateway]);
-      setSelectedGatewayId(gateway.gatewayId || gateway.id);
-      setProvisioningGateway(null);
-      setSuccessToast('Đã provision Gateway. Gateway đã chuyển sang danh sách có thể kết nối.');
-      window.setTimeout(() => setSuccessToast(null), 3500);
-    } catch (error: any) {
-      alert(`Provision Gateway thất bại: ${error?.response?.data?.message || error?.message || 'Vui lòng kiểm tra MAC, serial và certificate.'}`);
-    }
-  };
-
   const openGatewayConfiguration = async () => {
     const gateway = gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId);
-    let firmwareConfig: any;
+    let preparations: any[] = [];
+    let farmDevices: any[] = [];
     try {
-      firmwareConfig = await deviceService.getGatewayFirmwareConfig(selectedGatewayId);
+      [preparations, farmDevices] = await Promise.all([
+        deviceService.listHardwarePreparations().catch(() => []),
+        deviceService.getFarmDevices(request.farmId).catch(() => []),
+      ]);
     } catch (error: any) {
-      alert(`Không tải được danh sách Node đã provision: ${error?.response?.data?.detail || error?.message || 'Lỗi backend'}`);
+      alert(`Không tải được danh sách Node sẵn sàng: ${error?.response?.data?.detail || error?.message || 'Lỗi backend'}`);
       return;
     }
-    const provisionedNodes = Array.isArray(firmwareConfig?.nodes) ? firmwareConfig.nodes : [];
-    setGatewayConfigNodes(provisionedNodes);
+    const preparedNodes = (Array.isArray(preparations) ? preparations : [])
+      .filter((item: any) => String(item.status || '').toLowerCase() === 'readyfordeployment' && item.nodeId && item.hardwareItemId)
+      .map((item: any) => ({
+        deviceId: item.id,
+        hardwareAddress: String(item.nodeId).trim().toUpperCase(),
+        deviceType: item.deviceType === 'ActuatorNode' ? 'ActuatorNode' : 'SensorNode',
+        hardwareItemId: item.hardwareItemId,
+        readyForDeployment: true,
+      }));
+    // GIS assignment changes a node from ReadyForDeployment to Assigned. The
+    // Gateway popup must still show that node; otherwise chấm GIS makes it
+    // disappear from the Gateway configuration dialog.
+    const assignedNodes = (Array.isArray(farmDevices) ? farmDevices : [])
+      .filter((item: any) => ['SensorNode', 'ActuatorNode'].includes(String(item.deviceType || ''))
+        && !['Decommissioned', 'Retired'].includes(String(item.status || ''))
+        && (item.hardwareAddress || item.nodeCode))
+      .map((item: any) => ({
+        deviceId: item.deviceId || item.id,
+        hardwareAddress: String(item.hardwareAddress || item.nodeCode).trim().toUpperCase(),
+        deviceType: item.deviceType === 'ActuatorNode' ? 'ActuatorNode' : 'SensorNode',
+        hardwareItemId: item.hardwareItemId || item.hardwareItem?.id,
+        readyForDeployment: ['ReadyForDeployment', 'Assigned', 'Online', 'SensorsConfigured', 'ActuatorsConfigured'].includes(String(item.status || '')),
+      }))
+      .filter((item: any) => item.deviceId && item.hardwareItemId);
+    const readyNodes = Array.from(new Map([...preparedNodes, ...assignedNodes].map(node => [node.hardwareAddress, node])).values());
+    // Resolve the persisted Device IDs so the checkbox reflects the Gateway
+    // configuration stored in DB, not a default React selection.
+    let persistedNodes: any[] = [];
+    try {
+      const persistedConfig = await deviceService.getGatewayFirmwareConfig(selectedGatewayId);
+      persistedNodes = Array.isArray(persistedConfig?.nodes) ? persistedConfig.nodes : [];
+    } catch {
+      // There may be no provisioned nodes yet; the Ready list remains usable.
+    }
+    const persistedByAddress = new Map(persistedNodes.map((node: any) => [String(node.hardwareAddress || '').toUpperCase(), node]));
+    const displayReadyNodes = readyNodes.map(node => ({
+      ...node,
+      provisionedDeviceId: persistedByAddress.get(String(node.hardwareAddress).toUpperCase())?.deviceId,
+    }));
+    setReadyGatewayNodes(displayReadyNodes);
+    setGatewayConfigNodes(displayReadyNodes);
     setGatewayInterval(Number(gateway?.telemetryIntervalSec || 60));
     setGatewaySamples(Number(gateway?.samplesPerInterval || 1));
     setGatewayLocation(gateway?.installationLocation || '');
-    const availableNodeIds = new Set(provisionedNodes.map((node: any) => node.deviceId));
-    setSelectedGatewayNodeIds(Array.isArray(gateway?.configuredNodeIds) ? gateway.configuredNodeIds.filter((id: string) => availableNodeIds.has(id)) : provisionedNodes.map((node: any) => node.deviceId));
+    const configuredIds = new Set(Array.isArray(gateway?.configuredNodeIds) ? gateway.configuredNodeIds.map(String) : []);
+    // An empty configuredNodeIds is meaningful after the user explicitly
+    // cleared the Gateway selection. Do not interpret it as "select all".
+    const hasPersistedConfiguration = gateway?.configuredAtUtc != null || Array.isArray(gateway?.configuredNodeIds);
+    setSelectedGatewayNodeIds(displayReadyNodes
+      .filter((node: any) => !hasPersistedConfiguration || (node.provisionedDeviceId && configuredIds.has(String(node.provisionedDeviceId))))
+      .map((node: any) => node.deviceId));
+    setConfiguredGatewayHardwareAddresses(hasPersistedConfiguration
+      ? displayReadyNodes.filter((node: any) => node.provisionedDeviceId && configuredIds.has(String(node.provisionedDeviceId))).map((node: any) => String(node.hardwareAddress).toUpperCase())
+      : null);
+    // The GIS list is loaded separately from the Gateway popup. Force it to
+    // reload after resolving the persisted Gateway membership so an unchecked
+    // node cannot remain visible outside the popup.
+    setGisReloadToken(previous => previous + 1);
     setIsGatewayModalOpen(true);
   };
 
   const saveGatewayConfiguration = async () => {
     if (!selectedGatewayId) return;
-    const availableNodeIds = new Set(gatewayConfigNodes.map((node: any) => node.deviceId));
-    const nodeIds = selectedGatewayNodeIds.filter(id => availableNodeIds.has(id));
     try {
+      const selectedReadyNodes = readyGatewayNodes.filter(node => selectedGatewayNodeIds.includes(node.deviceId));
+      setConfiguredGatewayHardwareAddresses(selectedReadyNodes.map(node => String(node.hardwareAddress).toUpperCase()));
+      const deploymentId = request.deploymentRequestId || deploymentRequestId;
+      if (selectedReadyNodes.length > 0 && deploymentId && request.farmId) {
+        await deviceService.provisionNodes({
+          deploymentRequestId: deploymentId,
+          gatewayId: selectedGatewayId,
+          farmId: request.farmId,
+          nodes: selectedReadyNodes.map(node => ({
+            hardwareAddress: node.hardwareAddress,
+            deviceType: node.deviceType,
+            hardwareItemId: node.hardwareItemId,
+          })),
+        });
+      }
+      const firmwareConfig = await deviceService.getGatewayFirmwareConfig(selectedGatewayId);
+      const provisionedNodes = Array.isArray(firmwareConfig?.nodes) ? firmwareConfig.nodes : [];
+      const selectedAddresses = new Set(selectedReadyNodes.map(node => String(node.hardwareAddress).toUpperCase()));
+      const nodeIds = provisionedNodes
+        .filter((node: any) => selectedAddresses.has(String(node.hardwareAddress || '').toUpperCase()))
+        .map((node: any) => node.deviceId);
       const updated = await deviceService.configureGateway(selectedGatewayId, {
         nodeIds,
         telemetryIntervalSec: gatewayInterval,
@@ -915,21 +1002,16 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         installationLocation: gatewayLocation || undefined,
       });
       setGateways(previous => previous.map(item => (item.gatewayId || item.id) === selectedGatewayId ? { ...item, ...updated } : item));
-      setSuccessToast('Đã lưu cấu hình Gateway và danh sách Node phục vụ.');
+      // Reload from the backend after provisioning/configuration. Do not leave
+      // the GIS list backed by the pre-save React state.
       setIsGatewayModalOpen(false);
+      setGisReloadToken(previous => previous + 1);
+      setSuccessToast('Đã lưu cấu hình Gateway và danh sách Node phục vụ.');
       window.setTimeout(() => setSuccessToast(null), 3000);
     } catch (error: any) {
       alert(`Không thể lưu cấu hình Gateway: ${error?.response?.data?.message || error?.message || 'Vui lòng thử lại.'}`);
     }
   };
-
-  // The Gateway popup can be opened before or after MQTT verification.
-  // Always refresh the provisioned-node list when both states are ready.
-  useEffect(() => {
-    if (isGatewayModalOpen && gatewayConnected && selectedGatewayId) {
-      void openGatewayConfiguration();
-    }
-  }, [isGatewayModalOpen, gatewayConnected, selectedGatewayId]);
 
   const getTileConfig = () => {
     switch (mapType) {
@@ -1003,11 +1085,17 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       return;
     }
 
+    if (!selectedDevice.deviceId || !request.farmId || !request.zoneId) {
+      alert('Thiếu định danh thiết bị, Farm hoặc Zone thật; không thể chấm Node giả.');
+      return;
+    }
     const newNode: SensorNode = {
-      nodeId: selectedDevice.deviceId || `mapped-node-${Date.now()}`,
-      farmId: request.farmId || '30000000-0000-0000-0000-000000000001',
-      zoneId: request.zoneId || '32000000-0000-0000-0000-000000000001',
-      zoneName: request.zoneName || currentZoneData?.name || 'Nhà màng Z01',
+      nodeId: selectedDevice.deviceId,
+      hardwareItemId: selectedDevice.hardwareItemId,
+      contractCode: (selectedDevice as any).contractCode,
+      farmId: request.farmId,
+      zoneId: request.zoneId,
+      zoneName: request.zoneName || currentZoneData?.name || '—',
       name: selectedDevice.name,
       nodeCode: selectedDevice.code,
       serialNumber: selectedDevice.mac,
@@ -1018,8 +1106,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       batteryLevel: 0,
       rssi: 0,
       lastSeenAt: 'Chưa nhận dữ liệu từ Gateway',
-      sensorsCount: selectedDevice.type.includes('SENSOR') ? 2 : 0,
-      sensorParameters: contractSensorRequirements.slice(0, 2).map(sensor => ({ code: sensor.code, name: sensor.name, value: 'Chưa có dữ liệu' })),
+      sensorsCount: selectedDevice.type.includes('SENSOR') ? contractSensorRequirements.length : 0,
+      sensorParameters: selectedDevice.type.includes('SENSOR')
+        ? contractSensorRequirements.map(sensor => ({ code: sensor.code, name: sensor.name, value: 'Chưa có dữ liệu' }))
+        : [],
       actuatorsCount: selectedDevice.type === 'VALVE' || selectedDevice.type === 'PUMP' ? 1 : 0,
     };
 
@@ -1055,22 +1145,53 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
 
   const openSensorConfiguration = (node: SensorNode) => {
     setSensorConfigNode(node);
+    setComponentConfigTab('SENSORS');
     setSelectedSensorCodes((node.sensorParameters || []).map((sensor: any) => sensor.code));
+    setSelectedComponentQuantities({});
+    deviceService.getComponents(node.nodeId).then((rows: any[]) => {
+      const quantities: Record<string, number> = {};
+      (rows || []).forEach(row => { quantities[row.hardwareItemId] = Number(row.quantity) || 1; });
+      setSelectedComponentQuantities(quantities);
+    }).catch(() => undefined);
+  };
+
+  const saveComponentConfiguration = async () => {
+    if (!sensorConfigNode) return;
+    const components = Object.entries(selectedComponentQuantities).filter(([, quantity]) => quantity > 0).map(([hardwareItemId, quantity]) => {
+      const item = technicianComponentStock.find(stock => String(stock.id || stock.hardwareItemId) === hardwareItemId);
+      return { hardwareItemId, componentType: String(item?.category || item?.type || 'SUPPORT_COMPONENT').toUpperCase(), quantity, unit: item?.unit || 'Cái' };
+    });
+    try {
+      await deviceService.configureComponents(sensorConfigNode.nodeId, components);
+      setSensorConfigNode(null);
+      setSuccessToast(`Đã lưu ${components.length} loại vật tư phụ cho Node [${sensorConfigNode.nodeCode}].`);
+      setTimeout(() => setSuccessToast(null), 3000);
+    } catch (error: any) {
+      alert(error?.response?.data?.detail || 'Không thể lưu vật tư phụ. Kho Technician chưa bị thay đổi.');
+    }
   };
 
   const saveSensorConfiguration = async () => {
     if (!sensorConfigNode) return;
     const node = sensorConfigNode;
+    if (selectedSensorCodes.length === 0) {
+      alert('Vui lòng chọn ít nhất một cảm biến đã gán cho Node.');
+      return;
+    }
     const parameters = selectedSensorCodes.map(code => {
       const requirement = contractSensorRequirements.find(sensor => sensor.code === code);
-      const stockItem = technicianSensorStock.find((sensor: any) => (sensor.code || sensor.serialNumber || sensor.name) === code);
+      const stockItem = technicianSensorStock.find((sensor: any) => String(sensor.code || sensor.serialNumber || sensor.name).toUpperCase() === String(code).toUpperCase());
       return { code, name: stockItem?.name || requirement?.name || code, value: 'Chưa có dữ liệu' };
     });
     if (!node.nodeId) return;
     try {
       await deviceService.configureSensors(node.nodeId, parameters.map((sensor: any) => ({
         sensorType: sensor.code,
-        unit: /DHT|SHT|TEMP|NHIỆT|ẨM/i.test(`${sensor.code} ${sensor.name}`) ? '°C/%RH' : 'raw',
+        unit: technicianSensorStock.find((stock: any) => (stock.code || stock.serialNumber || stock.name) === sensor.code)?.unit
+          || contractSensorRequirements.find(requirement => requirement.code === sensor.code)?.unit
+          || '',
+        model: technicianSensorStock.find((stock: any) => (stock.code || stock.serialNumber || stock.name) === sensor.code)?.model,
+        interface: technicianSensorStock.find((stock: any) => (stock.code || stock.serialNumber || stock.name) === sensor.code)?.interface,
         samplingIntervalSec: 60,
       })));
       setNodes(previous => previous.map(item => item.nodeId === node.nodeId ? { ...item, sensorParameters: parameters, sensorsCount: parameters.length } : item));
@@ -1082,18 +1203,32 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     }
   };
 
-  const handleUnmapNode = (targetNode: SensorNode) => {
-    setNodes(prev => prev.filter(n => n.nodeId !== targetNode.nodeId));
-    setUnassignedDevices(prev => [
-      ...prev,
-      {
-        deviceId: targetNode.nodeId,
-        code: targetNode.nodeCode,
-        name: targetNode.name,
-        type: determineDeviceType(targetNode.nodeCode, undefined, targetNode.name),
-        mac: targetNode.serialNumber,
-      },
-    ]);
+  const handleUnmapNode = async (targetNode: SensorNode) => {
+    const remainingNodes = nodes.filter(n => n.nodeId !== targetNode.nodeId);
+    const previousUnassigned = unassignedDevices;
+    const restoredDevice: UnassignedDevice = {
+      deviceId: targetNode.nodeId,
+      code: targetNode.nodeCode,
+      name: targetNode.name,
+      type: determineDeviceType(targetNode.nodeCode, undefined, targetNode.name),
+      mac: targetNode.serialNumber,
+    };
+    // Optimistic UI update: the pin disappears immediately. If persistence
+    // fails, restore the exact previous state below.
+    setNodes(remainingNodes);
+    setUnassignedDevices(prev => [...prev, restoredDevice]);
+    setSelectedDevice(restoredDevice);
+    try {
+      const zoneId = request.zoneId || currentZoneData?.id || currentZoneData?.zoneId;
+      if (!zoneId) throw new Error('Deployment request chưa có Zone hợp lệ.');
+      await supportService.updateMappedNodes(zoneId, remainingNodes, request.serviceRequestId, request.deploymentRequestId);
+    } catch (error: any) {
+      setNodes(nodes);
+      setUnassignedDevices(previousUnassigned);
+      setSelectedDevice(null);
+      alert(`Không thể gỡ Node khỏi GIS: ${error?.response?.data?.detail || error?.message || 'Lỗi backend'}`);
+      return;
+    }
     if (activePinNode?.nodeId === targetNode.nodeId) {
       setActivePinNode(null);
     }
@@ -1104,11 +1239,11 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      const zoneId = request.zoneId;
-      if (!zoneId || request.deploymentLinkInvalid) throw new Error('Thiếu Zone hoặc liên kết triển khai không hợp lệ.');
+      const zoneId = request.zoneId || currentZoneData?.id || currentZoneData?.zoneId;
+      if (!zoneId) throw new Error('Deployment request chưa có Zone hợp lệ.');
 
       // 1. If polygon was adjusted, save updated boundary to Zone entity
-      if (canEditZoneBoundary && zonePolygon.length >= 3 && zoneId && currentZoneData) {
+      if (zonePolygon.length >= 3 && zoneId && currentZoneData) {
         try {
           const geoJson = toGeoJsonPolygon(zonePolygon);
           const computedArea = Math.max(1, Math.round(calculatePolygonAreaM2(zonePolygon) || Number(currentZoneData.areaM2) || 100));
@@ -1119,24 +1254,22 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           });
         } catch (zErr) {
           console.warn('Could not update zone GIS boundary:', zErr);
-          // Ranh giới Zone là việc của chủ trang trại: 403/404 thì bỏ qua và vẫn lưu vị trí Node; lỗi khác mới dừng.
-          const st = (zErr as any)?.response?.status;
-          if (st !== 403 && st !== 404) throw zErr;
         }
       }
 
       // 2. Persist mapped nodes to database
-      // Parent callback owns persistence when supplied; never submit twice.
+      if (zoneId) {
+        await supportService.updateMappedNodes(zoneId, nodes, request.serviceRequestId, request.deploymentRequestId);
+      }
+
+      // 3. Callback if provided
       if (onSaveMapping) {
         await onSaveMapping(nodes, nodes.length);
-      } else {
-        await supportService.updateMappedNodes(zoneId, nodes, request.serviceRequestId, request.deploymentRequestId);
       }
       onClose();
     } catch (err: any) {
       console.error('Error saving mapping:', err);
-      const status = err?.response?.status ? ' (HTTP ' + err.response.status + ')' : '';
-      alert('Lỗi lưu sơ đồ GIS' + status + ': ' + (extractApiError(err) || 'Vui lòng thử lại.'));
+      alert('Lỗi lưu sơ đồ GIS: ' + (err?.response?.data?.message || err?.message || 'Vui lòng thử lại.'));
     } finally {
       setIsSaving(false);
     }
@@ -1214,12 +1347,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
               <button type="button" disabled={!selectedDevice} onClick={() => setIsManualCoordinateOpen(true)} className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50">Nhập tọa độ thủ công</button>
               <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 space-y-1 text-[11px]">
                 <div className="font-bold text-sky-900">Thiết bị trong hợp đồng</div>
-                <div className="font-bold text-slate-800 pt-1">Mô-đun nút ({contractRequirements.reduce((sum, req) => sum + req.quantity, 0)})</div>
-                {contractRequirements.length === 0 ? <div className="text-slate-500">Không có mô-đun nút.</div> : contractRequirements.map(req => <div key={req.code} className="flex justify-between gap-2"><span className="truncate">{req.name}</span><strong>{req.installed}/{req.quantity}</strong></div>)}
-                <div className="font-bold text-slate-800 pt-2">Cảm biến ({contractSensorRequirements.reduce((sum, sensor) => sum + sensor.quantity, 0)}) · Đã gán: {nodes.reduce((sum, node) => sum + (node.sensorParameters?.length || 0), 0)}</div>
-                {contractSensorRequirements.length === 0 ? <div className="text-slate-500">Không có cảm biến riêng.</div> : contractSensorRequirements.map(sensor => <div key={sensor.code} className="flex justify-between gap-2"><span className="truncate">{sensor.name}</span><strong>{sensor.quantity} cần dùng</strong></div>)}
+                <div className="font-bold text-slate-800 pt-1">Danh sách thiết bị</div>
+                {Array.from(new Map([...contractDisplayDevices, ...nodes.map(node => ({ name: node.name } as UnassignedDevice)), ...unassignedDevices].map(device => [String(device.name || device.code).trim().toUpperCase(), device.name || device.code])).values()).map(name => <div key={name} className="border-t border-sky-100 pt-1">{name}</div>)}
+                {contractDisplayDevices.length === 0 && nodes.length === 0 && unassignedDevices.length === 0 && <div className="text-slate-500">Chưa có thiết bị trong yêu cầu.</div>}
               </div>
-              {inventoryShortage.length > 0 && <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-[11px] text-amber-950"><strong className="block mb-1">Thiếu thiết bị cần bổ sung</strong>{inventoryShortage.map(item => <div key={item}>{item}</div>)}</div>}
 
               {/* Status Banner when all nodes are mapped */}
               {unassignedDevices.length === 0 && nodes.length > 0 ? (
@@ -1569,7 +1700,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold font-mono">
-                          {typeof n.batteryLevel === 'number' ? `${n.batteryLevel}%` : 'Pin: —'}
+                          {typeof n.batteryLevel === 'number' && n.batteryLevel > 0 ? `${n.batteryLevel}%` : 'Pin: —'}
                         </span>
                         <span className={`text-[10px] font-bold flex items-center gap-0.5 ${n.status === 'ONLINE' ? 'text-emerald-700' : 'text-red-700'}`}>
                           {n.status === 'ONLINE' ? 'TRỰC TUYẾN' : 'MẤT KẾT NỐI'}
@@ -1625,13 +1756,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         </div>
       </div>
 
-      <Modal isOpen={Boolean(sensorConfigNode)} onClose={() => setSensorConfigNode(null)} title={`Cấu hình cảm biến cho Node ${sensorConfigNode?.nodeCode || ''}`}>
+      <Modal isOpen={Boolean(sensorConfigNode)} onClose={() => setSensorConfigNode(null)} title={`Cấu hình thiết bị cho Node ${sensorConfigNode?.nodeCode || ''}`}>
         <div className="space-y-4 text-xs">
-          <p className="text-slate-600">Chọn cảm biến từ kho Technician để gán vào đúng Node. Không cần provision cảm biến riêng.</p>
-          <div className="border rounded-lg divide-y">
-            {technicianSensorStock.length === 0 ? <div className="p-3 text-slate-500">Kho Technician chưa có cảm biến.</div> : technicianSensorStock.map((sensor: any) => { const code = sensor.code || sensor.serialNumber || sensor.name; return <label key={code} className="flex items-center gap-2 p-3"><input type="checkbox" checked={selectedSensorCodes.includes(code)} onChange={event => setSelectedSensorCodes(previous => event.target.checked ? [...previous, code] : previous.filter(value => value !== code))} /><span><strong>{sensor.name || code}</strong><small className="block text-slate-500">Mã: {code} · Tồn kho: {sensor.quantityInStock || sensor.quantity || 0}</small></span></label>; })}
-          </div>
-          <div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setSensorConfigNode(null)}>Hủy</Button><Button type="button" className="bg-emerald-600 text-white" onClick={saveSensorConfiguration}>Lưu cấu hình cảm biến</Button></div>
+          <div className="flex gap-2 border-b"><Button type="button" variant={componentConfigTab === 'SENSORS' ? 'primary' : 'outline'} onClick={() => setComponentConfigTab('SENSORS')}>Cảm biến</Button><Button type="button" variant={componentConfigTab === 'COMPONENTS' ? 'primary' : 'outline'} onClick={() => setComponentConfigTab('COMPONENTS')}>Vật tư phụ</Button></div>
+          {componentConfigTab === 'SENSORS' ? <><p className="text-slate-600">Chọn cảm biến từ kho Technician để gán vào đúng Node.</p><div className="border rounded-lg divide-y">{technicianSensorStock.length === 0 ? <div className="p-3 text-slate-500">Kho Technician chưa có cảm biến.</div> : technicianSensorStock.map((sensor: any) => { const code = sensor.code || sensor.serialNumber || sensor.name; const quantity = Number(sensor.quantityInStock ?? sensor.quantity ?? 0); const exhausted = quantity < 1 && !selectedSensorCodes.includes(code); return <label key={code} className={`flex items-center gap-2 p-3 ${exhausted ? 'bg-slate-50 opacity-60' : 'hover:bg-emerald-50'}`}><input type="checkbox" checked={selectedSensorCodes.includes(code)} disabled={exhausted} onChange={event => setSelectedSensorCodes(previous => event.target.checked ? [...previous, code] : previous.filter(value => value !== code))} /><span><strong>{sensor.name || code}</strong><small className="block text-slate-500">Mã: {code} · Tồn kho: {quantity}{exhausted ? ' · Hết tồn' : ''}</small></span></label>; })}</div><div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setSensorConfigNode(null)}>Hủy</Button><Button type="button" className="bg-emerald-600 text-white" onClick={saveSensorConfiguration}>Lưu cấu hình cảm biến</Button></div></> : <><p className="text-slate-600">Chọn LoRa, dây, điện trở, đầu nối hoặc module tiêu hao. Relay/van/bơm cấu hình ở nhóm actuator.</p><div className="border rounded-lg divide-y">{technicianComponentStock.length === 0 ? <div className="p-3 text-slate-500">Kho Technician chưa có vật tư phụ phù hợp.</div> : technicianComponentStock.map((item: any) => { const id = String(item.id || item.hardwareItemId); const quantity = Number(item.quantityInStock ?? item.quantity ?? 0); const selected = Number(selectedComponentQuantities[id] || 0); return <div key={id} className="flex items-center gap-3 p-3"><input type="checkbox" checked={selected > 0} disabled={quantity < 1 && selected === 0} onChange={event => setSelectedComponentQuantities(previous => ({ ...previous, [id]: event.target.checked ? 1 : 0 }))} /><span className="flex-1"><strong>{item.name || item.code}</strong><small className="block text-slate-500">Mã: {item.code} · Tồn kho: {quantity}</small></span>{selected > 0 && <input className="w-20 border rounded p-1" type="number" min={1} max={quantity + selected} value={selected} onChange={event => setSelectedComponentQuantities(previous => ({ ...previous, [id]: Math.max(1, Number(event.target.value) || 1) }))} />}</div>; })}</div><div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setSensorConfigNode(null)}>Hủy</Button><Button type="button" className="bg-emerald-600 text-white" onClick={saveComponentConfiguration}>Lưu vật tư phụ</Button></div></>}
         </div>
       </Modal>
 
@@ -1640,22 +1768,22 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950">
             Gateway đặt ngoài Zone. Popup này chỉ cấu hình danh sách Node mà Gateway phục vụ và lịch gửi dữ liệu; không tạo marker Gateway trên bản đồ.
           </div>
-          <select value={selectedGatewayId} onChange={e => { const value = e.target.value; const selected = gateways.find(item => (item.gatewayId || item.id) === value); setSelectedGatewayId(value); setGatewayConnected(false); setProvisioningGateway(selected?.inventorySource ? selected : null); if (selected?.inventorySource) setProvisionForm(previous => ({ ...previous, frequencyBand: selected.frequencyBand || '915MHz', firmwareVersion: selected.firmwareVersion || selected.model || '1.0.0', mqttClientId: selected.mqttClientId || `smartfarm-gateway-${String(selected.gatewaySerial || selected.serialNumber || selected.id).replace(/[^A-Za-z0-9_-]/g, '').slice(-24)}` })); }} className="w-full border border-slate-300 bg-white rounded-lg p-2.5">
+          <select value={selectedGatewayId} onChange={e => { setSelectedGatewayId(e.target.value); setGatewayConnected(false); }} className="w-full border border-slate-300 bg-white rounded-lg p-2.5">
             <option value="">-- Chọn Gateway đã provision của Farm --</option>
             {gateways.map(gateway => <option key={gateway.gatewayId || gateway.id} value={gateway.gatewayId || gateway.id}>{gateway.gatewaySerial || gateway.serialNumber || gateway.name || gateway.gatewayId || gateway.id} · {gateway.inventorySource ? 'Đang ở kho - chưa provision' : (gateway.status || 'Chưa rõ')}</option>)}
           </select>
           {selectedGatewayId && (() => { const selected = gateways.find(gateway => (gateway.gatewayId || gateway.id) === selectedGatewayId); return <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg bg-slate-50 border border-slate-200 p-3 text-[11px]"><span className="col-span-2">Gateway ID: <strong className="font-mono">{selected?.gatewayId || selected?.id || '—'}</strong></span><span>Serial: <strong>{selected?.gatewaySerial || selected?.serialNumber || '—'}</strong></span><span>MAC: <strong>{selected?.macAddress || '—'}</strong></span><span>Vị trí: <strong>Ngoài Zone</strong></span><span>Last seen: <strong>{selected?.lastSeenAtUtc || selected?.lastSeenAt || '—'}</strong></span></div>; })()}
-          {selectedGatewayId && gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource && (() => { const selected = gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId); return <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2 text-[11px]"><strong className="block text-amber-950">Gateway đang ở kho — Provision trước khi kết nối</strong><input value={provisionForm.frequencyBand} onChange={e => setProvisionForm(previous => ({ ...previous, frequencyBand: e.target.value }))} placeholder="Frequency band, ví dụ 915MHz" className="w-full border border-amber-300 rounded-lg p-2" /><input value={provisionForm.firmwareVersion} onChange={e => setProvisionForm(previous => ({ ...previous, firmwareVersion: e.target.value }))} placeholder="Firmware version" className="w-full border border-amber-300 rounded-lg p-2" /><input value={provisionForm.mqttClientId} onChange={e => setProvisionForm(previous => ({ ...previous, mqttClientId: e.target.value }))} placeholder="MQTT Client ID" className="w-full border border-amber-300 rounded-lg p-2" /><input value={provisionForm.certificateFingerprint} onChange={e => setProvisionForm(previous => ({ ...previous, certificateFingerprint: e.target.value }))} placeholder="SHA-256 certificate fingerprint (64 hex)" className="w-full border border-amber-300 rounded-lg p-2 font-mono" /><Button type="button" onClick={() => provisionSelectedGateway()} className="w-full bg-amber-600 text-white">Provision Gateway vào Deployment</Button><div className="text-[10px] text-amber-800">Deployment đang dùng: {deploymentRequestId || 'chưa tìm thấy'}</div></div>; })()}
-          <div className="grid grid-cols-2 gap-2"><Button type="button" onClick={verifyGatewayConnection} disabled={isCheckingGateway || !selectedGatewayId || gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource} className="w-full bg-amber-600 text-white">{isCheckingGateway ? 'Đang kiểm tra MQTT...' : gatewayConnected ? 'MQTT đã kết nối' : 'Kết nối thật'}</Button><Button type="button" onClick={simulateGatewayConnection} disabled={!selectedGatewayId || gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource} className="w-full bg-slate-700 text-white">Mô phỏng</Button></div><Button type="button" onClick={downloadGatewayFirmwareConfig} disabled={!selectedGatewayId || gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource} className="w-full bg-blue-700 text-white">Tải cấu hình firmware</Button>
-          {selectedGatewayId && gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">Gateway này đã có trong kho Technician nhưng chưa có bản ghi Gateway/credential MQTT cho Farm. Cần provision trước khi kết nối.</div>}
-          {!gatewayConnected && <div className="rounded-lg bg-slate-100 p-3 text-slate-600">Hãy chọn Gateway và kết nối thành công trước khi cấu hình các Node.</div>}
-          {gatewayConnected && <>
+          {false && selectedGatewayId && gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId)?.inventorySource && (() => { const selected = gateways.find(item => (item.gatewayId || item.id) === selectedGatewayId); return <div />; })()}
+          <div className="grid grid-cols-1 gap-2"><Button type="button" onClick={verifyGatewayConnection} disabled={isCheckingGateway || !selectedGatewayId} className="w-full bg-amber-600 text-white">{isCheckingGateway ? 'Đang kiểm tra MQTT...' : gatewayConnected ? 'MQTT đã kết nối' : 'Kiểm tra kết nối thật'}</Button></div>
+          {selectedGatewayId && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">Gateway phải được enrollment và hoàn tất Hardware Preparation trước khi xuất hiện trên GIS.</div>}
+          {!gatewayConnected && <div className="rounded-lg bg-slate-100 p-3 text-slate-600">Chưa xác nhận MQTT online. Bạn vẫn có thể lưu cấu hình trước; Gateway sẽ tự lấy cấu hình sau khi kết nối Wi‑Fi. Nút kiểm tra MQTT chỉ dùng để xác nhận trạng thái.</div>}
+          <>
           <div>
-            <label className="block font-bold text-slate-800 mb-1">Các Node đã provision mà Gateway phục vụ (GIS có thể chấm sau)</label>
+            <label className="block font-bold text-slate-800 mb-1">Các Node sẵn sàng triển khai vào Gateway</label>
             <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y">
-              {gatewayConfigNodes.length === 0 ? <div className="p-3 text-slate-500">Chưa có Node provision — vẫn có thể lưu cấu hình Gateway.</div> : gatewayConfigNodes.map((node: any) => <label key={node.deviceId} className="flex items-center gap-2 p-2.5 hover:bg-slate-50"><input type="checkbox" checked={selectedGatewayNodeIds.includes(node.deviceId)} onChange={event => setSelectedGatewayNodeIds(previous => event.target.checked ? [...new Set([...previous, node.deviceId])] : previous.filter(id => id !== node.deviceId))} /><span><strong>{node.hardwareAddress}</strong><small className="block text-slate-500">{node.deviceType} · GIS {node.zoneId ? 'đã có Zone' : 'chưa chấm'}</small></span></label>)}
+              {gatewayConfigNodes.length === 0 ? <div className="p-3 text-slate-500">Chưa có Node provision — vẫn có thể lưu cấu hình Gateway.</div> : gatewayConfigNodes.map((node: any) => <label key={node.deviceId} className={`flex items-center gap-2 p-2.5 hover:bg-slate-50 ${selectedGatewayNodeIds.includes(node.deviceId) ? 'bg-emerald-50' : ''}`}><input type="checkbox" checked={selectedGatewayNodeIds.includes(node.deviceId)} onChange={event => setSelectedGatewayNodeIds(previous => event.target.checked ? [...new Set([...previous, node.deviceId])] : previous.filter(id => id !== node.deviceId))} /><span><strong>{node.hardwareAddress}</strong><small className="block text-slate-500">{node.deviceType} · GIS {node.zoneId ? 'đã có Zone' : 'chưa chấm'} · {selectedGatewayNodeIds.includes(node.deviceId) ? 'đang giữ tạm' : 'sẵn sàng'}</small></span></label>)}
             </div>
-            <div className="mt-1 text-[10px] text-slate-500">Đã chọn {selectedGatewayNodeIds.length}/{gatewayConfigNodes.length} Node provision. Không cần chấm GIS để lưu.</div>
+            <div className="mt-1 text-[10px] text-slate-500">Đã chọn tạm {selectedGatewayNodeIds.length}/{gatewayConfigNodes.length} Node Ready for Deployment. Số lượng chỉ trừ chính thức sau khi bấm lưu cấu hình.</div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block font-bold text-slate-800 mb-1">Chu kỳ gửi (giây)</label><input type="number" min={10} max={86400} value={gatewayInterval} onChange={e => setGatewayInterval(Math.min(86400, Math.max(10, Number(e.target.value) || 10)))} className="w-full border border-slate-300 rounded-lg p-2.5" /><small className="text-slate-500">Khoảng cách giữa hai lần gửi.</small></div>
@@ -1663,7 +1791,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           </div>
           <div><label className="block font-bold text-slate-800 mb-1">Vị trí lắp Gateway ngoài Zone</label><input value={gatewayLocation} onChange={e => setGatewayLocation(e.target.value)} placeholder="Ví dụ: Nhà kho phía Tây Farm, anten cao 6m" className="w-full border border-slate-300 rounded-lg p-2.5" /></div>
           <div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setIsGatewayModalOpen(false)}>Hủy</Button><Button type="button" className="bg-amber-600 text-white" onClick={saveGatewayConfiguration}>Lưu cấu hình Gateway</Button></div>
-          </>}
+          </>
         </div>
       </Modal>
 
@@ -1678,6 +1806,21 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           <div className="flex justify-end gap-2 border-t pt-3"><Button type="button" variant="outline" onClick={() => setIsManualCoordinateOpen(false)}>Hủy</Button><Button type="button" className="bg-emerald-600 text-white" onClick={handleManualCoordinateSubmit}>Đặt Node tại tọa độ</Button></div>
         </div>
       </Modal>
+
+      {/* Gateway Configuration Modal */}
+      {selectedGatewayForConfig && (
+        <GatewayConfigModal
+          isOpen={isGatewayConfigOpen}
+          onClose={() => {
+            setIsGatewayConfigOpen(false);
+            setSelectedGatewayForConfig(null);
+          }}
+          gateway={selectedGatewayForConfig}
+          onSuccess={() => {
+            // refresh data
+          }}
+        />
+      )}
     </div>
   );
 };

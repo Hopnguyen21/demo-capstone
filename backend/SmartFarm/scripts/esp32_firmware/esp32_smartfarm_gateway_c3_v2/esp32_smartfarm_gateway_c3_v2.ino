@@ -11,6 +11,7 @@
  *  "nodes":[{"deviceId":"...","hardwareAddress":"...","loraAddress":1,"deviceType":"SensorNode"}]}
  */
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -29,12 +30,17 @@ static const unsigned long NODE_REPLY_TIMEOUT_MS = 5000;
 static const unsigned long SENSOR_POLL_INTERVAL_MS = 8000;
 // Temporary recovery mode: use the known-good deployment config without
 // requiring CONFIG=... to be pasted through Serial Monitor.
-static const bool USE_COMPILED_CONFIG = false;
-static const char* COMPILED_CONFIG = R"json({"gatewayId":"5aae6a76-8f81-4786-9c61-9ca8e33948dc","gatewaySerial":"GW-DEMO-001","farmId":"51ce6b77-fd85-43d5-911d-6f3469789bf7","zoneId":"0b6eb24a-38a5-47c2-ab4c-372b3489b724","mqtt":{"host":"192.168.1.159","port":1883,"clientId":"smartfarm-gateway-5aae6a768f8147869c619ca8e33948dc","fingerprint":"8EC678A33E9B10527792357E2B380B96D950631F607E883D41EA5E5B9C3BC4E6"},"nodes":[{"deviceId":"d7aaa79c-746a-4148-8339-c344971a66ec","hardwareAddress":"NODE-ZONE1-02","zoneId":"0b6eb24a-38a5-47c2-ab4c-372b3489b724","loraAddress":2,"deviceType":"SensorNode"},{"deviceId":"fdfcff82-b065-4f10-8a23-84a467f07c15","hardwareAddress":"NODE-ZONE1-01","zoneId":"0b6eb24a-38a5-47c2-ab4c-372b3489b724","loraAddress":3,"deviceType":"SensorNode"}]})json";
 struct NodeRoute { String deviceId; String hardwareAddress; uint8_t loraAddress; String deviceType; };
 struct GatewayConfig {
   String gatewayId, gatewaySerial, farmId, zoneId, mqttHost, mqttClientId, fingerprint;
   uint16_t mqttPort = 1883;
+  int configVersion = 1;
+  int telemetryIntervalSec = 60;
+  int samplesPerInterval = 1;
+  int pollingIntervalSeconds = 60;
+  int heartbeatIntervalSeconds = 15;
+  int responseTimeoutMs = 3000;
+  int retryCount = 2;
   std::vector<NodeRoute> nodes;
 };
 Preferences prefs;
@@ -46,6 +52,7 @@ String serialLine;
 unsigned long lastPublish = 0;
 unsigned long lastMqttAttempt = 0;
 uint8_t currentNodeIndex = 0;
+bool enrollmentHandshakeVerified = false;
 uint16_t calculateCRC16(const uint8_t* data, size_t length) {
   uint16_t crc = 0xFFFF;
   for (size_t i = 0; i < length; i++) {
@@ -93,6 +100,25 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   Serial.print(" payload=");
   for (unsigned int i = 0; i < length; i++) Serial.print((char)payload[i]);
   Serial.println();
+  String raw;
+  raw.reserve(length + 1);
+  for (unsigned int i = 0; i < length; i++) raw += (char)payload[i];
+  StaticJsonDocument<8192> command;
+  if (deserializeJson(command, raw) || String((const char*)(command["type"] | "")) != "CONFIG") return;
+  const int requestedVersion = command["configVersion"] | 0;
+  if (requestedVersion <= config.configVersion) {
+    Serial.printf("CONFIG_IGNORED version=%d current=%d\n", requestedVersion, config.configVersion);
+    return;
+  }
+  if (!saveConfig(raw)) { Serial.println("CONFIG_REJECTED"); return; }
+  StaticJsonDocument<256> ack;
+  ack["type"] = "CONFIG_ACK";
+  ack["gatewayId"] = config.gatewayId;
+  ack["configVersion"] = config.configVersion;
+  String ackPayload; serializeJson(ack, ackPayload);
+  String ackTopic = "smartfarm/gateways/" + config.gatewayId + "/config-ack";
+  mqtt.publish(ackTopic.c_str(), ackPayload.c_str());
+  Serial.printf("CONFIG_APPLIED version=%d\n", config.configVersion);
 }
 void setE32ConfigMode(bool enabled) {
   digitalWrite(PIN_E32_M0, enabled ? HIGH : LOW);
@@ -157,7 +183,7 @@ bool validHex64(const String& value) {
   return true;
 }
 bool loadConfig() {
-  String raw = USE_COMPILED_CONFIG ? String(COMPILED_CONFIG) : prefs.getString("config", "");
+  String raw = prefs.getString("config", "");
   if (raw.isEmpty()) return false;
   StaticJsonDocument<8192> doc;
   if (deserializeJson(doc, raw)) return false;
@@ -169,6 +195,13 @@ bool loadConfig() {
   config.mqttPort = doc["mqtt"]["port"] | 1883;
   config.mqttClientId = doc["mqtt"]["clientId"] | "";
   config.fingerprint = doc["mqtt"]["fingerprint"] | "";
+  config.configVersion = doc["configVersion"] | 1;
+  config.telemetryIntervalSec = doc["telemetryIntervalSec"] | 60;
+  config.samplesPerInterval = doc["samplesPerInterval"] | 1;
+  config.pollingIntervalSeconds = doc["pollingIntervalSeconds"] | 60;
+  config.heartbeatIntervalSeconds = doc["heartbeatIntervalSeconds"] | 15;
+  config.responseTimeoutMs = doc["responseTimeoutMs"] | 3000;
+  config.retryCount = doc["retryCount"] | 2;
   config.nodes.clear();
   for (JsonObject n : doc["nodes"].as<JsonArray>()) {
     NodeRoute route;
@@ -191,6 +224,15 @@ bool saveConfig(const String& raw) {
   if (gatewayId.isEmpty()) { Serial.println("CONFIG_ERR:MISSING_GATEWAY_ID"); return false; }
   if (zoneId.isEmpty()) { Serial.println("CONFIG_ERR:MISSING_ZONE_ID"); return false; }
   if (clientId.isEmpty()) { Serial.println("CONFIG_ERR:MISSING_MQTT_CLIENT_ID"); return false; }
+  const int configVersion = doc["configVersion"] | 1;
+  if (configVersion < 1) { Serial.println("CONFIG_ERR:INVALID_CONFIG_VERSION"); return false; }
+  const int pollingInterval = doc["pollingIntervalSeconds"] | 60;
+  const int heartbeatInterval = doc["heartbeatIntervalSeconds"] | 15;
+  const int responseTimeout = doc["responseTimeoutMs"] | 3000;
+  const int retryCount = doc["retryCount"] | 2;
+  if (pollingInterval < 10 || heartbeatInterval < 5 || responseTimeout < 500 || retryCount < 0 || retryCount > 5) {
+    Serial.println("CONFIG_ERR:RUNTIME_LIMITS"); return false;
+  }
   const String fingerprint = doc["mqtt"]["fingerprint"] | "";
   if (!validHex64(fingerprint)) { Serial.printf("CONFIG_ERR:FINGERPRINT_LENGTH_%u\n", (unsigned)fingerprint.length()); return false; }
   prefs.putString("config", raw);
@@ -213,6 +255,51 @@ bool saveWifiCommand(const String& command) {
   prefs.putString("wifiSsid", ssid);
   prefs.putString("wifiPassword", password);
   return true;
+}
+bool saveEnrollmentCommand(const String& command) {
+  if (!command.startsWith("ENROLL|")) return false;
+  int first = command.indexOf('|', 7);
+  int second = command.indexOf('|', first + 1);
+  if (first <= 7 || second <= first + 1 || second >= (int)command.length() - 1) return false;
+  String backendUrl = command.substring(7, first);
+  String enrollmentId = command.substring(first + 1, second);
+  String token = command.substring(second + 1);
+  backendUrl.trim(); enrollmentId.trim(); token.trim();
+  if (backendUrl.isEmpty() || enrollmentId.isEmpty() || token.isEmpty()) return false;
+  prefs.putString("backendUrl", backendUrl);
+  prefs.putString("enrollmentId", enrollmentId);
+  prefs.putString("bootstrapToken", token);
+  return true;
+}
+bool verifyEnrollmentHandshake() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  String backendUrl = prefs.getString("backendUrl", "");
+  String enrollmentId = prefs.getString("enrollmentId", "");
+  String token = prefs.getString("bootstrapToken", "");
+  if (backendUrl.isEmpty() || enrollmentId.isEmpty() || token.isEmpty()) {
+    Serial.println("ENROLLMENT_CONFIG_REQUIRED");
+    return false;
+  }
+  HTTPClient http;
+  String url = backendUrl + "/api/v1/gateway-enrollment/" + enrollmentId + "/handshake";
+  if (!http.begin(url)) { Serial.println("ENROLLMENT_HTTP_INIT_FAILED"); return false; }
+  http.addHeader("Content-Type", "application/json");
+  StaticJsonDocument<512> doc;
+  doc["macAddress"] = WiFi.macAddress();
+  doc["chipId"] = String((uint32_t)ESP.getEfuseMac(), HEX);
+  doc["bootstrapToken"] = token;
+  String payload; serializeJson(doc, payload);
+  int status = http.POST(payload);
+  String response = http.getString();
+  http.end();
+  if (status >= 200 && status < 300) {
+    enrollmentHandshakeVerified = true;
+    prefs.remove("bootstrapToken");
+    Serial.printf("ENROLLMENT_HANDSHAKE_OK status=%d\n", status);
+    return true;
+  }
+  Serial.printf("ENROLLMENT_HANDSHAKE_FAILED status=%d response=%s\n", status, response.c_str());
+  return false;
 }
 void printConfigStatus() {
   Serial.printf("CONFIG %s | gatewayId=%s | zoneId=%s | nodes=%u\n", config.gatewayId.isEmpty() ? "MISSING" : "VALID", config.gatewayId.c_str(), config.zoneId.c_str(), (unsigned)config.nodes.size());
@@ -280,6 +367,19 @@ void publishTelemetry(const NodeRoute& node, float soil, float temperature, floa
   }
   Serial.println();
 }
+void publishHeartbeat() {
+  if (!mqtt.connected() || config.gatewayId.isEmpty()) return;
+  StaticJsonDocument<256> doc;
+  doc["gatewayId"] = config.gatewayId;
+  doc["gatewaySerial"] = config.gatewaySerial;
+  doc["configVersion"] = config.configVersion;
+  doc["uptimeSeconds"] = millis() / 1000UL;
+  String payload;
+  serializeJson(doc, payload);
+  const String topic = "smartfarm/gateways/" + config.gatewayId + "/heartbeat";
+  if (mqtt.publish(topic.c_str(), payload.c_str())) Serial.println("HEARTBEAT_PUBLISHED");
+  else Serial.println("HEARTBEAT_PUBLISH_FAILED");
+}
 void pollNode(const NodeRoute& node) {
   Serial.print("NODE_POLL address="); Serial.print(node.loraAddress); Serial.print(" id="); Serial.println(node.hardwareAddress);
   uint8_t request[4] = {0xAA, 0x10, 0, 0};
@@ -326,6 +426,7 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     Serial.println("NTP_SYNC_REQUESTED");
+    verifyEnrollmentHandshake();
   }
   connectMqtt();
 }
@@ -337,11 +438,14 @@ void loop() {
         if (serialLine == "WIFI?" || serialLine == "HELP") {
           Serial.println("WIFI|SSID|PASSWORD");
           Serial.println("CONFIG=<one-line JSON from SmartFarm>");
+          Serial.println("ENROLL|BACKEND_URL|ENROLLMENT_ID|BOOTSTRAP_TOKEN");
           Serial.println("CONFIG_CLEAR");
         } else if (serialLine == "CONFIG_CLEAR") {
           clearConfig();
         } else if (saveWifiCommand(serialLine)) {
           Serial.println("WIFI_SAVED_RESTART_REQUIRED");
+        } else if (saveEnrollmentCommand(serialLine)) {
+          Serial.println("ENROLLMENT_SAVED_RESTART_REQUIRED");
         } else {
           String candidate = serialLine;
           if (candidate.startsWith("CONFIG=")) candidate = candidate.substring(7);
@@ -372,7 +476,14 @@ void loop() {
     connectMqtt();
   }
   mqtt.loop();
-  if (millis() - lastPublish > SENSOR_POLL_INTERVAL_MS && !config.nodes.empty()) {
+  static unsigned long lastHeartbeat = 0;
+  const unsigned long heartbeatIntervalMs = (unsigned long)max(5, config.heartbeatIntervalSeconds) * 1000UL;
+  if (millis() - lastHeartbeat >= heartbeatIntervalMs) {
+    lastHeartbeat = millis();
+    publishHeartbeat();
+  }
+  const unsigned long pollIntervalMs = (unsigned long)max(1, config.pollingIntervalSeconds) * 1000UL;
+  if (millis() - lastPublish > pollIntervalMs && !config.nodes.empty()) {
     lastPublish = millis();
     if (currentNodeIndex >= config.nodes.size()) currentNodeIndex = 0;
     pollNode(config.nodes[currentNodeIndex++]);

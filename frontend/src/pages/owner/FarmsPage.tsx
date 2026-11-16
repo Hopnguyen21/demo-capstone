@@ -1,6 +1,6 @@
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import React, { useState, useEffect } from 'react';
-import { Farm, Field, Zone, ZoneContract, DeviceDepreciation, Crop } from '../../types';
+import { Farm, Field, Zone, ZoneContract, DeviceDepreciation, Crop, ServiceRequest } from '../../types';
 import {
   farmService, fieldService, zoneService, deviceService, supportService, telemetryService,
   userService, seasonService, zoneContractService, cropService, extractApiError
@@ -43,8 +43,7 @@ const isHarvestStage = (stageName?: string | null, yieldStatus?: string | null):
   if (yieldStatus === 'Completed') return true;
   if (!stageName) return false;
   const lower = stageName.toLowerCase();
-  return lower.includes('thu hoạch') || lower.includes('harvest') || lower.includes('nuôi trái') || lower.includes('giai đoạn 4') || lower.includes('stage_4') || lower.includes('stage 4');
-  return lower.includes('thu hoạch') || lower.includes('thu hoach') || lower.includes('harvest');
+  return lower.includes('thu hoạch') || lower.includes('thu hoach') || lower.includes('harvest') || lower.includes('nuôi trái') || lower.includes('giai đoạn 4') || lower.includes('stage_4') || lower.includes('stage 4');
 };
 
 export const FarmsPage: React.FC = () => {
@@ -63,6 +62,7 @@ export const FarmsPage: React.FC = () => {
 
   // Zone Contracts & Asset Depreciation state (Feedback Requirements A.1, A.2, B.3-B.7)
   const [allContracts, setAllContracts] = useState<ZoneContract[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [zoneDepreciations, setZoneDepreciations] = useState<DeviceDepreciation[]>([]);
   const [selectedContractForDetail, setSelectedContractForDetail] = useState<ZoneContract | null>(null);
   const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
@@ -106,7 +106,7 @@ export const FarmsPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [fData, fdData, zData, nData, farmerList, contractsData, batchesData, cropData] = await Promise.all([
+      const [fData, fdData, zData, nData, farmerList, contractsData, batchesData, cropData, srsData] = await Promise.all([
         farmService.getFarms().catch(err => { console.warn('farmService.getFarms error:', err); return []; }),
         fieldService.getFields().catch(err => { console.warn('fieldService.getFields error:', err); return []; }),
         zoneService.getZones().catch(err => { console.warn('zoneService.getZones error:', err); return []; }),
@@ -115,6 +115,7 @@ export const FarmsPage: React.FC = () => {
         zoneContractService.getAllContracts().catch(err => { console.warn('zoneContractService.getAllContracts error:', err); return []; }),
         seasonService.getAllPlantingBatches().catch(err => { console.warn('seasonService.getAllPlantingBatches error:', err); return []; }),
         cropService.getCrops().catch(err => { console.warn('cropService.getCrops error:', err); return []; }),
+        supportService.getServiceRequests().catch(err => { console.warn('supportService.getServiceRequests error:', err); return []; }),
       ]);
       if (Array.isArray(fData)) setFarms(fData);
       if (Array.isArray(fdData)) setFields(fdData);
@@ -131,6 +132,7 @@ export const FarmsPage: React.FC = () => {
       }
       if (Array.isArray(nData)) setNodes(nData);
       if (Array.isArray(contractsData)) setAllContracts(contractsData);
+      if (Array.isArray(srsData)) setServiceRequests(srsData);
       if (Array.isArray(cropData)) setCropCatalog(cropData);
       if (Array.isArray(batchesData) && batchesData.length > 0) {
         const yMap: Record<string, any> = {};
@@ -289,37 +291,58 @@ export const FarmsPage: React.FC = () => {
 
       // Fetch mapped nodes for this zone so Owner can view them on the GIS map and Live Telemetry card
       supportService.getMappedNodes(zid).then(async mapped => {
-        if (Array.isArray(mapped) && mapped.length > 0) {
-          const deviceList = await deviceService.getNodes(zid).catch(() => []);
-          const liveResponse = await telemetryService.getLatestByDevice(zid).catch(() => null);
-          const liveDevices = Array.isArray(liveResponse?.devices) ? liveResponse.devices : [];
-          const formatted = mapped.map((m: any, idx: number) => ({
+        const deviceList = await deviceService.getNodes(zid).catch(() => []);
+        const liveResponse = await telemetryService.getLatestByDevice(zid).catch(() => null);
+        const liveDevices = Array.isArray(liveResponse?.devices) ? liveResponse.devices : [];
+        // GIS is authoritative for coordinates, but a just-saved assignment can
+        // briefly be visible through the zone-device endpoint first. Use it as a
+        // real-data fallback instead of rendering an empty Owner view.
+        const sourceRows = Array.isArray(mapped) && mapped.length > 0 ? mapped : deviceList;
+        const formatted = sourceRows.filter((m: any) => {
+            const lat = Number(m.latitude ?? m.gpsLatitude);
+            const lng = Number(m.longitude ?? m.gpsLongitude);
+            return Boolean(m.deviceId || m.id) && Number.isFinite(lat) && Number.isFinite(lng);
+          }).map((m: any) => {
+            const deviceKey = String(m.deviceId || m.id || '');
+            const addressKey = String(m.hardwareAddress || '').toUpperCase();
+            const matchedDevice = deviceList.find((d: any) =>
+              String(d.deviceId || d.id || '') === deviceKey ||
+              String(d.hardwareAddress || '').toUpperCase() === addressKey
+            );
+            const matchedLive = liveDevices.find((d: any) =>
+              String(d.deviceId || '') === deviceKey ||
+              String(d.hardwareAddress || '').toUpperCase() === addressKey
+            );
+            const sensors = Array.isArray(m.sensors) ? m.sensors
+              : Array.isArray(m.sensorParameters) ? m.sensorParameters
+              : Array.isArray(matchedDevice?.sensors) ? matchedDevice.sensors : [];
+            return ({
             ...m,
-            nodeId: m.deviceId || m.id || `node-${idx}`,
-            id: m.deviceId || m.id || `node-${idx}`,
-            name: m.deviceName || m.installationNotes || m.hardwareAddress || `Node ${idx + 1}`,
-            nodeCode: m.hardwareAddress || `NODE-0${idx + 1}`,
+            nodeId: m.deviceId || m.id,
+            id: m.deviceId || m.id,
+            name: m.deviceName || m.installationNotes || m.hardwareAddress || 'Node',
+            nodeCode: m.hardwareAddress || '—',
             hardwareAddress: m.hardwareAddress,
             zoneId: zid,
-            latitude: typeof m.latitude === 'number' ? m.latitude : (typeof m.gpsLatitude === 'number' ? m.gpsLatitude : 11.9404),
-            longitude: typeof m.longitude === 'number' ? m.longitude : (typeof m.gpsLongitude === 'number' ? m.gpsLongitude : 108.4583),
-            gpsKnown: typeof m.latitude === 'number' || typeof m.gpsLatitude === 'number',
+            latitude: Number(m.latitude ?? m.gpsLatitude),
+            longitude: Number(m.longitude ?? m.gpsLongitude),
+            gpsKnown: true,
             batteryLevel: m.batteryLevel ?? undefined,
-            status: normalizeDeviceStatus(liveDevices.find((d: any) => String(d.deviceId) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.status),
-            liveMetrics: liveDevices.find((d: any) => String(d.deviceId) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.metrics || [],
+            status: normalizeDeviceStatus(matchedLive?.status),
+            liveMetrics: matchedLive?.metrics || [],
             rssi: m.rssi ?? undefined,
             deviceType: m.deviceType || (m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT') ? 'ActuatorNode' : 'SensorNode'),
             actuatorsCount: (m.deviceType === 'ActuatorNode' || m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT')) ? 1 : 0,
-            sensors: m.sensors || m.sensorParameters || deviceList.find((d: any) => String(d.deviceId || d.id) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.sensors || [],
-            sensorsCount: (m.sensors || m.sensorParameters || deviceList.find((d: any) => String(d.deviceId || d.id) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.sensors || []).length,
+            sensors,
+            sensorsCount: sensors.length,
             // Số đo KHÔNG gắn cứng vào từng node: API chỉ có số đo mới nhất theo Zone, hiển thị riêng ở khối "Số đo mới nhất của Zone".
-          }));
-
-          setNodes(prev => {
-            const others = prev.filter(n => n.zoneId !== zid);
-            return [...others, ...formatted];
           });
-        }
+          });
+
+        setNodes(prev => {
+          const others = prev.filter(n => n.zoneId !== zid);
+          return [...others, ...formatted];
+        });
       }).catch(err => {
         console.warn('Could not load mapped nodes for zone:', err);
       });
@@ -760,6 +783,51 @@ export const FarmsPage: React.FC = () => {
     return currentZoneDepreciations.filter(d => d.isNearContractRenewal || ((d.status === 'ExpiringSoon' || d.status === 'FullyDepreciated') && activeZoneContract && activeZoneContract.daysRemaining <= 45));
   }, [currentZoneDepreciations, activeZoneContract]);
 
+  // Check if 30% deposit has been paid for this zone (hide Honeycomb Estimator)
+  const isDepositPaidForZone = React.useMemo(() => {
+    if (!selectedZone) return false;
+    const zid = (selectedZone.zoneId || (selectedZone as any).id || '').toString();
+
+    // 1. Check activeZoneContract / currentZoneContracts
+    if (activeZoneContract || currentZoneContracts.length > 0) {
+      return true;
+    }
+
+    // 2. Check all contracts that belong to this zone
+    const zoneContract = allContracts.find(c => c.zoneId === zid && isContractSignedSuccessfully(c));
+    if (zoneContract) {
+      return true;
+    }
+
+    // 3. Check service requests for this zone
+    const matchingReqs = serviceRequests.filter(r => r.zoneId === zid);
+    for (const req of matchingReqs) {
+      const contract = req.contractDetails;
+      const isSignedOrPaid = Boolean(
+        (contract?.isSignedByOwner && contract?.is30PercentPaid) ||
+        req.isContractSigned ||
+        req.isDepositPaid ||
+        req.isFullyPaid ||
+        req.deploymentStatus === 'Installing' ||
+        req.deploymentStatus === 'Completed' ||
+        req.quotationStatus === 'SignedByOwner' ||
+        req.quotationStatus === 'DepositPaid' ||
+        req.quotationStatus === 'Completed' ||
+        req.isAcceptedByOwner
+      );
+      if (isSignedOrPaid) return true;
+    }
+
+    return false;
+  }, [selectedZone, activeZoneContract, currentZoneContracts, allContracts, serviceRequests]);
+
+  // If 30% deposit is paid, hide ESTIMATION tab and redirect to OVERVIEW
+  useEffect(() => {
+    if (isDepositPaidForZone && zoneActiveTab === 'ESTIMATION') {
+      setZoneActiveTab('OVERVIEW');
+    }
+  }, [isDepositPaidForZone, zoneActiveTab]);
+
   // Tự động tải mới danh sách khấu hao thiết bị từ DB khi mở tab DEPRECIATION
   useEffect(() => {
     if (selectedZone && zoneActiveTab === 'DEPRECIATION') {
@@ -956,15 +1024,6 @@ export const FarmsPage: React.FC = () => {
     }
 
     const computedArea = Number(newZoneArea) || 1000;
-    if (fieldAvailableArea <= 0) {
-      alert(`Lô đất "${selectedField.name}" đã hết diện tích trống (còn 0 m²). Không thể tạo thêm Zone mới!`);
-      return;
-    }
-    if (computedArea > fieldAvailableArea) {
-      alert(`Diện tích Zone (${computedArea.toLocaleString()} m²) vượt quá diện tích còn trống của Lô đất (${fieldAvailableArea.toLocaleString()} m²)! Vui lòng điều chỉnh lại diện tích.`);
-      return;
-    }
-
     setIsSubmittingZone(true);
     try {
       let geoJson = toGeoJsonPolygon(zonePolygon);
@@ -1222,7 +1281,7 @@ export const FarmsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Building2 className="text-[#119653]" size={22} /> Danh sách Trang trại Sở hữu (Level 1: Farms)
+                <Building2 className="text-[#119653]" size={22} /> Danh sách Trang trại Sở hữu
               </h1>
               <p className="text-xs text-slate-600 mt-1">
                 Nhấn vào thẻ Trang trại bất kỳ để mở danh sách Phân khu Lô đất (Fields) lồng bên trong.
@@ -1248,13 +1307,13 @@ export const FarmsPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 text-[10px] font-bold rounded border border-emerald-300">
-                          LEVEL 1: FARM
+                          FARM
                         </span>
                         <h3 className="text-base font-bold text-slate-900 mt-1 group-hover:text-[#119653] transition-colors">
                           {farm.name}
                         </h3>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <MapPin size={13} className="text-[#119653]" /> {farm.address}
+                          <MapPin size={13} className="text-[#119653]" /> {farm.address || farm.locationText || 'Lâm Đồng, Việt Nam'}
                         </p>
                       </div>
                     </div>
@@ -1297,11 +1356,11 @@ export const FarmsPage: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
-                  <Building2 size={16} /> Trang trại Đang chọn (Level 1)
+                  <Building2 size={16} /> Trang trại Đang chọn
                 </div>
                 <h2 className="text-xl font-bold text-white mt-1">{selectedFarm.name}</h2>
                 <p className="text-xs text-emerald-100 flex items-center gap-1 mt-1">
-                  <MapPin size={13} className="text-emerald-200" /> {selectedFarm.address} • {(((selectedFarm.totalAreaM2 || selectedFarm.areaM2 || 0)) / 10000).toFixed(1)} ha
+                  <MapPin size={13} className="text-emerald-200" /> {selectedFarm.address || selectedFarm.locationText || 'Lâm Đồng, Việt Nam'} • {(((selectedFarm.totalAreaM2 || selectedFarm.areaM2 || 0)) / 10000).toFixed(1)} ha
                 </p>
               </div>
 
@@ -1325,7 +1384,7 @@ export const FarmsPage: React.FC = () => {
 
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <CornerDownRight size={18} className="text-sky-600" /> Danh sách Các Phân khu Lô đất (Level 2: Fields) thuộc Trang trại
+              <CornerDownRight size={18} className="text-sky-600" /> Danh sách Các Phân khu Lô đất thuộc Trang trại
             </h3>
             <span className="text-xs text-slate-500 font-semibold">
               {fields.filter(f => f.farmId === selectedFarm.farmId).length} Lô đất tìm thấy
@@ -1348,7 +1407,7 @@ export const FarmsPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="px-2 py-0.5 bg-sky-100 text-sky-900 text-[10px] font-bold rounded border border-sky-300">
-                          LEVEL 2: FIELD
+                          FIELD
                         </span>
                         <h4 className="text-base font-bold text-slate-900 mt-1 group-hover:text-sky-700 transition-colors">
                           {field.name}
@@ -1390,7 +1449,7 @@ export const FarmsPage: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
-                  <Building2 size={14} /> {selectedFarm?.name} ➔ <MapPin size={14} /> Lô đất Đang chọn (Level 2)
+                  <Building2 size={14} /> {selectedFarm?.name} ➔ <MapPin size={14} /> Lô đất Đang chọn
                 </div>
                 <h2 className="text-xl font-bold text-white mt-1">{selectedField.name}</h2>
                 <p className="text-xs text-emerald-100 flex items-center gap-1 mt-1">
@@ -1418,7 +1477,7 @@ export const FarmsPage: React.FC = () => {
 
           <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <CornerDownRight size={18} className="text-amber-600" /> Các Phân khu Zone (Level 3: Zones) lồng trong Lô đất
+              <CornerDownRight size={18} className="text-amber-600" /> Các Phân khu Zone lồng trong Lô đất
             </h3>
             <span className="text-xs text-slate-500 font-semibold">
               {zones.filter(z => z.fieldId === selectedField.fieldId).length} Zone tìm thấy
@@ -1439,7 +1498,7 @@ export const FarmsPage: React.FC = () => {
                     </div>
                     <div>
                       <span className="px-2 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-bold rounded border border-amber-300">
-                        LEVEL 3: ZONE
+                        ZONE
                       </span>
                       <h4 className="text-base font-bold text-slate-900 mt-1 group-hover:text-amber-700 transition-colors">
                         {zone.name}
@@ -1727,25 +1786,27 @@ export const FarmsPage: React.FC = () => {
               type="button"
               onClick={() => setZoneActiveTab('CF3')}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'CF3'
-                ? 'bg-teal-600 text-white shadow-sm'
+                ? 'bg-emerald-700 text-white shadow-sm'
                 : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
                 }`}
             >
               <Gauge size={15} />
-              <span> Điều Khiển CF3 & Lịch Tự Động</span>
+              <span> Điều Khiển & Lập Lịch Tưới</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setZoneActiveTab('ESTIMATION')}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'ESTIMATION'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
-                }`}
-            >
-              <Layers size={15} />
-              <span> Ước Tính Mạng Tổ Ong</span>
-            </button>
+            {!isDepositPaidForZone && (
+              <button
+                type="button"
+                onClick={() => setZoneActiveTab('ESTIMATION')}
+                className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${zoneActiveTab === 'ESTIMATION'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                  }`}
+              >
+                <Layers size={15} />
+                <span> Ước Tính Mạng Tổ Ong</span>
+              </button>
+            )}
           </div>
 
           {/* TAB 1: OVERVIEW & TELEMETRY & YIELD & FARMER */}
@@ -1844,7 +1905,6 @@ export const FarmsPage: React.FC = () => {
                         </h4>
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                           <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            <Database size={11} /> PostgreSQL PostGIS (SRID 4326)
                           </span>
                           <span>• {currentZonePoints.length > 0 ? `${currentZonePoints.length} tọa độ đỉnh` : 'Chưa có GIS'}</span>
                         </div>
@@ -2946,7 +3006,7 @@ export const FarmsPage: React.FC = () => {
           )}
 
           {/* TAB 5: HONEYCOMB IOT ESTIMATION */}
-          {zoneActiveTab === 'ESTIMATION' && (
+          {zoneActiveTab === 'ESTIMATION' && !isDepositPaidForZone && (
             <div className="pt-2 animate-in fade-in duration-200">
               <HoneycombEstimator
                 areaM2={Number(selectedZone.areaM2) || 4500}
@@ -3063,24 +3123,6 @@ export const FarmsPage: React.FC = () => {
       {/* Modal Add Zone inside Selected Field */}
       <Modal isOpen={showAddZoneModal} title={`Thêm Zone Mới vào Lô đất "${selectedField?.name || 'Field'}"`} onClose={() => setShowAddZoneModal(false)}>
         <div className="space-y-4 text-xs">
-          <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${fieldAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-amber-50 border border-amber-200 text-amber-900'
-            }`}>
-            <span>Diện tích còn trống trong Lô đất:</span>
-            <strong className={`font-mono text-sm ${fieldAvailableArea <= 0 ? 'text-red-700' : 'text-amber-800'}`}>
-              {fieldAvailableArea.toLocaleString()} m²
-            </strong>
-          </div>
-
-          {fieldAvailableArea <= 0 && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-semibold flex items-start gap-2 animate-in fade-in">
-              <span className="text-base leading-none">⚠️</span>
-              <div>
-                <p className="font-bold">Lô đất này đã sử dụng hết 100% diện tích (còn 0 m²)!</p>
-                <p className="text-[11px] text-red-700 mt-0.5">Không thể tạo thêm Zone mới. Bạn cần xóa bớt Zone cũ hoặc chỉnh sửa thu nhỏ diện tích Zone hiện có.</p>
-              </div>
-            </div>
-          )}
-
           <div>
             <label className="block text-slate-700 font-bold mb-1">Tên Zone * (Tối thiểu 2 ký tự)</label>
             <Input
@@ -3101,12 +3143,6 @@ export const FarmsPage: React.FC = () => {
               onChange={e => setNewZoneArea(e.target.value)}
               placeholder="VD: 1000"
             />
-            <span className={`text-[10px] mt-0.5 block ${Number(newZoneArea) > fieldAvailableArea ? 'text-red-600 font-semibold' : 'text-slate-500'
-              }`}>
-              {Number(newZoneArea) > fieldAvailableArea
-                ? `⚠️ Diện tích quy hoạch (${(Number(newZoneArea) || 0).toLocaleString()} m²) vượt quá diện tích còn lại của Lô đất (${fieldAvailableArea.toLocaleString()} m²)!`
-                : `Tối đa diện tích còn lại của Lô đất (${fieldAvailableArea.toLocaleString()} m²).`}
-            </span>
           </div>
 
           <div>
@@ -3168,15 +3204,9 @@ export const FarmsPage: React.FC = () => {
             <Button variant="outline" onClick={() => setShowAddZoneModal(false)} disabled={isSubmittingZone}>Hủy</Button>
             <Button
               onClick={handleAddZoneSubmit}
-              disabled={isSubmittingZone || !!zoneGisError || fieldAvailableArea <= 0 || (Number(newZoneArea) || 0) > fieldAvailableArea}
-              className={(zoneGisError || fieldAvailableArea <= 0 || (Number(newZoneArea) || 0) > fieldAvailableArea) ? 'opacity-50 cursor-not-allowed bg-slate-400 hover:bg-slate-400' : ''}
-              title={
-                fieldAvailableArea <= 0
-                  ? 'Lô đất đã hết diện tích trống'
-                  : (Number(newZoneArea) || 0) > fieldAvailableArea
-                    ? 'Diện tích vượt quá phần còn lại của Lô đất'
-                    : zoneGisError || undefined
-              }
+              disabled={isSubmittingZone || !!zoneGisError}
+              className={zoneGisError ? 'opacity-50 cursor-not-allowed bg-slate-400 hover:bg-slate-400' : ''}
+              title={zoneGisError || undefined}
             >
               {isSubmittingZone ? 'Đang lưu vào DB...' : 'Thêm Zone vào Lô đất'}
             </Button>

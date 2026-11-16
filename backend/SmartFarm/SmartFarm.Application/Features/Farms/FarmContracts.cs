@@ -27,7 +27,10 @@ public sealed record FarmSummaryView(
     int ZonesCount,
     decimal? Latitude = null,
     decimal? Longitude = null,
-    string? LocationText = null);
+    string? LocationText = null)
+{
+    public string? Address => LocationText;
+}
 
 public sealed record FarmDetailView(
     Guid FarmId,
@@ -43,7 +46,10 @@ public sealed record FarmDetailView(
     int ZonesCount,
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc,
-    DateTime? ArchivedAtUtc);
+    DateTime? ArchivedAtUtc)
+{
+    public string? Address => LocationText;
+}
 
 public sealed record FarmStructureView(
     Guid FarmId,
