@@ -130,7 +130,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       setError(null);
       setSuccess(null);
 
-      const res = await userService.changePassword(currentPassword, newPassword);
+      const res = await userService.changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
 
       setSuccess(res.message || 'Đổi mật khẩu thành công!');
       setCurrentPassword('');

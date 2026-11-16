@@ -291,58 +291,37 @@ export const FarmsPage: React.FC = () => {
 
       // Fetch mapped nodes for this zone so Owner can view them on the GIS map and Live Telemetry card
       supportService.getMappedNodes(zid).then(async mapped => {
-        const deviceList = await deviceService.getNodes(zid).catch(() => []);
-        const liveResponse = await telemetryService.getLatestByDevice(zid).catch(() => null);
-        const liveDevices = Array.isArray(liveResponse?.devices) ? liveResponse.devices : [];
-        // GIS is authoritative for coordinates, but a just-saved assignment can
-        // briefly be visible through the zone-device endpoint first. Use it as a
-        // real-data fallback instead of rendering an empty Owner view.
-        const sourceRows = Array.isArray(mapped) && mapped.length > 0 ? mapped : deviceList;
-        const formatted = sourceRows.filter((m: any) => {
-            const lat = Number(m.latitude ?? m.gpsLatitude);
-            const lng = Number(m.longitude ?? m.gpsLongitude);
-            return Boolean(m.deviceId || m.id) && Number.isFinite(lat) && Number.isFinite(lng);
-          }).map((m: any) => {
-            const deviceKey = String(m.deviceId || m.id || '');
-            const addressKey = String(m.hardwareAddress || '').toUpperCase();
-            const matchedDevice = deviceList.find((d: any) =>
-              String(d.deviceId || d.id || '') === deviceKey ||
-              String(d.hardwareAddress || '').toUpperCase() === addressKey
-            );
-            const matchedLive = liveDevices.find((d: any) =>
-              String(d.deviceId || '') === deviceKey ||
-              String(d.hardwareAddress || '').toUpperCase() === addressKey
-            );
-            const sensors = Array.isArray(m.sensors) ? m.sensors
-              : Array.isArray(m.sensorParameters) ? m.sensorParameters
-              : Array.isArray(matchedDevice?.sensors) ? matchedDevice.sensors : [];
-            return ({
+        if (Array.isArray(mapped) && mapped.length > 0) {
+          const deviceList = await deviceService.getNodes(zid).catch(() => []);
+          const liveResponse = await telemetryService.getLatestByDevice(zid).catch(() => null);
+          const liveDevices = Array.isArray(liveResponse?.devices) ? liveResponse.devices : [];
+          const formatted = mapped.map((m: any, idx: number) => ({
             ...m,
-            nodeId: m.deviceId || m.id,
-            id: m.deviceId || m.id,
-            name: m.deviceName || m.installationNotes || m.hardwareAddress || 'Node',
-            nodeCode: m.hardwareAddress || '—',
+            nodeId: m.deviceId || m.id || `node-${idx}`,
+            id: m.deviceId || m.id || `node-${idx}`,
+            name: m.deviceName || m.installationNotes || m.hardwareAddress || `Node ${idx + 1}`,
+            nodeCode: m.hardwareAddress || `NODE-0${idx + 1}`,
             hardwareAddress: m.hardwareAddress,
             zoneId: zid,
-            latitude: Number(m.latitude ?? m.gpsLatitude),
-            longitude: Number(m.longitude ?? m.gpsLongitude),
-            gpsKnown: true,
+            latitude: typeof m.latitude === 'number' ? m.latitude : (typeof m.gpsLatitude === 'number' ? m.gpsLatitude : 11.9404),
+            longitude: typeof m.longitude === 'number' ? m.longitude : (typeof m.gpsLongitude === 'number' ? m.gpsLongitude : 108.4583),
+            gpsKnown: typeof m.latitude === 'number' || typeof m.gpsLatitude === 'number',
             batteryLevel: m.batteryLevel ?? undefined,
-            status: normalizeDeviceStatus(matchedLive?.status),
-            liveMetrics: matchedLive?.metrics || [],
+            status: normalizeDeviceStatus(liveDevices.find((d: any) => String(d.deviceId) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.status),
+            liveMetrics: liveDevices.find((d: any) => String(d.deviceId) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.metrics || [],
             rssi: m.rssi ?? undefined,
             deviceType: m.deviceType || (m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT') ? 'ActuatorNode' : 'SensorNode'),
             actuatorsCount: (m.deviceType === 'ActuatorNode' || m.hardwareAddress?.includes('VALVE') || m.hardwareAddress?.includes('ACT')) ? 1 : 0,
-            sensors,
-            sensorsCount: sensors.length,
+            sensors: m.sensors || m.sensorParameters || deviceList.find((d: any) => String(d.deviceId || d.id) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.sensors || [],
+            sensorsCount: (m.sensors || m.sensorParameters || deviceList.find((d: any) => String(d.deviceId || d.id) === String(m.deviceId || m.id) || String(d.hardwareAddress || '').toUpperCase() === String(m.hardwareAddress || '').toUpperCase())?.sensors || []).length,
             // Số đo KHÔNG gắn cứng vào từng node: API chỉ có số đo mới nhất theo Zone, hiển thị riêng ở khối "Số đo mới nhất của Zone".
-          });
-          });
+          }));
 
-        setNodes(prev => {
-          const others = prev.filter(n => n.zoneId !== zid);
-          return [...others, ...formatted];
-        });
+          setNodes(prev => {
+            const others = prev.filter(n => n.zoneId !== zid);
+            return [...others, ...formatted];
+          });
+        }
       }).catch(err => {
         console.warn('Could not load mapped nodes for zone:', err);
       });

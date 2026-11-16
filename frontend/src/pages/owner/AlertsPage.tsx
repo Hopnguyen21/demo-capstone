@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { alertService } from '../../services';
 import { StatusBadge, Button, Modal } from '../../components/ui/BaseUI';
 import {
@@ -22,12 +22,12 @@ interface LiveAlert {
 
 // ─── Sensor definitions ───────────────────────────────────────────────────────
 const METRICS = [
-  { key: 'soil_moisture', label: 'Độ ẩm đất',   unit: '%',   icon: Droplets,      color: 'sky',     min: 0,   max: 100   },
-  { key: 'temperature',   label: 'Nhiệt độ',     unit: '°C',  icon: Thermometer,   color: 'orange',  min: -10, max: 60    },
-  { key: 'humidity',      label: 'Độ ẩm KK',     unit: '%',   icon: Wind,          color: 'teal',    min: 0,   max: 100   },
-  { key: 'light',         label: 'Ánh sáng',     unit: 'lux', icon: Sun,           color: 'yellow',  min: 0,   max: 100000},
-  { key: 'battery',       label: 'Pin Node',     unit: '%',   icon: Zap,           color: 'emerald', min: 0,   max: 100   },
-  { key: 'co2',           label: 'CO₂',          unit: 'ppm', icon: FlameKindling, color: 'violet', min: 300, max: 5000  },
+  { key: 'soil_moisture', label: 'Độ ẩm đất',   unit: '%',   icon: Droplets,      color: 'sky',     baseVal: 65,    min: 0,   max: 100   },
+  { key: 'temperature',   label: 'Nhiệt độ',     unit: '°C',  icon: Thermometer,   color: 'orange',  baseVal: 27,    min: -10, max: 60    },
+  { key: 'humidity',      label: 'Độ ẩm KK',     unit: '%',   icon: Wind,          color: 'teal',    baseVal: 72,    min: 0,   max: 100   },
+  { key: 'light',         label: 'Ánh sáng',     unit: 'lux', icon: Sun,           color: 'yellow',  baseVal: 18000, min: 0,   max: 100000},
+  { key: 'battery',       label: 'Pin Node',     unit: '%',   icon: Zap,           color: 'emerald', baseVal: 78,    min: 0,   max: 100   },
+  { key: 'co2',           label: 'CO₂',          unit: 'ppm', icon: FlameKindling, color: 'violet',  baseVal: 420,   min: 300, max: 5000  },
 ];
 
 const ZONES = ['Nhà màng Z01 - Cà chua', 'Nhà màng Z02 - Ớt', 'Lô đất A1', 'Lô đất B2'];
@@ -41,7 +41,12 @@ const ICON_COLOR: Record<string, string> = {
   violet: 'text-violet-600 bg-violet-100 border-violet-200',
 };
 
-const DEFAULT_RULES: AlertRule[] = [];
+const DEFAULT_RULES: AlertRule[] = [
+  { id: 'r1', name: 'Đất khô – Tưới nước', metric: 'soil_moisture', unit: '%', minThreshold: 40, maxThreshold: 90, zone: 'Nhà màng Z01 - Cà chua', severity: 'WARNING',  action: 'Bật máy bơm tưới',      enabled: true },
+  { id: 'r2', name: 'Nhiệt độ quá cao',    metric: 'temperature',   unit: '°C', minThreshold: 10, maxThreshold: 35, zone: 'Nhà màng Z01 - Cà chua', severity: 'CRITICAL', action: 'Bật quạt thông gió',    enabled: true },
+  { id: 'r3', name: 'Độ ẩm KK thấp',      metric: 'humidity',      unit: '%', minThreshold: 55, maxThreshold: 95, zone: 'Nhà màng Z02 - Ớt',      severity: 'WARNING',  action: 'Bật phun sương',         enabled: true },
+  { id: 'r4', name: 'Pin Node yếu',        metric: 'battery',       unit: '%', minThreshold: 20, maxThreshold: 100, zone: 'Tất cả',                 severity: 'CRITICAL', action: 'Thay pin / sạc thiết bị', enabled: true },
+];
 
 function fmtVal(val: number, key: string) {
   if (key === 'light') return val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0);
@@ -64,29 +69,66 @@ export const AlertsPage: React.FC = () => {
   const [ruleForm, setRuleForm] = useState<Partial<AlertRule>>({});
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
   const [activeActions, setActiveActions] = useState<Record<string, { action: string; since: string }>>({});
-  const [sensorValues, setSensorValues] = useState<Record<string, number>>({});
-  const telemetrySequence = Date.now();
+  const [sensorValues, setSensorValues] = useState<Record<string, number>>(() =>
+    Object.fromEntries(METRICS.map(m => [m.key, m.baseVal]))
+  );
+  const [simRunning, setSimRunning] = useState(true);
+  const [simExpanded, setSimExpanded] = useState(true);
+  const [autoLog, setAutoLog] = useState<{msg:string;time:string}[]>([]);
+  const [showLog, setShowLog] = useState(false);
+  const tickRef = useRef(0);
+  const sensorRef = useRef(sensorValues);
+  sensorRef.current = sensorValues;
+  const rulesRef = useRef(rules);
+  rulesRef.current = rules;
+
   const checkRules = useCallback((vals: Record<string, number>) => {
     const newAlerts: LiveAlert[] = [];
     const newActions: Record<string, { action: string; since: string; severity: 'WARNING' | 'CRITICAL' }> = {};
-    rules.filter(r => r.enabled).forEach(rule => {
+    rulesRef.current.filter(r => r.enabled).forEach(rule => {
       const val = vals[rule.metric];
       if (val === undefined) return;
       if (val < rule.minThreshold || val > rule.maxThreshold) {
         const threshold = val < rule.minThreshold
           ? `Thấp hơn ngưỡng MIN ${rule.minThreshold}${rule.unit}`
           : `Cao hơn ngưỡng MAX ${rule.maxThreshold}${rule.unit}`;
-        newAlerts.push({ id: `live-${rule.id}-${telemetrySequence}`, ruleId: rule.id, metric: rule.metric, value: val, threshold, zone: rule.zone, severity: rule.severity, action: rule.action, time: new Date().toLocaleTimeString('vi-VN'), acked: false });
+        newAlerts.push({ id: `live-${rule.id}-${tickRef.current}`, ruleId: rule.id, metric: rule.metric, value: val, threshold, zone: rule.zone, severity: rule.severity, action: rule.action, time: new Date().toLocaleTimeString('vi-VN'), acked: false });
         newActions[rule.id] = { action: rule.action, since: new Date().toLocaleTimeString('vi-VN'), severity: rule.severity };
       }
     });
     setLiveAlerts(newAlerts);
-    setActiveActions(newActions);
-  }, [rules, telemetrySequence]);
+    // Log state changes
+    setActiveActions(prev => {
+      const prevIds = new Set(Object.keys(prev));
+      const newIds = new Set(Object.keys(newActions));
+      const changes: string[] = [];
+      newIds.forEach(id => { if (!prevIds.has(id)) changes.push(`🟢 TỰ ĐỘNG BẬT: ${newActions[id].action}`); });
+      prevIds.forEach(id => { if (!newIds.has(id)) changes.push(`🔴 TỰ ĐỘNG TẮT: ${prev[id].action}`); });
+      if (changes.length > 0) {
+        setAutoLog(l => [...changes.map(c => ({ msg: c, time: new Date().toLocaleTimeString('vi-VN') })), ...l].slice(0, 20));
+      }
+      return newActions;
+    });
+  }, []);
 
-  useEffect(() => { checkRules(sensorValues); }, [checkRules, sensorValues]);
+  useEffect(() => { checkRules(sensorValues); }, []);
 
-  // Sensor values come only from backend telemetry; no local simulator.
+  useEffect(() => {
+    if (!simRunning) return;
+    const t = setInterval(() => {
+      tickRef.current += 1;
+      setSensorValues(prev => {
+        const next: Record<string, number> = {};
+        METRICS.forEach(m => {
+          const drift = prev[m.key] * (1 + (Math.random() * 0.001 - 0.0005));
+          next[m.key] = parseFloat(Math.min(m.max, Math.max(m.min, drift)).toFixed(2));
+        });
+        checkRules(next);
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(t);
+  }, [simRunning, checkRules]);
 
   const openNew = () => {
     setEditingRule(null);
@@ -241,11 +283,129 @@ export const AlertsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Live telemetry is rendered only when supplied by the backend. */}
-      <div className="p-4 rounded-xl border border-slate-200 bg-white text-xs text-slate-500 flex items-center gap-2">
-        <Radio size={14} className="text-emerald-600" />
-        Chỉ hiển thị dữ liệu cảm biến thật từ Node/Gateway; chưa có telemetry thì không tạo giá trị mẫu.
+      {/* ═══ FLOATING SENSOR WIDGET ═══ */}
+      <div className="fixed bottom-6 right-6 z-[9999] w-80 shadow-2xl rounded-2xl overflow-hidden border border-slate-700">
+        {/* Widget header */}
+        <div className="flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white cursor-pointer select-none" onClick={() => setSimExpanded(p => !p)}>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${simRunning ? 'bg-emerald-200 animate-pulse' : 'bg-slate-300'}`} />
+            <Cpu size={13} className="text-white" />
+            <span className="text-xs font-bold">IoT Sensor Live Feed</span>
+            <span className="text-[10px] bg-white/20 border border-white/30 text-white px-1.5 py-0.5 rounded font-mono">5s/tick</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={e => { e.stopPropagation(); setSimRunning(p => !p); }} className="p-1 rounded hover:bg-white/10" title={simRunning ? 'Tạm dừng' : 'Chạy'}>
+              {simRunning ? <Pause size={12} className="text-amber-400" /> : <Play size={12} className="text-emerald-400" />}
+            </button>
+            <button onClick={e => { e.stopPropagation(); const v = Object.fromEntries(METRICS.map(m => [m.key, m.baseVal])); setSensorValues(v); checkRules(v); }} className="p-1 rounded hover:bg-white/10" title="Reset">
+              <RefreshCw size={12} className="text-slate-400" />
+            </button>
+            {simExpanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
+          </div>
+        </div>
+
+        {simExpanded && (
+          <div className="bg-slate-900 p-3 space-y-1.5 max-h-96 overflow-y-auto">
+            <div className="text-[10px] text-slate-400 pb-1.5 border-b border-slate-800 flex items-center gap-1">
+              <Info size={10} /> Mô phỏng IoT: mỗi 5s biến động ±0.05% so với giá trị trước. Nhập thủ công để test luật.
+            </div>
+            {METRICS.map(m => {
+              const val = sensorValues[m.key];
+              const Icon = m.icon;
+              const badRule = rules.find(r => r.enabled && r.metric === m.key && (val < r.minThreshold || val > r.maxThreshold));
+              const pct = ((val - m.min) / (m.max - m.min)) * 100;
+              return (
+                <div key={m.key} className={`rounded-lg p-2 ${badRule ? 'bg-slate-800 ring-1 ring-rose-500/50' : 'bg-slate-800/60'}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <Icon size={12} className={badRule ? 'text-rose-400' : 'text-slate-400'} />
+                      <span className="text-[11px] text-slate-300">{m.label}</span>
+                      {badRule && <span className="text-[9px] font-bold text-rose-400 animate-pulse">⚠️</span>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" step={m.key === 'light' ? 100 : 0.1} min={m.min} max={m.max} value={val}
+                        onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) { const next = { ...sensorRef.current, [m.key]: parseFloat(Math.min(m.max, Math.max(m.min, v)).toFixed(2)) }; setSensorValues(next); checkRules(next); } }}
+                        className="w-20 bg-slate-700 border border-slate-600 rounded px-1.5 py-0.5 text-[11px] font-mono text-emerald-300 focus:outline-none focus:border-emerald-500 text-right"
+                      />
+                      <span className="text-[10px] text-slate-500 w-8 shrink-0">{m.unit}</span>
+                    </div>
+                  </div>
+                  <div className="relative w-full h-2 mt-1 bg-slate-700 rounded-full group">
+                    <div 
+                      className={`absolute top-0 left-0 h-full rounded-full transition-all duration-75 ${badRule ? (badRule.severity === 'CRITICAL' ? 'bg-rose-500' : 'bg-amber-400') : 'bg-emerald-500'}`} 
+                      style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} 
+                    />
+                    <input
+                      type="range"
+                      min={m.min}
+                      max={m.max}
+                      step={m.key === 'light' ? 100 : 0.1}
+                      value={val}
+                      onChange={e => { 
+                        const v = parseFloat(e.target.value); 
+                        if (!isNaN(v)) { 
+                          const next = { ...sensorRef.current, [m.key]: parseFloat(Math.min(m.max, Math.max(m.min, v)).toFixed(2)) }; 
+                          setSensorValues(next); 
+                          checkRules(next); 
+                        } 
+                      }}
+                      className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                      title={`Kéo để thay đổi ${m.label}`}
+                    />
+                  </div>
+                  {badRule && <div className="mt-1 text-[9px] text-amber-300 flex items-center gap-1"><Power size={8} /> {badRule.action}</div>}
+                </div>
+              );
+            })}
+            {/* ── Actuator auto ON/OFF panel ── */}
+            <div className="pt-2 border-t border-slate-700 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] text-slate-300 font-bold flex items-center gap-1">
+                  <Power size={10} className="text-emerald-400" /> Trạng thái thiết bị (Mặc định OFF ➔ Tự động BẬT khi có sự cố)
+                </div>
+                <button onClick={() => setShowLog(p => !p)} className="text-[9px] text-slate-400 hover:text-slate-200 underline">
+                  {showLog ? 'Ẩn nhật ký' : 'Xem nhật ký'}
+                </button>
+              </div>
+              {/* Derive unique actuators from all enabled rules */}
+              {rules.filter(r => r.enabled).map(rule => {
+                const isOn = !!activeActions[rule.id];
+                const md = METRICS.find(m => m.key === rule.metric);
+                return (
+                  <div key={rule.id} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 transition-all duration-500 ${isOn ? 'bg-emerald-900/60 ring-1 ring-emerald-500/60' : 'bg-slate-800/60'}`}>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className={`w-2 h-2 rounded-full shrink-0 transition-all duration-500 ${isOn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+                      <span className={`text-[10px] truncate ${isOn ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}>
+                        {rule.action}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {md && <span className="text-[9px] text-slate-500">{md.label}</span>}
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-all duration-500 ${isOn ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-500'}`}>
+                        {isOn ? '🟢 ON (TỰ BẬT)' : 'OFF (MẶC ĐỊNH)'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Auto-action log */}
+              {showLog && autoLog.length > 0 && (
+                <div className="mt-2 space-y-0.5 max-h-28 overflow-y-auto">
+                  <div className="text-[9px] text-slate-400 font-bold mb-1">Nhật ký kích hoạt khi có sự cố:</div>
+                  {autoLog.map((entry, i) => (
+                    <div key={i} className="text-[9px] text-slate-300 flex items-start gap-1.5">
+                      <span className="text-slate-500 font-mono shrink-0">{entry.time}</span>
+                      <span>{entry.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
       {/* ═══ RULE MODAL ═══ */}
       <Modal isOpen={showRuleModal} title={editingRule ? '✏️ Chỉnh sửa Luật Cảnh báo' : '➕ Thêm Luật Cảnh báo mới'} onClose={() => setShowRuleModal(false)}>
         <div className="space-y-4 text-xs">

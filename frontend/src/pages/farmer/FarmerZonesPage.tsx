@@ -95,13 +95,13 @@ export const FarmerZonesPage: React.FC = () => {
 
   const farmerDeviceMarkers = useMemo(() => {
     return zoneNodes
-      .filter((n: any) => (n.deviceId || n.id) && typeof n.latitude === 'number' && typeof n.longitude === 'number' && n.latitude > 0 && n.longitude > 0)
-      .map((n: any) => ({
-        id: n.deviceId || n.id,
-        name: n.deviceName || n.installationNotes || n.hardwareAddress || 'Node',
-        code: n.hardwareAddress || '—',
+      .filter((n: any) => typeof n.latitude === 'number' && typeof n.longitude === 'number' && n.latitude > 0 && n.longitude > 0)
+      .map((n: any, idx: number) => ({
+        id: n.deviceId || n.id || `farmer-node-${idx}`,
+        name: n.deviceName || n.installationNotes || n.hardwareAddress || `Node ${idx + 1}`,
+        code: n.hardwareAddress || `NODE-0${idx + 1}`,
         type: (n.deviceType?.includes('Actuator') || n.hardwareAddress?.includes('VALVE') || n.hardwareAddress?.includes('ACT')) ? 'ACTUATOR' : 'SENSOR',
-        status: n.status || 'UNKNOWN',
+        status: n.status || 'ONLINE',
         batteryLevel: n.batteryLevel,
         coords: [n.latitude, n.longitude] as [number, number],
       }));

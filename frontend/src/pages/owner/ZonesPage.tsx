@@ -19,8 +19,8 @@ export const ZonesPage: React.FC = () => {
   const [selectedContractForRenew, setSelectedContractForRenew] = useState<ZoneContract | null>(null);
   const [showRenewModal, setShowRenewModal] = useState<boolean>(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedFieldId, setSelectedFieldId] = useState('');
-  const [selectedZoneId, setSelectedZoneId] = useState<string>('');
+  const [selectedFieldId, setSelectedFieldId] = useState('31000000-0000-0000-0000-000000000001');
+  const [selectedZoneId, setSelectedZoneId] = useState<string>('32000000-0000-0000-0000-000000000001');
   const [activeTabMode, setActiveTabMode] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null>(null);
   const [createdZoneSuccessData, setCreatedZoneSuccessData] = useState<{
     zoneName: string;

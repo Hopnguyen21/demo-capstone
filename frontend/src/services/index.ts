@@ -167,8 +167,11 @@ export const userService = {
   },
 
   /** PUT /api/v1/users/me/password */
-  changePassword: async (currentPassword: string, newPassword: string) => {
-    const res = await apiClient.put('/api/v1/users/me/password', { currentPassword, newPassword });
+  changePassword: async (currentOrPayload: string | { currentPassword: string; newPassword: string; confirmPassword?: string }, newPassword?: string) => {
+    const payload = typeof currentOrPayload === 'string'
+      ? { currentPassword: currentOrPayload, newPassword: newPassword! }
+      : currentOrPayload;
+    const res = await apiClient.put('/api/v1/users/me/password', payload);
     return res.data;
   },
 
@@ -1998,10 +2001,11 @@ export const supportService = {
   },
 
   /** POST /api/v1/service-requests/{requestId}/sign-contract-deposit */
-  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER') => {
+  signContractAndPay30: async (requestId: string, signerFullName: string = 'Lê Văn An', paymentMethod: string = 'BANK_TRANSFER', amount?: number) => {
     const res = await apiClient.post(`/api/v1/service-requests/${requestId}/sign-contract-deposit`, {
       signerFullName,
       paymentMethod,
+      amount,
       transactionReference: `PAY30-${Date.now()}`
     });
     return res.data;
