@@ -599,10 +599,13 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
 
         if (!isPlatformOrOwner)
         {
-            var technicianOwnsRequest = depReq is not null &&
-                (depReq.TechnicianUserId == technicianId || srCheck?.AssignedTechnicianId == technicianId);
-            if (depReq is null || depReq.ZoneId != zoneId || depReq.FarmId != farmId || !technicianOwnsRequest)
-                throw new AuthorizationException("The GIS update must belong to the Technician's Deployment Request for this Zone.");
+            var technicianOwnsDepReq = depReq is not null && depReq.TechnicianUserId == technicianId && depReq.ZoneId == zoneId && depReq.FarmId == farmId;
+            var technicianOwnsServiceReq = srCheck is not null && (srCheck.AssignedTechnicianId == technicianId || srCheck.AssignedTechnicianId == null) && srCheck.ZoneId == zoneId;
+            var technicianHasZoneAccess = await db.DeploymentRequests.AnyAsync(r => r.ZoneId == zoneId && r.TechnicianUserId == technicianId, ct)
+                || await db.ServiceRequests.AnyAsync(r => r.ZoneId == zoneId && (r.AssignedTechnicianId == technicianId || r.AssignedTechnicianId == null), ct);
+
+            if (!technicianOwnsDepReq && !technicianOwnsServiceReq && !technicianHasZoneAccess)
+                throw new AuthorizationException("The GIS update must belong to the Technician's Deployment or Service Request for this Zone.");
         }
         // GIS placement is an explicit technician mapping workflow. The UI
         // allows drafting/correcting node positions before later deployment
@@ -642,7 +645,7 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
                 throw new ResourceNotFoundException($"Device '{node.DeviceId}' was not provisioned.");
             if (node.Latitude is < -90 or > 90 || node.Longitude is < -180 or > 180 || (node.Latitude == 0 && node.Longitude == 0))
                 throw new RequestValidationException("nodes", "Node coordinates must be valid and cannot be 0,0.");
-            if ((depReq is not null && device.DeploymentRequestId != depReq.Id) || device.FarmId != farmId)
+            if ((depReq is not null && device.DeploymentRequestId != depReq.Id && srCheck == null) || device.FarmId != farmId)
                 throw new AuthorizationException("Device does not belong to this Deployment Request.");
             device.ZoneId = zoneId;
             device.GpsLatitude = node.Latitude;
