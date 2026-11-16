@@ -1,17 +1,17 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sprout, CheckCircle2, ArrowRight, ArrowLeft, MapPin, Layers, Cpu, Building2,
   GitBranch, Check, Plus, Trash2, ArrowDown, ChevronRight, CornerDownRight,
   UserCheck, Wrench, ShieldCheck, Calendar, Info, Send, Compass, Loader2,
-  Radio, Zap, ChevronDown, TrendingUp, AlertTriangle, Wifi, Package, ClipboardCheck, RefreshCw
+  Radio, Zap, ChevronDown, TrendingUp, AlertTriangle, Wifi, Package, ClipboardCheck, RefreshCw,
+  Copy, Edit3, Sliders, Settings2
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui/BaseUI';
 import { GISLocationPicker, calculatePolygonAreaM2, toGeoJsonPolygon } from '../../components/maps/GISLocationPicker';
 import { farmService, cropService, gisProxyService } from '../../services';
 import { HoneycombEstimator } from '../../components/estimation/HoneycombEstimator';
 import { CustomGrowthProfileModal } from '../../components/crops/CustomGrowthProfileModal';
-import { Sliders } from 'lucide-react';
 
 export const CreateFarmWizard: React.FC = () => {
   const navigate = useNavigate();
@@ -104,7 +104,10 @@ export const CreateFarmWizard: React.FC = () => {
   const [serverProfiles, setServerProfiles] = useState<any[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [profileSourceFilter, setProfileSourceFilter] = useState<'ALL' | 'SYSTEM' | 'CUSTOM'>('ALL');
+  const [profileSettingMode, setProfileSettingMode] = useState<'SYSTEM' | 'CUSTOM'>('SYSTEM');
+  const [customModalTemplate, setCustomModalTemplate] = useState<any>(null);
   const [isCustomProfileModalOpen, setIsCustomProfileModalOpen] = useState(false);
+  const [customStageDays, setCustomStageDays] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [wizardSuccessData, setWizardSuccessData] = useState<{
@@ -126,7 +129,7 @@ export const CreateFarmWizard: React.FC = () => {
       setServerVarieties(validVars);
       setServerProfiles(validProfs);
 
-      const defaultProf = validProfs.find((p: any) => p.isDefault) || validProfs[0];
+      const defaultProf = validProfs.find((p: any) => p.isDefault) || validProfs.find((p: any) => p.isSystemDefined) || validProfs[0];
       if (defaultProf) {
         const profId = defaultProf.profileId || defaultProf.id || '';
         setSelectedProfileId(profId);
@@ -526,7 +529,15 @@ export const CreateFarmWizard: React.FC = () => {
 
           const currentCrop = serverCrops.find(c => c.cropId === selectedCropId);
           const currentProfile = serverProfiles.find(p => (p.profileId || p.id) === selectedProfileId) || serverProfiles[0];
-          const stages = (currentProfile?.stages || []) as any[];
+          const rawStages = (currentProfile?.stages || []) as any[];
+          const stages = rawStages.map((s: any, idx: number) => {
+            const key = s.stageId || `stg-${idx}`;
+            const customDays = customStageDays[key];
+            return {
+              ...s,
+              durationDays: customDays !== undefined ? customDays : (Number(s.durationDays) || 20)
+            };
+          });
 
           const totalDays = stages.reduce((acc: number, s: any) => acc + (Number(s.durationDays) || 0), 0) || currentCrop?.growthCycleDays || 90;
 
@@ -657,86 +668,224 @@ export const CreateFarmWizard: React.FC = () => {
                     </select>
                   </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-slate-800 font-bold">Hồ sơ Sinh trưởng / Quy trình Canh tác *</label>
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomProfileModalOpen(true)}
-                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-emerald-300"
-                      >
-                        <Plus size={12} /> Tự tạo Cấu hình riêng
-                      </button>
-                    </div>
+                  {/* BỘ CHỌN PHƯƠNG THỨC: HỆ THỐNG CÓ SẴN HOẶC TỰ THIẾT LẬP */}
+                  <div className="space-y-2 pt-2 border-t border-emerald-200">
+                    <label className="text-slate-800 font-bold block text-xs flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Sliders size={14} className="text-[#119653]" />
+                        Phương thức Quy trình Canh tác & Vi khí hậu *
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-normal">Tùy biến linh hoạt</span>
+                    </label>
 
-                    {/* Source filter tabs */}
-                    <div className="flex items-center gap-1.5 mb-2 bg-slate-100 p-1 rounded-xl text-[11px]">
+                    {/* 2 Lựa chọn trực quan: Hệ thống vs Tự thiết lập */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setProfileSourceFilter('ALL')}
-                        className={`flex-1 py-1 rounded-lg font-bold text-center cursor-pointer transition-all ${profileSourceFilter === 'ALL' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                      >
-                        Tất cả ({serverProfiles.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProfileSourceFilter('SYSTEM')}
-                        className={`flex-1 py-1 rounded-lg font-bold text-center cursor-pointer transition-all ${profileSourceFilter === 'SYSTEM' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                      >
-                        🌐 Hệ thống ({serverProfiles.filter((p: any) => p.isSystemDefined).length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProfileSourceFilter('CUSTOM')}
-                        className={`flex-1 py-1 rounded-lg font-bold text-center cursor-pointer transition-all ${profileSourceFilter === 'CUSTOM' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                      >
-                        🌿 Của Trang trại ({serverProfiles.filter((p: any) => !p.isSystemDefined).length})
-                      </button>
-                    </div>
-
-                    <select
-                      className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs"
-                      value={selectedProfileId}
-                      onChange={e => {
-                        const newProfileId = e.target.value;
-                        setSelectedProfileId(newProfileId);
-                        const prof = serverProfiles.find(p => (p.profileId || p.id) === newProfileId);
-                        if (prof) {
-                          if (prof.varietyId) {
-                            setSelectedVarietyId(prof.varietyId);
-                            const v = serverVarieties.find(x => x.varietyId === prof.varietyId);
-                            if (v) setCropData(prev => ({ ...prev, variety: v.name }));
-                          }
-                          const pStages = prof.stages || [];
-                          const cycleDays = pStages.reduce((s: number, cur: any) => s + (Number(cur.durationDays) || 0), 0) || 90;
-                          if (cropData.startDate) {
-                            const d = new Date(cropData.startDate);
-                            if (!isNaN(d.getTime())) {
-                              d.setDate(d.getDate() + cycleDays);
-                              setCropData(prev => ({ ...prev, expectedHarvestDate: d.toISOString().split('T')[0] }));
+                        onClick={() => {
+                          setProfileSettingMode('SYSTEM');
+                          setProfileSourceFilter('SYSTEM');
+                          const sysProf = serverProfiles.find(p => p.isSystemDefined) || serverProfiles[0];
+                          if (sysProf) {
+                            const id = sysProf.profileId || sysProf.id;
+                            setSelectedProfileId(id);
+                            const pStages = sysProf.stages || [];
+                            const cycleDays = pStages.reduce((s: number, cur: any) => s + (Number(cur.durationDays) || 0), 0) || 90;
+                            if (cropData.startDate) {
+                              const d = new Date(cropData.startDate);
+                              if (!isNaN(d.getTime())) {
+                                d.setDate(d.getDate() + cycleDays);
+                                setCropData(prev => ({ ...prev, expectedHarvestDate: d.toISOString().split('T')[0] }));
+                              }
                             }
                           }
-                        }
-                      }}
-                    >
-                      {serverProfiles
-                        .filter((p: any) => {
-                          if (profileSourceFilter === 'SYSTEM') return p.isSystemDefined;
-                          if (profileSourceFilter === 'CUSTOM') return !p.isSystemDefined;
-                          return true;
-                        })
-                        .map(p => (
-                          <option key={p.profileId || p.id} value={p.profileId || p.id}>
-                            {p.name} {p.isSystemDefined ? '— [Mẫu Hệ thống]' : '— [Trang trại riêng]'} ({p.stages?.length || 0} giai đoạn)
-                          </option>
-                        ))}
-                      {serverProfiles.length === 0 && (
-                        <option value="">Chưa có hồ sơ sinh trưởng cho giống này</option>
-                      )}
-                    </select>
+                        }}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-2.5 ${
+                          profileSettingMode === 'SYSTEM'
+                            ? 'bg-emerald-50 border-[#119653] ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded-lg shrink-0 ${profileSettingMode === 'SYSTEM' ? 'bg-[#119653] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                          <Sprout size={16} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-slate-900 flex items-center gap-1">
+                            <span>Mẫu có sẵn Hệ thống</span>
+                            {profileSettingMode === 'SYSTEM' && <CheckCircle2 size={13} className="text-[#119653]" />}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                            Quy trình chuẩn VietGAP chuyên gia thiết lập sẵn, tối ưu hóa IoT.
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileSettingMode('CUSTOM');
+                          setProfileSourceFilter('CUSTOM');
+                          const customProf = serverProfiles.find(p => !p.isSystemDefined);
+                          if (customProf) {
+                            const id = customProf.profileId || customProf.id;
+                            setSelectedProfileId(id);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-2.5 ${
+                          profileSettingMode === 'CUSTOM'
+                            ? 'bg-emerald-50 border-[#119653] ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded-lg shrink-0 ${profileSettingMode === 'CUSTOM' ? 'bg-[#119653] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                          <Sliders size={16} />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-slate-900 flex items-center gap-1">
+                            <span>Tự thiết lập theo ý bạn</span>
+                            {profileSettingMode === 'CUSTOM' && <CheckCircle2 size={13} className="text-[#119653]" />}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                            Tự do tùy chỉnh số ngày từng giai đoạn, ngưỡng vi khí hậu riêng.
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Mode 1: Cấu hình có sẵn từ Hệ thống */}
+                    {profileSettingMode === 'SYSTEM' && (
+                      <div className="space-y-1.5 pt-1.5">
+                        <label className="text-[11px] font-bold text-slate-700 block">
+                          Chọn Hồ sơ Sinh trưởng Mẫu từ Hệ thống:
+                        </label>
+                        <select
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs text-xs"
+                          value={selectedProfileId}
+                          onChange={e => {
+                            const newProfileId = e.target.value;
+                            setSelectedProfileId(newProfileId);
+                            const prof = serverProfiles.find(p => (p.profileId || p.id) === newProfileId);
+                            if (prof) {
+                              if (prof.varietyId) {
+                                setSelectedVarietyId(prof.varietyId);
+                                const v = serverVarieties.find(x => x.varietyId === prof.varietyId);
+                                if (v) setCropData(prev => ({ ...prev, variety: v.name }));
+                              }
+                              const pStages = prof.stages || [];
+                              const cycleDays = pStages.reduce((s: number, cur: any) => s + (Number(cur.durationDays) || 0), 0) || 90;
+                              if (cropData.startDate) {
+                                const d = new Date(cropData.startDate);
+                                if (!isNaN(d.getTime())) {
+                                  d.setDate(d.getDate() + cycleDays);
+                                  setCropData(prev => ({ ...prev, expectedHarvestDate: d.toISOString().split('T')[0] }));
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          {serverProfiles
+                            .filter((p: any) => p.isSystemDefined)
+                            .map(p => (
+                              <option key={p.profileId || p.id} value={p.profileId || p.id}>
+                                {p.name} ({p.stages?.length || 0} giai đoạn)
+                              </option>
+                            ))}
+                          {serverProfiles.filter((p: any) => p.isSystemDefined).length === 0 && (
+                            <option value="">Chưa có hồ sơ hệ thống mẫu cho loại cây này</option>
+                          )}
+                        </select>
+                        <p className="text-[11px] text-emerald-800 flex items-center justify-between pt-0.5">
+                          <span>✓ Đang áp dụng mẫu chuẩn hệ thống.</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProfileSettingMode('CUSTOM');
+                              setProfileSourceFilter('CUSTOM');
+                              setCustomModalTemplate(currentProfile);
+                              setIsCustomProfileModalOpen(true);
+                            }}
+                            className="text-[#119653] font-bold underline cursor-pointer hover:text-emerald-950 flex items-center gap-1"
+                          >
+                            <Copy size={11} /> Tùy biến từ mẫu này
+                          </button>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Mode 2: Tự thiết lập theo ý bạn */}
+                    {profileSettingMode === 'CUSTOM' && (
+                      <div className="space-y-2 pt-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700 block">
+                            Hồ sơ Canh tác Riêng của Trang trại:
+                          </label>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {serverProfiles.filter((p: any) => !p.isSystemDefined).length} hồ sơ riêng
+                          </span>
+                        </div>
+
+                        <select
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653] shadow-xs text-xs"
+                          value={selectedProfileId}
+                          onChange={e => {
+                            const newProfileId = e.target.value;
+                            setSelectedProfileId(newProfileId);
+                            const prof = serverProfiles.find(p => (p.profileId || p.id) === newProfileId);
+                            if (prof) {
+                              if (prof.varietyId) {
+                                setSelectedVarietyId(prof.varietyId);
+                                const v = serverVarieties.find(x => x.varietyId === prof.varietyId);
+                                if (v) setCropData(prev => ({ ...prev, variety: v.name }));
+                              }
+                              const pStages = prof.stages || [];
+                              const cycleDays = pStages.reduce((s: number, cur: any) => s + (Number(cur.durationDays) || 0), 0) || 90;
+                              if (cropData.startDate) {
+                                const d = new Date(cropData.startDate);
+                                if (!isNaN(d.getTime())) {
+                                  d.setDate(d.getDate() + cycleDays);
+                                  setCropData(prev => ({ ...prev, expectedHarvestDate: d.toISOString().split('T')[0] }));
+                                }
+                              }
+                            }
+                          }}
+                        >
+                          {serverProfiles
+                            .filter((p: any) => !p.isSystemDefined)
+                            .map(p => (
+                              <option key={p.profileId || p.id} value={p.profileId || p.id}>
+                                {p.name} ({p.stages?.length || 0} giai đoạn)
+                              </option>
+                            ))}
+                          {serverProfiles.filter((p: any) => !p.isSystemDefined).length === 0 && (
+                            <option value="">Chưa có hồ sơ riêng (Hãy tạo mới hoặc sao chép bên dưới)</option>
+                          )}
+                        </select>
+
+                        {/* Các nút hành động tạo / sao chép */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomModalTemplate(currentProfile);
+                              setIsCustomProfileModalOpen(true);
+                            }}
+                            className="flex-1 py-2 px-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition border border-emerald-300 shadow-2xs"
+                          >
+                            <Copy size={13} /> Sao chép từ mẫu này để sửa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomModalTemplate(null);
+                              setIsCustomProfileModalOpen(true);
+                            }}
+                            className="flex-1 py-2 px-2.5 bg-white hover:bg-slate-50 text-slate-800 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition border border-slate-300 shadow-2xs"
+                          >
+                            <Plus size={13} /> Tạo quy trình mới
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -791,13 +940,17 @@ export const CreateFarmWizard: React.FC = () => {
                   </div>
 
                   {/* Crop Template info from DB */}
-                  <div className="p-3 bg-white border border-emerald-200 rounded-lg space-y-2 text-[11px] text-slate-600 mt-3 shadow-2xs">
+                  <div className="p-3.5 bg-white border border-emerald-200 rounded-xl space-y-2.5 text-[11px] text-slate-600 mt-3 shadow-2xs">
                     <div className="font-bold text-emerald-800 border-b border-emerald-100 pb-1.5 mb-1 flex items-center justify-between">
                       <span className="flex items-center gap-1.5">
-                        <Sprout size={14} className="text-[#119653]" /> Chu kỳ sinh trưởng & Điều kiện ({currentProfile?.name || 'Hồ sơ DB'})
+                        <Sprout size={14} className="text-[#119653]" /> Chu kỳ sinh trưởng & Điều kiện ({currentProfile?.name || 'Hồ sơ Canh tác'})
                       </span>
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                        Dữ liệu DB / Backend
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        profileSettingMode === 'CUSTOM'
+                          ? 'bg-amber-50 text-amber-900 border-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      }`}>
+                        {profileSettingMode === 'CUSTOM' ? '⚙️ Tùy biến Trang trại' : '✓ Mẫu chuẩn Hệ thống'}
                       </span>
                     </div>
                     <div className="flex items-start gap-2">
@@ -829,18 +982,99 @@ export const CreateFarmWizard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Detailed stages from DB */}
+                    {/* Detailed stages */}
                     {stages.length > 0 && (
-                      <div className="pt-2 border-t border-slate-100 space-y-1">
-                        <div className="text-[10px] font-semibold text-slate-500">Các giai đoạn sinh trưởng chi tiết (DB):</div>
+                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[10px] font-semibold text-slate-600">
+                            {profileSettingMode === 'CUSTOM'
+                              ? '⚙️ Chỉnh sửa nhanh số ngày (Tự thiết lập theo ý bạn):'
+                              : 'Các giai đoạn sinh trưởng chi tiết (Mẫu chuẩn):'}
+                          </div>
+                          {profileSettingMode === 'CUSTOM' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomModalTemplate(currentProfile);
+                                setIsCustomProfileModalOpen(true);
+                              }}
+                              className="text-[10px] text-[#119653] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit3 size={11} /> Tùy biến ngưỡng & chỉ số
+                            </button>
+                          )}
+                        </div>
+
                         <div className="flex flex-wrap items-center gap-1.5">
-                          {stages.map((st: any, idx: number) => (
-                            <div key={st.stageId || idx} className="flex items-center gap-1 bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
-                              <span className="font-bold">{idx + 1}. {st.name}</span>
-                              <span className="text-emerald-700 font-mono">({st.durationDays} ngày)</span>
-                              {idx < stages.length - 1 && <span className="text-slate-400 font-bold">➔</span>}
-                            </div>
-                          ))}
+                          {stages.map((st: any, idx: number) => {
+                            const key = st.stageId || `stg-${idx}`;
+                            const days = customStageDays[key] !== undefined ? customStageDays[key] : (Number(st.durationDays) || 20);
+
+                            return (
+                              <div
+                                key={key}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] ${
+                                  profileSettingMode === 'CUSTOM'
+                                    ? 'bg-emerald-50/90 border-emerald-300'
+                                    : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                                }`}
+                              >
+                                <span className="font-bold">{idx + 1}. {st.name}</span>
+                                {profileSettingMode === 'CUSTOM' ? (
+                                  <div className="flex items-center gap-1 ml-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newDays = Math.max(1, days - 1);
+                                        setCustomStageDays(prev => ({ ...prev, [key]: newDays }));
+                                        const newTotal = stages.reduce((acc: number, s: any, sIdx: number) => {
+                                          const sKey = s.stageId || `stg-${sIdx}`;
+                                          const dVal = sKey === key ? newDays : (customStageDays[sKey] !== undefined ? customStageDays[sKey] : (Number(s.durationDays) || 20));
+                                          return acc + dVal;
+                                        }, 0);
+                                        if (cropData.startDate) {
+                                          const d = new Date(cropData.startDate);
+                                          if (!isNaN(d.getTime())) {
+                                            d.setDate(d.getDate() + newTotal);
+                                            setCropData(prev => ({ ...prev, expectedHarvestDate: d.toISOString().split('T')[0] }));
+                                          }
+                                        }
+                                      }}
+                                      className="w-3.5 h-3.5 rounded bg-white hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center border border-slate-300 cursor-pointer text-[10px]"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="font-mono font-bold text-emerald-800 text-[10px]">{days}n</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newDays = days + 1;
+                                        setCustomStageDays(prev => ({ ...prev, [key]: newDays }));
+                                        const newTotal = stages.reduce((acc: number, s: any, sIdx: number) => {
+                                          const sKey = s.stageId || `stg-${sIdx}`;
+                                          const dVal = sKey === key ? newDays : (customStageDays[sKey] !== undefined ? customStageDays[sKey] : (Number(s.durationDays) || 20));
+                                          return acc + dVal;
+                                        }, 0);
+                                        if (cropData.startDate) {
+                                          const d = new Date(cropData.startDate);
+                                          if (!isNaN(d.getTime())) {
+                                            d.setDate(d.getDate() + newTotal);
+                                            setCropData(prev => ({ ...prev, expectedHarvestDate: d.toISOString().split('T')[0] }));
+                                          }
+                                        }
+                                      }}
+                                      className="w-3.5 h-3.5 rounded bg-white hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center border border-slate-300 cursor-pointer text-[10px]"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-emerald-700 font-mono">({st.durationDays} ngày)</span>
+                                )}
+                                {idx < stages.length - 1 && <span className="text-slate-400 font-bold ml-0.5">➔</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1187,13 +1421,23 @@ export const CreateFarmWizard: React.FC = () => {
       {/* Modal Tự tạo Cấu hình Canh tác riêng */}
       <CustomGrowthProfileModal
         isOpen={isCustomProfileModalOpen}
-        onClose={() => setIsCustomProfileModalOpen(false)}
+        onClose={() => {
+          setIsCustomProfileModalOpen(false);
+          setCustomModalTemplate(null);
+        }}
         initialCropId={selectedCropId}
         initialVarietyId={selectedVarietyId}
+        templateProfile={customModalTemplate}
         onSuccess={newProfile => {
           loadVarietiesAndProfiles(selectedCropId);
           const profId = newProfile.profileId || newProfile.id;
-          if (profId) setSelectedProfileId(profId);
+          if (profId) {
+            setSelectedProfileId(profId);
+            setProfileSettingMode('CUSTOM');
+            setProfileSourceFilter('CUSTOM');
+          }
+          setIsCustomProfileModalOpen(false);
+          setCustomModalTemplate(null);
         }}
       />
     </div>
