@@ -190,8 +190,8 @@ export const SettingsPage: React.FC = () => {
               ))}
               <button type="button" className="text-emerald-700 hover:underline" onClick={() => setNewKeys([...newKeys, ''])}>+ Thêm khoá</button>
               <p className="mt-1 text-[11px] text-slate-500">
-                Khoá đã lưu được mã hoá trong cơ sở dữ liệu và chỉ hiện 4 ký tự cuối. Khoá ở đây được ưu tiên và có hiệu lực ngay (không cần khởi động lại);
-                khoá từ cấu hình máy chủ (Gemini__ApiKey / GEMINI_API_KEY) vẫn dùng làm dự phòng. Khoá lỗi hoặc hết quota sẽ tự chuyển sang khoá kế tiếp. Tối đa 10 khoá.
+                Hệ thống chỉ dùng các khoá nhập ở đây (không đọc khoá từ cấu hình máy chủ). Chưa có khoá nào thì AI không hoạt động. Khoá đã lưu được mã hoá trong cơ sở dữ liệu,
+                chỉ hiện 4 ký tự cuối và có hiệu lực ngay, không cần khởi động lại. Khoá lỗi hoặc hết quota sẽ tự chuyển sang khoá kế tiếp trong danh sách. Tối đa 10 khoá.
               </p>
             </div>
             <div>

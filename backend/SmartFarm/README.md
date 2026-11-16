@@ -33,11 +33,10 @@ $env:Jwt__SigningKey = "<at-least-32-random-characters>"
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 ```
 
-Trong Development có thể dùng User Secrets thay cho biến môi trường. `appsettings.json` và `appsettings.Development.json` để trống Gemini key và mật khẩu database:
+Trong Development có thể dùng User Secrets thay cho biến môi trường. `appsettings.json` và `appsettings.Development.json` để trống mật khẩu database (khoá Gemini KHÔNG cấu hình ở đây, xem mục Gemini bên dưới):
 
 ```powershell
 dotnet user-secrets set "ConnectionStrings:SmartFarmDb" "Host=localhost;Port=5432;Database=smartfarm;Username=postgres;Password=<password>" --project SmartFarm.Api
-dotnet user-secrets set "Gemini:ApiKeys:0" "<gemini-api-key>" --project SmartFarm.Api
 ```
 
 Origin frontend mặc định ở Development là `http://localhost:5173` và `https://localhost:5173`. Có thể ghi đè theo môi trường:
@@ -203,11 +202,7 @@ Hợp đồng chuẩn hóa Flow 4 và API #84-#88 nằm tại `docs/AI_RECOMMEND
 
 Context Farm/Zone, mùa vụ, Crop, Growth Stage, telemetry và thời tiết được dựng phía server trong Tenant từ JWT. `IAiAdvisoryProvider` và `IAiWeatherProvider` mặc định trả trạng thái không khả dụng thay vì bịa dữ liệu; môi trường triển khai phải đăng ký adapter thật. Chỉ FarmOwner có thể chấp nhận Recommendation còn hiệu lực và đủ confidence. Khi đó hệ thống mới tạo lệnh Control bất đồng bộ với `recommendation_id` và nguồn `AI_APPROVED`; thiết bị vẫn phải gửi ACK xác thực trước khi hiển thị thành công.
 
-Adapter thật hiện dùng Google Gemini `gemini-2.5-flash` và Open-Meteo. Cấu hình Gemini cho Development bằng User Secrets, không ghi key vào `appsettings.json`:
-
-```powershell
-dotnet user-secrets set "Gemini:ApiKey" "<gemini-api-key>" --project SmartFarm.Api
-```
+Adapter thật hiện dùng Google Gemini `gemini-2.5-flash` và Open-Meteo. Khoá Gemini chỉ lấy từ **Cài đặt nền tảng** (web, tài khoản Admin → Settings → Google Gemini AI): nhập một hoặc nhiều khoá, lưu mã hoá trong DB, có hiệu lực ngay không cần khởi động lại. Khoá trong `appsettings`, User Secrets hay biến môi trường bị bỏ qua; chưa nhập khoá thì AI báo không khả dụng. Sau khi triển khai môi trường mới, Admin cần nhập khoá ở đây.
 
 Nếu key hoặc provider không khả dụng, endpoint vẫn lưu consultation nhưng trả kết quả giới hạn, không actionable. Gemini chỉ tạo đề xuất JSON; actuator/duration được server kiểm tra lại và AI không trực tiếp bật thiết bị.
 

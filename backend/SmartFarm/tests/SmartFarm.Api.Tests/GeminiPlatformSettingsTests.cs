@@ -15,7 +15,7 @@ using Xunit;
 
 namespace SmartFarm.Api.Tests;
 
-/// <summary>Khoá Gemini nhập ở Cài đặt nền tảng: lưu mã hoá, không lộ qua API, có hiệu lực ngay và ưu tiên hơn cấu hình môi trường.</summary>
+/// <summary>Khoá Gemini CHỈ lấy từ Cài đặt nền tảng: lưu mã hoá, không lộ qua API, có hiệu lực ngay, xoá hết thì không còn khoá nào.</summary>
 [Collection("GeminiRuntimeSettings")] // GeminiRuntimeSettings giữ giá trị gốc ở biến static nên các test của nó chạy tuần tự
 public class GeminiPlatformSettingsTests
 {
@@ -83,14 +83,15 @@ public class GeminiPlatformSettingsTests
     }
 
     [Fact]
-    public async Task Clearing_the_key_falls_back_to_the_environment_configuration()
+    public async Task Clearing_the_key_leaves_no_key_and_never_falls_back_to_the_environment_configuration()
     {
         using var db = NewDb();
         var (admin, gem, _) = NewAdmin(db, envKey: "env-key-from-config-0000000");
         await admin.UpdateSettingsAsync([new(PlatformSettingKeys.GeminiApiKey, RealKey)], Guid.NewGuid(), default);
         Assert.Equal(RealKey, gem.ApiKey);
         await admin.UpdateSettingsAsync([new(PlatformSettingKeys.GeminiApiKey, "")], Guid.NewGuid(), default);
-        Assert.Equal("env-key-from-config-0000000", gem.ApiKey);
+        Assert.Equal(string.Empty, gem.ApiKey);
+        Assert.Empty(gem.ApiKeys);
     }
 
     [Theory]
@@ -122,7 +123,7 @@ public class GeminiPlatformSettingsTests
     private const string KeyC = "AIzaSyKeyCCCC0123456789abcdefCCCC";
 
     [Fact]
-    public async Task Several_keys_are_stored_encrypted_masked_in_the_list_and_pooled_with_the_environment_key()
+    public async Task Several_keys_are_stored_encrypted_masked_in_the_list_and_pooled_in_order()
     {
         using var db = NewDb();
         var (admin, gem, _) = NewAdmin(db);
@@ -140,7 +141,7 @@ public class GeminiPlatformSettingsTests
         Assert.DoesNotContain(list, x => x.Value.Contains(RealKey) || x.Value.Contains(KeyB));
 
         Assert.Equal(RealKey, gem.ApiKey);
-        Assert.Equal([KeyB, "env-key-from-config-0000000"], gem.ApiKeys); // khoá Admin đứng đầu, khoá môi trường làm dự phòng
+        Assert.Equal([KeyB], gem.ApiKeys); // chỉ khoá của Admin; khoá trong cấu hình môi trường không được dùng
         Assert.DoesNotContain(await db.AuditLogs.ToListAsync(), a => (a.Details ?? "").Contains(RealKey));
     }
 
@@ -158,9 +159,9 @@ public class GeminiPlatformSettingsTests
         Assert.Contains(KeyC, gem.ApiKeys);
         Assert.DoesNotContain(RealKey, gem.ApiKeys);
 
-        // xoá hết: quay về khoá môi trường
+        // xoá hết: không còn khoá nào (không quay về khoá trong cấu hình môi trường)
         await admin.UpdateSettingsAsync([new(PlatformSettingKeys.GeminiApiKeys, "[]")], Guid.NewGuid(), default);
-        Assert.Equal("env-key-from-config-0000000", gem.ApiKey);
+        Assert.Equal(string.Empty, gem.ApiKey);
         Assert.Empty(gem.ApiKeys);
     }
 

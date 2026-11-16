@@ -7,15 +7,15 @@ using SmartFarm.Infrastructure.Persistence;
 namespace SmartFarm.Infrastructure.Platform;
 
 /// <summary>
-/// Khoá và model Gemini do Admin nhập ở Cài đặt nền tảng (platform_settings) được ưu tiên hơn cấu hình/biến môi trường, để môi trường
-/// triển khai mới chỉ cần nhập trên web. Áp thẳng vào các đối tượng options dùng chung nên có hiệu lực ngay, không cần khởi động lại.
-/// Để trống thì quay về giá trị từ cấu hình (user-secrets, Gemini__ApiKey, GEMINI_API_KEY).
+/// Khoá Gemini CHỈ lấy từ Cài đặt nền tảng (platform_settings, Admin nhập trên web); khoá trong cấu hình/user-secrets/biến môi trường bị
+/// bỏ qua (xem DependencyInjection). Chưa nhập khoá nào thì AI báo không khả dụng. Model do Admin nhập được ưu tiên, để trống thì dùng
+/// model mặc định trong cấu hình. Áp thẳng vào các đối tượng options dùng chung nên có hiệu lực ngay, không cần khởi động lại.
 /// </summary>
 public static class GeminiRuntimeSettings
 {
-    private sealed record Base(string ApiKey, string Model, List<string> ApiKeys);
+    private sealed record Base(string Model);
     private static readonly object Gate = new();
-    // Giá trị gốc từ cấu hình của TỪNG đối tượng options (chụp ở lần áp đầu tiên) để khi Admin xoá khoá thì quay về đúng giá trị đó.
+    // Model mặc định từ cấu hình của TỪNG đối tượng options (chụp ở lần áp đầu tiên) để khi Admin xoá model thì quay về đúng giá trị đó.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GeminiOptions, Base> Originals = new();
 
     /// <summary>Danh sách khoá đã lưu (mảng JSON mã hoá); rỗng khi chưa có hoặc không giải mã được.</summary>
@@ -57,29 +57,18 @@ public static class GeminiRuntimeSettings
         {
             if (!Originals.TryGetValue(gemini, out var original))
             {
-                original = new Base(gemini.ApiKey, gemini.Model, [.. gemini.ApiKeys ?? []]);
+                original = new Base(gemini.Model);
                 Originals.Add(gemini, original);
             }
-            var previous = gemini.ApiKey;
-            // Khoá Admin nhập đứng đầu; khoá từ cấu hình máy chủ vẫn nằm phía sau làm dự phòng khi hết quota.
             var fromDb = new List<string>();
             if (!string.IsNullOrWhiteSpace(dbKey)) fromDb.Add(dbKey);
             fromDb.AddRange(dbKeys);
-            if (fromDb.Count == 0)
-            {
-                gemini.ApiKey = original.ApiKey;
-                gemini.ApiKeys = [.. original.ApiKeys];
-            }
-            else
-            {
-                gemini.ApiKey = fromDb[0];
-                gemini.ApiKeys = [.. fromDb.Skip(1), original.ApiKey, .. original.ApiKeys];
-                gemini.ApiKeys = gemini.ApiKeys.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).Distinct().Where(k => k != gemini.ApiKey).ToList();
-            }
+            fromDb = fromDb.Select(k => k.Trim()).Distinct().ToList();
+            gemini.ApiKey = fromDb.FirstOrDefault() ?? string.Empty;
+            gemini.ApiKeys = fromDb.Skip(1).ToList();
             gemini.Model = string.IsNullOrWhiteSpace(dbModel) ? original.Model : dbModel;
-            // Embedding mặc định dùng chung khoá với Gemini (trừ khi cấu hình khoá riêng) nên đi theo khi khoá đổi.
-            if (embedding is not null && (string.IsNullOrWhiteSpace(embedding.ApiKey) || embedding.ApiKey == previous))
-                embedding.ApiKey = gemini.ApiKey;
+            // Embedding dùng chung khoá nên đi theo khi khoá đổi.
+            if (embedding is not null) embedding.ApiKey = gemini.ApiKey;
         }
     }
 }

@@ -91,12 +91,10 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(GeminiOptions.SectionName))
             .PostConfigure(opts =>
             {
-                if (string.IsNullOrWhiteSpace(opts.ApiKey))
-                {
-                    opts.ApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-                               ?? Environment.GetEnvironmentVariable("Gemini__ApiKey")
-                               ?? string.Empty;
-                }
+                // Khoá Gemini CHỈ lấy từ Cài đặt nền tảng (platform_settings, Admin nhập trên web; nạp bởi GeminiRuntimeSettings):
+                // bỏ qua mọi khoá trong appsettings, user-secrets hay biến môi trường để mọi môi trường chạy cùng một cách.
+                opts.ApiKey = string.Empty;
+                opts.ApiKeys = [];
             })
             .Validate(x => string.IsNullOrWhiteSpace(x.ApiKey) || !string.IsNullOrWhiteSpace(x.Model), "Gemini:Model is required when an API key is configured.")
             .Validate(x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps, "Gemini:BaseUrl must be an absolute HTTPS URL.")
@@ -106,11 +104,9 @@ public static class DependencyInjection
             .Configure<IOptions<GeminiOptions>>((embOpts, gemOpts) =>
             {
                 configuration.GetSection(GeminiEmbeddingOptions.SectionName).Bind(embOpts);
-                if (string.IsNullOrWhiteSpace(embOpts.ApiKey))
-                {
-                    embOpts.ApiKey = gemOpts.Value.ApiKey;
-                    embOpts.BaseUrl = gemOpts.Value.BaseUrl;
-                }
+                if (string.IsNullOrWhiteSpace(embOpts.ApiKey)) embOpts.BaseUrl = gemOpts.Value.BaseUrl;
+                // Embedding dùng chung khoá của Cài đặt nền tảng, không đọc khoá riêng từ cấu hình.
+                embOpts.ApiKey = gemOpts.Value.ApiKey;
             });
         services.AddOptions<OpenMeteoOptions>()
             .Bind(configuration.GetSection(OpenMeteoOptions.SectionName))
