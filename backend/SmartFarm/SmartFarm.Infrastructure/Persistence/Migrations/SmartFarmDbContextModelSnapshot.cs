@@ -352,14 +352,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("previous_version_id");
 
-                    b.Property<string>("RegionScope")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasDefaultValue("")
-                        .HasColumnName("region_scope");
-
                     b.Property<string>("ReviewNotes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
@@ -1315,152 +1307,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.Bill", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("BillCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("ContractId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("CustomerTenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateOnly>("DueDate")
-                        .HasColumnType("date");
-
-                    b.Property<DateOnly>("IssueDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("LesseeName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<decimal>("PaidAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime?>("PaidDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("PaymentMethod")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<decimal>("RemainingAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ContractId");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("TenantId", "BillCode")
-                        .IsUnique();
-
-                    b.ToTable("Bills", (string)null);
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.ContractPackage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ContractId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasDefaultValue("VND");
-
-                    b.Property<string>("CustomerName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<int>("DurationMonths")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsCustom")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<int>("MaxZones")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("PackageName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid?>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("TenantId");
-
-                    b.ToTable("ContractPackages", (string)null);
-                });
-
             modelBuilder.Entity("SmartFarm.Domain.Entities.ControlSchedule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1820,81 +1666,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("deployment_decision_history", (string)null);
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentEstimateItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("code");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<Guid>("DeploymentRequestId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("deployment_request_id");
-
-                    b.Property<Guid?>("HardwareItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("hardware_item_id");
-
-                    b.Property<string>("Model")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("model");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("notes");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("integer")
-                        .HasColumnName("quantity");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("role");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("unit_price");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeploymentRequestId");
-
-                    b.ToTable("deployment_estimate_items", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_deployment_estimate_price", "unit_price >= 0");
-
-                            t.HasCheckConstraint("ck_deployment_estimate_quantity", "quantity > 0");
-                        });
-                });
-
             modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentPlanItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1950,6 +1721,15 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at_utc");
+
+                    b.Property<bool?>("ConnectivityCheckPassed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ConnectivityCheckedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConnectivityEvidence")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -2137,6 +1917,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("hardware_address");
 
+                    b.Property<Guid?>("HardwareItemId")
+                        .HasColumnType("uuid");
+
                     b.Property<int?>("HeartbeatIntervalSeconds")
                         .HasColumnType("integer")
                         .HasColumnName("heartbeat_interval_seconds");
@@ -2179,6 +1962,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("HardwareAddress")
                         .IsUnique();
+
+                    b.HasIndex("HardwareItemId");
 
                     b.HasIndex("ZoneId");
 
@@ -3206,8 +2991,7 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -3223,16 +3007,14 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(250)
-                        .HasColumnType("character varying(250)");
+                        .HasColumnType("text");
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("uuid");
@@ -3408,6 +3190,85 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.FirmwareInstallation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BoardProfile")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("board_profile");
+
+                    b.Property<string>("BootloaderProfile")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bootloader_profile");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at_utc");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<Guid?>("FirmwareReleaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FirmwareVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("firmware_version");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("PreparationSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("preparation_session_id");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("result");
+
+                    b.Property<Guid>("TechnicianUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("technician_user_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<string>("UploadMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("upload_method");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FirmwareReleaseId");
+
+                    b.HasIndex("TechnicianUserId");
+
+                    b.HasIndex("PreparationSessionId", "CreatedAtUtc");
+
+                    b.ToTable("firmware_installations", (string)null);
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.FirmwareJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3456,6 +3317,94 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("firmware_jobs", (string)null);
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.FirmwareRelease", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ApprovedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_by_user_id");
+
+                    b.Property<string>("ArtifactSha256")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("artifact_sha256");
+
+                    b.Property<string>("ArtifactUrl")
+                        .IsRequired()
+                        .HasMaxLength(1500)
+                        .HasColumnType("character varying(1500)")
+                        .HasColumnName("artifact_url");
+
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("commit_sha");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("GitTag")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("git_tag");
+
+                    b.Property<string>("HardwareTarget")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("hardware_target");
+
+                    b.Property<string>("ProtocolVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("protocol_version");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at_utc");
+
+                    b.Property<string>("ReleaseNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("release_notes");
+
+                    b.Property<string>("SourceRepository")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("source_repository");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApprovedByUserId");
+
+                    b.HasIndex("HardwareTarget", "Version")
+                        .IsUnique();
+
+                    b.ToTable("firmware_releases", (string)null);
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.Gateway", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3474,6 +3423,13 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("client_certificate_fingerprint");
+
+                    b.Property<string>("ConfigSyncStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ConfigVersion")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("ConfiguredAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -3515,10 +3471,16 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("gateway_serial");
 
+                    b.Property<int>("HeartbeatIntervalSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<string>("InstallationLocation")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("installation_location");
+
+                    b.Property<long>("LastAckedSequenceNumber")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime?>("LastSeenAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -3535,6 +3497,15 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)")
                         .HasColumnName("mqtt_client_id");
+
+                    b.Property<int>("PollingIntervalSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ResponseTimeoutMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("integer");
 
                     b.Property<int>("SamplesPerInterval")
                         .HasColumnType("integer")
@@ -3573,6 +3544,92 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("gateways", (string)null);
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.GatewayEnrollment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BootstrapFirmwareVersion")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("bootstrap_firmware_version");
+
+                    b.Property<string>("BootstrapTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("bootstrap_token_hash");
+
+                    b.Property<string>("ChipId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("chip_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTime?>("EnrolledAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enrolled_at_utc");
+
+                    b.Property<Guid?>("GatewayId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("GatewaySerial")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("gateway_serial");
+
+                    b.Property<DateTime?>("HandshakeVerifiedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("handshake_verified_at_utc");
+
+                    b.Property<Guid>("HardwareItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hardware_item_id");
+
+                    b.Property<string>("MacAddress")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("mac_address");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TechnicianUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("technician_user_id");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GatewayId");
+
+                    b.HasIndex("TechnicianUserId");
+
+                    b.HasIndex("HardwareItemId", "Status");
+
+                    b.ToTable("gateway_enrollments", (string)null);
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.GrowthProfile", b =>
@@ -3752,67 +3809,80 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.GrowthStageIrrigationSession", b =>
+            modelBuilder.Entity("SmartFarm.Domain.Entities.HardwarePreparationSession", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("BoardProfile")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("board_profile");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at_utc");
+
+                    b.Property<bool?>("ConnectivityCheckPassed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ConnectivityCheckedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConnectivityEvidence")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<int>("DurationSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("duration_seconds");
+                    b.Property<string>("DeviceType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("device_type");
 
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("enabled");
-
-                    b.Property<Guid>("GrowthStageId")
+                    b.Property<Guid>("HardwareItemId")
                         .HasColumnType("uuid")
-                        .HasColumnName("growth_stage_id");
+                        .HasColumnName("hardware_item_id");
 
-                    b.Property<string>("Method")
+                    b.Property<int?>("LoRaAddress")
+                        .HasColumnType("integer")
+                        .HasColumnName("lora_address");
+
+                    b.Property<string>("NodeId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
-                        .HasColumnName("method");
+                        .HasColumnName("node_id");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
 
-                    b.Property<TimeOnly>("StartTime")
-                        .HasColumnType("time without time zone")
-                        .HasColumnName("start_time");
-
-                    b.Property<string>("Title")
+                    b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("title");
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TechnicianUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("technician_user_id");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at_utc");
 
-                    b.Property<int?>("WaterPerPlantMl")
-                        .HasColumnType("integer")
-                        .HasColumnName("water_per_plant_ml");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("GrowthStageId", "SortOrder")
-                        .IsUnique();
+                    b.HasIndex("HardwareItemId", "Status");
 
-                    b.ToTable("growth_stage_irrigation_sessions", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_growth_stage_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
+                    b.HasIndex("TechnicianUserId", "Status");
 
-                            t.HasCheckConstraint("ck_growth_stage_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
-                        });
+                    b.ToTable("hardware_preparation_sessions", (string)null);
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.InventoryItem", b =>
@@ -4278,15 +4348,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("DeviceModelDefinitionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("EstimateRole")
-                        .HasColumnType("text");
-
-                    b.Property<int>("EstimateUnits")
-                        .HasColumnType("integer");
-
                     b.Property<string>("LocationRack")
                         .HasColumnType("text");
 
@@ -4294,9 +4355,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Manufacturer")
-                        .HasColumnType("text");
-
-                    b.Property<string>("MeasuredParametersCsv")
                         .HasColumnType("text");
 
                     b.Property<string>("Model")
@@ -4313,6 +4371,10 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Unit")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -4458,146 +4520,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("season_applied_requirements", null, t =>
                         {
                             t.HasCheckConstraint("ck_season_applied_requirement_range", "min_value <= target_value AND target_value <= max_value");
-                        });
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<int>("DayNumber")
-                        .HasColumnType("integer")
-                        .HasColumnName("day_number");
-
-                    b.Property<Guid>("SeasonIrrigationPlanId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("season_irrigation_plan_id");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeasonIrrigationPlanId", "DayNumber")
-                        .IsUnique();
-
-                    b.ToTable("season_irrigation_days", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_season_irrigation_day_number", "day_number >= 1");
-                        });
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<Guid>("GrowthProfileIdSnapshot")
-                        .HasColumnType("uuid")
-                        .HasColumnName("growth_profile_id_snapshot");
-
-                    b.Property<Guid>("PlantingSeasonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("planting_season_id");
-
-                    b.Property<DateOnly>("StartDateSnapshot")
-                        .HasColumnType("date")
-                        .HasColumnName("start_date_snapshot");
-
-                    b.Property<int>("TotalDaysSnapshot")
-                        .HasColumnType("integer")
-                        .HasColumnName("total_days_snapshot");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.Property<Guid>("UpdatedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("updated_by_user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PlantingSeasonId")
-                        .IsUnique();
-
-                    b.ToTable("season_irrigation_plans", (string)null);
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<int>("DurationSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("duration_seconds");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("enabled");
-
-                    b.Property<string>("Method")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("method");
-
-                    b.Property<Guid>("SeasonIrrigationDayId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("season_irrigation_day_id");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
-                    b.Property<TimeOnly>("StartTime")
-                        .HasColumnType("time without time zone")
-                        .HasColumnName("start_time");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("title");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.Property<int?>("WaterPerPlantMl")
-                        .HasColumnType("integer")
-                        .HasColumnName("water_per_plant_ml");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeasonIrrigationDayId", "SortOrder")
-                        .IsUnique();
-
-                    b.ToTable("season_irrigation_sessions", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_season_irrigation_duration", "duration_seconds BETWEEN 1 AND 1800");
-
-                            t.HasCheckConstraint("ck_season_irrigation_water", "water_per_plant_ml IS NULL OR water_per_plant_ml >= 0");
                         });
                 });
 
@@ -4993,200 +4915,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("ServiceRequestQuotationItems");
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockIn", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ApprovedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("FarmId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("StockInCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("SupplierName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApprovedByUserId");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("FarmId");
-
-                    b.HasIndex("TenantId", "FarmId", "StockInCode")
-                        .IsUnique();
-
-                    b.ToTable("StockIns", (string)null);
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockInDetail", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<decimal>("Quantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
-
-                    b.Property<Guid>("StockInId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("StockInId");
-
-                    b.ToTable("StockInDetails", (string)null);
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockOut", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ApprovedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("FarmId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<Guid?>("ServiceRequestId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("StockOutCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ZoneId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApprovedByUserId");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("FarmId");
-
-                    b.HasIndex("ServiceRequestId");
-
-                    b.HasIndex("ZoneId");
-
-                    b.HasIndex("TenantId", "FarmId", "StockOutCode")
-                        .IsUnique();
-
-                    b.ToTable("StockOuts", (string)null);
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockOutDetail", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("InventoryItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<decimal>("Quantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
-
-                    b.Property<Guid>("StockOutId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InventoryItemId");
-
-                    b.HasIndex("StockOutId");
-
-                    b.ToTable("StockOutDetails", (string)null);
-                });
-
             modelBuilder.Entity("SmartFarm.Domain.Entities.TelemetryReading", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5393,10 +5121,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("field_id");
 
-                    b.Property<Guid?>("GrowthProfileId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("growth_profile_id");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -5435,8 +5159,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CropVarietyId");
 
-                    b.HasIndex("GrowthProfileId");
-
                     b.HasIndex("FieldId", "Name")
                         .IsUnique();
 
@@ -5457,9 +5179,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Property<string>("ContractNumber")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<Guid?>("ContractPackageId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -5548,8 +5267,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ContractPackageId");
-
                     b.HasIndex("CreatedByOwnerId");
 
                     b.HasIndex("FarmId");
@@ -5560,7 +5277,7 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ZoneId");
 
-                    b.ToTable("ZoneContracts", (string)null);
+                    b.ToTable("ZoneContracts");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContractRenewal", b =>
@@ -5969,43 +5686,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("Zone");
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.Bill", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.ZoneContract", "Contract")
-                        .WithMany()
-                        .HasForeignKey("ContractId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Contract");
-
-                    b.Navigation("CreatedByUser");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.ContractPackage", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartFarm.Domain.Entities.Tenant", "Tenant")
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("Tenant");
-                });
-
             modelBuilder.Entity("SmartFarm.Domain.Entities.ControlSchedule", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.DeviceActuator", "Actuator")
@@ -6094,17 +5774,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ActorUser");
-
-                    b.Navigation("DeploymentRequest");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.DeploymentEstimateItem", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.DeploymentRequest", "DeploymentRequest")
-                        .WithMany("EstimateItems")
-                        .HasForeignKey("DeploymentRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("DeploymentRequest");
                 });
@@ -6222,6 +5891,10 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SmartFarm.Domain.Entities.PlatformHardwareItem", "HardwareItem")
+                        .WithMany()
+                        .HasForeignKey("HardwareItemId");
+
                     b.HasOne("SmartFarm.Domain.Entities.Zone", "Zone")
                         .WithMany()
                         .HasForeignKey("ZoneId")
@@ -6234,6 +5907,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("Farm");
 
                     b.Navigation("Gateway");
+
+                    b.Navigation("HardwareItem");
 
                     b.Navigation("Zone");
                 });
@@ -6564,6 +6239,31 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("Farm");
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.FirmwareInstallation", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.FirmwareRelease", "FirmwareRelease")
+                        .WithMany()
+                        .HasForeignKey("FirmwareReleaseId");
+
+                    b.HasOne("SmartFarm.Domain.Entities.HardwarePreparationSession", "PreparationSession")
+                        .WithMany()
+                        .HasForeignKey("PreparationSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "TechnicianUser")
+                        .WithMany()
+                        .HasForeignKey("TechnicianUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FirmwareRelease");
+
+                    b.Navigation("PreparationSession");
+
+                    b.Navigation("TechnicianUser");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.FirmwareJob", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.Gateway", "Gateway")
@@ -6573,6 +6273,16 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Gateway");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.FirmwareRelease", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "ApprovedByUser")
+                        .WithMany()
+                        .HasForeignKey("ApprovedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ApprovedByUser");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.Gateway", b =>
@@ -6592,6 +6302,31 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("DeploymentRequest");
 
                     b.Navigation("Farm");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.GatewayEnrollment", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.Gateway", "Gateway")
+                        .WithMany()
+                        .HasForeignKey("GatewayId");
+
+                    b.HasOne("SmartFarm.Domain.Entities.PlatformHardwareItem", "HardwareItem")
+                        .WithMany()
+                        .HasForeignKey("HardwareItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "TechnicianUser")
+                        .WithMany()
+                        .HasForeignKey("TechnicianUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Gateway");
+
+                    b.Navigation("HardwareItem");
+
+                    b.Navigation("TechnicianUser");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.GrowthProfile", b =>
@@ -6644,15 +6379,23 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("GrowthProfile");
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.GrowthStageIrrigationSession", b =>
+            modelBuilder.Entity("SmartFarm.Domain.Entities.HardwarePreparationSession", b =>
                 {
-                    b.HasOne("SmartFarm.Domain.Entities.GrowthStage", "GrowthStage")
-                        .WithMany("IrrigationSessions")
-                        .HasForeignKey("GrowthStageId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                    b.HasOne("SmartFarm.Domain.Entities.PlatformHardwareItem", "HardwareItem")
+                        .WithMany()
+                        .HasForeignKey("HardwareItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("GrowthStage");
+                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "TechnicianUser")
+                        .WithMany()
+                        .HasForeignKey("TechnicianUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("HardwareItem");
+
+                    b.Navigation("TechnicianUser");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.InventoryItem", b =>
@@ -6866,39 +6609,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("PlantingSeason");
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationPlan", "Plan")
-                        .WithMany("Days")
-                        .HasForeignKey("SeasonIrrigationPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Plan");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.PlantingSeason", "PlantingSeason")
-                        .WithMany()
-                        .HasForeignKey("PlantingSeasonId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PlantingSeason");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationSession", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.SeasonIrrigationDay", "Day")
-                        .WithMany("Sessions")
-                        .HasForeignKey("SeasonIrrigationDayId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Day");
-                });
-
             modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonStageTransition", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.AppUser", "ChangedByUser")
@@ -7065,94 +6775,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("Quotation");
                 });
 
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockIn", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "ApprovedByUser")
-                        .WithMany()
-                        .HasForeignKey("ApprovedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartFarm.Domain.Entities.Farm", "Farm")
-                        .WithMany()
-                        .HasForeignKey("FarmId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ApprovedByUser");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("Farm");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockInDetail", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.StockIn", "StockIn")
-                        .WithMany("Details")
-                        .HasForeignKey("StockInId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("StockIn");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockOut", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "ApprovedByUser")
-                        .WithMany()
-                        .HasForeignKey("ApprovedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByUser")
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartFarm.Domain.Entities.Farm", "Farm")
-                        .WithMany()
-                        .HasForeignKey("FarmId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartFarm.Domain.Entities.ServiceRequest", "ServiceRequest")
-                        .WithMany()
-                        .HasForeignKey("ServiceRequestId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("SmartFarm.Domain.Entities.Zone", "Zone")
-                        .WithMany()
-                        .HasForeignKey("ZoneId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("ApprovedByUser");
-
-                    b.Navigation("CreatedByUser");
-
-                    b.Navigation("Farm");
-
-                    b.Navigation("ServiceRequest");
-
-                    b.Navigation("Zone");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockOutDetail", b =>
-                {
-                    b.HasOne("SmartFarm.Domain.Entities.StockOut", "StockOut")
-                        .WithMany("Details")
-                        .HasForeignKey("StockOutId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("StockOut");
-                });
-
             modelBuilder.Entity("SmartFarm.Domain.Entities.TelemetryReading", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.Device", "Device")
@@ -7229,27 +6851,15 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("SmartFarm.Domain.Entities.GrowthProfile", "GrowthProfile")
-                        .WithMany()
-                        .HasForeignKey("GrowthProfileId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Crop");
 
                     b.Navigation("Field");
-
-                    b.Navigation("GrowthProfile");
 
                     b.Navigation("Variety");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.ZoneContract", b =>
                 {
-                    b.HasOne("SmartFarm.Domain.Entities.ContractPackage", "ContractPackage")
-                        .WithMany()
-                        .HasForeignKey("ContractPackageId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("SmartFarm.Domain.Entities.AppUser", "CreatedByOwner")
                         .WithMany()
                         .HasForeignKey("CreatedByOwnerId")
@@ -7259,13 +6869,12 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.HasOne("SmartFarm.Domain.Entities.Farm", "Farm")
                         .WithMany()
                         .HasForeignKey("FarmId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("SmartFarm.Domain.Entities.ZoneContract", "ParentContract")
                         .WithMany()
-                        .HasForeignKey("ParentContractId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .HasForeignKey("ParentContractId");
 
                     b.HasOne("SmartFarm.Domain.Entities.Tenant", "Tenant")
                         .WithMany()
@@ -7276,10 +6885,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.HasOne("SmartFarm.Domain.Entities.Zone", "Zone")
                         .WithMany()
                         .HasForeignKey("ZoneId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("ContractPackage");
 
                     b.Navigation("CreatedByOwner");
 
@@ -7364,8 +6971,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Decisions");
 
-                    b.Navigation("EstimateItems");
-
                     b.Navigation("PlanItems");
 
                     b.Navigation("Surveys");
@@ -7423,8 +7028,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.GrowthStage", b =>
                 {
-                    b.Navigation("IrrigationSessions");
-
                     b.Navigation("Requirements");
                 });
 
@@ -7438,16 +7041,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("AppliedRequirements");
 
                     b.Navigation("StageTransitions");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationDay", b =>
-                {
-                    b.Navigation("Sessions");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.SeasonIrrigationPlan", b =>
-                {
-                    b.Navigation("Days");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.ServiceRequest", b =>
@@ -7464,16 +7057,6 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("SmartFarm.Domain.Entities.ServiceRequestQuotation", b =>
                 {
                     b.Navigation("Items");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockIn", b =>
-                {
-                    b.Navigation("Details");
-                });
-
-            modelBuilder.Entity("SmartFarm.Domain.Entities.StockOut", b =>
-                {
-                    b.Navigation("Details");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.Tenant", b =>

@@ -1,0 +1,19 @@
+{
+  "repository": "smartfarm-firmware",
+  "releases": [
+    {
+      "hardwareTarget": "ESP32_GATEWAY",
+      "source": "backend/SmartFarm/scripts/esp32_firmware/esp32_smartfarm_gateway_c3_v2/esp32_smartfarm_gateway_c3_v2.ino",
+      "artifactName": "smartfarm-gateway-esp32-c3-v1.0.0.bin",
+      "version": "1.0.0",
+      "protocolVersion": "1.0"
+    },
+    {
+      "hardwareTarget": "ARDUINO_NANO_NODE",
+      "source": "backend/SmartFarm/scripts/esp32_firmware/arduino_combo_node_custom/arduino_combo_node_custom.ino",
+      "artifactName": "smartfarm-node-arduino-nano-v1.0.0.hex",
+      "version": "1.0.0",
+      "protocolVersion": "1.0"
+    }
+  ]
+}

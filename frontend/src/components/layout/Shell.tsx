@@ -21,10 +21,7 @@ export const Shell: React.FC = () => {
         isMobileMenuOpen={isMobileMenuOpen}
       />
       <div className="flex flex-1 overflow-hidden relative">
-        <Sidebar
-          isOpen={isMobileMenuOpen}
-          onClose={() => setIsMobileMenuOpen(false)}
-        />
+        <Sidebar />
         <main className="flex-1 p-2.5 sm:p-4 md:p-6 overflow-y-auto max-h-[calc(100vh-4rem)] bg-slate-50/50">
           <div className="max-w-7xl mx-auto w-full space-y-4 sm:space-y-6">
             <Outlet />

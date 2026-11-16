@@ -218,7 +218,24 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
     }
 
     public async Task<ServiceRequestView> CloseAsync(Guid tech, Guid id, CancellationToken ct)
-    { var r = await Assigned(tech, id, ct); if (r.Status != ServiceRequestStatus.Verified) throw new ResourceConflictException("A successful current-Device connection test is required before closure."); var device = r.CurrentDeviceId ?? r.DeviceId!.Value; var latest = await db.DeviceConnectionTests.Where(x => x.DeviceId == device).OrderByDescending(x => x.ObservedAtUtc).FirstOrDefaultAsync(ct); if (latest?.Succeeded != true) throw new ResourceConflictException("The latest current-Device connection test did not pass."); var from = r.Status; r.Status = ServiceRequestStatus.Closed; r.ClosedAtUtc = clock.GetUtcNow().UtcDateTime; (await db.Devices.SingleAsync(x => x.Id == device, ct)).Status = DeviceStatus.Online; Add(r, tech, ServiceHistoryEventType.Closed, from, r.Status, null); await db.SaveChangesAsync(ct); return await Load(id, ct); }
+    {
+        var r = await Assigned(tech, id, ct);
+        var installationAfterAcceptance = DeploymentSupport.IsInstallationCode(r.FailureCode)
+            && r.IsAcceptanceSigned
+            && await db.DeploymentRequests.AnyAsync(x => x.Id == r.DeploymentRequestId && x.Status == DeploymentRequestStatus.Completed, ct);
+        if (r.Status != ServiceRequestStatus.Verified && !installationAfterAcceptance)
+            throw new ResourceConflictException("A successful current-Device connection test is required before closure.");
+        if (r.CurrentDeviceId.HasValue || r.DeviceId.HasValue)
+        {
+            var device = r.CurrentDeviceId ?? r.DeviceId!.Value;
+            var latest = await db.DeviceConnectionTests.Where(x => x.DeviceId == device).OrderByDescending(x => x.ObservedAtUtc).FirstOrDefaultAsync(ct);
+            if (latest?.Succeeded != true) throw new ResourceConflictException("The latest current-Device connection test did not pass.");
+            (await db.Devices.SingleAsync(x => x.Id == device, ct)).Status = DeviceStatus.Online;
+        }
+        var from = r.Status; r.Status = ServiceRequestStatus.Closed; r.ClosedAtUtc = clock.GetUtcNow().UtcDateTime;
+        Add(r, tech, ServiceHistoryEventType.Closed, from, r.Status, installationAfterAcceptance ? "Technician xác nhận hoàn thành sau khi Owner nghiệm thu." : null);
+        await db.SaveChangesAsync(ct); return await Load(id, ct);
+    }
     private IQueryable<ServiceRequest> Query() => db.ServiceRequests.Include(x => x.History).Include(x => x.Replacements);
     private async Task<ServiceRequest> Find(Guid id, CancellationToken ct) => await Query().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Service Request was not found.");
     private async Task<ServiceRequest> Assigned(Guid tech, Guid id, CancellationToken ct) { await Role(tech, UserRole.PlatformTechnician, ct); var r = await Find(id, ct); if (r.AssignedTechnicianId != tech) throw new AuthorizationException("Only the assigned Technician may update this request."); return r; }

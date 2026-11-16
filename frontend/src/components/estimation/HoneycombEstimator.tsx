@@ -2,11 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Cpu, Wifi, Radio, Zap, Wrench, Package, TrendingUp, AlertTriangle,
-  Info, CheckCircle2, ChevronDown, ChevronUp, Layers, Sliders, Maximize2, Send, Database,
-  Tag, Sparkles
+  Info, CheckCircle2, ChevronDown, ChevronUp, Layers, Sliders, Maximize2, Send, Database
 } from 'lucide-react';
 import { Button } from '../ui/BaseUI';
-import { adminService, discountService } from '../../services';
+import { adminService } from '../../services';
 
 export interface HoneycombEstimateResult {
   sensingRadiusM: number;
@@ -75,12 +74,8 @@ export const CROP_HONEYCOMB_PROFILES: Record<string, {
   }
 };
 
-// Đơn giá thiết bị IoT chuẩn hoá (VNĐ)
+// Chỉ giữ phí lắp đặt cố định; giá thiết bị phải lấy từ kho Admin.
 export const HONEYCOMB_UNIT_PRICES = {
-  gateway: 3_500_000,     // LoRa Gateway Công nghiệp IP67
-  sensor: 850_000,        // Sensor Node Tổ ong (Đa thông số vi khí hậu)
-  actuator: 650_000,      // Actuator Node điều khiển van điện từ / rơ-le
-  accessories: 150_000,   // Vật tư phụ (cọc inox, cáp chống nhiễu, hộp bảo vệ) / node
   installationFlat: 500_000, // Phí khảo sát, tích hợp & cấu hình mạng mesh tổ ong
 };
 
@@ -122,37 +117,38 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       .catch((err) => console.warn('Could not fetch hardware items from DB', err));
   }, []);
 
-  const [bestDiscount, setBestDiscount] = useState<any>(null);
+  const findPriced = (predicate: (item: any) => boolean) => hardwareItems.find(i => Number(i.unitPrice) > 0 && predicate(i));
+  const itemText = (item: any) => `${item.code || ''} ${item.name || ''} ${item.model || ''} ${item.category || ''}`.toUpperCase();
 
   const gwItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'GATEWAY') || {
+    return findPriced(i => /GATEWAY|ESP32/.test(itemText(i))) || {
       name: 'Trạm Central Gateway ESP32-LoRa Dual Antenna',
       model: 'GW-ESP32-DL01',
-      unitPrice: HONEYCOMB_UNIT_PRICES.gateway,
+      unitPrice: 0,
     };
   }, [hardwareItems]);
 
   const sensorItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'AIR_SENSOR' || i.category === 'SENSOR_NODE') || {
+    return findPriced(i => /DHT|SHT|AIR[_ -]?SENSOR|SENSOR[_ -]?NODE|SOIL|MOISTURE|EC[_ -]?PH/.test(itemText(i))) || {
       name: `Node Cảm biến Môi trường Lục giác (${profile.recommendedSensors})`,
       model: 'SN-AIR-SHT30',
-      unitPrice: HONEYCOMB_UNIT_PRICES.sensor,
+      unitPrice: 0,
     };
   }, [hardwareItems, profile.recommendedSensors]);
 
   const actuatorItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'VALVE' || i.category === 'PUMP') || {
+    return findPriced(i => /VALVE|PUMP|RELAY|ACTUATOR|VAN|BƠM/.test(itemText(i))) || {
       name: 'Node Điều khiển Van Solenoid Tưới nhỏ giọt 4 Cổng',
       model: 'ACT-VALVE-01',
-      unitPrice: HONEYCOMB_UNIT_PRICES.actuator,
+      unitPrice: 0,
     };
   }, [hardwareItems]);
 
   const accessoriesItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'SPARE_PART') || {
+    return findPriced(i => /SPARE|CABLE|WIRE|DÂY|ĐIỆN TRỞ|RESISTOR|LORA/.test(itemText(i))) || {
       name: 'Vật tư phụ kiện (Trụ cọc inox 304, cáp bọc chống nhiễu, hộp IP67)',
       model: 'SPARE-GEN-01',
-      unitPrice: HONEYCOMB_UNIT_PRICES.accessories,
+      unitPrice: 0,
     };
   }, [hardwareItems]);
 
@@ -181,10 +177,10 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
     const gatewaysCount = Math.max(1, Math.ceil(validArea / 15000));
 
     // 6. Chi phí (Đồng bộ trực tiếp theo Đơn giá Database)
-    const unitGwPrice = Number(gwItem.unitPrice) || HONEYCOMB_UNIT_PRICES.gateway;
-    const unitSensorPrice = Number(sensorItem.unitPrice) || HONEYCOMB_UNIT_PRICES.sensor;
-    const unitActuatorPrice = Number(actuatorItem.unitPrice) || HONEYCOMB_UNIT_PRICES.actuator;
-    const unitAccessoriesPrice = Number(accessoriesItem.unitPrice) || HONEYCOMB_UNIT_PRICES.accessories;
+    const unitGwPrice = Number(gwItem.unitPrice) || 0;
+    const unitSensorPrice = Number(sensorItem.unitPrice) || 0;
+    const unitActuatorPrice = Number(actuatorItem.unitPrice) || 0;
+    const unitAccessoriesPrice = Number(accessoriesItem.unitPrice) || 0;
     const unitInstallationPrice = HONEYCOMB_UNIT_PRICES.installationFlat;
 
     const gatewayCost = gatewaysCount * unitGwPrice;
@@ -219,17 +215,6 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       installationCost
     };
   }, [areaM2, sensingRadius, profile.actuatorRatio, gwItem, sensorItem, actuatorItem, accessoriesItem]);
-
-  useEffect(() => {
-    if (calculation.totalCostVnd > 0) {
-      discountService.getBestDiscount(calculation.totalCostVnd)
-        .then(res => {
-          if (res && res.hasDiscount) setBestDiscount(res);
-          else setBestDiscount(null);
-        })
-        .catch(() => setBestDiscount(null));
-    }
-  }, [calculation.totalCostVnd]);
 
   const formatVND = (n: number) => n.toLocaleString('vi-VN') + ' đ';
 
@@ -426,24 +411,6 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* Discount Code Promotion Banner for Technician */}
-              {bestDiscount && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-gradient-to-r from-amber-50/90 via-emerald-50/90 to-teal-50/90 border-t border-emerald-200 text-xs animate-in fade-in">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold flex items-center gap-1 font-mono text-[11px] border border-amber-300 shrink-0">
-                      <Tag size={12} className="text-amber-700" /> {bestDiscount.code}
-                    </span>
-                    <span className="text-slate-800 font-medium">
-                      Ưu đãi Admin cấp phát: Giảm <strong>{bestDiscount.discountPercent}%</strong> (-{formatVND(bestDiscount.discountAmount)}). {bestDiscount.description}
-                    </span>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="text-[10px] text-slate-500 block">Dự toán sau mã giảm giá:</span>
-                    <strong className="font-mono text-emerald-800 text-sm">{formatVND(bestDiscount.finalAmount)}</strong>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

@@ -78,13 +78,15 @@ export const SchedulesAutomationPage: React.FC = () => {
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const zoneId = scheduleForm.zoneId || zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001';
+      const zoneId = scheduleForm.zoneId || zones[0]?.zoneId;
+      const actuatorId = scheduleForm.actuatorId || actuators[0]?.actuatorId;
+      if (!zoneId || !actuatorId) throw new Error('Cần chọn Zone và actuator thật trước khi tạo lịch.');
       const [hour, min] = scheduleForm.startTime.split(':');
       const cron = `${min || '0'} ${hour || '6'} * * *`;
 
       await controlService.createSeasonSchedule(zoneId, {
         name: scheduleForm.name,
-        actuatorId: scheduleForm.actuatorId || actuators[0]?.actuatorId || 'act-01',
+        actuatorId,
         cronExpression: cron,
         durationSeconds: scheduleForm.durationMinutes * 60,
         actionType: 'TURN_ON',
@@ -112,13 +114,15 @@ export const SchedulesAutomationPage: React.FC = () => {
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const zoneId = ruleForm.zoneId || zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001';
+      const zoneId = ruleForm.zoneId || zones[0]?.zoneId;
+      const actuatorId = ruleForm.actuatorId || actuators[0]?.actuatorId;
+      if (!zoneId || !actuatorId) throw new Error('Cần chọn Zone và actuator thật trước khi tạo luật.');
       await controlService.createAutoRule(zoneId, {
         name: ruleForm.name,
         parameterCode: ruleForm.parameterCode,
         operator: ruleForm.operator,
         thresholdValue: Number(ruleForm.thresholdValue),
-        actuatorId: ruleForm.actuatorId || actuators[0]?.actuatorId || 'act-01',
+        actuatorId,
         actionType: ruleForm.actionType,
         actionDurationMinutes: Number(ruleForm.actionDurationMinutes),
         isActive: true,
@@ -144,7 +148,8 @@ export const SchedulesAutomationPage: React.FC = () => {
   };
 
   const handleArchiveSchedule = async (scheduleId: string, zoneId?: string) => {
-    const targetZone = zoneId || zones[0]?.zoneId || '32000000-0000-0000-0000-000000000001';
+    const targetZone = zoneId || zones[0]?.zoneId;
+    if (!targetZone) return;
     try {
       await controlService.archiveSchedule(targetZone, scheduleId);
       setNotification('Đã gỡ bỏ lịch tưới định kỳ!');
@@ -206,7 +211,7 @@ export const SchedulesAutomationPage: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="text-xs text-slate-600">{sch.zoneName || 'Nhà màng'} - {sch.actuatorName || 'Van tưới tự động'}</div>
+              <div className="text-xs text-slate-600">{sch.zoneName || '—'} - {sch.actuatorName || '—'}</div>
               <div className="text-xs text-slate-500 flex items-center justify-between pt-2 border-t border-slate-200 font-mono">
                 <span>Khởi chạy: <strong className="text-slate-900">{sch.startTime} ({sch.durationMinutes} phút)</strong></span>
                 <span>Lặp lại: <strong className="text-emerald-700">{Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length > 0 ? sch.daysOfWeek.join(', ') : 'Hằng ngày'}</strong></span>

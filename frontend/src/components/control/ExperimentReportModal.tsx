@@ -35,69 +35,9 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   onSendContractSuccess,
 }) => {
   const bp = useBusinessParameters(); const depositPct = bp.depositPercent;
-  // Default quotation items matching Image 2 table layout!
-  const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([
-    {
-      id: 'item-gw-01',
-      code: 'GW-ESP32-DL01',
-      name: 'Trạm Central Gateway ESP32-LoRa Dual Antenna',
-      unit: 'Trạm',
-      unitPrice: 3800000,
-      vatPercent: 8,
-      quantity: 1,
-      totalAmount: 4104000,
-      notes: 'LoRa 915MHz, Chống nước IP67, Bảo hành 24 tháng',
-      isSelected: true,
-    },
-    {
-      id: 'item-soil-01',
-      code: 'SN-SOIL-01',
-      name: 'Node Cảm biến Độ ẩm & Nhiệt độ Đất RS485 Probe',
-      unit: 'Node',
-      unitPrice: 1250000,
-      vatPercent: 8,
-      quantity: 2,
-      totalAmount: 2700000,
-      notes: 'Đầu đo 3-in-1 (Nhiệt, Ẩm, EC Đất), Giảm 5%',
-      isSelected: true,
-    },
-    {
-      id: 'item-air-02',
-      code: 'SN-AIR-02',
-      name: 'Node Cảm biến Vi khí hậu Không khí SHT30',
-      unit: 'Node',
-      unitPrice: 950000,
-      vatPercent: 8,
-      quantity: 2,
-      totalAmount: 2052000,
-      notes: 'Sensirion SHT30, Đo Nhiệt độ, Độ ẩm & CO2',
-      isSelected: true,
-    },
-    {
-      id: 'item-valve-01',
-      code: 'ACT-VALVE-01',
-      name: 'Node Điều khiển Van Solenoid Tưới nhỏ giọt 4 Cổng',
-      unit: 'Bộ',
-      unitPrice: 2150000,
-      vatPercent: 8,
-      quantity: 2,
-      totalAmount: 4644000,
-      notes: '4 Relay 12V/24V, Hỗ trợ phản hồi trạng thái công tắc',
-      isSelected: true,
-    },
-    {
-      id: 'item-pump-02',
-      code: 'ACT-PUMP-02',
-      name: 'Node Điều khiển Bơm Phân Dinh dưỡng Châm tự động',
-      unit: 'Bộ',
-      unitPrice: 1800000,
-      vatPercent: 8,
-      quantity: 1,
-      totalAmount: 1944000,
-      notes: 'Điều chế xung PWM châm dung dịch A/B',
-      isSelected: false,
-    }
-  ]);
+  // Prices must come from the Admin hardware catalog. Never seed a quotation
+  // with demo prices: the technician adds only the actual warehouse items.
+  const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([]);
 
   const [contractNote, setContractNote] = useState(
     'Báo giá lắp đặt trọn gói hệ thống IoT nhà màng. Đã bao gồm thiết bị, công lắp đặt thực địa và bảo hành 2 năm.'
@@ -167,7 +107,11 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
       q => (q.code && whItem.code && q.code.toLowerCase() === whItem.code.toLowerCase()) || q.id === whItem.id
     );
 
-    const price = Number(whItem.unitPrice || 0) || 1200000;
+    const price = Number(whItem.unitPrice || 0);
+    if (price <= 0) {
+      alert(`Thiết bị "${whItem.name || whItem.code || 'không xác định'}" chưa có đơn giá. Vui lòng cấu hình giá tại kho Admin trước khi đưa vào hợp đồng.`);
+      return;
+    }
     const vat = 8;
     const cat = String(whItem.category || '').toUpperCase();
     const unit = whItem.unit || (cat === 'GATEWAY' ? 'Trạm' : (cat.includes('SENSOR') || cat === 'NODE') ? 'Node' : 'Bộ');

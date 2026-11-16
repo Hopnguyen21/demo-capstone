@@ -50,6 +50,16 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
             }));
+    options.AddPolicy("GatewayHandshakePolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 builder.Services.AddHealthChecks();
 builder.Services.AddEndpointsApiExplorer();
@@ -82,6 +92,8 @@ builder.Services.AddHostedService<GatewayLivenessWorker>();
 builder.Services.AddHostedService<DeviceLivenessWorker>();
 builder.Services.AddHostedService<SimulatedIotTelemetryWorker>();
 builder.Services.AddHostedService<KnowledgeEmbeddingWorker>();
+builder.Services.AddHostedService<FirmwareReleaseReconciliationWorker>();
+builder.Services.AddHostedService<FirmwareJobTimeoutWorker>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
@@ -147,6 +159,7 @@ if (!app.Environment.IsEnvironment("Testing"))
             if (attempt == maxRetries)
             {
                 logger.LogError(ex, "❌ [AutoMigration] Lỗi: Không thể tự động migration database sau {MaxRetries} lần thử.", maxRetries);
+                throw new InvalidOperationException("Database migration failed. Backend startup was stopped to prevent requests against an outdated schema.", ex);
             }
             else
             {

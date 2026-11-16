@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Plus } from 'lucide-react';
+import { Package, Plus, AlertTriangle, RotateCcw, History } from 'lucide-react';
 import { Button, Modal, Input } from '../../components/ui/BaseUI';
 import { supportService, adminService } from '../../services';
 
@@ -23,7 +23,12 @@ export const TechnicianInventoryPage: React.FC = () => {
           name: i.name,
           code: i.code,
           stock: i.quantityInStock || 0,
-          unit: 'Cái'
+          unit: i.unit || 'Cái',
+          category: i.category || 'PERIPHERAL',
+          serialNumber: i.serialNumber || '',
+          macAddress: i.macAddress || '',
+          status: i.status || 'InTechnicianStock',
+          assignedAt: i.createdAtUtc
         })));
       }
     }).catch(() => {});
@@ -35,11 +40,11 @@ export const TechnicianInventoryPage: React.FC = () => {
     const entries = Object.entries(selectedWarehouse).filter(([, quantity]) => quantity > 0);
     if (!entries.length) { alert('⚠️ Vui lòng chọn ít nhất một linh kiện.'); return; }
     try {
-      await Promise.all(entries.map(([id, qty]) => adminService.assignHardwareItem(id, '', qty)));
-      setNotice('Đã chuyển linh kiện từ kho trung tâm vào kho kỹ thuật viên.');
+      await adminService.requestHardwareAllocation(entries.map(([id, qty]) => ({ hardwareItemId: id, quantity: qty })));
+      setNotice('Đã gửi đơn lấy thiết bị. Vui lòng chờ Admin duyệt và cấp phát.');
       setSelectedWarehouse({});
       const refreshed = await supportService.getTechnicianSpareParts();
-      if (Array.isArray(refreshed)) setParts(refreshed.map((i: any) => ({ id: i.id, name: i.name, code: i.code, stock: i.quantityInStock || 0, unit: 'Cái' })));
+      if (Array.isArray(refreshed)) setParts(refreshed.map((i: any) => ({ id: i.id, name: i.name, code: i.code, stock: i.quantityInStock || 0, unit: i.unit || 'Cái', category: i.category || 'PERIPHERAL', serialNumber: i.serialNumber || '', macAddress: i.macAddress || '', status: i.status || 'InTechnicianStock', assignedAt: i.createdAtUtc })));
     } catch { alert('❌ Không thể bổ sung linh kiện từ kho trung tâm.'); }
   };
 
@@ -50,7 +55,7 @@ export const TechnicianInventoryPage: React.FC = () => {
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Package className="text-[#119653]" size={22} /> Kho Vật tư & Linh kiện Dự phòng (Spare Parts Inventory)
           </h1>
-          <p className="text-xs text-slate-600 mt-1">Quản lý linh kiện phần cứng IoT phục vụ lắp đặt mới và bảo trì sự cố.</p>
+          <p className="text-xs text-slate-600 mt-1">Quản lý tài sản đang giữ trước khi đưa thiết bị ra hiện trường.</p>
         </div>
         <Button onClick={() => setIsAdjustModalOpen(true)} className="bg-[#119653] hover:bg-emerald-700 text-white font-bold"><Plus size={16} className="mr-1.5" /> Bổ sung thiết bị</Button>
       </div>
@@ -59,22 +64,22 @@ export const TechnicianInventoryPage: React.FC = () => {
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 uppercase font-semibold">
-              <th className="p-4">Tên linh kiện</th>
-              <th className="p-4">Mã linh kiện</th>
-              <th className="p-4">Tồn kho hiện tại</th>
-              <th className="p-4">Đơn vị tính</th>
+              <th className="p-4">Thiết bị</th>
+              <th className="p-4">Định danh</th>
+              <th className="p-4">Số lượng</th>
+              <th className="p-4">Trạng thái sử dụng</th>
               <th className="p-4 text-right">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-slate-700">
             {parts.map(sp => (
               <tr key={sp.id} className="hover:bg-slate-50/80 transition-colors">
-                <td className="p-4 font-semibold text-slate-900">{sp.name}</td>
-                <td className="p-4 font-mono text-sky-700 font-semibold">{sp.code}</td>
+                <td className="p-4 font-semibold text-slate-900">{sp.name}<small className="block text-slate-500 font-normal">{sp.code}</small></td>
+                <td className="p-4 font-mono text-sky-700 font-semibold">{sp.serialNumber || sp.macAddress || 'Theo lô'}</td>
                 <td className="p-4 font-bold text-emerald-800">{sp.stock}</td>
-                <td className="p-4 text-slate-500">{sp.unit}</td>
+                <td className="p-4"><span className={`px-2 py-1 rounded-full text-[10px] font-bold ${sp.status === 'Faulty' ? 'bg-red-100 text-red-700' : sp.stock <= 0 ? 'bg-slate-100 text-slate-600' : 'bg-emerald-100 text-emerald-700'}`}>{sp.status === 'Faulty' ? 'Báo lỗi' : sp.stock <= 0 ? 'Đã cấp hết' : 'Đang giữ'}</span></td>
                 <td className="p-4 text-right space-x-2">
-                  <button onClick={() => { setSelectedPart(sp); setQuantity(1); setIsAdjustModalOpen(true); }} className="text-emerald-700 font-semibold hover:underline">Chỉnh sửa</button>
+                  <button onClick={() => { setSelectedPart(sp); setQuantity(1); setIsAdjustModalOpen(true); }} className="text-emerald-700 font-semibold hover:underline">Quản lý</button>
                 </td>
               </tr>
             ))}
@@ -114,12 +119,13 @@ export const TechnicianInventoryPage: React.FC = () => {
             <Input type="number" min={1} value={quantity} onChange={e => setQuantity(Math.max(1, Number(e.target.value) || 1))} />
           </div>
           <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
-            <Button type="button" variant="outline" onClick={() => { setNotice('Đã ghi nhận báo cáo lỗi cho ' + selectedPart.code); setIsAdjustModalOpen(false); }}>Báo cáo lỗi</Button>
-            <Button type="button" variant="outline" onClick={async () => { try { await adminService.returnHardwareItem(selectedPart.id); setParts(prev => prev.filter(p => p.id !== selectedPart.id)); setNotice(`Đã trả ${quantity} ${selectedPart.unit} về kho trung tâm.`); setIsAdjustModalOpen(false); } catch { alert('❌ Không thể trả linh kiện về kho.'); } }}>Trả về kho</Button>
+            <Button type="button" variant="outline" onClick={async () => { try { await adminService.reportHardwareFault(selectedPart.id); setParts(prev => prev.map(p => p.id === selectedPart.id ? { ...p, status: 'Faulty' } : p)); setNotice('Đã báo cáo thiết bị lỗi: ' + selectedPart.code); setIsAdjustModalOpen(false); } catch { alert('❌ Không thể báo cáo lỗi thiết bị.'); } }}><AlertTriangle size={14} className="mr-1" /> Báo cáo lỗi</Button>
+            <Button type="button" variant="outline" onClick={async () => { try { await adminService.returnHardwareItem(selectedPart.id); setParts(prev => prev.filter(p => p.id !== selectedPart.id)); setNotice(`Đã trả ${quantity} ${selectedPart.unit} về kho trung tâm.`); setIsAdjustModalOpen(false); } catch { alert('❌ Không thể trả linh kiện về kho.'); } }}><RotateCcw size={14} className="mr-1" /> Trả về kho</Button>
             <Button type="button" className="bg-[#119653] text-white" onClick={() => { setParts(prev => prev.map(p => p.id === selectedPart.id ? { ...p, stock: Math.max(0, p.stock - quantity) } : p)); setNotice(`Đã điều chỉnh ${quantity} ${selectedPart.unit} khỏi kho chính.`); setIsAdjustModalOpen(false); }}>Lưu điều chỉnh</Button>
           </div>
         </div>}
       </Modal>
+      <div className="flex items-center gap-2 text-xs text-slate-500"><History size={15} /> Lịch sử cấp phát được hiển thị từ bản ghi tài sản và trạng thái hiện tại.</div>
       {notice && <div className="fixed bottom-5 right-5 bg-emerald-600 text-white px-4 py-3 rounded-lg shadow-lg text-xs font-semibold">{notice}</div>}
     </div>
   );
