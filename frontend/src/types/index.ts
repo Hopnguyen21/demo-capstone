@@ -1133,5 +1133,86 @@ export interface BestDiscountResult {
   note?: string;
 }
 
+// ─── Field Survey Report (Khảo sát thực địa) ─────────────────────────
+export interface FieldSurveyReport {
+  id: string;
+  farmId: string;
+  farmName: string;
+  tenantId: string;
+  serviceRequestId?: string | null;
+  serviceRequestTitle?: string | null;
+  zoneId?: string | null;
+  zoneName?: string | null;
+  title: string;
+  surveyDate: string;
+  location: string;
+  surveyorName: string;
+  representativeName: string;
+  farmOverview: string;
+  cropAndSeasonStatus: string;
+  cultivationProcess: string;
+  environmentalMonitoring: string;
+  environmentalThresholdNeeds: string;
+  equipmentAndDataCollection: string;
+  managementAndPermissions: string;
+  difficultiesAndNeeds: string;
+  teamAssessment: string;
+  status: 'Draft' | 'Submitted' | 'Approved';
+  createdByUserId: string;
+  createdByUserName: string;
+  createdAtUtc: string;
+  updatedAtUtc?: string | null;
+}
+
+export interface CreateFieldSurveyReportPayload {
+  farmId: string;
+  serviceRequestId?: string | null;
+  zoneId?: string | null;
+  title: string;
+  surveyDate: string;
+  location?: string;
+  surveyorName?: string;
+  representativeName?: string;
+  farmOverview?: string;
+  cropAndSeasonStatus?: string;
+  cultivationProcess?: string;
+  environmentalMonitoring?: string;
+  environmentalThresholdNeeds?: string;
+  equipmentAndDataCollection?: string;
+  managementAndPermissions?: string;
+  difficultiesAndNeeds?: string;
+  teamAssessment?: string;
+  status?: string;
+}
+
+export interface UpdateFieldSurveyReportPayload {
+  title: string;
+  surveyDate: string;
+  location?: string;
+  surveyorName?: string;
+  representativeName?: string;
+  farmOverview?: string;
+  cropAndSeasonStatus?: string;
+  cultivationProcess?: string;
+  environmentalMonitoring?: string;
+  environmentalThresholdNeeds?: string;
+  equipmentAndDataCollection?: string;
+  managementAndPermissions?: string;
+  difficultiesAndNeeds?: string;
+  teamAssessment?: string;
+  status?: string;
+}
+
+export interface FieldSurveyReportFilter {
+  farmId?: string;
+  serviceRequestId?: string;
+  zoneId?: string;
+  fromDate?: string;
+  toDate?: string;
+  status?: string;
+  search?: string;
+}
+
+
 
 

@@ -11,7 +11,11 @@ import type {
   DocumentVersionView,
   DocumentPreviewResult,
   DocumentUpdateResult, 
-  KnowledgePassage 
+  KnowledgePassage,
+  FieldSurveyReport,
+  CreateFieldSurveyReportPayload,
+  UpdateFieldSurveyReportPayload,
+  FieldSurveyReportFilter
 } from '../types';
 
 // ─── Re-export api utilities ─────────────────────────────────────────────────
@@ -2603,3 +2607,54 @@ export const backupService = {
   restore: async (fileName: string, confirm: boolean, overwriteConfirmation: string): Promise<RestoreBackupResult> =>
     (await apiClient.post(`/api/v1/platform/backups/${encodeURIComponent(fileName)}/restore`, { confirm, overwriteConfirmation })).data,
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIELD SURVEY REPORT SERVICE (Khảo sát thực địa)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const fieldSurveyReportService = {
+  /** GET /api/v1/field-survey-reports */
+  getReports: async (filter?: FieldSurveyReportFilter): Promise<FieldSurveyReport[]> => {
+    const params: Record<string, string> = {};
+    if (filter?.farmId) params.farmId = filter.farmId;
+    if (filter?.serviceRequestId) params.serviceRequestId = filter.serviceRequestId;
+    if (filter?.zoneId) params.zoneId = filter.zoneId;
+    if (filter?.fromDate) params.fromDate = filter.fromDate;
+    if (filter?.toDate) params.toDate = filter.toDate;
+    if (filter?.status && filter.status !== 'ALL') params.status = filter.status;
+    if (filter?.search) params.search = filter.search;
+    return (await apiClient.get('/api/v1/field-survey-reports', { params })).data;
+  },
+
+  /** GET /api/v1/field-survey-reports/{id} */
+  getReportById: async (id: string): Promise<FieldSurveyReport> => {
+    return (await apiClient.get(`/api/v1/field-survey-reports/${id}`)).data;
+  },
+
+  /** GET /api/v1/field-survey-reports/by-service-request/{serviceRequestId} */
+  getReportByServiceRequest: async (serviceRequestId: string): Promise<FieldSurveyReport | null> => {
+    try {
+      const res = await apiClient.get(`/api/v1/field-survey-reports/by-service-request/${serviceRequestId}`);
+      return res.data || null;
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
+  /** POST /api/v1/field-survey-reports */
+  createReport: async (payload: CreateFieldSurveyReportPayload): Promise<FieldSurveyReport> => {
+    return (await apiClient.post('/api/v1/field-survey-reports', payload)).data;
+  },
+
+  /** PUT /api/v1/field-survey-reports/{id} */
+  updateReport: async (id: string, payload: UpdateFieldSurveyReportPayload): Promise<FieldSurveyReport> => {
+    return (await apiClient.put(`/api/v1/field-survey-reports/${id}`, payload)).data;
+  },
+
+  /** DELETE /api/v1/field-survey-reports/{id} */
+  deleteReport: async (id: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/field-survey-reports/${id}`);
+  },
+};
+

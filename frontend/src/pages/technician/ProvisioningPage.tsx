@@ -3,6 +3,7 @@ import { ServiceRequest } from '../../types';
 import { supportService, deviceService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
 import { ExperimentReportModal, HardwareItem } from '../../components/control/ExperimentReportModal';
+import { FieldSurveyReportModal } from '../../components/reports/FieldSurveyReportModal';
 import { Button, StatusBadge } from '../../components/ui/BaseUI';
 import { 
   CpuIcon, Wifi, CheckCircle2, ArrowRight, MapPin, 
@@ -17,6 +18,7 @@ export const ProvisioningPage: React.FC = () => {
   const [deploymentRequests, setDeploymentRequests] = useState<any[]>([]);
   const [selectedRequestForExperiment, setSelectedRequestForExperiment] = useState<ServiceRequest | null>(null);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
+  const [selectedRequestForSurvey, setSelectedRequestForSurvey] = useState<ServiceRequest | null>(null);
   const [selectedHardwareItems, setSelectedHardwareItems] = useState<any[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -502,6 +504,16 @@ export const ProvisioningPage: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* BUTTON 0: PHIẾU BÁO CÁO KHẢO SÁT THỰC ĐỊA */}
+                        <Button
+                          onClick={() => setSelectedRequestForSurvey(req)}
+                          className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/50"
+                          title="Lập hoặc xem Phiếu khảo sát thực địa trước khi ký hợp đồng"
+                        >
+                          <FileText size={15} className="text-emerald-300" />
+                          <span>📋 Phiếu Khảo sát Thực địa</span>
+                        </Button>
+
                         {/* BUTTON 1: BÁO GIÁ & HỢP ĐỒNG LẮP ĐẶT */}
                         {isInstallation && (
                           is30Paid ? (
@@ -609,6 +621,28 @@ export const ProvisioningPage: React.FC = () => {
           request={selectedRequestForMapper}
           selectedHardwareItems={selectedHardwareItems.length > 0 ? selectedHardwareItems : (selectedRequestForMapper.contractDetails?.items || [])}
           onSaveMapping={(nodes, count) => handleSaveMapping(selectedRequestForMapper.serviceRequestId, nodes, count)}
+        />
+      )}
+
+      {/* Step 0 Modal: Field Survey Report Modal */}
+      {selectedRequestForSurvey && (
+        <FieldSurveyReportModal
+          isOpen={Boolean(selectedRequestForSurvey)}
+          onClose={() => setSelectedRequestForSurvey(null)}
+          serviceRequest={{
+            id: selectedRequestForSurvey.serviceRequestId,
+            requestCode: selectedRequestForSurvey.serviceRequestId.substring(0, 8),
+            farmId: selectedRequestForSurvey.farmId,
+            farmName: selectedRequestForSurvey.farmName,
+            zoneId: selectedRequestForSurvey.zoneId,
+            zoneName: selectedRequestForSurvey.zoneName,
+            title: selectedRequestForSurvey.title,
+            status: selectedRequestForSurvey.status,
+          }}
+          onSaved={() => {
+            setSuccessMsg('Đã lưu phiếu khảo sát thực địa thành công!');
+            setTimeout(() => setSuccessMsg(null), 4000);
+          }}
         />
       )}
 

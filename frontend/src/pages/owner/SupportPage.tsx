@@ -13,6 +13,7 @@ import { useBusinessParameters, contractDepositPercent } from '../../services/bu
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
 import { ServiceRequest, ZoneContract } from '../../types';
 import { supportService, zoneContractService } from '../../services';
+import { FieldSurveyReportModal } from '../../components/reports/FieldSurveyReportModal';
 import { useAuth } from '@/app/providers/AuthContext';
 import { Button, StatusBadge, Modal, Input } from '../../components/ui/BaseUI';
 
@@ -46,6 +47,7 @@ export const SupportPage: React.FC = () => {
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [selectedRequestForSurvey, setSelectedRequestForSurvey] = useState<ServiceRequest | null>(null);
 
   // Form states for Owner Contract Signature & 30% Payment
   const [ownerSignatures, setOwnerSignatures] = useState<Record<string, string>>({});
@@ -831,6 +833,19 @@ export const SupportPage: React.FC = () => {
                         <span className="hidden sm:inline">Hủy</span>
                       </button>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRequestForSurvey(req);
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                      title="Xem Phiếu báo cáo khảo sát thực địa do kỹ thuật viên lập"
+                    >
+                      <FileText size={14} className="text-teal-600" />
+                      <span className="hidden sm:inline">Phiếu Khảo sát</span>
+                    </button>
 
                     <button
                       type="button"
@@ -1837,6 +1852,25 @@ export const SupportPage: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Field Survey Report Modal (Read-only for Owner) */}
+      {selectedRequestForSurvey && (
+        <FieldSurveyReportModal
+          isOpen={Boolean(selectedRequestForSurvey)}
+          onClose={() => setSelectedRequestForSurvey(null)}
+          readOnly={true}
+          serviceRequest={{
+            id: selectedRequestForSurvey.serviceRequestId,
+            requestCode: selectedRequestForSurvey.serviceRequestId.substring(0, 8),
+            farmId: selectedRequestForSurvey.farmId,
+            farmName: selectedRequestForSurvey.farmName,
+            zoneId: selectedRequestForSurvey.zoneId,
+            zoneName: selectedRequestForSurvey.zoneName,
+            title: selectedRequestForSurvey.title,
+            status: selectedRequestForSurvey.status,
+          }}
+        />
       )}
     </div>
   );

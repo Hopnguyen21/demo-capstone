@@ -26,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const adminNav: NavItem[] = [
     { title: 'Platform Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
     { title: 'Tiếp nhận & Phân công', path: '/admin/requests', icon: <ClipboardList size={18} /> },
+    { title: 'Khảo sát Thực địa', path: '/admin/field-surveys', icon: <FileText size={18} /> },
     { title: 'Quản lý Tenants', path: '/admin/tenants', icon: <Building2 size={18} /> },
     { title: 'Quản lý Người dùng', path: '/admin/users', icon: <Users size={18} /> },
     { title: 'Gói Hợp Đồng Canh Tác', path: '/admin/contract-packages', icon: <PackageCheck size={18} /> },
@@ -45,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const techNav: NavItem[] = [
     { title: 'Trung tâm Kỹ thuật', path: '/technician/dashboard', icon: <Wrench size={18} /> },
+    { title: 'Khảo sát Thực địa', path: '/technician/field-surveys', icon: <FileText size={18} /> },
     { title: 'Yêu cầu Lắp đặt (Chấm Node)', path: '/technician/provisioning', icon: <CpuIcon size={18} /> },
     { title: 'Yêu cầu Bảo trì (Chấm Node)', path: '/technician/maintenance', icon: <Wrench size={18} /> },
     { title: 'Gói Hợp Đồng Canh Tác', path: '/technician/contract-packages', icon: <PackageCheck size={18} /> },
@@ -67,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { title: 'Phân công Công việc', path: '/owner/tasks', icon: <ClipboardList size={18} /> },
     { title: 'Trợ lý Nông học AI', path: '/owner/ai', icon: <Bot size={18} /> },
     { title: 'Báo cáo & Phân tích', path: '/owner/reports', icon: <FileText size={18} /> },
+    { title: 'Báo cáo Khảo sát Thực địa', path: '/owner/field-surveys', icon: <FileText size={18} /> },
     { title: 'Yêu cầu Hỗ trợ Kỹ thuật', path: '/owner/support', icon: <Headphones size={18} /> },
   ];
 

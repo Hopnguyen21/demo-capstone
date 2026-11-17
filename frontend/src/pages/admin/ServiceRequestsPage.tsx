@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
 import { StatusBadge, Button, Input, Modal } from '../../components/ui/BaseUI';
 import { supportService, userService } from '../../services';
+import { FieldSurveyReportModal } from '../../components/reports/FieldSurveyReportModal';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
   ClipboardList, UserCheck, Wrench, Building2, Cpu, CheckCircle2,
@@ -55,6 +56,7 @@ export const ServiceRequestsPage: React.FC = () => {
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [selectedRequestForSurvey, setSelectedRequestForSurvey] = useState<ServiceRequest | null>(null);
 
   const handleCancelRequest = async () => {
     if (!cancellingRequestId) return;
@@ -303,6 +305,15 @@ export const ServiceRequestsPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      onClick={() => setSelectedRequestForSurvey(req)}
+                      className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/40"
+                      title="Xem hoặc bổ sung Phiếu báo cáo khảo sát thực địa của kỹ thuật viên"
+                    >
+                      <ClipboardList size={14} className="text-emerald-300" />
+                      <span>📋 Phiếu Khảo sát</span>
+                    </Button>
                     {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && ['OPEN', 'ASSIGNED'].includes(req.status) && (
                       <div className="flex items-center gap-2">
                         <select
@@ -477,6 +488,28 @@ export const ServiceRequestsPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Field Survey Report Modal (Admin can view and update) */}
+      {selectedRequestForSurvey && (
+        <FieldSurveyReportModal
+          isOpen={Boolean(selectedRequestForSurvey)}
+          onClose={() => setSelectedRequestForSurvey(null)}
+          serviceRequest={{
+            id: selectedRequestForSurvey.serviceRequestId,
+            requestCode: selectedRequestForSurvey.serviceRequestId.substring(0, 8),
+            farmId: selectedRequestForSurvey.farmId,
+            farmName: selectedRequestForSurvey.farmName,
+            zoneId: selectedRequestForSurvey.zoneId,
+            zoneName: selectedRequestForSurvey.zoneName,
+            title: selectedRequestForSurvey.title,
+            status: selectedRequestForSurvey.status,
+          }}
+          onSaved={() => {
+            setSuccessMsg('Đã cập nhật phiếu khảo sát thực địa!');
+            setTimeout(() => setSuccessMsg(null), 4000);
+          }}
+        />
+      )}
     </div>
   );
 };

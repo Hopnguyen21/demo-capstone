@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { ServiceRequest } from '../../types';
 import { supportService, deviceService } from '../../services';
 import { ZoneNodeMapperModal } from '../../components/control/ZoneNodeMapperModal';
+import { FieldSurveyReportModal } from '../../components/reports/FieldSurveyReportModal';
 import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
-import { Wrench, RefreshCw, CheckCircle2, ArrowRight, MapPin, CheckSquare, Layers, Lock, Building2 } from 'lucide-react';
+import { Wrench, RefreshCw, CheckCircle2, ArrowRight, MapPin, CheckSquare, Layers, Lock, Building2, FileText } from 'lucide-react';
 
 export const MaintenancePage: React.FC = () => {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [nodes, setNodes] = useState<any[]>([]);
   const [selectedRequestForMapper, setSelectedRequestForMapper] = useState<ServiceRequest | null>(null);
+  const [selectedRequestForSurvey, setSelectedRequestForSurvey] = useState<ServiceRequest | null>(null);
   const [isHotSwapOpen, setIsHotSwapOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -260,6 +262,16 @@ export const MaintenancePage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
+                    {/* Survey report button */}
+                    <Button
+                      onClick={() => setSelectedRequestForSurvey(req)}
+                      className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/50"
+                      title="Lập hoặc xem Phiếu khảo sát thực địa hiện trạng thiết bị"
+                    >
+                      <FileText size={14} className="text-emerald-300" />
+                      <span>📋 Khảo sát Thực địa</span>
+                    </Button>
+
                     {/* Hot Swap Quick Trigger for this specific request */}
                     <Button
                       onClick={() => {
@@ -319,6 +331,28 @@ export const MaintenancePage: React.FC = () => {
           onClose={() => setSelectedRequestForMapper(null)}
           request={selectedRequestForMapper}
           onSaveMapping={(nodes, count) => handleSaveMapping(selectedRequestForMapper.serviceRequestId, nodes, count)}
+        />
+      )}
+
+      {/* Field Survey Report Modal */}
+      {selectedRequestForSurvey && (
+        <FieldSurveyReportModal
+          isOpen={Boolean(selectedRequestForSurvey)}
+          onClose={() => setSelectedRequestForSurvey(null)}
+          serviceRequest={{
+            id: selectedRequestForSurvey.serviceRequestId,
+            requestCode: selectedRequestForSurvey.serviceRequestId.substring(0, 8),
+            farmId: selectedRequestForSurvey.farmId,
+            farmName: selectedRequestForSurvey.farmName,
+            zoneId: selectedRequestForSurvey.zoneId,
+            zoneName: selectedRequestForSurvey.zoneName,
+            title: selectedRequestForSurvey.title,
+            status: selectedRequestForSurvey.status,
+          }}
+          onSaved={() => {
+            setSuccessMsg('Đã lưu phiếu khảo sát thực địa thành công!');
+            setTimeout(() => setSuccessMsg(null), 4000);
+          }}
         />
       )}
 

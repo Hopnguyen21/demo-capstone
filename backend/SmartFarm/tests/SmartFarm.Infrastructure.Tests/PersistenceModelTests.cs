@@ -76,4 +76,30 @@ public sealed class PersistenceModelTests
         Assert.Equal("ix_zones_boundary_gist", zoneBoundaryIndex.GetDatabaseName());
         Assert.Equal("gist", zoneBoundaryIndex.GetMethod());
     }
+
+    [Fact]
+    public void Model_contains_FieldSurveyReport_with_all_sections_and_foreign_keys()
+    {
+        using var context = CreateContext();
+        var entity = context.Model.FindEntityType(typeof(FieldSurveyReport))!;
+
+        Assert.NotNull(entity);
+        Assert.Equal("FieldSurveyReports", entity.GetTableName());
+
+        // Verify key properties
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.FarmOverview)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.CropAndSeasonStatus)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.CultivationProcess)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.EnvironmentalMonitoring)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.EnvironmentalThresholdNeeds)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.EquipmentAndDataCollection)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.ManagementAndPermissions)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.DifficultiesAndNeeds)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.TeamAssessment)));
+        Assert.NotNull(entity.FindProperty(nameof(FieldSurveyReport.Status)));
+
+        // Verify foreign key to Farm, ServiceRequest, Zone, User
+        Assert.NotNull(entity.FindNavigation(nameof(FieldSurveyReport.Farm)));
+        Assert.NotNull(entity.FindNavigation(nameof(FieldSurveyReport.CreatedByUser)));
+    }
 }
