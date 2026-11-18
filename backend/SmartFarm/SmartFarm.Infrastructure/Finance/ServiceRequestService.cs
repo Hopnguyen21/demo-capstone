@@ -62,9 +62,15 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
             d = await db.Devices.FirstOrDefaultAsync(x => x.Id == c.DeviceId.Value && x.FarmId == farm && x.ZoneId == zoneId && x.Status != DeviceStatus.Decommissioned, ct)
                 ?? throw new ResourceNotFoundException("Device was not found in the requested Farm and Zone.");
         }
-        if (d == null)
+        // Không đoán thiết bị: trước đây lấy thiết bị ĐẦU TIÊN của Zone nên phiếu ghi sai thiết bị, thiết bị bị đánh dấu cần bảo trì và lúc đóng
+        // phiếu lại đòi test kết nối đúng thiết bị tùy ý đó. Bảo trì không nêu thiết bị: Zone chỉ có đúng một thiết bị thì dùng thiết bị đó,
+        // nhiều thiết bị thì bắt chọn. Phiếu lắp đặt không gắn thiết bị nào (bám đợt triển khai đang chạy/tạo đợt mới).
+        if (d == null && !DeploymentSupport.IsInstallationCode(c.FailureCode))
         {
-            d = await db.Devices.FirstOrDefaultAsync(x => x.ZoneId == zoneId && x.FarmId == farm && x.Status != DeviceStatus.Decommissioned, ct);
+            var zoneDevices = await db.Devices.Where(x => x.ZoneId == zoneId && x.FarmId == farm && x.Status != DeviceStatus.Decommissioned).Take(2).ToListAsync(ct);
+            if (zoneDevices.Count > 1)
+                throw new RequestValidationException("deviceId", "Zone có nhiều thiết bị, hãy chọn thiết bị cần bảo trì.");
+            d = zoneDevices.FirstOrDefault();
         }
 
         // Liên kết tường minh với yêu cầu triển khai (cùng Tenant/Farm/Zone) để hợp đồng nghiệm thu bám đúng đợt lắp đặt.
@@ -218,6 +224,17 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         var from = r.Status;
         r.Status = ServiceRequestStatus.Cancelled;
         r.ClosedAtUtc = clock.GetUtcNow().UtcDateTime;
+
+        // Phiếu hủy thì thiết bị không còn "cần bảo trì" (trước đây chỉ đóng phiếu mới khôi phục nên thiết bị kẹt trạng thái này),
+        // trừ khi còn phiếu khác đang mở cho cùng thiết bị.
+        var flaggedDeviceId = r.CurrentDeviceId ?? r.DeviceId;
+        if (flaggedDeviceId.HasValue)
+        {
+            var flagged = await db.Devices.SingleOrDefaultAsync(x => x.Id == flaggedDeviceId.Value, ct);
+            var otherOpen = await db.ServiceRequests.AnyAsync(x => x.Id != r.Id && (x.CurrentDeviceId == flaggedDeviceId || x.DeviceId == flaggedDeviceId)
+                && x.Status != ServiceRequestStatus.Closed && x.Status != ServiceRequestStatus.Cancelled && x.Status != ServiceRequestStatus.Resolved, ct);
+            if (flagged is { Status: DeviceStatus.MaintenanceRequired } && !otherOpen) flagged.Status = DeviceStatus.Online;
+        }
 
         var reason = string.IsNullOrWhiteSpace(c.Reason) ? "Chủ động hủy yêu cầu" : c.Reason.Trim();
         Add(r, userId, ServiceHistoryEventType.Cancelled, from, r.Status, $"Hủy bởi {u.Role}: {reason}");
