@@ -122,10 +122,12 @@ public sealed class NotificationService(SmartFarmDbContext dbContext) : INotific
 
     public async Task<NotificationView> CreateNotificationAsync(CreateNotificationCommand command, CancellationToken ct = default)
     {
-        if (command.DeduplicateByReference && !string.IsNullOrWhiteSpace(command.ReferenceId))
+        if ((command.DeduplicateByReference || command.SuppressIfUnread) && !string.IsNullOrWhiteSpace(command.ReferenceId))
         {
+            var onlyUnread = !command.DeduplicateByReference;
             var existing = await dbContext.Notifications.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.UserId == command.UserId && x.Type == command.Type && x.ReferenceId == command.ReferenceId, ct);
+                .FirstOrDefaultAsync(x => x.UserId == command.UserId && x.Type == command.Type && x.ReferenceId == command.ReferenceId
+                    && (!onlyUnread || !x.IsRead), ct);
             if (existing is not null)
                 return new NotificationView(existing.Id, existing.UserId, existing.TenantId, existing.Title, existing.Message, existing.Type, existing.Severity,
                     existing.IsRead, existing.ReadAtUtc, existing.TargetUrl, existing.ReferenceId, existing.CreatedAtUtc);

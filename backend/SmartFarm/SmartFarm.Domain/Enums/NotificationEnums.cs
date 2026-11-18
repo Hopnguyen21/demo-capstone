@@ -7,5 +7,8 @@ public enum NotificationType
     Task,
     IoT,
     Inventory,
-    Advice
+    Advice,
+    Service,
+    StockOut,
+    Contract
 }

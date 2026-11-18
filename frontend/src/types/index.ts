@@ -994,6 +994,8 @@ export interface StockOut {
   notes?: string;
   createdAtUtc: string;
   details: StockOutDetail[];
+  /** Yêu cầu dịch vụ (lắp đặt) mà phiếu thuộc về; Admin duyệt xong thì KTV mới được Gắn Node ở yêu cầu đó. */
+  serviceRequestId?: string | null;
 }
 
 export type StockInStatus = 'Draft' | 'Pending' | 'Approved' | 'Completed' | 'Cancelled' | number;

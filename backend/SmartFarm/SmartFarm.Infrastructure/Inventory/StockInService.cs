@@ -178,6 +178,32 @@ public sealed class StockInService(SmartFarmDbContext db, TimeProvider clock) : 
         return await GetByIdAsync(userId, tenantId, farmId, stockIn.Id, ct);
     }
 
+    /// <summary>
+    /// Nhập kho thiết bị phần cứng = tăng tồn của dòng KHO CHÍNH (không thuộc ai). Dòng đang ở kho KTV thì cộng vào dòng kho chính cùng mã
+    /// (không cộng vào hàng của KTV); hàng đã triển khai/lỗi/bảo trì/ngừng dùng không nhận thêm; hàng theo serial chỉ có đúng 1 thiết bị mỗi dòng.
+    /// Dấu người giữ thừa của dữ liệu cũ được xoá.
+    /// </summary>
+    private async Task ReceiveHardwareAsync(PlatformHardwareItem hardware, int quantity, CancellationToken ct)
+    {
+        if (quantity < 1) throw new ResourceConflictException($"Số lượng nhập của '{hardware.Name}' phải lớn hơn 0.");
+        var target = hardware;
+        if (hardware.Status == "InTechnicianStock")
+        {
+            target = await db.PlatformHardwareItems.FirstOrDefaultAsync(x => x.Id != hardware.Id && x.Code == hardware.Code && (x.Status == "InWarehouse" || x.Status == "InStock"), ct)
+                ?? throw new ResourceConflictException($"'{hardware.Name}' đang ở kho kỹ thuật viên; nhập kho phải chọn dòng của kho chính (chưa có dòng kho chính cùng mã).");
+        }
+        else if (HardwareStockRules.IsClosedStatus(hardware.Status))
+        {
+            throw new ResourceConflictException($"'{hardware.Name}' đang ở trạng thái {hardware.Status} nên không nhập thêm vào kho được.");
+        }
+        if (HardwareStockRules.IsSerialTracked(target) && target.QuantityInStock + quantity > 1)
+            throw new ResourceConflictException($"'{target.Name}' là hàng theo serial: mỗi serial là một dòng riêng (tồn đúng 1). Hãy tạo dòng mới cho từng serial thay vì nhập thêm số lượng.");
+        target.QuantityInStock += quantity;
+        target.Status = "InStock";
+        target.AssignedTechnicianId = null;
+        target.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
+    }
+
     public async Task<StockInView> UpdateStatusAsync(Guid userId, Guid tenantId, Guid farmId, Guid id, UpdateStockInStatusCommand command, CancellationToken ct)
     {
         await EnsureFarmAccess(userId, tenantId, farmId, ct);
@@ -223,8 +249,7 @@ public sealed class StockInService(SmartFarmDbContext db, TimeProvider clock) : 
                 }
                 else if (hardware != null)
                 {
-                    hardware.QuantityInStock += (int)detail.Quantity;
-                    hardware.Status = "InStock";
+                    await ReceiveHardwareAsync(hardware, (int)detail.Quantity, ct);
                 }
             }
 

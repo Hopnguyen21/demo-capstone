@@ -17,7 +17,7 @@ public class HardwareItemEstimateConfigTests
     }
 
     private static CreateHardwareItemCommand Create(string code, decimal price, string? role = null, int? units = null, IReadOnlyList<string>? measured = null) =>
-        new(code, "Thiet bi " + code, "Actuator", "M-" + code, null, null, null, 5, null, price, "InStock", role, units, measured);
+        new(code, "Thiet bi " + code, "Actuator", "M-" + code, null, null, null, 5, null, price, "InWarehouse", role, units, measured);
 
     [Fact]
     public async Task Create_PersistsAndReturnsUnitPrice()
@@ -36,7 +36,7 @@ public class HardwareItemEstimateConfigTests
         var created = await svc.CreateHardwareItemAsync(Create("A1", 4_500_000m), CancellationToken.None);
         // Client cũ (form sửa trên web) không gửi unitPrice -> trước đây bị hiểu là 0 và xóa giá.
         var updated = await svc.UpdateHardwareItemAsync(created.Id,
-            new UpdateHardwareItemCommand("Ten moi", "Gateway", "LG308N", null, null, null, 1, null, null, "InStock"), CancellationToken.None);
+            new UpdateHardwareItemCommand("Ten moi", "Gateway", "LG308N", null, "SN-GW-1", "AA:BB:CC:DD:EE:01", 1, null, null, "InWarehouse"), CancellationToken.None);
         Assert.Equal(4_500_000m, updated.UnitPrice);
         Assert.Equal("Ten moi", updated.Name);
     }
@@ -47,7 +47,7 @@ public class HardwareItemEstimateConfigTests
         var svc = NewService();
         var created = await svc.CreateHardwareItemAsync(Create("A1", 100m), CancellationToken.None);
         var updated = await svc.UpdateHardwareItemAsync(created.Id,
-            new UpdateHardwareItemCommand("n", "Actuator", null, null, null, null, 1, null, 250_000m, "InStock"), CancellationToken.None);
+            new UpdateHardwareItemCommand("n", "Actuator", null, null, null, null, 1, null, 250_000m, "InWarehouse"), CancellationToken.None);
         Assert.Equal(250_000m, updated.UnitPrice);
     }
 
@@ -58,7 +58,7 @@ public class HardwareItemEstimateConfigTests
         await Assert.ThrowsAsync<RequestValidationException>(() => svc.CreateHardwareItemAsync(Create("A1", -1m), CancellationToken.None));
         var ok = await svc.CreateHardwareItemAsync(Create("A2", 10m), CancellationToken.None);
         await Assert.ThrowsAsync<RequestValidationException>(() => svc.UpdateHardwareItemAsync(ok.Id,
-            new UpdateHardwareItemCommand("n", "Actuator", null, null, null, null, 1, null, -5m, "InStock"), CancellationToken.None));
+            new UpdateHardwareItemCommand("n", "Actuator", null, null, null, null, 1, null, -5m, "InWarehouse"), CancellationToken.None));
     }
 
     [Fact]
@@ -74,12 +74,12 @@ public class HardwareItemEstimateConfigTests
         Assert.Equal(4, relay.EstimateUnits);
 
         var after = await svc.UpdateHardwareItemAsync(node.Id,
-            new UpdateHardwareItemCommand("n", "Sensor", null, null, null, null, 1, null, null, "InStock"), CancellationToken.None);
+            new UpdateHardwareItemCommand("n", "Sensor", null, null, null, null, 1, null, null, "InWarehouse"), CancellationToken.None);
         Assert.Equal("SensorNode", after.EstimateRole);
         Assert.Equal(["SoilMoisture", "Ph"], after.MeasuredParameters);
 
         var cleared = await svc.UpdateHardwareItemAsync(node.Id,
-            new UpdateHardwareItemCommand("n", "Sensor", null, null, null, null, 1, null, null, "InStock", "", null, []), CancellationToken.None);
+            new UpdateHardwareItemCommand("n", "Sensor", null, null, null, null, 1, null, null, "InWarehouse", "", null, []), CancellationToken.None);
         Assert.Null(cleared.EstimateRole);
         Assert.Empty(cleared.MeasuredParameters ?? []);
     }
@@ -100,5 +100,30 @@ public class HardwareItemEstimateConfigTests
         var svc = NewService();
         await Assert.ThrowsAsync<RequestValidationException>(() => svc.CreateHardwareItemAsync(Create("X", 1m, "ActuatorNode", 1, ["Ph"]), CancellationToken.None));
         await Assert.ThrowsAsync<RequestValidationException>(() => svc.CreateHardwareItemAsync(Create("Y", 1m, "SensorNode", 1, ["Co2"]), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task List_NeverFails_OnLegacyOrUnknownInventoryStatus_AndAcceptsInStockOnWrite()
+    {
+        // Hồi quy: dòng kho có trạng thái "InStock" (do phiếu nhập kho ghi) làm cả danh mục thiết bị trả lỗi
+        // "Unsupported inventory status 'InStock'" nên Owner không lấy được danh mục để dự toán.
+        var options = new DbContextOptionsBuilder<SmartFarmDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var db = new SmartFarmDbContext(options);
+        foreach (var (code, status) in new[] { ("A", "InStock"), ("B", "Retired"), ("C", "Issued"), ("D", "TrangThaiLa"), ("E", "") })
+            db.PlatformHardwareItems.Add(new SmartFarm.Domain.Entities.PlatformHardwareItem { Code = code, Name = code, Category = "Sensor", Status = status, QuantityInStock = 1, UnitPrice = 1 });
+        await db.SaveChangesAsync();
+        var svc = new PlatformAdminService(db);
+
+        var list = await svc.ListHardwareItemsAsync(CancellationToken.None);
+        Assert.Equal(5, list.Count);
+        Assert.Equal("InStock", list.Single(x => x.Code == "A").Status);
+        Assert.Equal("Retired", list.Single(x => x.Code == "B").Status);
+        Assert.Equal("TrangThaiLa", list.Single(x => x.Code == "D").Status);
+        Assert.Equal("InWarehouse", list.Single(x => x.Code == "E").Status);
+
+        var created = await svc.CreateHardwareItemAsync(Create("NEW", 1m) with { Status = "InStock" }, CancellationToken.None);
+        Assert.Equal("InStock", created.Status);
+        await Assert.ThrowsAsync<RequestValidationException>(() =>
+            svc.CreateHardwareItemAsync(Create("BAD", 1m) with { Status = "KhongHopLe" }, CancellationToken.None));
     }
 }

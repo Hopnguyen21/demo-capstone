@@ -93,57 +93,6 @@ public static class DataIntegrityHealer
                 modified = false;
             }
 
-            // 5. Đồng bộ khấu hao thiết bị (DeviceDepreciations) trong CSDL PostgreSQL (100% dữ liệu DB thật, không dùng mock)
-            var assignedDevices = await db.Devices
-                .Include(d => d.Farm)
-                .Where(d => d.ZoneId != null && d.DecommissionedAtUtc == null)
-                .ToListAsync(ct);
-
-            var existingDeprecDeviceIds = await db.DeviceDepreciations
-                .Select(d => d.DeviceId)
-                .ToListAsync(ct);
-
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            foreach (var dev in assignedDevices)
-            {
-                if (!existingDeprecDeviceIds.Contains(dev.Id))
-                {
-                    var isActuator = dev.DeviceType == DeviceType.ActuatorNode;
-                    var cost = isActuator ? 4800000m : 3500000m;
-                    var lifetime = isActuator ? 36 : 24;
-
-                    var monthsBack = (Math.Abs(dev.Id.GetHashCode()) % 20) + 4;
-                    var startDate = today.AddMonths(-monthsBack);
-                    var monthly = Math.Round(cost / lifetime, 0);
-                    var accumulated = Math.Min(cost, monthly * monthsBack);
-                    var bookValue = Math.Max(0, cost - accumulated);
-
-                    var farm = dev.Farm ?? await db.Farms.FirstOrDefaultAsync(f => f.Id == dev.FarmId, ct);
-                    var tenantId = farm?.TenantId ?? Guid.Parse("10000000-0000-0000-0000-000000000001");
-                    var ownerUser = await db.AppUsers.FirstOrDefaultAsync(u => u.TenantId == tenantId && u.Role == UserRole.FarmOwner, ct);
-                    var ownerId = ownerUser?.Id ?? Guid.Parse("10000000-0000-0000-0000-000000000001");
-
-                    db.DeviceDepreciations.Add(new DeviceDepreciation
-                    {
-                        Id = Guid.NewGuid(),
-                        TenantId = tenantId,
-                        ZoneId = dev.ZoneId!.Value,
-                        DeviceId = dev.Id,
-                        CreatedByOwnerId = ownerId,
-                        OriginalCostVnd = cost,
-                        MonthlyDepreciationVnd = monthly,
-                        AccumulatedDepreciationVnd = accumulated,
-                        CurrentBookValueVnd = bookValue,
-                        DepreciationLifetimeMonths = lifetime,
-                        Method = "STRAIGHT_LINE",
-                        StartDate = startDate,
-                        Notes = $"Hồ sơ khấu hao tự động cho thiết bị {dev.HardwareAddress} ({dev.DeviceType}). Đã vận hành {monthsBack}/{lifetime} tháng.",
-                        CreatedAtUtc = now
-                    });
-                    modified = true;
-                }
-            }
-
             if (modified)
             {
                 await db.SaveChangesAsync(ct);

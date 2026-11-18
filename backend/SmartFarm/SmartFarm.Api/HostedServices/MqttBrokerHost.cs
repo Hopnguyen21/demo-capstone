@@ -8,6 +8,8 @@ using SmartFarm.Application.Common.Interfaces;
 using SmartFarm.Application.Features.Control;
 using SmartFarm.Application.Features.IoTDeployment;
 using SmartFarm.Application.Features.TelemetryAlerts;
+using SmartFarm.Domain.Entities;
+using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Api.HostedServices;
@@ -176,10 +178,10 @@ public sealed class MqttBrokerHost(
     }
 
     public Task<CommandTransportResult> PublishAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken)
-        => PublishCommandAsync(command, cancellationToken);
+        => PublishCommandAsync(command, cancellationToken, isEmergencyStop: false);
 
     public Task<CommandTransportResult> PublishEmergencyStopAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken)
-        => PublishCommandAsync(command, cancellationToken);
+        => PublishCommandAsync(command, cancellationToken, isEmergencyStop: true);
 
     public async Task PublishGatewayConfigurationAsync(GatewayFirmwareConfigView config, CancellationToken cancellationToken)
     {
@@ -209,7 +211,7 @@ public sealed class MqttBrokerHost(
         await server.InjectApplicationMessage(new InjectedMqttApplicationMessage(message) { SenderClientId = "smartfarm-backend" });
     }
 
-    private async Task<CommandTransportResult> PublishCommandAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken)
+    private async Task<CommandTransportResult> PublishCommandAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken, bool isEmergencyStop)
     {
         if (server is null || !server.IsStarted)
             return new(false, "BROKER_OFFLINE", "MQTT host is not running.");
@@ -244,6 +246,82 @@ public sealed class MqttBrokerHost(
         {
             SenderClientId = "smartfarm-backend"
         });
+
+        if (configuration.GetValue<bool>("SimulatedIot:Enabled", false))
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(isEmergencyStop ? 800 : 1500, CancellationToken.None);
+                    using var scope = scopes.CreateScope();
+                    var control = scope.ServiceProvider.GetRequiredService<IControlService>();
+
+                    if (isEmergencyStop)
+                    {
+                        await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
+                            command.GatewayId,
+                            command.CommandId,
+                            command.DeviceId,
+                            ActuatorCommandStatus.Cancelled,
+                            "Off",
+                            DateTime.UtcNow,
+                            null,
+                            null), CancellationToken.None);
+                        return;
+                    }
+
+                    await control.ApplyFeedbackAsync(new ActuatorFeedbackEnvelope(
+                        command.GatewayId,
+                        command.CommandId,
+                        command.DeviceId,
+                        ActuatorCommandStatus.Acknowledged,
+                        command.Action == ActuatorCommandAction.TurnOn ? "Running" : "Off",
+                        DateTime.UtcNow,
+                        null,
+                        null), CancellationToken.None);
+
+                    if (command.Action != ActuatorCommandAction.TurnOn) return;
+
+                    var demoDuration = configuration.GetValue<int>("SimulatedIot:DemoIrrigationSeconds", 30);
+                    var runSeconds = demoDuration > 0 ? demoDuration : command.DurationSeconds;
+                    await Task.Delay(TimeSpan.FromSeconds(runSeconds), CancellationToken.None);
+
+                    using var completionScope = scopes.CreateScope();
+                    var db = completionScope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+                    var notif = completionScope.ServiceProvider.GetRequiredService<INotificationService>();
+                    var cmd = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleOrDefaultAsync(
+                        db.ActuatorCommands
+                            .Include(c => c.Events)
+                            .Include(c => c.Zone)
+                            .Include(c => c.Actuator),
+                        c => c.Id == command.CommandId, CancellationToken.None);
+
+                    if (cmd == null || cmd.Status != ActuatorCommandStatus.Acknowledged || cmd.CancellationRequestedAtUtc != null)
+                        return;
+
+                    var now = DateTime.UtcNow;
+                    cmd.TerminalAtUtc = now;
+                    cmd.ExecutionEndsAtUtc = now;
+                    cmd.ObservedState = "Off";
+                    db.ActuatorCommandEvents.Add(new ActuatorCommandEvent
+                    {
+                        CommandId = cmd.Id,
+                        EventKind = CommandEventKind.Feedback,
+                        Status = ActuatorCommandStatus.Acknowledged,
+                        OccurredAtUtc = now,
+                        Detail = $"Hoàn tất chu kỳ điều khiển mô phỏng ({command.DurationSeconds / 60} phút).",
+                        ObservedState = "Off"
+                    });
+                    await db.SaveChangesAsync(CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Simulated feedback failed for command {CommandId}", command.CommandId);
+                }
+            });
+        }
+
         return new(true);
     }
 }

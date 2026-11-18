@@ -230,7 +230,8 @@ public sealed class TelemetryAlertService(
                         Type: NotificationType.Alert,
                         Severity: rule.Severity,
                         TargetUrl: targetUrl,
-                        ReferenceId: alert.Id.ToString()
+                        ReferenceId: alert.Id.ToString(),
+                        SuppressIfUnread: true
                     ), ct);
                 }
             }

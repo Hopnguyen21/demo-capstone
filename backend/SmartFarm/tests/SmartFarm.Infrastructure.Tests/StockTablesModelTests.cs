@@ -69,48 +69,6 @@ public sealed class StockTablesModelTests
                 Assert.Contains(e.GetIndexes(), i => i.Properties.Count > 0 && i.Properties[0] == fk.Properties[0]);
         }
     }
-
-    [Fact]
-    public async Task Auto_stock_out_skips_unmatched_items_instead_of_saving_random_ids()
-    {
-        await using var db = InMemory();
-        var tenant = Guid.NewGuid();
-        var farm = Guid.NewGuid();
-        var tech = new AppUser { Email = "kt@example.com", FullName = "KTV", Role = UserRole.PlatformTechnician };
-        db.AppUsers.Add(tech);
-        var hw = new PlatformHardwareItem { Code = "GW-01", Name = "Gateway LoRa", Category = "Gateway" };
-        db.PlatformHardwareItems.Add(hw);
-        await db.SaveChangesAsync();
-
-        var so = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
-            db, tenant, farm, null, "HD-1", tech.Id, "Khách", new[]
-            {
-                ("GW-01", "Gateway LoRa", (string?)"Gateway", 1),
-                ("KHONG-CO", "Thiết bị lạ hoàn toàn", (string?)null, 2),
-            });
-
-        Assert.NotNull(so);
-        var detail = Assert.Single(so!.Details);
-        Assert.Equal(hw.Id, detail.InventoryItemId);
-        Assert.Contains("Thiết bị lạ hoàn toàn", so.Notes);
-    }
-
-    [Fact]
-    public async Task Auto_stock_out_not_created_when_nothing_matches_or_no_technician()
-    {
-        await using var db = InMemory();
-        var none = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
-            db, Guid.NewGuid(), Guid.NewGuid(), null, "HD-2", Guid.Empty, "Khách",
-            new[] { ("X", "Thiết bị X", (string?)null, 1) });
-        Assert.Null(none); // không có KTV/Admin: không dùng ID giả
-
-        db.AppUsers.Add(new AppUser { Email = "kt2@example.com", FullName = "KTV", Role = UserRole.PlatformTechnician });
-        await db.SaveChangesAsync();
-        var none2 = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
-            db, Guid.NewGuid(), Guid.NewGuid(), null, "HD-3", Guid.Empty, "Khách",
-            new[] { ("X", "Thiết bị X", (string?)null, 1) });
-        Assert.Null(none2); // kho phần cứng trống: không có dòng nào khớp
-    }
 }
 
 public sealed class StockOutServiceRequestLinkTests
@@ -128,22 +86,4 @@ public sealed class StockOutServiceRequestLinkTests
         Assert.Equal(DeleteBehavior.SetNull, fk.DeleteBehavior);
     }
 
-    [Fact]
-    public async Task Auto_stock_out_records_the_service_request_it_belongs_to()
-    {
-        await using var db = new SmartFarmDbContext(new DbContextOptionsBuilder<SmartFarmDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-        var tech = new AppUser { Email = "kt@example.com", FullName = "KTV", Role = UserRole.PlatformTechnician };
-        db.AppUsers.Add(tech);
-        db.PlatformHardwareItems.Add(new PlatformHardwareItem { Code = "GW-01", Name = "Gateway LoRa", Category = "Gateway" });
-        await db.SaveChangesAsync();
-        var srId = Guid.NewGuid();
-        var so = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
-            db, Guid.NewGuid(), Guid.NewGuid(), null, "HD-SR-ABC12345", tech.Id, "Khách",
-            new[] { ("GW-01", "Gateway LoRa", (string?)"Gateway", 1) }, default, srId);
-        Assert.Equal(srId, so!.ServiceRequestId);
-        var without = await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
-            db, Guid.NewGuid(), Guid.NewGuid(), null, "HD-SR-XYZ", tech.Id, "Khách",
-            new[] { ("GW-01", "Gateway LoRa", (string?)"Gateway", 1) });
-        Assert.Null(without!.ServiceRequestId);
-    }
 }

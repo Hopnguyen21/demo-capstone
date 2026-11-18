@@ -58,3 +58,5 @@ public sealed record AutoGatewayEnrollmentCommand(string MacAddress, string Chip
 public sealed record GatewayRuntimeUpdateView(Guid JobId, string Version, string FirmwareUrl, string ArtifactSha256, string Status);
 public sealed record GatewayOtaResultCommand(string MacAddress, string Version, string Result, string? ErrorCode, string? ErrorMessage);
 public sealed record ActivateGatewayEnrollmentCommand(Guid FarmId, Guid DeploymentRequestId, string FrequencyBand);
+/// <summary>MÔ PHỎNG Gateway cho một yêu cầu triển khai khi chưa có phần cứng (chỉ môi trường bật SimulatedIot:Enabled).</summary>
+public sealed record SimulateGatewayCommand(Guid FarmId, Guid DeploymentRequestId);

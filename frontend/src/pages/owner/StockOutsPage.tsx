@@ -15,6 +15,9 @@ import {
   StockIn, StockInStatus
 } from '../../types';
 
+/** Giá trị ô chọn trang trại để xem phiếu của mọi trang trại cùng lúc (mặc định). */
+const ALL_FARMS = 'ALL';
+
 export const StockOutsPage: React.FC = () => {
   const { role } = useAuth();
   const isManager = role === 'PLATFORM_ADMIN' || role === 'PLATFORM_TECHNICIAN';
@@ -64,32 +67,44 @@ export const StockOutsPage: React.FC = () => {
     farmService.getFarms().then((res: Farm[]) => {
       if (Array.isArray(res) && res.length > 0) {
         setFarms(res);
-        const firstId = res[0].farmId || (res[0] as any).id;
-        setSelectedFarmId(firstId);
+        setSelectedFarmId(ALL_FARMS);
       }
     }).catch(err => console.error(err));
   }, []);
 
-  // Load data when selectedFarmId changes
+  const isAllFarms = selectedFarmId === ALL_FARMS;
+  /** Trang trại dùng để TẠO phiếu mới: đang chọn một trang trại cụ thể; chế độ "Tất cả" phải chọn trang trại trước. */
+  const createFarmId = isAllFarms ? '' : selectedFarmId;
+  const farmIdOf = (f: Farm) => f.farmId || (f as any).id;
+  const farmIdsInView = (): string[] => (isAllFarms ? farms.map(farmIdOf) : [selectedFarmId]);
+  const fetchAcrossFarms = async (fetcher: (farmId: string) => Promise<any>): Promise<any[]> => {
+    const lists = await Promise.all(farmIdsInView().map(id => fetcher(id).then(r => (Array.isArray(r) ? r : [])).catch(() => [])));
+    return lists.flat();
+  };
+  /** Trang trại của MỘT phiếu: thao tác (duyệt, hủy, xóa) luôn dùng đúng trang trại của phiếu đó, kể cả khi đang xem tất cả. */
+  const farmOfStockOut = (id: string) => stockOuts.find(s => s.id === id)?.farmId || (isAllFarms ? '' : selectedFarmId);
+  const farmOfStockIn = (id: string) => stockIns.find(s => s.id === id)?.farmId || (isAllFarms ? '' : selectedFarmId);
+
+  // Load data when selectedFarmId (hoặc danh sách trang trại) thay đổi
   useEffect(() => {
-    if (!selectedFarmId) return;
+    if (!selectedFarmId || farms.length === 0) return;
     setLoading(true);
 
     Promise.all([
       zoneService.getZones().catch(() => []),
       adminService.getHardwareItems().catch(() => []),
-      supportService.getInventory(selectedFarmId).catch(() => []),
-      stockOutService.getList(selectedFarmId).catch(() => []),
-      stockInService.getList(selectedFarmId).catch(() => [])
+      supportService.getInventory(isAllFarms ? farmIdOf(farms[0]) : selectedFarmId).catch(() => []),
+      fetchAcrossFarms(id => stockOutService.getList(id)),
+      fetchAcrossFarms(id => stockInService.getList(id))
     ]).then(([zRes, hwRes, invRes, soRes, siRes]) => {
       const allZones = Array.isArray(zRes) ? zRes : [];
-      setZones(allZones.filter((z: any) => !z.farmId || z.farmId === selectedFarmId));
+      setZones(isAllFarms ? allZones : allZones.filter((z: any) => !z.farmId || z.farmId === selectedFarmId));
       setHardwareItems(Array.isArray(hwRes) ? hwRes : []);
       setInventoryItems(Array.isArray(invRes) ? invRes : []);
-      setStockOuts(Array.isArray(soRes) ? soRes : []);
-      setStockIns(Array.isArray(siRes) ? siRes : []);
+      setStockOuts(soRes);
+      setStockIns(siRes);
     }).finally(() => setLoading(false));
-  }, [selectedFarmId]);
+  }, [selectedFarmId, farms]);
 
   const availableDevices = useMemo(() => {
     if (hardwareItems.length > 0) {
@@ -120,20 +135,20 @@ export const StockOutsPage: React.FC = () => {
     if (!selectedFarmId) return;
     try {
       const [soRes, siRes, hwRes] = await Promise.all([
-        stockOutService.getList(selectedFarmId).catch(() => []),
-        stockInService.getList(selectedFarmId).catch(() => []),
+        fetchAcrossFarms(id => stockOutService.getList(id)),
+        fetchAcrossFarms(id => stockInService.getList(id)),
         adminService.getHardwareItems().catch(() => [])
       ]);
-      setStockOuts(Array.isArray(soRes) ? soRes : []);
-      setStockIns(Array.isArray(siRes) ? siRes : []);
+      setStockOuts(soRes);
+      setStockIns(siRes);
       setHardwareItems(Array.isArray(hwRes) ? hwRes : []);
 
       if (selectedStockOut) {
-        const updated = await stockOutService.getById(selectedFarmId, selectedStockOut.id);
+        const updated = await stockOutService.getById(selectedStockOut.farmId || selectedFarmId, selectedStockOut.id);
         setSelectedStockOut(updated);
       }
       if (selectedStockIn) {
-        const updatedIn = await stockInService.getById(selectedFarmId, selectedStockIn.id);
+        const updatedIn = await stockInService.getById(selectedStockIn.farmId || selectedFarmId, selectedStockIn.id);
         setSelectedStockIn(updatedIn);
       }
     } catch (err) {
@@ -161,7 +176,7 @@ export const StockOutsPage: React.FC = () => {
 
   const handleCreateStockOut = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFarmId) return;
+    if (!createFarmId) { alert('Hãy chọn một trang trại cụ thể để tạo phiếu xuất kho.'); return; }
 
     const validDetails = itemRows.filter(r => r.inventoryItemId && r.quantity > 0);
     if (validDetails.length === 0) {
@@ -171,7 +186,7 @@ export const StockOutsPage: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await stockOutService.create(selectedFarmId, {
+      await stockOutService.create(createFarmId, {
         zoneId: selectedZoneId || undefined,
         notes: notes.trim() || undefined,
         details: validDetails
@@ -189,7 +204,8 @@ export const StockOutsPage: React.FC = () => {
   };
 
   const handleUpdateStatus = async (stockOutId: string, newStatus: string, reasonPrompt = false) => {
-    if (!selectedFarmId) return;
+    const farmId = farmOfStockOut(stockOutId);
+    if (!farmId) return;
     let noteText = '';
     if (reasonPrompt) {
       const input = window.prompt('Nhập ghi chú / lý do (không bắt buộc):');
@@ -199,7 +215,7 @@ export const StockOutsPage: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await stockOutService.updateStatus(selectedFarmId, stockOutId, newStatus, noteText);
+      await stockOutService.updateStatus(farmId, stockOutId, newStatus, noteText);
       await refreshList();
     } catch (err) {
       alert(extractApiError(err) || 'Cập nhật trạng thái thất bại.');
@@ -209,12 +225,13 @@ export const StockOutsPage: React.FC = () => {
   };
 
   const handleDelete = async (stockOutId: string) => {
-    if (!selectedFarmId) return;
+    const farmId = farmOfStockOut(stockOutId);
+    if (!farmId) return;
     if (!window.confirm('Bạn có chắc muốn xóa phiếu xuất kho này? Thao tác không thể hoàn tác.')) return;
 
     setActionLoading(true);
     try {
-      await stockOutService.delete(selectedFarmId, stockOutId);
+      await stockOutService.delete(farmId, stockOutId);
       setIsDetailModalOpen(false);
       setSelectedStockOut(null);
       await refreshList();
@@ -254,7 +271,7 @@ export const StockOutsPage: React.FC = () => {
 
   const handleCreateStockIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFarmId) return;
+    if (!createFarmId) { alert('Hãy chọn một trang trại cụ thể để tạo phiếu nhập kho.'); return; }
 
     const validDetails = inItemRows.filter(r => r.inventoryItemId && r.quantity > 0);
     if (validDetails.length === 0) {
@@ -264,7 +281,7 @@ export const StockOutsPage: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await stockInService.create(selectedFarmId, {
+      await stockInService.create(createFarmId, {
         supplierName: supplierName.trim() || undefined,
         notes: inNotes.trim() || undefined,
         details: validDetails
@@ -282,7 +299,8 @@ export const StockOutsPage: React.FC = () => {
   };
 
   const handleUpdateInStatus = async (stockInId: string, newStatus: string, reasonPrompt = false) => {
-    if (!selectedFarmId) return;
+    const farmId = farmOfStockIn(stockInId);
+    if (!farmId) return;
     let noteText = '';
     if (reasonPrompt) {
       const input = window.prompt('Nhập ghi chú / lý do (không bắt buộc):');
@@ -292,7 +310,7 @@ export const StockOutsPage: React.FC = () => {
 
     setActionLoading(true);
     try {
-      await stockInService.updateStatus(selectedFarmId, stockInId, newStatus, noteText);
+      await stockInService.updateStatus(farmId, stockInId, newStatus, noteText);
       await refreshList();
     } catch (err) {
       alert(extractApiError(err) || 'Cập nhật trạng thái nhập kho thất bại.');
@@ -302,12 +320,13 @@ export const StockOutsPage: React.FC = () => {
   };
 
   const handleDeleteIn = async (stockInId: string) => {
-    if (!selectedFarmId) return;
+    const farmId = farmOfStockIn(stockInId);
+    if (!farmId) return;
     if (!window.confirm('Bạn có chắc muốn xóa phiếu nhập kho này? Thao tác không thể hoàn tác.')) return;
 
     setActionLoading(true);
     try {
-      await stockInService.delete(selectedFarmId, stockInId);
+      await stockInService.delete(farmId, stockInId);
       setIsDetailInModalOpen(false);
       setSelectedStockIn(null);
       await refreshList();
@@ -390,6 +409,7 @@ export const StockOutsPage: React.FC = () => {
                 onChange={e => setSelectedFarmId(e.target.value)}
                 className="bg-transparent font-medium text-slate-800 focus:outline-none cursor-pointer"
               >
+                <option value={ALL_FARMS}>Tất cả trang trại</option>
                 {farms.map(f => {
                   const fid = f.farmId || (f as any).id;
                   return <option key={fid} value={fid}>{f.name}</option>;
@@ -400,14 +420,16 @@ export const StockOutsPage: React.FC = () => {
 
           {activeTab === 'STOCK_IN' ? (
             <Button
-              onClick={() => setIsCreateInModalOpen(true)}
+              onClick={() => (createFarmId ? setIsCreateInModalOpen(true) : alert('Hãy chọn một trang trại cụ thể ở ô bên cạnh để tạo phiếu nhập kho.'))}
+              title={createFarmId ? undefined : 'Chọn một trang trại cụ thể để tạo phiếu'}
               className="bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-xs"
             >
               <Plus size={16} /> Tạo Phiếu Nhập Kho
             </Button>
           ) : (
             <Button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => (createFarmId ? setIsCreateModalOpen(true) : alert('Hãy chọn một trang trại cụ thể ở ô bên cạnh để tạo phiếu xuất kho.'))}
+              title={createFarmId ? undefined : 'Chọn một trang trại cụ thể để tạo phiếu'}
               className="bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-xs"
             >
               <Plus size={16} /> Tạo Phiếu Xuất Kho
@@ -567,7 +589,17 @@ export const StockOutsPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-200 text-slate-700">
                   {filteredStockOuts.map(item => (
                     <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3.5 font-mono font-bold text-sky-700">{item.stockOutCode}</td>
+                      <td className="p-3.5 font-mono font-bold text-sky-700">
+                        {item.stockOutCode}
+                        {isAllFarms && item.farmName && (
+                          <span className="block text-[10px] font-normal text-slate-600">{item.farmName}</span>
+                        )}
+                        {item.serviceRequestId && (
+                          <span className="block text-[10px] font-normal text-slate-500" title="Yêu cầu lắp đặt mà phiếu thuộc về">
+                            Yêu cầu #{item.serviceRequestId.substring(0, 8)}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-3.5 font-medium text-slate-900">{item.zoneName || 'Toàn trang trại / Kỹ thuật viên'}</td>
                       <td className="p-3.5 font-medium text-slate-700">
                         {item.details.length} loại thiết bị ({item.details.reduce((sum, d) => sum + d.quantity, 0)} cái)
@@ -1016,6 +1048,14 @@ export const StockOutsPage: React.FC = () => {
                 <p className="text-[11px] text-slate-500">Người lập phiếu:</p>
                 <p className="font-semibold text-slate-800">{selectedStockOut.createdByName}</p>
               </div>
+              {selectedStockOut.serviceRequestId && (
+                <div>
+                  <p className="text-[11px] text-slate-500">Thuộc yêu cầu lắp đặt:</p>
+                  <p className="font-mono font-semibold text-sky-700" title="Phiếu thuộc yêu cầu lắp đặt này; hoàn tất phiếu thì thiết bị chuyển từ kho chính vào kho của kỹ thuật viên lập phiếu">
+                    #{selectedStockOut.serviceRequestId.substring(0, 8)}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-[11px] text-slate-500">Thời gian tạo:</p>
                 <p className="text-slate-700">{new Date(selectedStockOut.createdAtUtc).toLocaleString('vi-VN')}</p>
@@ -1112,6 +1152,12 @@ export const StockOutsPage: React.FC = () => {
                       Phê duyệt phiếu
                     </Button>
                   </>
+                )}
+
+                {isManager && (selectedStockOut.status === 'Approved' || selectedStockOut.status === 2) && (
+                  <p className="w-full text-[11px] text-slate-500 text-right">
+                    Hoàn tất xuất kho: thiết bị được chuyển từ kho chính sang kho của kỹ thuật viên lập phiếu ({selectedStockOut.createdByName}); Gateway/Node theo serial đổi chủ, hàng số lượng được trừ ở kho chính.
+                  </p>
                 )}
 
                 {isManager && (selectedStockOut.status === 'Approved' || selectedStockOut.status === 2) && (

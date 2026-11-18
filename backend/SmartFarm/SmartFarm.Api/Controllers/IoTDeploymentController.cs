@@ -74,7 +74,7 @@ public sealed class TechnicianDeploymentController(IIoTDeploymentService service
     public async Task<ActionResult<DeviceConnectionTestView>> Test(Guid requestId, ConnectionTestRequest body, CancellationToken ct) => Ok(await service.RecordConnectionTestAsync(User.GetUserId(), requestId, body.ToCommand(), ct));
     // IOT-V1-14
     [HttpPost("api/v1/platform/deployment-requests/{requestId:guid}/complete")]
-    public async Task<ActionResult<DeploymentRequestView>> Complete(Guid requestId, CancellationToken ct) => Ok(await service.CompleteAsync(User.GetUserId(), requestId, ct));
+    public async Task<ActionResult<DeploymentRequestView>> Complete(Guid requestId, [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CompleteDeploymentBody? body, CancellationToken ct) => Ok(await service.CompleteAsync(User.GetUserId(), requestId, body?.Notes, ct));
     // IOT-V1-15
     [HttpPost("api/v1/platform/deployment-requests/{requestId:guid}/fail")]
     public async Task<ActionResult<ServiceHandoffView>> Fail(Guid requestId, FailDeploymentRequest body, CancellationToken ct) => Ok(await service.FailAsync(User.GetUserId(), requestId, new(body.FailureCode, body.Description, body.DeviceId), ct));
@@ -111,6 +111,9 @@ public sealed class IoTHardwareController(IIoTDeploymentService service, MqttBro
     [HttpPost("api/v1/gateway-runtime/ota-result"), AllowAnonymous]
     public async Task<IActionResult> GatewayOtaResult(GatewayOtaResultRequest body, CancellationToken ct)
     { await service.RecordGatewayOtaResultAsync(new(body.MacAddress, body.Version, body.Result, body.ErrorCode, body.ErrorMessage), ct); return NoContent(); }
+    /// <summary>MÔ PHỎNG Gateway khi chưa có phần cứng; 404 nếu môi trường không bật SimulatedIot:Enabled.</summary>
+    [HttpPost("api/v1/gateway-enrollment/simulate"), Authorize(Roles = "PlatformTechnician")]
+    public async Task<ActionResult<GatewayEnrollmentView>> SimulateGateway(SimulateGatewayCommand body, CancellationToken ct) => Ok(await service.SimulateGatewayAsync(User.GetUserId(), body, ct));
     [HttpPost("api/v1/gateway-enrollment/{enrollmentId:guid}/activate"), Authorize(Roles = "PlatformTechnician")]
     public async Task<ActionResult<GatewayEnrollmentView>> ActivateGatewayEnrollment(Guid enrollmentId, ActivateGatewayEnrollmentRequest body, CancellationToken ct) => Ok(await service.ActivateGatewayEnrollmentAsync(User.GetUserId(), enrollmentId, body.ToCommand(), ct));
     // API catalog #56
@@ -227,6 +230,8 @@ public sealed class CreateFirmwareReleaseRequest { [Required, StringLength(80)] 
 public sealed class FirmwareReleaseStatusRequest { [Required] public FirmwareReleaseStatus Status { get; init; } [StringLength(128)] public string? ArtifactSha256 { get; init; } }
 public sealed class ProvisionNodeRequest { [Required] public string HardwareAddress { get; init; } = ""; [Required] public DeviceType DeviceType { get; init; } public Guid? DeviceModelId { get; init; } public Guid? HardwareItemId { get; init; } internal ProvisionNodeInput ToInput() => new(HardwareAddress, DeviceType, DeviceModelId, HardwareItemId); }
 public sealed class ProvisionDevicesRequest { public Guid DeploymentRequestId { get; init; } public Guid GatewayId { get; init; } public Guid FarmId { get; init; } [Required, MinLength(1), MaxLength(50)] public List<ProvisionNodeRequest> Nodes { get; init; } = []; internal ProvisionDevicesCommand ToCommand() => new(DeploymentRequestId, GatewayId, FarmId, Nodes.Select(x => x.ToInput()).ToList()); }
+/// <summary>Biên bản nghiệm thu của KTV khi hoàn tất lắp đặt (tùy chọn).</summary>
+public sealed class CompleteDeploymentBody { [StringLength(4000)] public string? Notes { get; init; } }
 public sealed class HardwarePreparationStatusRequest { public HardwarePreparationStatus Status { get; init; } public string? NodeId { get; init; } public int? LoRaAddress { get; init; } public string? BoardProfile { get; init; } [StringLength(2000)] public string? Notes { get; init; } }
 public sealed class HardwareConnectivityCheckRequest { public bool Passed { get; init; } [Required, StringLength(2000)] public string Evidence { get; init; } = ""; }
 public sealed class FirmwareInstallationRequest { [Required] public Guid FirmwareReleaseId { get; init; } public FirmwareUploadMethod UploadMethod { get; init; } public FirmwareInstallationResult Result { get; init; } public string? BoardProfile { get; init; } public string? BootloaderProfile { get; init; } public string? ErrorMessage { get; init; } public string? Notes { get; init; } }

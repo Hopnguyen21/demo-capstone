@@ -145,7 +145,7 @@ public sealed class PlatformFeaturesController(
     }
 
     [HttpPost("api/v1/platform/hardware-items/{id:guid}/assign")]
-    [Authorize(Roles = "PlatformAdmin")]
+    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<PlatformHardwareItemView>> AssignHardwareItem(Guid id, [FromBody] AssignHardwareItemCommand command, CancellationToken ct)
         => Ok(await adminService.AssignHardwareItemAsync(id, command with { TechnicianUserId = User.IsInRole("PlatformTechnician") ? User.GetUserId() : command.TechnicianUserId }, ct));
 
@@ -270,6 +270,7 @@ public sealed class PlatformFeaturesController(
 
     // ─── 8. Technician Spare Parts ────────────────────────────────────────────
     [HttpGet("api/v1/platform/technicians/me/spare-parts")]
+    [HttpGet("api/v1/platform/hardware-items/my-spare-parts")]
     [Authorize(Roles = "PlatformTechnician,FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<IReadOnlyList<PlatformHardwareItemView>>> GetMySpareParts(CancellationToken ct)
     {

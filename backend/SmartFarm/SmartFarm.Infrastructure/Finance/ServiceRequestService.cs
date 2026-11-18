@@ -4,6 +4,7 @@ using SmartFarm.Application.Features.Finance;
 using SmartFarm.Domain.Entities;
 using SmartFarm.Domain.Enums;
 using SmartFarm.Infrastructure.IoTDeployment;
+using SmartFarm.Infrastructure.Notifications;
 using SmartFarm.Infrastructure.Persistence;
 
 namespace SmartFarm.Infrastructure.Finance;
@@ -146,7 +147,26 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
     public async Task<IReadOnlyList<ServiceRequestView>> ListAsync(Guid user, Guid? tenant, CancellationToken ct) { var u = await User(user, ct); var q = Query().AsNoTracking(); if (u.Role == UserRole.FarmOwner) { if (tenant is null) throw new AuthorizationException(); q = q.Where(x => x.TenantId == tenant); } else if (u.Role == UserRole.PlatformTechnician) q = q.Where(x => x.AssignedTechnicianId == user); else if (u.Role != UserRole.PlatformAdmin) throw new AuthorizationException(); return (await q.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct)).Select(View).ToList(); }
     public async Task<ServiceRequestView> GetAsync(Guid user, Guid? tenant, Guid id, CancellationToken ct) { var u = await User(user, ct); var r = await Query().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Service Request was not found."); Visible(u, tenant, r); return View(r); }
     public async Task<ServiceRequestView> AssignAsync(Guid admin, Guid id, AssignServiceRequestCommand c, CancellationToken ct)
-    { await Role(admin, UserRole.PlatformAdmin, ct); var tech = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == c.TechnicianUserId && x.Role == UserRole.PlatformTechnician && x.Status == AccountStatus.Active && x.TenantId == null, ct) ?? throw new ResourceConflictException("Technician must be an active platform account."); var r = await Find(id, ct); if (r.Status is not (ServiceRequestStatus.Open or ServiceRequestStatus.Assigned)) throw new ResourceConflictException("Only an Open or Assigned request can be assigned."); var from = r.Status; r.AssignedTechnicianId = tech.Id; r.Status = ServiceRequestStatus.Assigned; Add(r, admin, from == ServiceRequestStatus.Assigned ? ServiceHistoryEventType.Reassigned : ServiceHistoryEventType.Assigned, from, r.Status, c.Notes); await db.SaveChangesAsync(ct); return await Load(id, ct); }
+    { await Role(admin, UserRole.PlatformAdmin, ct); var tech = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == c.TechnicianUserId && x.Role == UserRole.PlatformTechnician && x.Status == AccountStatus.Active && x.TenantId == null, ct) ?? throw new ResourceConflictException("Technician must be an active platform account."); var r = await Find(id, ct); if (r.Status is not (ServiceRequestStatus.Open or ServiceRequestStatus.Assigned)) throw new ResourceConflictException("Only an Open or Assigned request can be assigned."); var from = r.Status; r.AssignedTechnicianId = tech.Id; r.Status = ServiceRequestStatus.Assigned; Add(r, admin, from == ServiceRequestStatus.Assigned ? ServiceHistoryEventType.Reassigned : ServiceHistoryEventType.Assigned, from, r.Status, c.Notes);
+        // Đổi KTV thì yêu cầu triển khai đang xử lý của phiếu này cũng chuyển sang KTV mới: nếu không, KTV cũ vẫn là người phụ trách
+        // (TechnicianUserId) nên còn thấy và thao tác được yêu cầu, cùng lúc với KTV mới. Yêu cầu đã Completed/Cancelled giữ nguyên người làm.
+        if (r.DeploymentRequestId is { } depId)
+        {
+            var dep = await db.DeploymentRequests.SingleOrDefaultAsync(x => x.Id == depId, ct);
+            if (dep is { TechnicianUserId: { } current } && current != tech.Id
+                && dep.Status is not (DeploymentRequestStatus.Completed or DeploymentRequestStatus.Cancelled))
+            {
+                dep.TechnicianUserId = tech.Id;
+                db.DeploymentDecisionHistory.Add(new DeploymentDecisionHistory
+                {
+                    DeploymentRequestId = dep.Id, ActorUserId = admin, DecisionType = "Reassigned",
+                    FromStatus = dep.Status.ToString(), ToStatus = dep.Status.ToString(), Notes = c.Notes
+                });
+            }
+        }
+        FlowNotifications.Add(db, tech.Id, null, from == ServiceRequestStatus.Assigned ? "Yêu cầu được giao lại cho bạn" : "Bạn có yêu cầu mới",
+            "Admin vừa giao cho bạn một yêu cầu dịch vụ/lắp đặt. Mở để nhận việc.", NotificationType.Service, r.Id.ToString());
+        await db.SaveChangesAsync(ct); return await Load(id, ct); }
     public async Task<ServiceRequestView> AcceptAsync(Guid tech, Guid id, CancellationToken ct) { var r = await Assigned(tech, id, ct); Move(r, tech, ServiceRequestStatus.Assigned, ServiceRequestStatus.InProgress, ServiceHistoryEventType.Accepted, null); r.AcceptedAtUtc = clock.GetUtcNow().UtcDateTime; await db.SaveChangesAsync(ct); return await Load(id, ct); }
     public async Task<ServiceRequestView> DiagnoseAsync(Guid tech, Guid id, DiagnoseServiceRequestCommand c, CancellationToken ct) { var r = await Assigned(tech, id, ct); Move(r, tech, ServiceRequestStatus.InProgress, ServiceRequestStatus.Diagnosed, ServiceHistoryEventType.Diagnosed, c.Diagnosis); r.InspectionNotes = FinanceService.Required(c.InspectionNotes, "inspectionNotes", 2000); r.Diagnosis = FinanceService.Required(c.Diagnosis, "diagnosis", 2000); r.ResolutionAction = c.ResolutionAction; await db.SaveChangesAsync(ct); return await Load(id, ct); }
     public async Task<ServiceRequestView> RecordWorkAsync(Guid tech, Guid id, RecordServiceWorkCommand c, CancellationToken ct) { var r = await Assigned(tech, id, ct); if (r.ResolutionAction == ServiceResolutionAction.Replacement) throw new ResourceConflictException("Use replacement for a Replacement diagnosis."); Move(r, tech, ServiceRequestStatus.Diagnosed, ServiceRequestStatus.WorkCompleted, ServiceHistoryEventType.WorkRecorded, c.WorkPerformed); r.WorkPerformed = FinanceService.Required(c.WorkPerformed, "workPerformed", 2000); await db.SaveChangesAsync(ct); return await Load(id, ct); }
@@ -236,7 +256,8 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         Add(r, tech, ServiceHistoryEventType.Closed, from, r.Status, installationAfterAcceptance ? "Technician xác nhận hoàn thành sau khi Owner nghiệm thu." : null);
         await db.SaveChangesAsync(ct); return await Load(id, ct);
     }
-    private IQueryable<ServiceRequest> Query() => db.ServiceRequests.Include(x => x.History).Include(x => x.Replacements);
+    // Farm/Zone nạp kèm để trả tên trang trại và Zone: kỹ thuật viên mất quyền đọc Zone của trang trại khi phiếu đã đóng nên client không tự tra tên được.
+    private IQueryable<ServiceRequest> Query() => db.ServiceRequests.Include(x => x.History).Include(x => x.Replacements).Include(x => x.Farm).Include(x => x.Zone);
     private async Task<ServiceRequest> Find(Guid id, CancellationToken ct) => await Query().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ResourceNotFoundException("Service Request was not found.");
     private async Task<ServiceRequest> Assigned(Guid tech, Guid id, CancellationToken ct) { await Role(tech, UserRole.PlatformTechnician, ct); var r = await Find(id, ct); if (r.AssignedTechnicianId != tech) throw new AuthorizationException("Only the assigned Technician may update this request."); return r; }
     private async Task<AppUser> User(Guid id, CancellationToken ct) => await db.AppUsers.SingleOrDefaultAsync(x => x.Id == id && x.Status == AccountStatus.Active, ct) ?? throw new AuthorizationException();
@@ -246,5 +267,5 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
     private void Move(ServiceRequest r, Guid actor, ServiceRequestStatus expected, ServiceRequestStatus next, ServiceHistoryEventType e, string? notes) { if (r.Status != expected) throw new ResourceConflictException($"Expected Service Request state {expected}."); var from = r.Status; r.Status = next; Add(r, actor, e, from, next, notes); }
     private void Add(ServiceRequest r, Guid actor, ServiceHistoryEventType e, ServiceRequestStatus from, ServiceRequestStatus to, string? notes) { var h = new ServiceRequestHistory { ServiceRequest = r, ActorUserId = actor, EventType = e, FromStatus = from, ToStatus = to, Notes = FinanceService.Optional(notes, 2000) }; r.History.Add(h); db.ServiceRequestHistories.Add(h); }
     private async Task<ServiceRequestView> Load(Guid id, CancellationToken ct) => View(await Query().AsNoTracking().SingleAsync(x => x.Id == id, ct));
-    private static ServiceRequestView View(ServiceRequest r) => new(r.Id, r.TenantId, r.FarmId, r.ZoneId, r.DeviceId, r.CurrentDeviceId ?? r.DeviceId, r.FailureCode, r.Description, r.Status, r.AssignedTechnicianId, r.InspectionNotes, r.Diagnosis, r.ResolutionAction, r.WorkPerformed, r.ClosedAtUtc, r.History.OrderBy(x => x.CreatedAtUtc).Select(x => new ServiceHistoryView(x.Id, x.EventType, x.FromStatus, x.ToStatus, x.ActorUserId, x.Notes, x.CreatedAtUtc)).ToList(), r.Replacements.OrderBy(x => x.CreatedAtUtc).Select(x => new DeviceReplacementView(x.Id, x.OldDeviceId, x.NewDeviceId, x.ZoneId, x.CreatedAtUtc)).ToList(), r.DeploymentRequestId, r.IsContractSigned, r.IsDepositPaid, r.IsAcceptanceSigned, r.IsFullyPaid);
+    private static ServiceRequestView View(ServiceRequest r) => new(r.Id, r.TenantId, r.FarmId, r.ZoneId, r.DeviceId, r.CurrentDeviceId ?? r.DeviceId, r.FailureCode, r.Description, r.Status, r.AssignedTechnicianId, r.InspectionNotes, r.Diagnosis, r.ResolutionAction, r.WorkPerformed, r.ClosedAtUtc, r.History.OrderBy(x => x.CreatedAtUtc).Select(x => new ServiceHistoryView(x.Id, x.EventType, x.FromStatus, x.ToStatus, x.ActorUserId, x.Notes, x.CreatedAtUtc)).ToList(), r.Replacements.OrderBy(x => x.CreatedAtUtc).Select(x => new DeviceReplacementView(x.Id, x.OldDeviceId, x.NewDeviceId, x.ZoneId, x.CreatedAtUtc)).ToList(), r.DeploymentRequestId, r.IsContractSigned, r.IsDepositPaid, r.IsAcceptanceSigned, r.IsFullyPaid, r.Farm?.Name, r.Zone?.Name);
 }

@@ -266,4 +266,139 @@ public sealed class ContractSigningTests
         await Login(c, "owner-b@example.com");
         Assert.DoesNotContain(await Read<List<DeploymentRequestView>>(await c.GetAsync("/api/v1/deployment-requests")), d => d.RequestId == x.DeploymentId);
     }
+
+    [Fact]
+    public async Task Contract_made_from_a_signed_quotation_has_no_invented_rent_phone_or_address()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        await Login(c, "owner-a@example.com");
+        (await Deposit(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+
+        using var scope = f.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        var contract = await db.ZoneContracts.SingleAsync(z => z.ContractNumber.StartsWith("HD-SR-"));
+        // Phí dịch vụ/tháng chưa thiết lập (không suy từ tổng báo giá / 12), SĐT/địa chỉ không phải số cố định.
+        Assert.Equal(0m, contract.MonthlyRentVnd);
+        Assert.NotEqual("0903666888", contract.LesseePhone);
+        Assert.NotEqual("Trang trại thông minh SmartFarm", contract.LesseeAddress);
+    }
+
+    [Fact]
+    public async Task Renewing_a_contract_without_a_service_fee_is_rejected_until_a_fee_is_given()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        await Login(c, "owner-a@example.com");
+        (await Deposit(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+        Guid contractId;
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            contractId = (await db.ZoneContracts.SingleAsync(z => z.ContractNumber.StartsWith("HD-SR-"))).Id;
+        }
+        await Login(c, "admin@example.com");
+        var noFee = await c.PostAsJsonAsync($"/api/v1/zone-contracts/{contractId}/renew", new { durationPreset = "1_YEAR" });
+        Assert.True((int)noFee.StatusCode is 400 or 422);
+        var withFee = await c.PostAsJsonAsync($"/api/v1/zone-contracts/{contractId}/renew", new { durationPreset = "1_YEAR", newMonthlyRentVnd = 500000m });
+        withFee.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Depreciation_list_never_invents_records_for_devices_without_one()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var gateway = new Gateway { FarmId = x.Seed.FarmAId, DeploymentRequestId = x.DeploymentId, MacAddress = "AA:BB:CC:DD:EE:77", GatewaySerial = $"DP-{Guid.NewGuid():N}", FrequencyBand = "433MHz", FirmwareVersion = "v1", MqttClientId = $"dp-{Guid.NewGuid():N}", ClientCertificateFingerprint = new string('D', 64), Status = GatewayStatus.Online, LastSeenAtUtc = DateTime.UtcNow };
+            db.Gateways.Add(gateway);
+            await db.SaveChangesAsync();
+            db.Devices.Add(new Device { FarmId = x.Seed.FarmAId, GatewayId = gateway.Id, DeploymentRequestId = x.DeploymentId, ZoneId = x.Seed.ZoneAId, HardwareAddress = $"DP-{Guid.NewGuid():N}", DeviceType = DeviceType.SensorNode, Status = DeviceStatus.Online });
+            await db.SaveChangesAsync();
+        }
+        await Login(c, "owner-a@example.com");
+        var list = await c.GetFromJsonAsync<JsonElement>($"/api/v1/zones/{x.Seed.ZoneAId}/depreciations", Json);
+        Assert.Equal(0, list.GetArrayLength());
+        using var check = f.Services.CreateScope();
+        Assert.Equal(0, await check.ServiceProvider.GetRequiredService<SmartFarmDbContext>().DeviceDepreciations.CountAsync());
+    }
+
+
+    [Fact]
+    public async Task Technician_only_reaches_depreciation_of_assigned_zones_and_start_date_cannot_be_in_the_future()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        await Login(c, "technician@example.com");
+        // Zone của trang trại khác (không được giao): đọc theo Zone và tạo hồ sơ đều bị từ chối.
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.GetAsync($"/api/v1/zones/{x.Seed.ZoneBId}/depreciations")).StatusCode);
+        var body = new { deviceId = Guid.NewGuid(), originalCostVnd = 1_000_000, depreciationLifetimeMonths = 12, startDate = DateTime.UtcNow.AddMonths(-1).ToString("yyyy-MM-dd") };
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync($"/api/v1/zones/{x.Seed.ZoneBId}/depreciations", body)).StatusCode);
+        // Zone được giao thì đọc được.
+        Assert.Equal(HttpStatusCode.OK, (await c.GetAsync($"/api/v1/zones/{x.Seed.ZoneAId}/depreciations")).StatusCode);
+        // Ngày bắt đầu ở tương lai: 400 (Owner của Zone A).
+        await Login(c, "owner-a@example.com");
+        var future = new { deviceId = Guid.NewGuid(), originalCostVnd = 1_000_000, depreciationLifetimeMonths = 12, startDate = DateTime.UtcNow.AddMonths(2).ToString("yyyy-MM-dd") };
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync($"/api/v1/zones/{x.Seed.ZoneAId}/depreciations", future)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Service_request_list_returns_farm_and_zone_names_even_after_the_request_is_closed()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        string farmName, zoneName;
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            farmName = (await db.Farms.SingleAsync(z => z.Id == x.Seed.FarmAId)).Name;
+            zoneName = (await db.Zones.SingleAsync(z => z.Id == x.Seed.ZoneAId)).Name;
+            (await db.ServiceRequests.SingleAsync(r => r.Id == x.ServiceRequestId)).Status = ServiceRequestStatus.Closed;
+            await db.SaveChangesAsync();
+        }
+        // Phiếu đã đóng: kỹ thuật viên không còn quyền đọc Zone của trang trại, nhưng danh sách vẫn phải có tên.
+        await Login(c, "technician@example.com");
+        var list = await c.GetFromJsonAsync<JsonElement>("/api/v1/service-requests", Json);
+        var item = list.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == x.ServiceRequestId);
+        Assert.Equal(farmName, item.GetProperty("farmName").GetString());
+        Assert.Equal(zoneName, item.GetProperty("zoneName").GetString());
+        var one = await c.GetFromJsonAsync<JsonElement>($"/api/v1/service-requests/{x.ServiceRequestId}", Json);
+        Assert.Equal(zoneName, one.GetProperty("zoneName").GetString());
+    }
+
+
+    private static async Task<List<Notification>> ServiceNotesAsync(TestApplicationFactory f, string email)
+    {
+        using var scope = f.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        var userId = (await db.AppUsers.SingleAsync(u => u.Email == email)).Id;
+        return await db.Notifications.Where(n => n.UserId == userId && n.Type == NotificationType.Service).OrderBy(n => n.CreatedAtUtc).ToListAsync();
+    }
+
+    [Fact]
+    public async Task Installation_flow_notifies_the_owner_on_quotation_and_the_technician_on_deposit_and_acceptance()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Completed);
+        // KTV gửi báo giá/hợp đồng → Chủ trang trại được báo (ReferenceId = phiếu dịch vụ), KTV chưa có gì.
+        var owner = Assert.Single(await ServiceNotesAsync(f, "owner-a@example.com"));
+        Assert.Equal("Báo giá/hợp đồng lắp đặt mới", owner.Title);
+        Assert.Equal(x.ServiceRequestId.ToString(), owner.ReferenceId);
+        Assert.False(owner.IsRead);
+        Assert.DoesNotContain(await ServiceNotesAsync(f, "technician@example.com"), n => n.Title.Contains("ký hợp đồng"));
+
+        await Login(c, "owner-a@example.com");
+        (await Deposit(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+        var afterDeposit = await ServiceNotesAsync(f, "technician@example.com");
+        var dep = Assert.Single(afterDeposit, n => n.Title == "Chủ trang trại đã ký hợp đồng và đóng cọc");
+        Assert.Equal(x.ServiceRequestId.ToString(), dep.ReferenceId);
+
+        (await Final(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+        var afterFinal = await ServiceNotesAsync(f, "technician@example.com");
+        Assert.Contains(afterFinal, n => n.Title == "Chủ trang trại đã ký nghiệm thu");
+        // Mỗi sự kiện đúng một thông báo cho KTV (không nhân đôi).
+        Assert.Equal(1, afterFinal.Count(n => n.Title == "Chủ trang trại đã ký hợp đồng và đóng cọc"));
+    }
 }

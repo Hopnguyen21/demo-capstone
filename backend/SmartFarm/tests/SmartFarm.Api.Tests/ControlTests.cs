@@ -15,6 +15,7 @@ using Xunit;
 
 namespace SmartFarm.Api.Tests;
 
+[Collection("PlatformSettingsSequential")]
 public sealed class ControlTests
 {
     private static readonly Guid Crop = Guid.Parse("10000000-0000-0000-0000-000000000001");
@@ -122,6 +123,48 @@ public sealed class ControlTests
     private static async Task<ActuatorCommandView> FeedbackAsync(TestApplicationFactory factory, Fixture f, Guid commandId, ActuatorCommandStatus status, string observed)
     {
         var payload = JsonSerializer.SerializeToUtf8Bytes(new { commandId, deviceId = f.DeviceId, status = status.ToString(), observedState = observed, occurredAtUtc = DateTime.UtcNow, errorCode = (string?)null, errorMessage = (string?)null }); using var scope = factory.Services.CreateScope(); var adapter = scope.ServiceProvider.GetRequiredService<IActuatorFeedbackAdapter>(); return await adapter.ReceiveAsync(new MqttActuatorFeedbackMessage($"smartfarm/gateways/{f.GatewayId}/actuator-feedback", new GatewayTransportIdentity(f.ClientId, f.Fingerprint), payload), CancellationToken.None);
+    }
+
+    private static async Task<Guid> SecondZoneInSameFarmAsync(TestApplicationFactory factory, Guid zoneAId)
+    {
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        var fieldId = (await db.Zones.AsNoTracking().SingleAsync(x => x.Id == zoneAId)).FieldId;
+        var zone2 = new Zone { FieldId = fieldId, Name = "Zone A2", AreaM2 = 50, ZoneType = "Greenhouse" }; db.Zones.Add(zone2); await db.SaveChangesAsync(); return zone2.Id;
+    }
+
+    private static string RangeQuery() => $"fromUtc={DateTime.UtcNow.AddDays(-1):yyyy-MM-ddTHH:mm:ssZ}&toUtc={DateTime.UtcNow.AddDays(1):yyyy-MM-ddTHH:mm:ssZ}";
+
+    [Fact]
+    public async Task Farmer_with_control_in_one_zone_cannot_read_command_or_stop_another_zone_of_the_same_farm()
+    {
+        using var factory = new TestApplicationFactory(); var f = await PrepareAsync(factory); var zone2 = await SecondZoneInSameFarmAsync(factory, f.ZoneId);
+        using (var scope = factory.Services.CreateScope()) { var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>(); (await db.UserZoneAccesses.SingleAsync(x => x.AppUserId == f.FarmerId && x.ZoneId == f.ZoneId)).CanControl = true; await db.SaveChangesAsync(); }
+        using var client = factory.CreateClient(); await Login(client, "farmer@example.com");
+        var other = Guid.NewGuid();
+        // Được giao Zone A (có quyền điều khiển) nhưng KHÔNG được giao Zone A2 của cùng trang trại: mọi API đọc/ghi Zone A2 bị từ chối.
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/v1/zones/{zone2}/actuators")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/v1/zones/{zone2}/actuators/{other}/status")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/v1/zones/{zone2}/actuators/history?{RangeQuery()}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync($"/api/v1/zones/{zone2}/actuators/{other}/command", Manual("cross-zone-farmer"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/zones/{zone2}/commands/{other}") { Content = JsonContent.Create(new { reason = "x" }) })).StatusCode);
+        // Dừng khẩn cấp chỉ định Zone không được giao: không dừng thiết bị nào.
+        var stop = await client.PostAsJsonAsync("/api/v1/control/emergency-stop", new { zoneId = zone2 }); Assert.Equal(HttpStatusCode.OK, stop.StatusCode);
+        Assert.Equal(0, (await stop.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("stoppedCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Actuator_and_command_ids_of_one_zone_never_resolve_under_another_zone_and_history_stays_in_its_zone()
+    {
+        using var factory = new TestApplicationFactory(); var f = await PrepareAsync(factory); var zone2 = await SecondZoneInSameFarmAsync(factory, f.ZoneId);
+        using var client = factory.CreateClient(); await Login(client, "owner-a@example.com");
+        var created = await client.PostAsJsonAsync($"/api/v1/zones/{f.ZoneId}/actuators/{f.PumpAId}/command", Manual("zone-isolation")); Assert.Equal(HttpStatusCode.Accepted, created.StatusCode); var command = await Read<ActuatorCommandView>(created);
+        // Cùng người gọi (Owner có quyền cả hai Zone) nhưng sai Zone trên URL: không tìm thấy, không lộ dữ liệu.
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/zones/{zone2}/actuators/{f.PumpAId}/status")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync($"/api/v1/zones/{zone2}/actuators/{f.PumpAId}/command", Manual("zone-isolation-2"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/zones/{zone2}/commands/{command.CommandId}") { Content = JsonContent.Create(new { reason = "x" }) })).StatusCode);
+        Assert.Empty((await client.GetFromJsonAsync<CommandHistoryView>($"/api/v1/zones/{zone2}/actuators/history?{RangeQuery()}", ApiJson))!.Commands);
+        Assert.Contains((await client.GetFromJsonAsync<CommandHistoryView>($"/api/v1/zones/{f.ZoneId}/actuators/history?{RangeQuery()}", ApiJson))!.Commands, c => c.CommandId == command.CommandId);
+        Assert.Empty(await client.GetFromJsonAsync<List<ZoneActuatorItemView>>($"/api/v1/zones/{zone2}/actuators", ApiJson) ?? []);
     }
 
     private static async Task<Fixture> PrepareAsync(TestApplicationFactory factory)
