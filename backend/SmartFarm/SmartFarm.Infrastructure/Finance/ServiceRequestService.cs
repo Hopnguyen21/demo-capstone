@@ -56,6 +56,19 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
         }
         var zoneId = zone.Id;
 
+        // Bảo trì chỉ nhận khi hợp đồng dịch vụ của Zone còn hạn. Hợp đồng bổ sung (mua thêm thiết bị) cùng hạn với hợp đồng chính,
+        // nên thiết bị mua thêm được bảo trì đến hết hạn hợp đồng chính. Zone chưa từng có hợp đồng (dữ liệu cũ) thì không chặn.
+        if (!DeploymentSupport.IsInstallationCode(c.FailureCode))
+        {
+            var todayUtc = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+            var zoneContracts = await db.ZoneContracts.AsNoTracking().Where(x => x.ZoneId == zoneId).Select(x => new { x.Status, x.EndDate, x.ContractNumber }).ToListAsync(ct);
+            if (zoneContracts.Count > 0 && !zoneContracts.Any(x => (x.Status == ZoneContractStatus.Active || x.Status == ZoneContractStatus.ExpiringSoon) && x.EndDate >= todayUtc))
+            {
+                var latest = zoneContracts.OrderByDescending(x => x.EndDate).First();
+                throw new ResourceConflictException($"Hợp đồng dịch vụ của Zone ({latest.ContractNumber}) đã hết hạn ({latest.EndDate:dd/MM/yyyy}). Hãy gia hạn hợp đồng để được bảo trì thiết bị.");
+            }
+        }
+
         Device? d = null;
         if (c.DeviceId.HasValue && c.DeviceId.Value != Guid.Empty)
         {
