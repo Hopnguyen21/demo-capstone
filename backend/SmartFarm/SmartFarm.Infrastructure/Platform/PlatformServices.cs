@@ -777,13 +777,22 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                     Notes = $"[Hợp đồng ký từ Cổng Dịch vụ #{sr.Id.ToString()[..8].ToUpper()}] {quotation.Notes}"
                 };
 
-                // Previous active contracts for this zone become renewed/superseded
                 var oldActiveContracts = await db.ZoneContracts
                     .Where(c => c.ZoneId == zoneId && (c.Status == ZoneContractStatus.Active || c.Status == ZoneContractStatus.ExpiringSoon))
                     .ToListAsync(ct);
-                foreach (var old in oldActiveContracts)
+                // Zone ĐÃ có hợp đồng còn hạn: báo giá này là mua thêm thiết bị → HỢP ĐỒNG BỔ SUNG gắn vào hợp đồng đang hiệu lực
+                // (cùng ngày kết thúc), hợp đồng cũ GIỮ NGUYÊN hiệu lực. Không còn đánh dấu hợp đồng cũ là "đã tái ký".
+                var mainContract = oldActiveContracts.Where(c => c.EndDate >= today).OrderByDescending(c => c.EndDate).FirstOrDefault();
+                if (mainContract != null)
                 {
-                    old.Status = ZoneContractStatus.Renewed;
+                    zoneContract.ParentContractId = mainContract.Id;
+                    zoneContract.EndDate = mainContract.EndDate;
+                    zoneContract.Notes = $"[Hợp đồng bổ sung của {mainContract.ContractNumber}] {zoneContract.Notes}";
+                }
+                else
+                {
+                    // Hợp đồng cũ chỉ còn trên danh nghĩa (đã quá hạn nhưng chưa được worker đổi trạng thái): hợp đồng mới thay thế.
+                    foreach (var old in oldActiveContracts) old.Status = ZoneContractStatus.Renewed;
                 }
 
                 db.ZoneContracts.Add(zoneContract);
