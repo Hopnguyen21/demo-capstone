@@ -240,3 +240,8 @@ check remains advisory and does not claim technical or VietGAP compliance.
 - Đọc/tạo khấu hao theo Zone và theo Farm đi qua `VisibleZoneIdsAsync`: Owner theo tenant, kỹ thuật viên chỉ Zone của yêu cầu được giao (403 nếu khác), Admin toàn bộ.
 - `startDate` không được ở tương lai (400). Giá trị khấu hao lũy kế/sổ sách luôn tính lại khi đọc; cột lưu sẵn chỉ là ảnh chụp lúc tạo.
 - Còn mở: chưa có unique index theo `DeviceId`, chưa gộp các dòng trùng nếu phát sinh lại.
+
+## Mua thêm thiết bị trong Zone đã có hợp đồng còn hạn (2026-11-18)
+- Ký cọc báo giá của Zone đã có hợp đồng dịch vụ còn hạn (Active/ExpiringSoon, EndDate >= hôm nay) tạo HỢP ĐỒNG BỔ SUNG: `ParentContractId` trỏ tới hợp đồng chính, cùng `EndDate`, ghi chú "[Hợp đồng bổ sung của HD-…]". Hợp đồng cũ GIỮ trạng thái đang hiệu lực (trước đây bị đặt `Renewed`, hiện sai thành "Đã tái ký gia hạn").
+- Hợp đồng cũ chỉ còn trên danh nghĩa (quá hạn nhưng chưa đổi trạng thái) thì hợp đồng mới thay thế như trước (`Renewed`).
+- Không gộp vào hợp đồng cũ: số tiền, tạm ứng và nghiệm thu gắn theo từng báo giá; hợp đồng đã ký không đổi hồi tố.
