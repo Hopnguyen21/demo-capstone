@@ -327,6 +327,63 @@ public sealed class ContractSigningTests
 
 
     [Fact]
+    public async Task Signing_a_new_quotation_in_a_zone_with_a_valid_contract_adds_a_supplementary_contract_and_keeps_the_old_one_active()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var x = await SetupAsync(f, c, DeploymentRequestStatus.Installing);
+        var end = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(8);
+        Guid oldId;
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var zone = await db.Zones.Include(z => z.Field).ThenInclude(z => z.Farm).SingleAsync(z => z.Id == x.Seed.ZoneAId);
+            var old = new ZoneContract { TenantId = zone.Field.Farm.TenantId, FarmId = zone.Field.FarmId, ZoneId = zone.Id, CreatedByOwnerId = x.Seed.OwnerAId, ContractNumber = "HD-OLD-1", StartDate = end.AddYears(-1), EndDate = end, LesseeName = "Khách", MonthlyRentVnd = 0, DepositVnd = 1, TotalContractValueVnd = 100, Status = ZoneContractStatus.Active };
+            db.ZoneContracts.Add(old); await db.SaveChangesAsync(); oldId = old.Id;
+        }
+        await Login(c, "owner-a@example.com");
+        (await Deposit(c, x.ServiceRequestId)).EnsureSuccessStatusCode();
+        using var check = f.Services.CreateScope();
+        var db2 = check.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        var oldAfter = await db2.ZoneContracts.SingleAsync(z => z.Id == oldId);
+        Assert.Equal(ZoneContractStatus.Active, oldAfter.Status);
+        var added = await db2.ZoneContracts.SingleAsync(z => z.ContractNumber.StartsWith("HD-SR-"));
+        Assert.Equal(oldId, added.ParentContractId);
+        Assert.Equal(end, added.EndDate);
+        Assert.Equal(ZoneContractStatus.Active, added.Status);
+        Assert.Contains("HD-OLD-1", added.Notes);
+    }
+
+    [Fact]
+    public async Task Maintenance_request_is_refused_when_every_zone_contract_has_expired_but_allowed_without_any_contract_or_while_valid()
+    {
+        using var f = new TestApplicationFactory(); using var c = f.CreateClient();
+        var s = await f.SeedAsync();
+        await Login(c, "owner-a@example.com");
+        Task<HttpResponseMessage> Maintenance() => c.PostAsJsonAsync($"/api/v1/farms/{s.FarmAId}/service-requests", new { zoneId = s.ZoneAId, failureCode = "SENSOR_OFFLINE", description = "Mất tín hiệu" });
+        Guid contractId;
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var farm = await db.Farms.SingleAsync(x => x.Id == s.FarmAId);
+            var dep = new DeploymentRequest { TenantId = farm.TenantId, FarmId = s.FarmAId, ZoneId = s.ZoneAId, PlantingSeasonId = Guid.NewGuid(), OwnerUserId = s.OwnerAId, Status = DeploymentRequestStatus.Completed, RequiredParametersCsv = "SoilMoisture" };
+            db.DeploymentRequests.Add(dep);
+            var ct = new ZoneContract { TenantId = farm.TenantId, FarmId = s.FarmAId, ZoneId = s.ZoneAId, CreatedByOwnerId = s.OwnerAId, ContractNumber = "HD-EXP-1", StartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-1).AddDays(-30), EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-5), LesseeName = "Khách", MonthlyRentVnd = 0, DepositVnd = 1, TotalContractValueVnd = 100, Status = ZoneContractStatus.Active };
+            db.ZoneContracts.Add(ct); await db.SaveChangesAsync(); contractId = ct.Id;
+        }
+        // Hợp đồng duy nhất đã quá hạn: bảo trì bị từ chối kèm số hợp đồng.
+        var refused = await Maintenance();
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("HD-EXP-1", await refused.Content.ReadAsStringAsync());
+        // Gia hạn (còn hạn): được nhận.
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            (await db.ZoneContracts.SingleAsync(x => x.Id == contractId)).EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(3); await db.SaveChangesAsync();
+        }
+        Assert.NotEqual(HttpStatusCode.Conflict, (await Maintenance()).StatusCode);
+    }
+
+    [Fact]
     public async Task Technician_only_reaches_depreciation_of_assigned_zones_and_start_date_cannot_be_in_the_future()
     {
         using var f = new TestApplicationFactory(); using var c = f.CreateClient();
