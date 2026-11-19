@@ -94,6 +94,7 @@ builder.Services.AddHostedService<SimulatedIotTelemetryWorker>();
 builder.Services.AddHostedService<KnowledgeEmbeddingWorker>();
 builder.Services.AddHostedService<FirmwareReleaseReconciliationWorker>();
 builder.Services.AddHostedService<FirmwareJobTimeoutWorker>();
+builder.Services.AddHostedService<ContractExpiryWorker>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>

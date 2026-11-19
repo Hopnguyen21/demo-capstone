@@ -21,8 +21,22 @@ export interface InventoryDevice {
   locationRack: string;
   status: 'InWarehouse' | 'Allocated' | 'InTechnicianStock' | 'Deployed' | 'Maintenance' | 'Faulty' | 'Returned';
   assignedTechnicianId?: string;
+  /** Vai trò Node do Admin gán (SensorNode/ActuatorNode/ValveNode/PumpNode/Gateway/InstallKit); rỗng = chưa gán. */
+  estimateRole?: string;
   addedAt: string;
 }
+
+/** Vai trò Node trong kho: quyết định hàng này dùng làm Node cảm biến hay Node điều khiển khi KTV gắn Node (backend chặn dùng sai loại). */
+const NODE_ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Chưa gán' },
+  { value: 'SensorNode', label: 'Node cảm biến' },
+  { value: 'ActuatorNode', label: 'Node điều khiển (rơ-le)' },
+  { value: 'ValveNode', label: 'Node điều khiển van' },
+  { value: 'PumpNode', label: 'Node điều khiển bơm' },
+  { value: 'Gateway', label: 'Gateway' },
+  { value: 'InstallKit', label: 'Bộ phụ kiện lắp đặt' },
+];
+const nodeRoleLabel = (value?: string) => NODE_ROLE_OPTIONS.find(o => o.value === (value || ''))?.label || value || 'Chưa gán';
 
 const normalizeCategory = (value: unknown): InventoryDevice['category'] => {
   const v = String(value || '').toUpperCase();
@@ -205,6 +219,7 @@ export const DevicesPage: React.FC = () => {
           locationRack: i.locationRack || '',
           status: normalizeStatus(i.status),
           assignedTechnicianId: i.assignedTechnicianId,
+          estimateRole: i.estimateRole || '',
           addedAt: i.createdAtUtc ? i.createdAtUtc.substring(0, 10) : '2026-08-10',
         })));
       }
@@ -220,7 +235,7 @@ export const DevicesPage: React.FC = () => {
       setSuccessNotice('Đã duyệt đơn và chuyển thiết bị vào tồn kho kỹ thuật viên.');
       loadAllocationRequests();
       const refreshed = await adminService.getHardwareItems();
-      if (Array.isArray(refreshed)) setDevices(refreshed.map((i: any) => ({ id: i.id, code: i.code, name: i.name, category: normalizeCategory(i.category), serialNumber: i.serialNumber || '', macAddress: i.macAddress || '', model: i.model || '', manufacturer: i.manufacturer || '', quantityInStock: i.quantityInStock || 0, unitPrice: Number(i.unitPrice || 0), unit: i.unit || 'Cái', locationRack: i.locationRack || '', status: normalizeStatus(i.status), assignedTechnicianId: i.assignedTechnicianId, addedAt: i.createdAtUtc ? i.createdAtUtc.substring(0, 10) : '' })));
+      if (Array.isArray(refreshed)) setDevices(refreshed.map((i: any) => ({ id: i.id, code: i.code, name: i.name, category: normalizeCategory(i.category), serialNumber: i.serialNumber || '', macAddress: i.macAddress || '', model: i.model || '', manufacturer: i.manufacturer || '', quantityInStock: i.quantityInStock || 0, unitPrice: Number(i.unitPrice || 0), unit: i.unit || 'Cái', locationRack: i.locationRack || '', status: normalizeStatus(i.status), assignedTechnicianId: i.assignedTechnicianId, estimateRole: i.estimateRole || '', addedAt: i.createdAtUtc ? i.createdAtUtc.substring(0, 10) : '' })));
     } catch (err: any) { alert(`❌ Không thể duyệt đơn: ${err?.response?.data?.detail || err?.message || 'Lỗi không xác định'}`); }
   };
   const rejectAllocationRequest = async (requestId: string) => { const reason = window.prompt('Lý do từ chối đơn cấp phát:'); if (!reason?.trim()) return; try { await adminService.rejectHardwareAllocationRequest(requestId, reason.trim()); setSuccessNotice('Đã từ chối đơn cấp phát.'); loadAllocationRequests(); } catch (err: any) { alert(`Không thể từ chối đơn: ${err?.response?.data?.detail || err?.message || 'Lỗi không xác định'}`); } };
@@ -242,6 +257,7 @@ export const DevicesPage: React.FC = () => {
     unitPrice: 0,
     unit: 'Cái',
     locationRack: 'Kệ A1 - Kho Trung tâm',
+    estimateRole: '',
   });
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -301,6 +317,7 @@ export const DevicesPage: React.FC = () => {
       unit: effectiveUnit,
       locationRack: newItem.locationRack?.trim() || 'Kệ A1 - Kho Trung tâm',
       status: 'InWarehouse',
+      estimateRole: newItem.estimateRole || undefined,
     };
 
     try {
@@ -319,6 +336,7 @@ export const DevicesPage: React.FC = () => {
         unit: result?.unit || payload.unit,
         locationRack: result?.locationRack || payload.locationRack,
         status: normalizeStatus(result?.status || payload.status),
+        estimateRole: result?.estimateRole || payload.estimateRole || '',
         addedAt: new Date().toISOString().split('T')[0],
       };
 
@@ -340,6 +358,7 @@ export const DevicesPage: React.FC = () => {
       unitPrice: 0,
         unit: 'Cái',
         locationRack: 'Kệ A1 - Kho Trung tâm',
+        estimateRole: '',
       });
     } catch (err: any) {
       const errMsg = err?.response?.data?.message || err?.message || 'Lỗi khi lưu thiết bị vào kho.';
@@ -377,6 +396,8 @@ export const DevicesPage: React.FC = () => {
       unit: effectiveUnit,
       locationRack: editingItem.locationRack?.trim() || '',
       status: editingItem.status,
+      // rỗng = bỏ vai trò (backend: null giữ nguyên, rỗng xóa)
+      estimateRole: editingItem.estimateRole || '',
     };
 
     try {
@@ -702,7 +723,10 @@ export const DevicesPage: React.FC = () => {
                       <div className="font-bold text-emerald-800 font-mono text-xs">{item.code}</div>
                       <div className="font-medium text-slate-900 text-xs mt-0.5">{item.name}</div>
                     </td>
-                    <td className="p-3.5">{getCategoryLabel(item.category)}</td>
+                    <td className="p-3.5">
+                      <div>{getCategoryLabel(item.category)}</div>
+                      <div className={`text-[10px] mt-0.5 font-semibold ${item.estimateRole ? 'text-emerald-700' : 'text-amber-600'}`}>Vai trò: {nodeRoleLabel(item.estimateRole)}</div>
+                    </td>
                     <td className="p-3.5 font-mono text-[11px] text-slate-600">
                       <div>MAC: <strong className="text-slate-800 font-bold">{item.macAddress}</strong></div>
                       <div className="text-slate-400 text-[10px]">S/N: {item.serialNumber}</div>
@@ -827,6 +851,18 @@ export const DevicesPage: React.FC = () => {
             </div>
 
             <div>
+              <label className="block font-bold text-slate-800 mb-1">Vai trò Node</label>
+              <select
+                value={newItem.estimateRole}
+                onChange={e => setNewItem({ ...newItem, estimateRole: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653]"
+              >
+                {NODE_ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p className="mt-1 text-[10px] text-slate-500">Cảm biến hay điều khiển: kỹ thuật viên chỉ gắn được hàng này vào đúng loại Node. Nên gán cho mọi Node, van, bơm, rơ-le.</p>
+            </div>
+
+            <div>
               <label className="block font-bold text-slate-800 mb-1">Địa chỉ MAC / Mã Bluetooth</label>
               <Input
                 value={newItem.macAddress}
@@ -942,6 +978,18 @@ export const DevicesPage: React.FC = () => {
                 onChange={e => setEditingItem({ ...editingItem, name: e.target.value })}
                 required
               />
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Vai trò Node</label>
+              <select
+                value={editingItem.estimateRole || ''}
+                onChange={e => setEditingItem({ ...editingItem, estimateRole: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800"
+              >
+                {NODE_ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p className="mt-1 text-[10px] text-slate-500">Quyết định hàng dùng làm Node cảm biến hay điều khiển khi kỹ thuật viên gắn Node.</p>
               {newItem.category !== 'GATEWAY' && newItem.category !== 'NODE_MODULE' && <p className="mt-1 text-[10px] text-slate-500">Số lượng tồn kho theo lô nhập.</p>}
             </div>
 

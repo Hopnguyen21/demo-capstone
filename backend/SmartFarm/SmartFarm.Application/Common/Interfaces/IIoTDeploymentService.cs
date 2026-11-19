@@ -22,7 +22,8 @@ public interface IIoTDeploymentService
     Task<DeploymentRequestView> ConfirmAsync(Guid technicianId, Guid requestId, CancellationToken ct);
     Task<DeploymentRequestView> StartInstallationAsync(Guid technicianId, Guid requestId, CancellationToken ct);
     Task<DeviceConnectionTestView> RecordConnectionTestAsync(Guid technicianId, Guid requestId, ConnectionTestCommand command, CancellationToken ct);
-    Task<DeploymentRequestView> CompleteAsync(Guid technicianId, Guid requestId, CancellationToken ct);
+    /// <summary>Hoàn tất lắp đặt; [notes] = ghi chú/biên bản nghiệm thu của KTV (lưu vào lịch sử quyết định, Owner đọc lại trước khi ký).</summary>
+    Task<DeploymentRequestView> CompleteAsync(Guid technicianId, Guid requestId, string? notes, CancellationToken ct);
     Task<ServiceHandoffView> FailAsync(Guid technicianId, Guid requestId, FailDeploymentCommand command, CancellationToken ct);
     Task<IReadOnlyList<GatewayView>> ListGatewaysAsync(Guid userId, Guid? tenantId, Guid farmId, CancellationToken ct);
     Task<GatewayView> ProvisionGatewayAsync(Guid technicianId, ProvisionGatewayCommand command, CancellationToken ct);
@@ -65,5 +66,7 @@ public interface IIoTDeploymentService
     Task<IReadOnlyList<FirmwareInstallationView>> ListFirmwareInstallationsAsync(Guid technicianId, Guid preparationId, CancellationToken ct);
     Task<HardwarePreparationView> RecordHardwareConnectivityCheckAsync(Guid technicianId, Guid preparationId, HardwareConnectivityCheckCommand command, CancellationToken ct);
     Task<GatewayEnrollmentView> EnrollGatewayAsync(Guid technicianId, GatewayEnrollmentCommand command, CancellationToken ct);
+    /// <summary>Chỉ khi SimulatedIot:Enabled: dựng Gateway mô phỏng trong kho KTV rồi tự đăng ký + kích hoạt cho yêu cầu (không có phần cứng thật).</summary>
+    Task<GatewayEnrollmentView> SimulateGatewayAsync(Guid technicianId, SimulateGatewayCommand command, CancellationToken ct);
     Task<GatewayEnrollmentView> ActivateGatewayEnrollmentAsync(Guid technicianId, Guid enrollmentId, ActivateGatewayEnrollmentCommand command, CancellationToken ct);
 }

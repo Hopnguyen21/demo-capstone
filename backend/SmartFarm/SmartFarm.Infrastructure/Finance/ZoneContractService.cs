@@ -20,6 +20,14 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         throw new AuthorizationException();
     }
 
+    /// <summary>Kỹ thuật viên chỉ thấy/tạo khấu hao cho Zone của yêu cầu được giao; Owner theo tenant; Admin toàn bộ.</summary>
+    private async Task EnsureZoneVisibleAsync(Guid userId, Guid zoneId, CancellationToken ct)
+    {
+        var visible = await VisibleZoneIdsAsync(userId, ct);
+        if (visible != null && !visible.Contains(zoneId))
+            throw new UnauthorizedAccessException("Bạn không có quyền truy cập khấu hao của phân khu này.");
+    }
+
     private static bool IsDevelopment() =>
         string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 
@@ -220,7 +228,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         var totalMonths = Math.Max(1, ((endDate.Year - startDate.Year) * 12) + endDate.Month - startDate.Month);
         var rawTotal = command.TotalContractValueVnd > 0
             ? command.TotalContractValueVnd
-            : (package != null && package.Price > 0 ? package.Price : command.MonthlyRentVnd * totalMonths);
+            : ((command.MonthlyRentVnd * totalMonths) + (package != null ? package.Price : 0m));
 
         // Check if the same lessee is purchasing for the 2nd time within 2 months (60 days) in the same tenant
         var twoMonthsAgo = DateTime.UtcNow.AddDays(-60);
@@ -298,30 +306,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         }
 
         db.ZoneContracts.Add(contract);
-
-        // Tự động tạo Phiếu Xuất Kho Thiết Bị IoT nếu hợp đồng có thiết bị và đã thanh toán cọc 30%
-        if (contract.DepositVnd > 0 && !string.IsNullOrWhiteSpace(contract.EquipmentJson))
-        {
-            try
-            {
-                var equipments = ParseEquipment(contract.EquipmentJson);
-                if (equipments.Count > 0)
-                {
-                    await StockOutAutomationHelper.AutoCreateStockOutForDepositAsync(
-                        db,
-                        effectiveTenantId,
-                        farmId,
-                        zoneId,
-                        contractNumber,
-                        ownerId,
-                        command.LesseeName,
-                        equipments.Select(e => (e.Code, e.Name, (string?)e.Category, e.Quantity)),
-                        ct);
-                }
-            }
-            catch {}
-        }
-
         await db.SaveChangesAsync(ct);
 
         return await GetContractByIdAsync(ownerId, tenantId, contract.Id, ct);
@@ -361,6 +345,10 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         var discountPercent = command.DiscountPercent ?? (isRepeatWithinTwoMonths ? repeatDiscountPercent : renewalDiscountPercent);
         var monthsAdded = Math.Max(1, ((newEndDate.Year - baseEndDate.Year) * 12) + newEndDate.Month - baseEndDate.Month);
         var rentPerMonth = command.NewMonthlyRentVnd ?? contract.MonthlyRentVnd;
+        // Hợp đồng sinh từ báo giá lắp đặt chưa có phí dịch vụ/tháng (không còn suy từ tổng báo giá): phải nhập phí mới để gia hạn,
+        // tránh gia hạn thu lại tiền thiết bị hay gia hạn 0 đồng.
+        if (rentPerMonth <= 0)
+            throw new RequestValidationException("newMonthlyRentVnd", "Hợp đồng chưa có phí dịch vụ/tháng. Nhập phí dịch vụ/tháng để gia hạn.");
         var rawRenewalValue = rentPerMonth * monthsAdded;
         var discount = command.DiscountAmount ?? (discountPercent > 0 ? rawRenewalValue * (discountPercent / 100m) : 0m);
         var finalRenewalValue = Math.Max(0, rawRenewalValue - discount);
@@ -460,6 +448,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             throw new UnauthorizedAccessException("Bạn không có quyền truy cập dữ liệu phân khu này.");
         }
 
+        await EnsureZoneVisibleAsync(ownerId, zoneId, ct);
+
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var activeContract = await db.ZoneContracts
             .Where(c => c.ZoneId == zoneId && (c.Status == ZoneContractStatus.Active || c.Status == ZoneContractStatus.ExpiringSoon))
@@ -468,56 +458,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
 
         var isNearContractRenewal = activeContract != null && (activeContract.EndDate.DayNumber - today.DayNumber <= 45);
 
-        // Đảm bảo đồng bộ thiết bị trong Zone với hồ sơ khấu hao CSDL PostgreSQL (100% dữ liệu DB thật)
-        var devicesInZone = await db.Devices
-            .Where(d => d.ZoneId == zoneId && d.DecommissionedAtUtc == null)
-            .ToListAsync(ct);
-
-        var existingDeprecs = await db.DeviceDepreciations
-            .Where(d => d.ZoneId == zoneId)
-            .ToListAsync(ct);
-
-        var existingDeviceIds = existingDeprecs.Select(d => d.DeviceId).ToHashSet();
-        var missingDevices = devicesInZone.Where(d => !existingDeviceIds.Contains(d.Id)).ToList();
-
-        if (missingDevices.Count > 0)
-        {
-            var effectiveTenantId = tenantId.HasValue && tenantId.Value != Guid.Empty
-                ? tenantId.Value
-                : zone.Field.Farm.TenantId;
-
-            foreach (var dev in missingDevices)
-            {
-                var isActuator = dev.DeviceType == SmartFarm.Domain.Enums.DeviceType.ActuatorNode;
-                var cost = isActuator ? 4800000m : 3500000m;
-                var lifetime = isActuator ? 36 : 24;
-                var monthsBack = (Math.Abs(dev.Id.GetHashCode()) % 20) + 4;
-                var startDate = today.AddMonths(-monthsBack);
-                var monthly = Math.Round(cost / lifetime, 0);
-                var accumulated = Math.Min(cost, monthly * monthsBack);
-                var bookValue = Math.Max(0, cost - accumulated);
-
-                var newDep = new DeviceDepreciation
-                {
-                    Id = Guid.NewGuid(),
-                    TenantId = effectiveTenantId,
-                    ZoneId = zoneId,
-                    DeviceId = dev.Id,
-                    CreatedByOwnerId = ownerId,
-                    OriginalCostVnd = cost,
-                    MonthlyDepreciationVnd = monthly,
-                    AccumulatedDepreciationVnd = accumulated,
-                    CurrentBookValueVnd = bookValue,
-                    DepreciationLifetimeMonths = lifetime,
-                    Method = "STRAIGHT_LINE",
-                    StartDate = startDate,
-                    Notes = $"Hồ sơ khấu hao thiết bị {dev.HardwareAddress} ({dev.DeviceType}) theo dõi tự động từ CSDL.",
-                    CreatedAtUtc = DateTime.UtcNow
-                };
-                db.DeviceDepreciations.Add(newDep);
-            }
-            await db.SaveChangesAsync(ct);
-        }
+        // Chỉ trả hồ sơ khấu hao ĐÃ LẬP (thủ công hoặc theo hợp đồng). Không tự sinh hồ sơ cho thiết bị chưa có: trước đây giá gốc
+        // cố định (3,5/4,8 triệu), số tháng khấu hao và NGÀY BẮT ĐẦU ngẫu nhiên (suy từ mã thiết bị) được lưu như dữ liệu thật.
 
         var query = db.DeviceDepreciations
             .Include(d => d.Zone)
@@ -545,7 +487,10 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         }
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var zonesInFarm = await db.Zones.Where(z => z.Field.FarmId == farmId).Select(z => z.Id).ToListAsync(ct);
+        var visibleZones = await VisibleZoneIdsAsync(ownerId, ct);
+        var zonesInFarm = await db.Zones
+            .Where(z => z.Field.FarmId == farmId && (visibleZones == null || visibleZones.Contains(z.Id)))
+            .Select(z => z.Id).ToListAsync(ct);
 
         var query = db.DeviceDepreciations
             .Include(d => d.Zone)
@@ -568,6 +513,8 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             throw new RequestValidationException("originalCostVnd", "Giá trị thiết bị phải lớn hơn 0.");
         if (command.DepreciationLifetimeMonths is < 1 or > 120)
             throw new RequestValidationException("depreciationLifetimeMonths", "Thời gian khấu hao phải từ 1 đến 120 tháng.");
+        if (command.StartDate > DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime))
+            throw new RequestValidationException("startDate", "Ngày bắt đầu khấu hao không được ở tương lai.");
 
         var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).FirstOrDefaultAsync(z => z.Id == zoneId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy phân khu #{zoneId}");
@@ -576,6 +523,7 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
         {
             throw new UnauthorizedAccessException("Bạn không có quyền tạo hồ sơ khấu hao cho phân khu thuộc Tenant khác.");
         }
+        await EnsureZoneVisibleAsync(ownerId, zoneId, ct);
 
         var device = await db.Devices.FirstOrDefaultAsync(d =>
                 d.Id == command.DeviceId && d.ZoneId == zoneId &&
@@ -762,7 +710,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
     }
 
     private static bool _contractsSeedChecked;
-    private static bool _deprecSeedChecked;
 
     // Nhiều yêu cầu song song cùng thấy bảng rỗng và cùng chèn dữ liệu mẫu (đã sinh hợp đồng trùng): chỉ một yêu cầu được tạo mỗi lần.
     private static readonly SemaphoreSlim SeedLock = new(1, 1);
@@ -883,106 +830,6 @@ public sealed class ZoneContractService(SmartFarmDbContext db, TimeProvider cloc
             SignedAtUtc = DateTime.UtcNow.AddYears(-2)
         };
         db.ZoneContracts.Add(cOld);
-
-        await db.SaveChangesAsync(ct);
-    }
-
-    private async Task EnsureSeedDepreciationsAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
-    {
-        if (!IsDevelopment() || _deprecSeedChecked) return;
-        await SeedLock.WaitAsync(ct);
-        try
-        {
-            if (_deprecSeedChecked) return;
-            await EnsureSeedDepreciationsCoreAsync(ownerId, tenantId, ct);
-        }
-        finally
-        {
-            SeedLock.Release();
-        }
-    }
-
-    private async Task EnsureSeedDepreciationsCoreAsync(Guid ownerId, Guid? tenantId, CancellationToken ct)
-    {
-        if (await db.DeviceDepreciations.AnyAsync(ct))
-        {
-            _deprecSeedChecked = true;
-            return;
-        }
-
-        var zonesQuery = db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).AsQueryable();
-        if (tenantId.HasValue && tenantId.Value != Guid.Empty)
-        {
-            zonesQuery = zonesQuery.Where(z => z.Field.Farm.TenantId == tenantId.Value);
-        }
-
-        var zones = await zonesQuery.Take(4).ToListAsync(ct);
-        if (zones.Count == 0) return;
-
-        var targetZoneIds = zones.Select(z => (Guid?)z.Id).ToList();
-        var devices = await db.Devices.Where(d => targetZoneIds.Contains(d.ZoneId)).Take(8).ToListAsync(ct);
-        var targetTenantId = (tenantId.HasValue && tenantId.Value != Guid.Empty)
-            ? tenantId.Value
-            : zones[0].Field.Farm.TenantId;
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-
-        if (devices.Count > 0)
-        {
-            db.DeviceDepreciations.Add(new DeviceDepreciation
-            {
-                TenantId = targetTenantId,
-                ZoneId = zones[0].Id,
-                DeviceId = devices[0].Id,
-                CreatedByOwnerId = ownerId,
-                OriginalCostVnd = 12500000m,
-                MonthlyDepreciationVnd = 347222m,
-                AccumulatedDepreciationVnd = 8333328m,
-                CurrentBookValueVnd = 4166672m,
-                DepreciationLifetimeMonths = 36,
-                Method = "STRAIGHT_LINE",
-                StartDate = today.AddMonths(-24),
-                Notes = "Bảo hành 24 tháng theo hợp đồng nhà sản xuất. Khấu hao đường thẳng 3 năm."
-            });
-        }
-
-        if (devices.Count > 1 && zones.Count > 1)
-        {
-            db.DeviceDepreciations.Add(new DeviceDepreciation
-            {
-                TenantId = targetTenantId,
-                ZoneId = zones[1].Id,
-                DeviceId = devices[1].Id,
-                CreatedByOwnerId = ownerId,
-                OriginalCostVnd = 4800000m,
-                MonthlyDepreciationVnd = 200000m,
-                AccumulatedDepreciationVnd = 4400000m,
-                CurrentBookValueVnd = 400000m,
-                DepreciationLifetimeMonths = 24,
-                Method = "STRAIGHT_LINE",
-                StartDate = today.AddMonths(-22),
-                Notes = "Cảm biến vi khí hậu Sensirion SHT30. Sắp hết thời gian khấu hao, cần kiểm tra bảo dưỡng hoặc thay thế trong đợt gia hạn hợp đồng."
-            });
-        }
-
-        if (devices.Count > 2)
-        {
-            var targetZone = zones.Count > 1 ? zones[1].Id : zones[0].Id;
-            db.DeviceDepreciations.Add(new DeviceDepreciation
-            {
-                TenantId = targetTenantId,
-                ZoneId = targetZone,
-                DeviceId = devices[2].Id,
-                CreatedByOwnerId = ownerId,
-                OriginalCostVnd = 3600000m,
-                MonthlyDepreciationVnd = 150000m,
-                AccumulatedDepreciationVnd = 3600000m,
-                CurrentBookValueVnd = 0m,
-                DepreciationLifetimeMonths = 24,
-                Method = "STRAIGHT_LINE",
-                StartDate = today.AddMonths(-26),
-                Notes = "Van tưới điện từ 4 cổng. Đã khấu hao hết 100%, giá trị sổ sách còn lại 0đ. Cần đề xuất nâng cấp khi tái ký hợp đồng mới."
-            });
-        }
 
         await db.SaveChangesAsync(ct);
     }

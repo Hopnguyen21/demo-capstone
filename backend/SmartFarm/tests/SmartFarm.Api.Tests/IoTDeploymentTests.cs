@@ -127,9 +127,33 @@ public sealed class IoTDeploymentTests
         }
     }
 
+    /// <summary>Admin phân công KTV cho yêu cầu (gán vào phiếu dịch vụ của yêu cầu triển khai); KTV chỉ tiếp nhận được yêu cầu đã được phân công.</summary>
+    private static async Task AssignTechnician(TestApplicationFactory factory, Guid requestId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+        var techId = await db.AppUsers.Where(x => x.Email == "technician@example.com").Select(x => x.Id).SingleAsync();
+        foreach (var sr in await db.ServiceRequests.Where(x => x.DeploymentRequestId == requestId).ToListAsync()) sr.AssignedTechnicianId = techId;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Technician_cannot_accept_unassigned_deployment_request()
+    {
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync(); using var client = factory.CreateClient();
+        await Login(client, "owner-a@example.com"); await CreateSeason(client, seed.ZoneAId);
+        var create = await client.PostAsJsonAsync($"/api/v1/zones/{seed.ZoneAId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var requestId = await Id(create, "requestId");
+        (await client.PostAsync($"/api/v1/deployment-requests/{requestId}/submit", null)).EnsureSuccessStatusCode();
+        await Login(client, "technician@example.com");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/platform/deployment-requests/{requestId}")).StatusCode);
+        await AssignTechnician(factory, requestId);
+        Assert.Equal(System.Net.HttpStatusCode.OK, (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).StatusCode);
+    }
+
     private static async Task<Setup> PrepareInstallation(TestApplicationFactory factory, HttpClient client, Guid zoneId, Guid farmId)
     {
-        await Login(client, "owner-a@example.com"); await CreateSeason(client, zoneId); var create = await client.PostAsJsonAsync($"/api/v1/zones/{zoneId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var requestId = await Id(create, "requestId"); (await client.PostAsync($"/api/v1/deployment-requests/{requestId}/submit", null)).EnsureSuccessStatusCode(); await Login(client, "technician@example.com"); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).EnsureSuccessStatusCode(); (await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{requestId}/survey", new { isFeasible = true, siteConditions = "Power and mounting available", notes = "Plan is feasible" })).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/confirm", null)).EnsureSuccessStatusCode(); 
+        await Login(client, "owner-a@example.com"); await CreateSeason(client, zoneId); var create = await client.PostAsJsonAsync($"/api/v1/zones/{zoneId}/deployment-requests", PlanBody()); create.EnsureSuccessStatusCode(); var requestId = await Id(create, "requestId"); (await client.PostAsync($"/api/v1/deployment-requests/{requestId}/submit", null)).EnsureSuccessStatusCode(); await AssignTechnician(factory, requestId); await Login(client, "technician@example.com"); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/accept", null)).EnsureSuccessStatusCode(); (await client.PostAsJsonAsync($"/api/v1/platform/deployment-requests/{requestId}/survey", new { isFeasible = true, siteConditions = "Power and mounting available", notes = "Plan is feasible" })).EnsureSuccessStatusCode(); (await client.PostAsync($"/api/v1/platform/deployment-requests/{requestId}/confirm", null)).EnsureSuccessStatusCode(); 
         // Bắt đầu lắp đặt chỉ được khi chủ trại đã ký hợp đồng và đóng cọc (cờ trên yêu cầu dịch vụ do bước gửi yêu cầu tạo ra).
         using (var contractScope = factory.Services.CreateScope())
         {

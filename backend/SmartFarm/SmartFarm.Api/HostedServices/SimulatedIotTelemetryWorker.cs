@@ -268,7 +268,8 @@ public sealed class SimulatedIotTelemetryWorker(
                                 Type: NotificationType.Alert,
                                 Severity: AlertSeverity.Critical,
                                 TargetUrl: targetUrl,
-                                ReferenceId: device.Id.ToString()
+                                ReferenceId: device.Id.ToString(),
+                                SuppressIfUnread: true
                             ), ct);
                         }
                         logger.LogWarning("Dispatched Device Fault alert for node {Dev} in zone {Zone}.", device.HardwareAddress, zone.Name);
@@ -661,7 +662,8 @@ public sealed class SimulatedIotTelemetryWorker(
                                 Type: NotificationType.Alert,
                                 Severity: sev,
                                 TargetUrl: targetUrl,
-                                ReferenceId: alert.Id.ToString()
+                                ReferenceId: alert.Id.ToString(),
+                                SuppressIfUnread: true
                             ), ct);
                         }
 

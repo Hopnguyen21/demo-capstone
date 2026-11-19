@@ -25,6 +25,9 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .AsNoTracking()
             .Where(x => x.FarmId == farmId && x.TenantId == tenantId);
 
+        var actor = await ActorAsync(userId, ct);
+        if (actor.Role == UserRole.PlatformTechnician) query = query.Where(x => x.CreatedByUserId == userId);
+
         if (status.HasValue)
         {
             query = query.Where(x => x.Status == status.Value);
@@ -56,6 +59,7 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id && x.FarmId == farmId && x.TenantId == tenantId, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy phiếu xuất kho #{id}");
+        EnsureOwnVoucher(await ActorAsync(userId, ct), stockOut);
 
         var detailItemIds = stockOut.Details.Select(d => d.InventoryItemId).Distinct().ToList();
         var hardwareMap = await db.PlatformHardwareItems
@@ -155,6 +159,8 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .FirstOrDefaultAsync(x => x.Id == id && x.FarmId == farmId && x.TenantId == tenantId, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy phiếu xuất kho #{id}");
 
+        EnsureOwnVoucher(await ActorAsync(userId, ct), stockOut);
+
         if (stockOut.Status != StockOutStatus.Draft && stockOut.Status != StockOutStatus.Pending)
         {
             throw new ResourceConflictException("Chỉ có thể chỉnh sửa phiếu xuất kho ở trạng thái Bản nháp (Draft) hoặc Chờ duyệt (Pending).");
@@ -223,6 +229,21 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
 
         var newStatus = command.Status;
 
+        // Duyệt/hoàn thành xuất kho là việc của ADMIN: hoàn thành là lúc thiết bị chuyển từ kho chính sang kho KTV, nên KTV không được tự duyệt
+        // hay tự hoàn thành phiếu của mình (nếu không sẽ tự cấp thiết bị cho bản thân). KTV chỉ Gửi duyệt (Pending) hoặc Hủy phiếu của mình.
+        var actor = await ActorAsync(userId, ct);
+        if (actor.Role == UserRole.PlatformTechnician)
+        {
+            EnsureOwnVoucher(actor, stockOut);
+            if (newStatus is not (StockOutStatus.Pending or StockOutStatus.Cancelled))
+                throw new AuthorizationException("Chỉ Admin được duyệt hoặc hoàn thành phiếu xuất kho. Kỹ thuật viên chỉ gửi duyệt hoặc hủy phiếu của mình.");
+        }
+
+        if (stockOut.Status == StockOutStatus.Cancelled && newStatus == StockOutStatus.Completed)
+        {
+            throw new ResourceConflictException("Phiếu xuất kho đã hủy (Cancelled), không thể hoàn thành.");
+        }
+
         if (newStatus == StockOutStatus.Completed)
         {
             // Execute atomic inventory deduction
@@ -279,13 +300,7 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
                 }
                 else if (hardware != null)
                 {
-                    if (hardware.QuantityInStock < (int)detail.Quantity)
-                    {
-                        throw new ResourceConflictException($"Không đủ tồn kho cho thiết bị '{hardware.Name}'. Tồn kho hiện tại: {hardware.QuantityInStock} cái, số lượng xuất: {detail.Quantity} cái.");
-                    }
-                    hardware.QuantityInStock -= (int)detail.Quantity;
-                    hardware.AssignedTechnicianId ??= stockOut.CreatedByUserId;
-                    hardware.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
+                    await TransferHardwareToTechnicianAsync(hardware, (int)detail.Quantity, stockOut.CreatedByUserId, ct);
                 }
             }
 
@@ -300,6 +315,7 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
                 stockOut.Notes = (stockOut.Notes + " " + command.Notes).Trim();
             }
 
+            await NotifyVoucherAsync(stockOut, userId, ct);
             await db.SaveChangesAsync(ct);
             if (tx != null) await tx.CommitAsync(ct);
         }
@@ -308,22 +324,119 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             stockOut.Status = StockOutStatus.Approved;
             stockOut.ApprovedByUserId = userId;
             if (!string.IsNullOrWhiteSpace(command.Notes)) stockOut.Notes = (stockOut.Notes + " " + command.Notes).Trim();
+            await NotifyVoucherAsync(stockOut, userId, ct);
             await db.SaveChangesAsync(ct);
         }
         else if (newStatus == StockOutStatus.Cancelled)
         {
             stockOut.Status = StockOutStatus.Cancelled;
             if (!string.IsNullOrWhiteSpace(command.Notes)) stockOut.Notes = (stockOut.Notes + " [Đã hủy: " + command.Notes + "]").Trim();
+            await NotifyVoucherAsync(stockOut, userId, ct);
             await db.SaveChangesAsync(ct);
         }
         else
         {
             stockOut.Status = newStatus;
             if (!string.IsNullOrWhiteSpace(command.Notes)) stockOut.Notes = (stockOut.Notes + " " + command.Notes).Trim();
+            await NotifyVoucherAsync(stockOut, userId, ct);
             await db.SaveChangesAsync(ct);
         }
 
         return await GetByIdAsync(userId, tenantId, farmId, stockOut.Id, ct);
+    }
+
+    /// <summary>
+    /// Thông báo theo trạng thái phiếu: gửi duyệt (Pending) báo cho Admin; duyệt/hoàn thành/hủy báo cho người tạo phiếu (trừ khi chính họ làm).
+    /// Thêm vào DbContext, được lưu cùng lượt đổi trạng thái.
+    /// </summary>
+    private async Task NotifyVoucherAsync(StockOut stockOut, Guid actorId, CancellationToken ct)
+    {
+        var code = string.IsNullOrWhiteSpace(stockOut.StockOutCode) ? "phiếu xuất kho" : $"phiếu {stockOut.StockOutCode}";
+        var reference = stockOut.Id.ToString();
+        if (stockOut.Status == StockOutStatus.Pending)
+        {
+            await Notifications.FlowNotifications.AddForAdminsAsync(db, "Phiếu xuất kho chờ duyệt",
+                $"Kỹ thuật viên vừa gửi {code}, cần Admin duyệt.", NotificationType.StockOut, reference, ct);
+            return;
+        }
+        var (title, message, severity) = stockOut.Status switch
+        {
+            StockOutStatus.Approved => ("Phiếu xuất kho đã được duyệt", $"{code} đã được Admin duyệt.", AlertSeverity.Info),
+            StockOutStatus.Completed => ("Phiếu xuất kho đã hoàn thành", $"{code} đã hoàn thành, thiết bị đã vào kho của bạn.", AlertSeverity.Info),
+            StockOutStatus.Cancelled => ("Phiếu xuất kho đã bị hủy", $"{code} đã bị hủy.", AlertSeverity.Warning),
+            _ => (null, null, AlertSeverity.Info)
+        };
+        if (title is null || message is null) return;
+        if (stockOut.CreatedByUserId != actorId)
+            Notifications.FlowNotifications.Add(db, stockOut.CreatedByUserId, null, title, message, NotificationType.StockOut, reference, severity);
+    }
+
+    /// <summary>
+    /// Chuyển thiết bị từ KHO CHÍNH sang KHO của kỹ thuật viên tạo phiếu (cùng quy tắc với Admin giao thiết bị):
+    /// Gateway/Node là hàng duy nhất theo serial nên đổi chủ nguyên dòng; hàng số lượng thì giảm dòng kho chính rồi
+    /// cộng vào dòng của KTV cùng mã (tạo dòng mới nếu chưa có). Dòng kho chính không bị gán cho KTV.
+    /// </summary>
+    private async Task TransferHardwareToTechnicianAsync(PlatformHardwareItem hardware, int quantity, Guid? technicianId, CancellationToken ct)
+    {
+        if (quantity < 1) throw new ResourceConflictException($"Số lượng xuất của '{hardware.Name}' phải lớn hơn 0.");
+        var technician = technicianId.HasValue
+            ? await db.AppUsers.FirstOrDefaultAsync(u => u.Id == technicianId.Value && u.Role == UserRole.PlatformTechnician && u.Status == AccountStatus.Active, ct)
+            : null;
+        if (technician is null)
+            throw new ResourceConflictException($"Thiết bị '{hardware.Name}' chỉ chuyển được vào kho của kỹ thuật viên: phiếu phải do kỹ thuật viên tạo.");
+        // Hàng ở kho chính được nhận theo TRẠNG THÁI, không theo người giữ: dữ liệu cũ có dòng InStock/InWarehouse kèm AssignedTechnicianId thừa
+        // (luồng xuất kho cũ gán người giữ mà không đổi trạng thái) vẫn là hàng kho chính.
+        if (hardware.Status == "InTechnicianStock" || HardwareStockRules.IsClosedStatus(hardware.Status))
+            throw new ResourceConflictException($"Thiết bị '{hardware.Name}' không còn trong kho chính (trạng thái {hardware.Status}).");
+        if (hardware.QuantityInStock < quantity)
+            throw new ResourceConflictException($"Không đủ tồn kho cho thiết bị '{hardware.Name}'. Tồn kho hiện tại: {hardware.QuantityInStock} cái, số lượng xuất: {quantity} cái.");
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        var unique = HardwareStockRules.IsSerialTracked(hardware);
+        if (unique)
+        {
+            if (quantity != 1) throw new ResourceConflictException($"Gateway/Node '{hardware.Name}' phải xuất từng cái (số lượng 1).");
+            if (hardware.QuantityInStock != 1) throw new ResourceConflictException($"Gateway/Node '{hardware.Name}' là hàng theo serial nên tồn kho phải đúng 1 (hiện {hardware.QuantityInStock}); Admin cần tách mỗi serial thành một dòng.");
+            hardware.Status = "InTechnicianStock";
+            hardware.AssignedTechnicianId = technician.Id;
+            hardware.LocationRack = "Kho Kỹ thuật viên";
+            hardware.UpdatedAtUtc = now;
+            return;
+        }
+
+        hardware.QuantityInStock -= quantity;
+        hardware.AssignedTechnicianId = null; // dòng kho chính không thuộc KTV nào (xoá người giữ thừa của dữ liệu cũ)
+        hardware.UpdatedAtUtc = now;
+        // Dòng KTV vừa thêm trong cùng phiếu (chưa lưu) cũng phải được gộp, nên tìm trong các thực thể đang theo dõi trước.
+        var existing = db.PlatformHardwareItems.Local.FirstOrDefault(x =>
+                x.AssignedTechnicianId == technician.Id && x.Status == "InTechnicianStock" && x.Code == hardware.Code && x.Id != hardware.Id)
+            ?? await db.PlatformHardwareItems.FirstOrDefaultAsync(x =>
+                x.AssignedTechnicianId == technician.Id && x.Status == "InTechnicianStock" && x.Code == hardware.Code && x.Id != hardware.Id, ct);
+        if (existing is not null)
+        {
+            existing.QuantityInStock += quantity;
+            existing.UpdatedAtUtc = now;
+            return;
+        }
+        db.PlatformHardwareItems.Add(new PlatformHardwareItem
+        {
+            Code = hardware.Code,
+            Name = hardware.Name,
+            Category = hardware.Category,
+            Model = hardware.Model,
+            Manufacturer = hardware.Manufacturer,
+            QuantityInStock = quantity,
+            Unit = hardware.Unit,
+            LocationRack = "Kho Kỹ thuật viên",
+            UnitPrice = hardware.UnitPrice,
+            EstimateRole = hardware.EstimateRole,
+            EstimateUnits = hardware.EstimateUnits,
+            MeasuredParametersCsv = hardware.MeasuredParametersCsv,
+            DeviceModelDefinitionId = hardware.DeviceModelDefinitionId,
+            Status = "InTechnicianStock",
+            AssignedTechnicianId = technician.Id,
+            UpdatedAtUtc = now
+        });
     }
 
     public async Task DeleteAsync(Guid userId, Guid tenantId, Guid farmId, Guid id, CancellationToken ct)
@@ -336,6 +449,8 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
             .FirstOrDefaultAsync(x => x.Id == id && x.FarmId == farmId && x.TenantId == tenantId, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy phiếu xuất kho #{id}");
 
+        EnsureOwnVoucher(await ActorAsync(userId, ct), stockOut);
+
         if (stockOut.Status != StockOutStatus.Draft && stockOut.Status != StockOutStatus.Cancelled)
         {
             throw new ResourceConflictException("Chỉ có thể xóa phiếu xuất kho khi ở trạng thái Bản nháp (Draft) hoặc Đã hủy (Cancelled).");
@@ -344,6 +459,17 @@ public sealed class StockOutService(SmartFarmDbContext db, TimeProvider clock) :
         db.StockOutDetails.RemoveRange(stockOut.Details);
         db.StockOuts.Remove(stockOut);
         await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<AppUser> ActorAsync(Guid userId, CancellationToken ct) =>
+        await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
+        ?? throw new AuthorizationException("Người dùng không tồn tại trong hệ thống.");
+
+    /// <summary>Kỹ thuật viên chỉ thao tác trên phiếu DO MÌNH LẬP (không đọc/sửa/xoá/hủy phiếu của KTV khác hay của Admin).</summary>
+    private static void EnsureOwnVoucher(AppUser actor, StockOut stockOut)
+    {
+        if (actor.Role == UserRole.PlatformTechnician && stockOut.CreatedByUserId != actor.Id)
+            throw new ResourceNotFoundException($"Không tìm thấy phiếu xuất kho #{stockOut.Id}");
     }
 
     private async Task EnsureFarmAccess(Guid userId, Guid tenantId, Guid farmId, CancellationToken ct)

@@ -2486,7 +2486,8 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedByOwnerId");
 
-                    b.HasIndex("DeviceId");
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
 
                     b.HasIndex("TenantId");
 

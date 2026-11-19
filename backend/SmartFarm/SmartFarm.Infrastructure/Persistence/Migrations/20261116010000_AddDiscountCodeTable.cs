@@ -35,13 +35,20 @@ CREATE TABLE IF NOT EXISTS ""DiscountCodes"" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_DiscountCodes_Code"" ON ""DiscountCodes"" (""Code"");
 
--- Seed initial default discount codes created by Platform Admin
+-- Mã giảm giá mẫu do một Platform Admin ĐANG CÓ tạo (ưu tiên tài khoản demo). DB mới chưa có Admin nào thì bỏ qua thay vì
+-- vi phạm khoá ngoại CreatedByUserId làm backend không khởi động được.
 INSERT INTO ""DiscountCodes"" (""Id"", ""Code"", ""Description"", ""DiscountType"", ""DiscountValue"", ""MinContractValue"", ""MaxDiscountAmount"", ""UsageLimit"", ""UsedCount"", ""IsActive"", ""CreatedByUserId"", ""CreatedAtUtc"")
-VALUES 
-    ('d0000001-0000-0000-0000-000000000001', 'WELCOME10', 'Ưu đãi chào mừng thành viên mới - Giảm 10% cho HĐ từ 5 triệu', 1, 10.00, 5000000.00, 1500000.00, 100, 0, true, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
-    ('d0000001-0000-0000-0000-000000000002', 'VIETGAP15', 'Ưu đãi trang trại nông sản chuẩn VietGAP - Giảm 15% cho HĐ từ 15 triệu', 1, 15.00, 15000000.00, 3500000.00, 50, 0, true, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
-    ('d0000001-0000-0000-0000-000000000003', 'LORA500K', 'Hỗ trợ thiết bị LoRa diện rộng - Giảm ngay 500,000 đ cho HĐ từ 8 triệu', 2, 500000.00, 8000000.00, NULL, 200, 0, true, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP),
-    ('d0000001-0000-0000-0000-000000000004', 'COMBO20', 'Siêu chiết khấu gói hợp tác xã quy mô lớn - Giảm 20% cho HĐ từ 30 triệu', 1, 20.00, 30000000.00, 8000000.00, 30, 0, true, '20000000-0000-0000-0000-000000000003', CURRENT_TIMESTAMP)
+SELECT v.id, v.code, v.descr, v.dtype, v.dvalue, v.minval, v.maxdisc, v.ulimit, 0, true, a.""id"", CURRENT_TIMESTAMP
+FROM (VALUES
+    ('d0000001-0000-0000-0000-000000000001'::uuid, 'WELCOME10', 'Ưu đãi chào mừng thành viên mới - Giảm 10% cho HĐ từ 5 triệu', 1, 10.00::numeric, 5000000.00::numeric, 1500000.00::numeric, 100),
+    ('d0000001-0000-0000-0000-000000000002'::uuid, 'VIETGAP15', 'Ưu đãi trang trại nông sản chuẩn VietGAP - Giảm 15% cho HĐ từ 15 triệu', 1, 15.00::numeric, 15000000.00::numeric, 3500000.00::numeric, 50),
+    ('d0000001-0000-0000-0000-000000000003'::uuid, 'LORA500K', 'Hỗ trợ thiết bị LoRa diện rộng - Giảm ngay 500,000 đ cho HĐ từ 8 triệu', 2, 500000.00::numeric, 8000000.00::numeric, NULL::numeric, 200),
+    ('d0000001-0000-0000-0000-000000000004'::uuid, 'COMBO20', 'Siêu chiết khấu gói hợp tác xã quy mô lớn - Giảm 20% cho HĐ từ 30 triệu', 1, 20.00::numeric, 30000000.00::numeric, 8000000.00::numeric, 30)
+) AS v(id, code, descr, dtype, dvalue, minval, maxdisc, ulimit)
+CROSS JOIN LATERAL (
+    SELECT ""id"" FROM ""app_users"" WHERE ""role"" = 'PlatformAdmin'
+    ORDER BY (""id"" = '20000000-0000-0000-0000-000000000003'::uuid) DESC, ""created_at_utc"" LIMIT 1
+) AS a
 ON CONFLICT (""Code"") DO NOTHING;
 ");
         }

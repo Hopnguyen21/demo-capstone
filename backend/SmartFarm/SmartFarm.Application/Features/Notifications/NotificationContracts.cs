@@ -32,5 +32,7 @@ public sealed record CreateNotificationCommand(
     string? ReferenceId = null,
     string? MetadataJson = null,
     /// <summary>Có ReferenceId trùng (cùng người nhận và loại) thì trả lại thông báo cũ thay vì tạo thêm; dùng khi thử lại.</summary>
-    bool DeduplicateByReference = false
+    bool DeduplicateByReference = false,
+    /// <summary>Còn thông báo CHƯA ĐỌC cùng người nhận, loại và ReferenceId thì không tạo thêm (trả lại thông báo đó). Đã đọc/xóa rồi thì lần sau vẫn báo lại; dùng cho cảnh báo lặp theo thiết bị/zone.</summary>
+    bool SuppressIfUnread = false
 );
