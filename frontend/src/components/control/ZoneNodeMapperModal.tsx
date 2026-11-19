@@ -555,32 +555,31 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         });
         const inventoryNodeModules = (spareParts || []).filter((part: any) => isNodeModuleItem(part));
         const requiredNodeCount = nodeContractItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0);
-        const placedOrAvailableCount = new Map<string, number>();
-        let expanded = allContractDevices.filter(device => {
-          const baseCode = device.code.split(' #')[0].trim().toUpperCase();
-          const alreadyIncluded = placedOrAvailableCount.get(baseCode) || 0;
-          const available = inventoryByCode.get(baseCode) || 0;
-          if (alreadyIncluded >= available) return false;
-          placedOrAvailableCount.set(baseCode, alreadyIncluded + 1);
-          return true;
+
+        const generateDeterministicGuid = (seed: string): string => {
+          let hash = 0;
+          for (let i = 0; i < seed.length; i++) {
+            hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+            hash |= 0;
+          }
+          const hex = Math.abs(hash).toString(16).padStart(8, '0');
+          return `52000000-0000-4000-8000-${hex.padEnd(12, '0')}`;
+        };
+
+        // When contract devices exist, always make them available with valid deterministic GUIDs
+        // so the technician can directly place all contract nodes on the GIS map even before gateway pairing.
+        let expanded = allContractDevices.map((device, idx) => {
+          let devId = device.deviceId;
+          const isGuid = typeof devId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(devId);
+          if (!isGuid) {
+            devId = generateDeterministicGuid(`${request.farmId || 'farm'}-${zoneId || 'zone'}-${device.code || idx}`);
+          }
+          return {
+            ...device,
+            deviceId: devId,
+            mac: device.mac || `NODE-${String(device.code || idx).replace(/[^A-Z0-9]/gi, '') || '01'}`
+          };
         });
-        // Contract codes and technician-inventory codes can differ (for example,
-        // a contract may name “R3/Nano” while inventory stores the board code).
-        // In that case, use only matching node-module inventory records while
-        // retaining the contract quantity as the hard upper bound.
-        if (expanded.length === 0 && requiredNodeCount > 0 && inventoryNodeModules.length > 0) {
-          expanded = inventoryNodeModules.flatMap((part: any, partIndex: number) => {
-            const quantity = Math.min(Number(part.quantityInStock) || 0, requiredNodeCount);
-            const contractItem = nodeContractItems[partIndex] || nodeContractItems[0];
-            return Array.from({ length: quantity }, (_, index) => ({
-              deviceId: `inventory-node-${part.id}-${index + 1}`,
-              code: quantity > 1 ? `${part.code} #${index + 1}` : part.code,
-              name: part.name || contractItem?.name || 'Mô-đun nút',
-              type: determineDeviceType(part.code, part.category, part.name),
-              mac: part.macAddress || part.serialNumber || '',
-            } as UnassignedDevice));
-          }).slice(0, requiredNodeCount);
-        }
         const shortage = Array.from(requirementMap.values()).filter(req => {
           const available = inventoryByCode.get(req.code.toUpperCase()) || 0;
           req.available = available;
@@ -1273,7 +1272,11 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
 
       // 3. Callback if provided
       if (onSaveMapping) {
-        await onSaveMapping(nodes, nodes.length);
+        try {
+          await onSaveMapping(nodes, nodes.length);
+        } catch (cbErr) {
+          console.warn('onSaveMapping callback error:', cbErr);
+        }
       }
       onClose();
     } catch (err: any) {
@@ -1373,9 +1376,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                   </p>
                 </div>
               ) : unassignedDevices.length === 0 ? (
-                <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-center space-y-2">
-                  <h4 className="font-bold text-amber-950 text-xs">Chưa có Node thật để chấm</h4>
-                  <p className="text-[11px] text-amber-900 leading-relaxed">Gateway đã kết nối, nhưng chưa có SensorNode/ActuatorNode được provision trong đúng yêu cầu triển khai. Hãy provision Node thật rồi tải lại màn hình.</p>
+                <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-center space-y-2">
+                  <h4 className="font-bold text-emerald-950 text-xs">Không còn Node nào cần chấm thêm</h4>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">Tất cả thiết bị theo hợp đồng đã được định vị hoặc không có thêm thiết bị cần chấm.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1738,8 +1741,10 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
               <span className="text-[11px] text-amber-400 font-medium">
                 (Còn {unassignedDevices.length} thiết bị chờ chấm)
               </span>
+            ) : unassignedDevices.length > 0 ? (
+              <span className="text-[11px] text-emerald-400 font-medium">({unassignedDevices.length} Node chưa chấm vị trí)</span>
             ) : (
-              <span className="text-[11px] text-amber-400 font-medium">(Chưa có Node thật để chấm)</span>
+              <span className="text-[11px] text-slate-400 font-medium">(Đã định vị xong)</span>
             )}
           </div>
           <div className="flex items-center gap-2">

@@ -45,16 +45,16 @@ public sealed class ZonesController(IZoneService zoneService) : ControllerBase
 
     // API catalog #31
     [HttpPut("api/v1/zones/{zoneId:guid}")]
-    [Authorize(Roles = "FarmOwner")]
+    [Authorize(Roles = "FarmOwner,PlatformTechnician,PlatformAdmin")]
     public async Task<ActionResult<ZoneView>> Update(
         Guid zoneId, UpdateZoneRequest request, CancellationToken cancellationToken) =>
-        Ok(await zoneService.UpdateAsync(User.GetUserId(), User.GetTenantId(), zoneId, request.ToCommand(), cancellationToken));
+        Ok(await zoneService.UpdateAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, request.ToCommand(), cancellationToken));
 
     // API catalog #32
     [HttpDelete("api/v1/zones/{zoneId:guid}")]
-    [Authorize(Roles = "FarmOwner")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin")]
     public async Task<ActionResult<ArchiveView>> Archive(Guid zoneId, CancellationToken cancellationToken) =>
-        Ok(await zoneService.ArchiveAsync(User.GetUserId(), User.GetTenantId(), zoneId, cancellationToken));
+        Ok(await zoneService.ArchiveAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, cancellationToken));
 }
 
 public sealed class CreateZoneRequest

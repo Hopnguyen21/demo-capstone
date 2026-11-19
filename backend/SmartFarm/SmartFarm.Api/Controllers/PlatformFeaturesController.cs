@@ -290,7 +290,7 @@ public sealed class PlatformFeaturesController(
 
     // ─── 10. Farm Weather Forecast ────────────────────────────────────────────
     [HttpGet("api/v1/farms/{farmId:guid}/weather")]
-    [Authorize(Roles = "Farmer,FarmOwner,PlatformAdmin")]
+    [Authorize(Roles = "Farmer,FarmOwner,PlatformAdmin,PlatformTechnician")]
     public async Task<ActionResult<FarmWeatherView>> GetFarmWeather(Guid farmId, CancellationToken ct)
     {
         return Ok(await weatherService.GetFarmWeatherAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, farmId, ct));
