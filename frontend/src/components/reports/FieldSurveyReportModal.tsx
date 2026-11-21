@@ -16,12 +16,13 @@ import {
   HelpCircle,
   Clock,
   Sparkles,
-  Download,
   ShieldCheck,
-  Check
+  Check,
+  ChevronDown,
+  ArrowUp
 } from 'lucide-react';
-import type { FieldSurveyReport, CreateFieldSurveyReportPayload, UpdateFieldSurveyReportPayload } from '../../types';
-import { fieldSurveyReportService } from '../../services';
+import type { FieldSurveyReport, CreateFieldSurveyReportPayload, UpdateFieldSurveyReportPayload, Farm } from '../../types';
+import { fieldSurveyReportService, farmService } from '../../services';
 import { useAuth } from '@/app/providers/AuthContext';
 
 interface FieldSurveyReportModalProps {
@@ -44,6 +45,19 @@ interface FieldSurveyReportModalProps {
   onSaved?: (report: FieldSurveyReport) => void;
 }
 
+const SECTION_NAV = [
+  { id: 'sec-1', label: '1. Thông tin chung', shortLabel: '1. Thông tin', icon: Calendar },
+  { id: 'sec-2', label: '2. Tổng quan trang trại', shortLabel: '2. Tổng quan', icon: Building },
+  { id: 'sec-3', label: '3. Cây trồng & Mùa vụ', shortLabel: '3. Cây trồng', icon: Leaf },
+  { id: 'sec-4', label: '4. Quy trình canh tác', shortLabel: '4. Quy trình', icon: Layers },
+  { id: 'sec-5', label: '5. Theo dõi môi trường', shortLabel: '5. Môi trường', icon: Sparkles },
+  { id: 'sec-6', label: '6. Nhu cầu ngưỡng', shortLabel: '6. Ngưỡng', icon: Clock },
+  { id: 'sec-7', label: '7. Thiết bị & Dữ liệu IoT', shortLabel: '7. Thiết bị', icon: Cpu },
+  { id: 'sec-8', label: '8. Quản lý & Phân quyền', shortLabel: '8. Phân quyền', icon: ShieldCheck },
+  { id: 'sec-9', label: '9. Khó khăn & Nhu cầu', shortLabel: '9. Khó khăn', icon: HelpCircle },
+  { id: 'sec-10', label: '10. Đề xuất của nhóm', shortLabel: '10. Đề xuất', icon: CheckCircle },
+];
+
 export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
   isOpen,
   onClose,
@@ -57,9 +71,11 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'farm' | 'crop' | 'process' | 'env' | 'iot' | 'needs' | 'assessment'>('info');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Farms list for dropdown if creating new without preselected farm
+  const [availableFarms, setAvailableFarms] = useState<Farm[]>([]);
 
   // Loaded report data if editing/viewing
   const [existingReport, setExistingReport] = useState<FieldSurveyReport | null>(null);
@@ -76,7 +92,7 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
   const [surveyorName, setSurveyorName] = useState('');
   const [representativeName, setRepresentativeName] = useState('');
 
-  // 10 Detailed Report Sections
+  // 9 Detailed Survey Sections
   const [farmOverview, setFarmOverview] = useState('');
   const [cropAndSeasonStatus, setCropAndSeasonStatus] = useState('');
   const [cultivationProcess, setCultivationProcess] = useState('');
@@ -87,6 +103,14 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
   const [difficultiesAndNeeds, setDifficultiesAndNeeds] = useState('');
   const [teamAssessment, setTeamAssessment] = useState('');
   const [status, setStatus] = useState<'Draft' | 'Submitted' | 'Approved'>('Submitted');
+
+  // Load Farms list
+  useEffect(() => {
+    if (!isOpen) return;
+    farmService.getFarms()
+      .then(list => setAvailableFarms(Array.isArray(list) ? list : []))
+      .catch(err => console.warn('Could not load farms list:', err));
+  }, [isOpen]);
 
   // Load Report data
   useEffect(() => {
@@ -175,13 +199,22 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
 
   const isUserReadOnly = readOnly || (user?.role === 'FARM_OWNER' || user?.role === 'FARMER');
 
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const handleSave = async (targetStatus: 'Draft' | 'Submitted') => {
     if (!title.trim()) {
       setError('Vui lòng nhập tên tiêu đề phiếu khảo sát');
+      scrollToSection('sec-1');
       return;
     }
     if (!farmId) {
-      setError('Chưa xác định trang trại được khảo sát');
+      setError('Vui lòng chọn trang trại được khảo sát');
+      scrollToSection('sec-1');
       return;
     }
 
@@ -191,8 +224,7 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
 
     try {
       let saved: FieldSurveyReport;
-
-      if (existingReport?.id) {
+      if (existingReport) {
         const payload: UpdateFieldSurveyReportPayload = {
           title: title.trim(),
           surveyDate: new Date(surveyDate).toISOString(),
@@ -214,8 +246,8 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
       } else {
         const payload: CreateFieldSurveyReportPayload = {
           farmId,
-          serviceRequestId: serviceRequestId || null,
-          zoneId: zoneId || null,
+          serviceRequestId,
+          zoneId,
           title: title.trim(),
           surveyDate: new Date(surveyDate).toISOString(),
           location: location.trim(),
@@ -254,10 +286,10 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
         
         {/* Top Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-700 text-white flex items-center justify-between shadow-md print:bg-none print:text-slate-900 print:border-b print:border-slate-300">
+        <div className="px-6 py-4 bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-700 text-white flex items-center justify-between shadow-md shrink-0 print:bg-none print:text-slate-900 print:border-b print:border-slate-300">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-xl ring-1 ring-white/20 print:hidden">
               <FileText className="w-6 h-6 text-emerald-200" />
@@ -279,14 +311,17 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                   {status === 'Approved' ? 'Đã duyệt' : status === 'Submitted' ? 'Đã nộp' : 'Bản nháp'}
                 </span>
               </div>
-              <p className="text-xs text-emerald-100/90 mt-0.5 flex items-center gap-2">
-                <span>Trang trại: <strong>{farmName || 'Hệ thống SmartFarm'}</strong></span>
+              <p className="text-xs text-emerald-100/90 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>Trang trại: <strong>{farmName || 'Chọn trang trại bên dưới'}</strong></span>
                 {serviceRequest?.requestCode && (
                   <span className="bg-white/20 px-2 py-0.5 rounded text-[11px] font-mono">
-                    Req: #{serviceRequest.requestCode}
+                    Yêu cầu: #{serviceRequest.requestCode}
                   </span>
                 )}
                 {zoneName && <span>• Phân khu: <strong>{zoneName}</strong></span>}
+                <span className="bg-emerald-900/40 px-2 py-0.5 rounded text-[11px] font-medium text-emerald-200">
+                  Hiển thị toàn bộ 10 mục trên 1 trang
+                </span>
               </p>
             </div>
           </div>
@@ -295,7 +330,7 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
             <button
               onClick={handlePrint}
               type="button"
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
               title="In hoặc xuất PDF phiếu khảo sát"
             >
               <Printer className="w-4 h-4" />
@@ -310,69 +345,58 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
           </div>
         </div>
 
-        {/* Alerts */}
+        {/* Floating Quick Anchor Pills Bar */}
+        <div className="px-6 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0 flex items-center gap-1.5 overflow-x-auto print:hidden shadow-xs">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5 text-slate-400" />
+            <span>Mục lục:</span>
+          </span>
+          {SECTION_NAV.map((sec) => (
+            <button
+              key={sec.id}
+              type="button"
+              onClick={() => scrollToSection(sec.id)}
+              className="px-2.5 py-1 text-xs rounded-lg font-medium text-slate-600 bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 hover:bg-emerald-50/50 whitespace-nowrap transition-all shadow-2xs"
+            >
+              {sec.shortLabel}
+            </button>
+          ))}
+        </div>
+
+        {/* Global Alerts */}
         {error && (
-          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2 print:hidden">
+          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2 shrink-0 print:hidden animate-in fade-in">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
-            <span>{error}</span>
+            <span className="font-medium">{error}</span>
           </div>
         )}
         {successMsg && (
-          <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2 print:hidden">
+          <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2 shrink-0 print:hidden animate-in fade-in">
             <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />
-            <span>{successMsg}</span>
+            <span className="font-semibold">{successMsg}</span>
           </div>
         )}
 
-        {/* Section Navigation Tabs */}
-        <div className="px-6 pt-3 pb-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1 overflow-x-auto print:hidden text-xs">
-          {[
-            { id: 'info', label: '1. Thông tin chung', icon: Calendar },
-            { id: 'farm', label: '2. Quy mô & Loại hình', icon: Building },
-            { id: 'crop', label: '3. Cây trồng & Mùa vụ', icon: Leaf },
-            { id: 'process', label: '4. Quy trình chăm sóc', icon: Layers },
-            { id: 'env', label: '5-6. Môi trường & Ngưỡng', icon: Sparkles },
-            { id: 'iot', label: '7-8. Thiết bị & Phân quyền', icon: Cpu },
-            { id: 'needs', label: '9. Khó khăn thực tế', icon: HelpCircle },
-            { id: 'assessment', label: '10. Đề xuất kỹ thuật', icon: ShieldCheck },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`px-3 py-2 rounded-lg font-medium whitespace-nowrap flex items-center gap-1.5 transition-all ${
-                  isActive
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Modal Body / Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Modal Body / Scrollable Content (Single Continuous Page) */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth">
           {loading ? (
-            <div className="py-20 flex flex-col items-center justify-center text-slate-400">
+            <div className="py-24 flex flex-col items-center justify-center text-slate-400">
               <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
               <p className="text-sm font-medium">Đang tải dữ liệu phiếu khảo sát thực địa...</p>
             </div>
           ) : (
             <div className="space-y-6">
 
-              {/* Tab 1: General Info */}
-              <div className={activeTab === 'info' ? 'space-y-4' : 'hidden print:block'}>
-                <div className="border-b border-slate-200 pb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-emerald-600" />
-                    <span>Mục 1: Thông tin Buổi khảo sát thực tế</span>
-                  </h3>
+              {/* SECTION 1: General Info */}
+              <section id="sec-1" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-4">
+                <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 1</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-emerald-600" />
+                      <span>Thông tin Buổi khảo sát thực tế</span>
+                    </h3>
+                  </div>
                   {existingReport?.createdAtUtc && (
                     <span className="text-xs text-slate-400">
                       Tạo lúc: {new Date(existingReport.createdAtUtc).toLocaleString('vi-VN')}
@@ -391,8 +415,44 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="Ví dụ: Báo cáo khảo sát thực địa Nhà màng Z01 - Cà chua Beef..."
-                      className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-75 transition-all font-medium text-slate-900"
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-75 transition-all font-semibold text-slate-900"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Trang trại được khảo sát <span className="text-red-500">*</span>
+                    </label>
+                    {serviceRequest?.farmId || initialFarmId ? (
+                      <div className="px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 flex items-center gap-2">
+                        <Building className="w-4 h-4 text-slate-500" />
+                        <span>{farmName || 'Trang trại'}</span>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <select
+                          disabled={isUserReadOnly}
+                          value={farmId}
+                          onChange={(e) => {
+                            setFarmId(e.target.value);
+                            const found = availableFarms.find(f => f.farmId === e.target.value || (f as any).id === e.target.value);
+                            if (found) setFarmName(found.name);
+                          }}
+                          className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75 font-medium appearance-none"
+                        >
+                          <option value="">-- Chọn trang trại khảo sát --</option>
+                          {availableFarms.map((f: any) => {
+                            const fid = f.farmId || f.id;
+                            return (
+                              <option key={fid} value={fid}>
+                                {f.name} {f.address ? `(${f.address})` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -405,9 +465,9 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                         disabled={isUserReadOnly}
                         value={surveyDate}
                         onChange={(e) => setSurveyDate(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
+                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75 font-medium"
                       />
-                      <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                      <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                     </div>
                   </div>
 
@@ -422,9 +482,9 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
                         placeholder="Ví dụ: Thôn 3, Xã Đạ Sar, Huyện Lạc Dương, Lâm Đồng"
-                        className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
+                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
                       />
-                      <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                      <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                     </div>
                   </div>
 
@@ -439,15 +499,15 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                         value={surveyorName}
                         onChange={(e) => setSurveyorName(e.target.value)}
                         placeholder="Họ tên kỹ thuật viên"
-                        className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
+                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
                       />
-                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                     </div>
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Người đại diện trang trại tiếp đoàn
+                      Người đại diện trang trại tiếp đoàn khảo sát
                     </label>
                     <div className="relative">
                       <input
@@ -455,56 +515,62 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                         disabled={isUserReadOnly}
                         value={representativeName}
                         onChange={(e) => setRepresentativeName(e.target.value)}
-                        placeholder="Họ tên chủ trại / quản lý trang trại"
-                        className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
+                        placeholder="Họ tên chủ trại / người quản lý trang trại tiếp đoàn"
+                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-75"
                       />
-                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                     </div>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 2: Farm Overview */}
-              <div className={activeTab === 'farm' ? 'space-y-4' : 'hidden print:block'}>
-                <div className="border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <Building className="w-4 h-4 text-emerald-600" />
-                    <span>Mục 2: Tổng quan Trang trại</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+              {/* SECTION 2: Farm Overview */}
+              <section id="sec-2" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 2</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <Building className="w-4 h-4 text-emerald-600" />
+                      <span>Tổng quan Trang trại</span>
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
                     Ghi nhận quy mô diện tích, số lượng khu vực/nhà màng, địa hình, nguồn cấp nước và loại hình canh tác.
                   </p>
                 </div>
                 <div>
                   <textarea
-                    rows={6}
+                    rows={4}
                     disabled={isUserReadOnly}
                     value={farmOverview}
                     onChange={(e) => setFarmOverview(e.target.value)}
                     placeholder="Mô tả chi tiết:
-- Quy mô tổng thể: ... ha, gồm ... nhà màng và ... khu vực thổ canh ngoài trời.
+- Quy mô tổng thể: ... ha, gồm ... nhà màng và ... khu vực canh tác ngoài trời.
 - Nguồn cấp nước: Giếng khoan / Hồ chứa nước mưa, công suất bơm ... m³/h.
 - Nguồn điện: Điện 3 pha lưới quốc gia / Máy phát dự phòng.
 - Loại hình canh tác: Nhà kính màng PE kết hợp lưới chắn côn trùng 50 mesh, hệ thống khung thép..."
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed font-sans disabled:opacity-75"
                   />
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 3: Crop and Season Status */}
-              <div className={activeTab === 'crop' ? 'space-y-4' : 'hidden print:block'}>
-                <div className="border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <Leaf className="w-4 h-4 text-emerald-600" />
-                    <span>Mục 3: Hiện trạng Cây trồng & Mùa vụ</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+              {/* SECTION 3: Crop and Season Status */}
+              <section id="sec-3" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 3</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <Leaf className="w-4 h-4 text-emerald-600" />
+                      <span>Hiện trạng Cây trồng & Mùa vụ</span>
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
                     Ghi nhận loại cây, giống cây thương mại, thời gian gieo trồng, thời gian thu hoạch dự kiến, mật độ trồng.
                   </p>
                 </div>
                 <div>
                   <textarea
-                    rows={6}
+                    rows={4}
                     disabled={isUserReadOnly}
                     value={cropAndSeasonStatus}
                     onChange={(e) => setCropAndSeasonStatus(e.target.value)}
@@ -516,22 +582,25 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 4: Cultivation Process */}
-              <div className={activeTab === 'process' ? 'space-y-4' : 'hidden print:block'}>
-                <div className="border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-emerald-600" />
-                    <span>Mục 4: Quy trình Canh tác thực tế của Trang trại</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+              {/* SECTION 4: Cultivation Process */}
+              <section id="sec-4" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 4</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-emerald-600" />
+                      <span>Quy trình Canh tác thực tế của Trang trại</span>
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
                     Mô tả các giai đoạn sinh trưởng, thời gian mỗi giai đoạn và các hoạt động tưới tiêu, bón phân, tỉa cành thực tế.
                   </p>
                 </div>
                 <div>
                   <textarea
-                    rows={6}
+                    rows={4}
                     disabled={isUserReadOnly}
                     value={cultivationProcess}
                     onChange={(e) => setCultivationProcess(e.target.value)}
@@ -543,20 +612,23 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 5 & 6: Environmental Monitoring & Thresholds */}
-              <div className={activeTab === 'env' ? 'space-y-6' : 'hidden print:block'}>
-                <div className="space-y-3">
-                  <div className="border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              {/* SECTION 5: Environmental Monitoring */}
+              <section id="sec-5" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 5</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-emerald-600" />
-                      <span>Mục 5: Hiện trạng Theo dõi Môi trường</span>
+                      <span>Hiện trạng Theo dõi Môi trường</span>
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Những chỉ số vi khí hậu và môi trường đất/nước mà trang trại đang quan tâm và cần giám sát.
-                    </p>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Những chỉ số vi khí hậu và môi trường đất/nước mà trang trại đang quan tâm và cần giám sát.
+                  </p>
+                </div>
+                <div>
                   <textarea
                     rows={4}
                     disabled={isUserReadOnly}
@@ -568,17 +640,23 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
+              </section>
 
-                <div className="space-y-3">
-                  <div className="border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              {/* SECTION 6: Environmental Threshold Needs */}
+              <section id="sec-6" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 6</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
                       <Clock className="w-4 h-4 text-emerald-600" />
-                      <span>Mục 6: Nhu cầu Thiết lập Ngưỡng Môi trường</span>
+                      <span>Nhu cầu Thiết lập Ngưỡng Môi trường</span>
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Cách trang trại xác định ngưỡng an toàn (Min/Max) và nhu cầu cấu hình cảnh báo tự động.
-                    </p>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Cách trang trại xác định ngưỡng an toàn (Min/Max) và nhu cầu cấu hình cảnh báo tự động.
+                  </p>
+                </div>
+                <div>
                   <textarea
                     rows={4}
                     disabled={isUserReadOnly}
@@ -590,20 +668,23 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 7 & 8: IoT Equipment & Management Permissions */}
-              <div className={activeTab === 'iot' ? 'space-y-6' : 'hidden print:block'}>
-                <div className="space-y-3">
-                  <div className="border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              {/* SECTION 7: Equipment & Data Collection */}
+              <section id="sec-7" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 7</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
                       <Cpu className="w-4 h-4 text-emerald-600" />
-                      <span>Mục 7: Hiện trạng Thiết bị & Thu thập Dữ liệu</span>
+                      <span>Hiện trạng Thiết bị & Thu thập Dữ liệu</span>
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Cảm biến, hệ thống tưới tự động/bán tự động, thiết bị điều khiển, hạ tầng mạng LoRa/Wifi/4G.
-                    </p>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Cảm biến, hệ thống tưới tự động/bán tự động, thiết bị điều khiển, hạ tầng mạng LoRa/Wifi/4G.
+                  </p>
+                </div>
+                <div>
                   <textarea
                     rows={4}
                     disabled={isUserReadOnly}
@@ -615,17 +696,23 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
+              </section>
 
-                <div className="space-y-3">
-                  <div className="border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              {/* SECTION 8: Management & Permissions */}
+              <section id="sec-8" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 8</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                      <span>Mục 8: Cơ cấu Quản lý & Phân quyền Trang trại</span>
+                      <span>Cơ cấu Quản lý & Phân quyền Trang trại</span>
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Số lượng người quản lý, kỹ thuật viên phụ trách, công nhân vận hành và nhu cầu phân quyền trên phần mềm.
-                    </p>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Số lượng người quản lý, kỹ thuật viên phụ trách, công nhân vận hành và nhu cầu phân quyền trên phần mềm.
+                  </p>
+                </div>
+                <div>
                   <textarea
                     rows={4}
                     disabled={isUserReadOnly}
@@ -637,22 +724,25 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 9: Difficulties & Real Needs */}
-              <div className={activeTab === 'needs' ? 'space-y-4' : 'hidden print:block'}>
-                <div className="border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <HelpCircle className="w-4 h-4 text-emerald-600" />
-                    <span>Mục 9: Khó khăn & Nhu cầu Thực tế của Trang trại</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+              {/* SECTION 9: Difficulties & Real Needs */}
+              <section id="sec-9" className="p-5 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
+                <div className="border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold">MỤC 9</span>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <HelpCircle className="w-4 h-4 text-emerald-600" />
+                      <span>Khó khăn & Nhu cầu Thực tế của Trang trại</span>
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
                     Các vấn đề thực địa đang làm giảm năng suất, tốn chi phí nhân công hoặc gây rủi ro thất thoát.
                   </p>
                 </div>
                 <div>
                   <textarea
-                    rows={6}
+                    rows={4}
                     disabled={isUserReadOnly}
                     value={difficultiesAndNeeds}
                     onChange={(e) => setDifficultiesAndNeeds(e.target.value)}
@@ -664,22 +754,25 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
                     className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed disabled:opacity-75"
                   />
                 </div>
-              </div>
+              </section>
 
-              {/* Tab 10: Technical Team Assessment & Recommendations */}
-              <div className={activeTab === 'assessment' ? 'space-y-4' : 'hidden print:block'}>
-                <div className="border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Mục 10: Đánh giá & Đề xuất của Nhóm Kỹ thuật SmartFarm</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+              {/* SECTION 10: Technical Team Assessment & Recommendations */}
+              <section id="sec-10" className="p-5 bg-emerald-50/50 border-2 border-emerald-500/40 rounded-2xl shadow-sm space-y-3">
+                <div className="border-b border-emerald-200 pb-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[11px] font-bold">MỤC 10</span>
+                    <h3 className="text-sm font-bold text-emerald-950 tracking-tight flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      <span>Đánh giá & Đề xuất của Nhóm Kỹ thuật SmartFarm</span>
+                    </h3>
+                  </div>
+                  <p className="text-xs text-emerald-800/80 mt-1">
                     Đánh giá tính khả thi, đề xuất cấu hình phần cứng IoT, gói hợp đồng và giải pháp tự động hóa trước khi lập Báo giá/Hợp đồng.
                   </p>
                 </div>
                 <div>
                   <textarea
-                    rows={6}
+                    rows={5}
                     disabled={isUserReadOnly}
                     value={teamAssessment}
                     onChange={(e) => setTeamAssessment(e.target.value)}
@@ -690,23 +783,35 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
   + 02 Node Cảm biến Vi khí hậu Không khí SHT30 (đo nhiệt độ, độ ẩm không khí chuẩn công nghiệp).
   + 02 Node Cảm biến Độ ẩm & Nhiệt độ Đất RS485 Probe (cắm trực tiếp giá thể bầu cà chua).
   + 01 Node Điều khiển Van Solenoid Tưới nhỏ giọt 4 Cổng (tự động hóa 4 van phân khu).
-- Gói hợp đồng đề xuất: Gói SmartFarm Pro Triển khai Nhà Màng Tiêu Chuẩn 12 Tháng."
-                    className="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed font-medium text-slate-900 disabled:opacity-75"
+- Gói dịch vụ đề xuất: Gói duy trì dịch vụ giám sát & bảo trì IoT 12 tháng đồng hành theo thời hạn hợp đồng."
+                    className="w-full p-3.5 text-sm bg-white border border-emerald-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 leading-relaxed font-medium text-slate-900 disabled:opacity-75 shadow-xs"
                   />
                 </div>
+              </section>
+
+              {/* Scroll to Top helper link */}
+              <div className="pt-2 flex justify-end print:hidden">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('sec-1')}
+                  className="px-3 py-1.5 text-xs text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" />
+                  <span>Về đầu phiếu</span>
+                </button>
               </div>
 
             </div>
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 print:hidden">
+        {/* Modal Footer (Sticky Bottom Action Bar) */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0 print:hidden">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             {existingReport ? (
               <span>Người tạo: <strong>{existingReport.createdByUserName || surveyorName}</strong></span>
             ) : (
-              <span>Báo cáo sẽ được lưu trực tiếp vào cơ sở dữ liệu SmartFarm</span>
+              <span>Toàn bộ 10 mục khảo sát sẽ được lưu trực tiếp vào PostgreSQL</span>
             )}
           </div>
 

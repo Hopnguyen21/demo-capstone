@@ -46,6 +46,10 @@ export const ContractPackagesPage: React.FC = () => {
   }, [activeTab]);
 
   const handleOpenCreate = () => {
+    if (!isAdmin) {
+      alert('Chỉ Quản trị viên (Platform Admin) mới có quyền tạo thêm gói hợp đồng mới.');
+      return;
+    }
     setEditingPackage(null);
     setPackageName('');
     setDescription('');
@@ -57,6 +61,10 @@ export const ContractPackagesPage: React.FC = () => {
   };
 
   const handleOpenEdit = (pkg: ContractPackage) => {
+    if (!isAdmin) {
+      alert('Chỉ Quản trị viên (Platform Admin) mới có quyền chỉnh sửa gói hợp đồng.');
+      return;
+    }
     setEditingPackage(pkg);
     setPackageName(pkg.packageName);
     setDescription(pkg.description || '');
@@ -69,6 +77,10 @@ export const ContractPackagesPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      alert('Chỉ Quản trị viên (Platform Admin) mới có quyền tạo hoặc chỉnh sửa gói hợp đồng.');
+      return;
+    }
     if (!packageName.trim()) {
       alert('Vui lòng nhập tên gói hợp đồng.');
       return;
@@ -146,12 +158,14 @@ export const ContractPackagesPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 text-xs shadow-sm self-start md:self-auto"
-        >
-          <Plus size={16} /> Thêm Gói Mới
-        </Button>
+        {isAdmin && (
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-[#119653] hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 text-xs shadow-sm self-start md:self-auto"
+          >
+            <Plus size={16} /> Thêm Gói Mới
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -270,26 +284,26 @@ export const ContractPackagesPage: React.FC = () => {
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <button
-                    onClick={() => handleToggleStatus(pkg)}
-                    disabled={actionLoading}
-                    className={`font-semibold hover:underline inline-flex items-center gap-1 ${
-                      isActive ? 'text-amber-700 hover:text-amber-900' : 'text-emerald-700 hover:text-emerald-900'
-                    }`}
-                  >
-                    <Power size={13} />
-                    {isActive ? 'Tạm ngắt' : 'Kích hoạt lại'}
-                  </button>
-
-                  <div className="flex items-center gap-2">
+                {isAdmin ? (
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
                     <button
-                      onClick={() => handleOpenEdit(pkg)}
-                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 inline-flex items-center gap-1"
+                      onClick={() => handleToggleStatus(pkg)}
+                      disabled={actionLoading}
+                      className={`font-semibold hover:underline inline-flex items-center gap-1 ${
+                        isActive ? 'text-amber-700 hover:text-amber-900' : 'text-emerald-700 hover:text-emerald-900'
+                      }`}
                     >
-                      <Edit2 size={13} /> Sửa
+                      <Power size={13} />
+                      {isActive ? 'Tạm ngắt' : 'Kích hoạt lại'}
                     </button>
-                    {isAdmin && (
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenEdit(pkg)}
+                        className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 inline-flex items-center gap-1"
+                      >
+                        <Edit2 size={13} /> Sửa
+                      </button>
                       <button
                         onClick={() => handleDelete(pkg)}
                         className="p-1 text-rose-500 hover:text-rose-700"
@@ -297,9 +311,20 @@ export const ContractPackagesPage: React.FC = () => {
                       >
                         <Trash2 size={15} />
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <span className="text-[11px] font-medium text-slate-500 italic">
+                      Gói do Quản trị viên (Admin) cấu hình
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {isActive ? 'Đang áp dụng' : 'Tạm ngưng'}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}

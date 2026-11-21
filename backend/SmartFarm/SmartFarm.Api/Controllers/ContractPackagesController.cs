@@ -29,9 +29,9 @@ public sealed class ContractPackagesController(IContractPackageService packageSe
         return Ok(result);
     }
 
-    /// <summary>Tạo mới gói hợp đồng (Admin & Technician)</summary>
+    /// <summary>Tạo mới gói hợp đồng (Chỉ Quản trị viên PlatformAdmin)</summary>
     [HttpPost]
-    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
+    [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<ContractPackageView>> Create(
         [FromBody] CreateContractPackageCommand command,
         CancellationToken ct)
@@ -40,9 +40,9 @@ public sealed class ContractPackagesController(IContractPackageService packageSe
         return Created($"/api/v1/contract-packages/{result.Id}", result);
     }
 
-    /// <summary>Chỉnh sửa gói hợp đồng (Admin & Technician)</summary>
+    /// <summary>Chỉnh sửa gói hợp đồng (Chỉ Quản trị viên PlatformAdmin)</summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
+    [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<ContractPackageView>> Update(
         Guid id,
         [FromBody] UpdateContractPackageCommand command,
@@ -52,9 +52,9 @@ public sealed class ContractPackagesController(IContractPackageService packageSe
         return Ok(result);
     }
 
-    /// <summary>Kích hoạt / Vô hiệu hóa gói hợp đồng (Admin & Technician)</summary>
+    /// <summary>Kích hoạt / Vô hiệu hóa gói hợp đồng (Chỉ Quản trị viên PlatformAdmin)</summary>
     [HttpPatch("{id:guid}/toggle-status")]
-    [Authorize(Roles = "PlatformAdmin,PlatformTechnician")]
+    [Authorize(Roles = "PlatformAdmin")]
     public async Task<ActionResult<ContractPackageView>> ToggleStatus(Guid id, CancellationToken ct)
     {
         var result = await packageService.TogglePackageStatusAsync(User.GetUserId(), id, ct);

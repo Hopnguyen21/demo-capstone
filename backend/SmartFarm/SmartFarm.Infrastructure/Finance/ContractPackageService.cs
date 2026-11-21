@@ -42,6 +42,8 @@ public sealed class ContractPackageService(SmartFarmDbContext db, TimeProvider c
 
     public async Task<ContractPackageView> CreatePackageAsync(Guid userId, CreateContractPackageCommand command, CancellationToken ct)
     {
+        await EnsureAdminAsync(userId, ct);
+
         if (string.IsNullOrWhiteSpace(command.PackageName))
         {
             throw new RequestValidationException("packageName", "Tên gói hợp đồng là bắt buộc.");
@@ -82,6 +84,8 @@ public sealed class ContractPackageService(SmartFarmDbContext db, TimeProvider c
 
     public async Task<ContractPackageView> UpdatePackageAsync(Guid userId, Guid id, UpdateContractPackageCommand command, CancellationToken ct)
     {
+        await EnsureAdminAsync(userId, ct);
+
         if (string.IsNullOrWhiteSpace(command.PackageName))
         {
             throw new RequestValidationException("packageName", "Tên gói hợp đồng là bắt buộc.");
@@ -121,6 +125,8 @@ public sealed class ContractPackageService(SmartFarmDbContext db, TimeProvider c
 
     public async Task<ContractPackageView> TogglePackageStatusAsync(Guid userId, Guid id, CancellationToken ct)
     {
+        await EnsureAdminAsync(userId, ct);
+
         var package = await db.ContractPackages.FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy gói hợp đồng #{id}");
 
@@ -133,6 +139,8 @@ public sealed class ContractPackageService(SmartFarmDbContext db, TimeProvider c
 
     public async Task DeletePackageAsync(Guid userId, Guid id, CancellationToken ct)
     {
+        await EnsureAdminAsync(userId, ct);
+
         var package = await db.ContractPackages.FirstOrDefaultAsync(p => p.Id == id, ct)
             ?? throw new ResourceNotFoundException($"Không tìm thấy gói hợp đồng #{id}");
 
@@ -144,6 +152,16 @@ public sealed class ContractPackageService(SmartFarmDbContext db, TimeProvider c
 
         db.ContractPackages.Remove(package);
         await db.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsureAdminAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new AuthorizationException("Người dùng không tồn tại.");
+        if (user.Role != UserRole.PlatformAdmin)
+        {
+            throw new AuthorizationException("Chỉ Quản trị viên (Platform Admin) mới có quyền tạo hoặc chỉnh sửa gói hợp đồng.");
+        }
     }
 
     private static ContractPackageView MapToView(ContractPackage p)

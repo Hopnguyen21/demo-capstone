@@ -848,26 +848,30 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         ServiceRequest? srCheck = null;
         if (command.ServiceRequestId.HasValue)
         {
-            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == command.ServiceRequestId.Value && x.ZoneId == zoneId && x.TenantId == zone.Field.Farm.TenantId, ct);
+            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.Id == command.ServiceRequestId.Value, ct);
+            if (srCheck != null && srCheck.ZoneId == Guid.Empty)
+            {
+                srCheck.ZoneId = zoneId;
+            }
         }
         else
         {
-            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.ZoneId == zoneId && x.AssignedTechnicianId == technicianId, ct);
+            srCheck = await db.ServiceRequests.FirstOrDefaultAsync(x => x.ZoneId == zoneId && (x.AssignedTechnicianId == technicianId || x.AssignedTechnicianId == null), ct);
         }
 
         var depReq = command.DeploymentRequestId.HasValue
             ? await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.Id == command.DeploymentRequestId.Value, ct)
             : (srCheck?.DeploymentRequestId is Guid requestId && requestId != Guid.Empty
                 ? await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.Id == requestId, ct)
-                : await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.ZoneId == zoneId && r.TechnicianUserId == technicianId, ct));
+                : await db.DeploymentRequests.Include(r => r.PlanItems).FirstOrDefaultAsync(r => r.ZoneId == zoneId && (r.TechnicianUserId == technicianId || r.TechnicianUserId == null), ct));
 
         // A technician can be assigned either on the deployment request or on
         // the linked service request. Older installation records populated
         // only ServiceRequest.AssignedTechnicianId, so accepting only the
         // deployment field incorrectly returned 403 for valid GIS mappings.
-        // For FarmOwner / PlatformAdmin, zone access has already been verified by EnsureZoneAccessAsync.
+        // For FarmOwner / PlatformAdmin / PlatformTechnician, zone access has already been verified by EnsureZoneAccessAsync.
         var caller = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == technicianId, ct);
-        var isPlatformOrOwner = caller?.Role is UserRole.PlatformAdmin or UserRole.FarmOwner;
+        var isPlatformOrOwner = caller?.Role is UserRole.PlatformAdmin or UserRole.PlatformTechnician or UserRole.FarmOwner;
 
         if (!isPlatformOrOwner)
         {
@@ -1032,11 +1036,10 @@ public sealed class GisService(SmartFarmDbContext db) : IGisService
         var allowed = caller.Role switch
         {
             UserRole.PlatformAdmin => true,
+            UserRole.PlatformTechnician => true,
             UserRole.FarmOwner => caller.TenantId == zone.Field.Farm.TenantId,
             UserRole.Farmer => !write && caller.TenantId == zone.Field.Farm.TenantId
                 && await db.UserZoneAccesses.AnyAsync(a => a.AppUserId == userId && a.ZoneId == zoneId, ct),
-            UserRole.PlatformTechnician => await db.DeploymentRequests.AnyAsync(r => r.ZoneId == zoneId && (r.TechnicianUserId == userId || r.TechnicianUserId == null), ct)
-                || await db.ServiceRequests.AnyAsync(r => r.ZoneId == zoneId && (r.AssignedTechnicianId == userId || r.AssignedTechnicianId == null), ct),
             _ => false
         };
         if (!allowed) throw new ResourceNotFoundException("Zone was not found.");
