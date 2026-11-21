@@ -98,7 +98,7 @@ public sealed record FarmWeatherView(
 public sealed record DailyForecastView(DateTime Date, decimal? MaxTemperature, decimal? MinTemperature, decimal? PrecipitationProbability, string? Description);
 
 // ─── Farmer My-Tasks ──────────────────────────────────────────────────────────
-public sealed record FarmerCompleteTaskCommand(string? ResultNotes);
+public sealed record FarmerCompleteTaskCommand(string? ResultNotes, IReadOnlyList<string>? ImageUrls = null);
 
 // ─── Farmer Assigned Zones ────────────────────────────────────────────────────
 public sealed record FarmerZoneView(Guid ZoneId, string ZoneName, Guid FieldId, Guid FarmId, bool CanControl, DateTime GrantedAtUtc);

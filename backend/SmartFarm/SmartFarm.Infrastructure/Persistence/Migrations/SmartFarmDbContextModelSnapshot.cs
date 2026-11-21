@@ -3225,6 +3225,11 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("farmer_id");
 
+                    b.Property<string>("ImageUrls")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("image_urls");
+
                     b.Property<string>("ProgressNote")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")

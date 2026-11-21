@@ -1936,7 +1936,7 @@ export const supportService = {
   updateTask: async (
     farmId: string,
     taskId: string,
-    data: { action: string; result?: string; failureReason?: string; farmerId?: string; progressPercent?: number; notes?: string }
+    data: { action: string; result?: string; failureReason?: string; farmerId?: string; progressPercent?: number; notes?: string; imageUrls?: string[] }
   ) => {
     const res = await apiClient.put(`/api/v1/farms/${farmId}/tasks/${taskId}`, data);
     return res.data;
@@ -2136,8 +2136,8 @@ export const farmerService = {
   },
 
   /** PUT /api/v1/farmer/tasks/{taskId}/complete */
-  completeTask: async (taskId: string, resultNotes?: string) => {
-    const res = await apiClient.put(`/api/v1/farmer/tasks/${taskId}/complete`, { resultNotes });
+  completeTask: async (taskId: string, resultNotes?: string, imageUrls?: string[]) => {
+    const res = await apiClient.put(`/api/v1/farmer/tasks/${taskId}/complete`, { resultNotes, imageUrls });
     return res.data;
   },
 

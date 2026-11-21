@@ -4,7 +4,7 @@ import { useAuth } from '@/app/providers/AuthContext';
 import { supportService, userService } from '../../services';
 import { extractApiError } from '../../services/api';
 import { Button, Modal, Input } from '../../components/ui/BaseUI';
-import { ClipboardList, Plus, Calendar, MapPin, CheckCircle2, AlertTriangle, UserPlus, X } from 'lucide-react';
+import { ClipboardList, Plus, Calendar, MapPin, CheckCircle2, AlertTriangle, UserPlus, X, Camera, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Employee, FarmTaskDetail, FarmTaskAssignment, TaskAssignmentStatus } from '../../types';
 
 const STATUS_LABEL: Record<TaskAssignmentStatus, { text: string; style: string }> = {
@@ -101,6 +101,19 @@ export const TasksPage: React.FC = () => {
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [addIds, setAddIds] = useState<string[]>([]);
   const [addDueDate, setAddDueDate] = useState(defaultDueDate());
+
+  // Photo Inspector Modal cho Owner kiểm tra ảnh minh chứng thực địa
+  const [inspectingPhoto, setInspectingPhoto] = useState<{
+    urls: string[];
+    currentIndex: number;
+    taskTitle: string;
+    farmerName: string;
+    result?: string | null;
+    submittedAtUtc?: string | null;
+    status: TaskAssignmentStatus;
+    task: FarmTaskDetail;
+    assignment: FarmTaskAssignment;
+  } | null>(null);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -334,6 +347,42 @@ export const TasksPage: React.FC = () => {
                       {a.progressNote && <p className="text-slate-500">Ghi chú tiến độ: {a.progressNote}</p>}
                       {a.result && <p className="text-slate-700">Kết quả: {a.result}</p>}
                       {a.failureReason && <p className="text-rose-700">Lý do: {a.failureReason}</p>}
+
+                      {/* Hiển thị ảnh minh chứng báo cáo thực địa của Farmer */}
+                      {a.imageUrls && a.imageUrls.length > 0 && (
+                        <div className="pt-1.5 space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                            <Camera size={13} className="text-[#119653]" />
+                            <span>Hình ảnh minh chứng thực địa ({a.imageUrls.length} ảnh):</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {a.imageUrls.map((url, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setInspectingPhoto({
+                                  urls: a.imageUrls!,
+                                  currentIndex: idx,
+                                  taskTitle: task.title,
+                                  farmerName: a.farmerName,
+                                  result: a.result,
+                                  submittedAtUtc: a.submittedAtUtc,
+                                  status: a.status,
+                                  task,
+                                  assignment: a
+                                })}
+                                className="relative group rounded-lg overflow-hidden border border-slate-200 hover:border-[#119653] shadow-xs cursor-pointer transition-all"
+                                title="Bấm để phóng to và kiểm tra chi tiết"
+                              >
+                                <img src={url} alt={`Ảnh ${idx + 1}`} className="w-14 h-14 object-cover" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                                  <Maximize2 size={13} />
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -401,6 +450,121 @@ export const TasksPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* ─── MODAL: PHOTO INSPECTOR & APPROVAL WORKFLOW ─── */}
+      {inspectingPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3 sm:p-6 backdrop-blur-xs"
+          onClick={() => setInspectingPhoto(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full max-h-[92vh] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 text-white border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Camera size={16} className="text-[#119653]" />
+                  <h3 className="text-sm font-bold truncate max-w-md sm:max-w-xl">{inspectingPhoto.taskTitle}</h3>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Báo cáo bởi <strong className="text-white">{inspectingPhoto.farmerName}</strong> • {formatDateTime(inspectingPhoto.submittedAtUtc)}
+                  {inspectingPhoto.urls.length > 1 && ` (Ảnh ${inspectingPhoto.currentIndex + 1}/${inspectingPhoto.urls.length})`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectingPhoto(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Main Image View */}
+            <div className="relative flex-1 min-h-[300px] max-h-[58vh] bg-black flex items-center justify-center p-2 overflow-hidden select-none">
+              <img
+                src={inspectingPhoto.urls[inspectingPhoto.currentIndex]}
+                alt="Báo cáo thực địa"
+                className="max-h-[55vh] max-w-full object-contain rounded-lg shadow-lg"
+              />
+
+              {inspectingPhoto.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    disabled={inspectingPhoto.currentIndex === 0}
+                    onClick={() => setInspectingPhoto(prev => prev ? { ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) } : null)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white disabled:opacity-30 disabled:pointer-events-none transition-all shadow-md"
+                    title="Ảnh trước"
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={inspectingPhoto.currentIndex === inspectingPhoto.urls.length - 1}
+                    onClick={() => setInspectingPhoto(prev => prev ? { ...prev, currentIndex: Math.min(prev.urls.length - 1, prev.currentIndex + 1) } : null)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/60 hover:bg-black/90 text-white disabled:opacity-30 disabled:pointer-events-none transition-all shadow-md"
+                    title="Ảnh tiếp theo"
+                  >
+                    <ChevronRight size={22} />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Thumbnails strip if multiple */}
+            {inspectingPhoto.urls.length > 1 && (
+              <div className="flex gap-2 px-4 py-2 bg-slate-950 border-t border-slate-800 overflow-x-auto justify-center">
+                {inspectingPhoto.urls.map((url, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setInspectingPhoto(prev => prev ? { ...prev, currentIndex: idx } : null)}
+                    className={`rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${idx === inspectingPhoto.currentIndex ? 'border-[#119653] scale-105 shadow-md' : 'border-slate-700 opacity-60 hover:opacity-100'}`}
+                  >
+                    <img src={url} alt={`Thumb ${idx + 1}`} className="w-12 h-12 object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Footer Details & Quick Action */}
+            <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="space-y-1 max-w-xl">
+                <div className="text-slate-400 font-semibold flex items-center gap-1.5">
+                  <span>Nội dung kết quả nhân công đã nộp:</span>
+                  <StatusChip status={inspectingPhoto.status} />
+                </div>
+                <p className="text-slate-200 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60 text-xs">
+                  {inspectingPhoto.result || 'Không có mô tả chi tiết.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                <Button variant="ghost" onClick={() => setInspectingPhoto(null)} className="text-slate-300 hover:text-white">
+                  Đóng
+                </Button>
+                {inspectingPhoto.status === 'CompletedPendingReview' && (
+                  <Button
+                    size="sm"
+                    disabled={busyKey === `${inspectingPhoto.task.id}:${inspectingPhoto.assignment.farmerId}`}
+                    onClick={async () => {
+                      const { task, assignment } = inspectingPhoto;
+                      await approve(task, assignment);
+                      setInspectingPhoto(null);
+                    }}
+                    className="bg-[#119653] hover:bg-[#0e7a43] text-white font-bold"
+                  >
+                    <CheckCircle2 size={15} className="mr-1.5" /> Phê duyệt kết quả này
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

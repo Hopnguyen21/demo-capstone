@@ -16,8 +16,16 @@ public static class InventoryTaskMapping
     {
         var assignments = x.Assignments.Where(a => viewerFarmerId is null || a.FarmerId == viewerFarmerId)
             .OrderBy(a => a.AssignedAtUtc).ThenBy(a => a.Farmer?.FullName)
-            .Select(a => new FarmTaskAssignmentView(a.Id, a.FarmerId, a.Farmer?.FullName ?? string.Empty, a.Status, a.ProgressPercent, a.ProgressNote, a.Result, a.FailureReason,
-                a.AssignmentVersion, a.AssignedAtUtc, a.AcceptedAtUtc, a.StartedAtUtc, a.SubmittedAtUtc, a.ApprovedAtUtc)).ToList();
+            .Select(a => {
+                IReadOnlyList<string>? imgs = null;
+                if (!string.IsNullOrWhiteSpace(a.ImageUrls))
+                {
+                    try { imgs = System.Text.Json.JsonSerializer.Deserialize<List<string>>(a.ImageUrls); }
+                    catch { imgs = new List<string> { a.ImageUrls }; }
+                }
+                return new FarmTaskAssignmentView(a.Id, a.FarmerId, a.Farmer?.FullName ?? string.Empty, a.Status, a.ProgressPercent, a.ProgressNote, a.Result, a.FailureReason,
+                    a.AssignmentVersion, a.AssignedAtUtc, a.AcceptedAtUtc, a.StartedAtUtc, a.SubmittedAtUtc, a.ApprovedAtUtc, imgs);
+            }).ToList();
         var history = x.History.Where(h => viewerFarmerId is null || h.SubjectFarmerId is null || h.SubjectFarmerId == viewerFarmerId)
             .OrderBy(h => h.CreatedAtUtc)
             .Select(h => new FarmTaskHistoryView(h.Id, h.EventType, h.FromStatus, h.ToStatus, h.ActorUserId, h.SubjectFarmerId, h.Notes, h.CreatedAtUtc)).ToList();

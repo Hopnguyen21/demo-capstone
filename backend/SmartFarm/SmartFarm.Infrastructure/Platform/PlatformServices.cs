@@ -1276,7 +1276,10 @@ public sealed class FarmerService(SmartFarmDbContext db) : IFarmerService
             DueDate = x.DueAtUtc,
             DueAtUtc = x.DueAtUtc,
             ZoneName = x.Zone != null ? x.Zone.Name : null,
-            CreatedAtUtc = x.CreatedAtUtc
+            CreatedAtUtc = x.CreatedAtUtc,
+            ImageUrls = (caller != null && caller.Role == UserRole.Farmer
+                ? x.Assignments.Where(a => a.FarmerId == farmerId).Select(a => a.ImageUrls).FirstOrDefault()
+                : null)
         }).ToList();
     }
 
@@ -1293,6 +1296,10 @@ public sealed class FarmerService(SmartFarmDbContext db) : IFarmerService
         mine.AcceptedAtUtc ??= now; mine.StartedAtUtc ??= now;
         mine.Status = FarmTaskStatus.CompletedPendingReview;
         mine.Result = command.ResultNotes;
+        if (command.ImageUrls is not null)
+        {
+            mine.ImageUrls = System.Text.Json.JsonSerializer.Serialize(command.ImageUrls);
+        }
         mine.ProgressPercent = 100;
         mine.SubmittedAtUtc = now;
         task.Status = SmartFarm.Application.Features.Inventory.FarmTaskAggregate.Compute(task.Assignments);

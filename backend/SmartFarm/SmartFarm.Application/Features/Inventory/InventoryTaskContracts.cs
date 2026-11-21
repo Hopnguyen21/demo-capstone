@@ -13,11 +13,11 @@ public sealed record LowStockAlertView(Guid Id, Guid ItemId, string ItemName, Lo
 
 public sealed record CreateFarmTaskCommand(Guid ZoneId, string Title, string? Description, string? Requirements, DateTime DueAtUtc, IReadOnlyList<Guid> FarmerIds);
 /// <summary>FarmerId: Farmer mục tiêu khi Owner duyệt/giao lại; Farmer luôn chỉ thao tác trên phân công của chính mình. ProgressPercent: 0-100 cho UpdateProgress.</summary>
-public sealed record UpdateFarmTaskCommand(FarmTaskAction Action, string? Result, string? FailureReason, Guid? FarmerId, int? ProgressPercent, string? Notes);
+public sealed record UpdateFarmTaskCommand(FarmTaskAction Action, string? Result, string? FailureReason, Guid? FarmerId, int? ProgressPercent, string? Notes, IReadOnlyList<string>? ImageUrls = null);
 /// <summary>NewDueAtUtc: đặt hạn mới (UTC, ở tương lai) khi giao lại công việc đã quá hạn.</summary>
 public sealed record AddTaskAssigneesCommand(IReadOnlyList<Guid> FarmerIds, DateTime? NewDueAtUtc = null);
 public sealed record FarmTaskHistoryView(Guid Id, FarmTaskEventType EventType, FarmTaskStatus? FromStatus, FarmTaskStatus ToStatus, Guid ActorUserId, Guid? SubjectFarmerId, string? Notes, DateTime CreatedAtUtc);
-public sealed record FarmTaskAssignmentView(Guid Id, Guid FarmerId, string FarmerName, FarmTaskStatus Status, int ProgressPercent, string? ProgressNote, string? Result, string? FailureReason, int AssignmentVersion, DateTime AssignedAtUtc, DateTime? AcceptedAtUtc, DateTime? StartedAtUtc, DateTime? SubmittedAtUtc, DateTime? ApprovedAtUtc);
+public sealed record FarmTaskAssignmentView(Guid Id, Guid FarmerId, string FarmerName, FarmTaskStatus Status, int ProgressPercent, string? ProgressNote, string? Result, string? FailureReason, int AssignmentVersion, DateTime AssignedAtUtc, DateTime? AcceptedAtUtc, DateTime? StartedAtUtc, DateTime? SubmittedAtUtc, DateTime? ApprovedAtUtc, IReadOnlyList<string>? ImageUrls = null);
 public sealed record FarmTaskView(Guid Id, Guid FarmId, Guid ZoneId, string Title, string? Description, string? Requirements, DateTime DueAtUtc, FarmTaskStatus Status, DateTime CreatedAtUtc, IReadOnlyList<FarmTaskAssignmentView> Assignments, IReadOnlyList<FarmTaskHistoryView> History);
 
 public interface IInventoryTaskService

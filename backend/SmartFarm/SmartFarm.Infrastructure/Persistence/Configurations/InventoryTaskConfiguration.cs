@@ -43,6 +43,7 @@ internal sealed class FarmTaskAssignmentConfiguration : IEntityTypeConfiguration
         b.Property(x => x.ProgressNote).HasColumnName("progress_note").HasMaxLength(1000);
         b.Property(x => x.Result).HasColumnName("result").HasMaxLength(2000);
         b.Property(x => x.FailureReason).HasColumnName("failure_reason").HasMaxLength(2000);
+        b.Property(x => x.ImageUrls).HasColumnName("image_urls").HasMaxLength(4000);
         b.Property(x => x.AcceptedAtUtc).HasColumnName("accepted_at_utc");
         b.Property(x => x.StartedAtUtc).HasColumnName("started_at_utc");
         b.Property(x => x.SubmittedAtUtc).HasColumnName("submitted_at_utc");

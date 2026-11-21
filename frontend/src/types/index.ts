@@ -148,6 +148,7 @@ export interface FarmTaskAssignment {
   startedAtUtc?: string | null;
   submittedAtUtc?: string | null;
   approvedAtUtc?: string | null;
+  imageUrls?: string[] | null;
 }
 
 export interface FarmTaskDetail {

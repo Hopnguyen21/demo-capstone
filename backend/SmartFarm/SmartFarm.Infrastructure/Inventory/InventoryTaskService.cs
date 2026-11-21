@@ -254,10 +254,12 @@ public sealed class InventoryTaskService(SmartFarmDbContext db, TimeProvider clo
             case FarmTaskAction.UpdateProgress when from is FarmTaskStatus.Accepted or FarmTaskStatus.InProgress:
                 if (c.ProgressPercent is not (>= 0 and <= 100)) throw V("progressPercent", "Progress must be between 0 and 100.");
                 a.ProgressPercent = c.ProgressPercent.Value; a.ProgressNote = Optional(c.Notes, 1000);
+                if (c.ImageUrls is not null) a.ImageUrls = System.Text.Json.JsonSerializer.Serialize(c.ImageUrls);
                 if (from == FarmTaskStatus.Accepted) { a.Status = FarmTaskStatus.InProgress; a.StartedAtUtc = now; }
                 return (from, FarmTaskEventType.ProgressUpdated);
             case FarmTaskAction.Complete when from == FarmTaskStatus.InProgress:
                 a.Result = Required(c.Result, "result", 2000); a.ProgressPercent = 100; a.SubmittedAtUtc = now; a.Status = FarmTaskStatus.CompletedPendingReview;
+                if (c.ImageUrls is not null) a.ImageUrls = System.Text.Json.JsonSerializer.Serialize(c.ImageUrls);
                 return (from, FarmTaskEventType.Completed);
             case FarmTaskAction.Fail when from is FarmTaskStatus.Pending or FarmTaskStatus.Accepted or FarmTaskStatus.InProgress:
                 a.FailureReason = Required(c.FailureReason, "failureReason", 2000); a.Status = FarmTaskStatus.Failed; return (from, FarmTaskEventType.Failed);

@@ -52,7 +52,7 @@ public sealed class InventoryTasksController(IInventoryTaskService service) : Co
 
     // API catalog #101
     [HttpPut("tasks/{taskId:guid}")]
-    public async Task<ActionResult<FarmTaskView>> UpdateTask(Guid farmId, Guid taskId, UpdateFarmTaskRequest r, CancellationToken ct) => Ok(await service.UpdateTaskAsync(User.GetUserId(), User.GetTenantId(), farmId, taskId, new(r.Action, r.Result, r.FailureReason, r.FarmerId, r.ProgressPercent, r.Notes), ct));
+    public async Task<ActionResult<FarmTaskView>> UpdateTask(Guid farmId, Guid taskId, UpdateFarmTaskRequest r, CancellationToken ct) => Ok(await service.UpdateTaskAsync(User.GetUserId(), User.GetTenantId(), farmId, taskId, new(r.Action, r.Result, r.FailureReason, r.FarmerId, r.ProgressPercent, r.Notes, r.ImageUrls), ct));
 
     // Owner thêm Farmer vào công việc đang tồn tại (hoặc giao lại cho Farmer đã thất bại/quá hạn/từ chối/bị gỡ).
     [HttpPost("tasks/{taskId:guid}/assignees"), Authorize(Roles = "FarmOwner")]
@@ -71,4 +71,4 @@ public sealed class ReceiveInventoryRequest { public decimal Quantity { get; ini
 public sealed class IssueInventoryRequest { public Guid InventoryItemId { get; init; } public decimal Quantity { get; init; } public Guid ZoneId { get; init; } public Guid? TaskId { get; init; } [StringLength(500)] public string? Notes { get; init; } }
 public sealed class CreateFarmTaskRequest { public Guid ZoneId { get; init; } [Required, StringLength(200)] public string Title { get; init; } = ""; [StringLength(2000)] public string? Description { get; init; } [StringLength(2000)] public string? Requirements { get; init; } public DateTime DueAtUtc { get; init; } [Required, MinLength(1), MaxLength(50)] public IReadOnlyList<Guid> FarmerIds { get; init; } = []; }
 public sealed class AddTaskAssigneesRequest { [Required, MinLength(1), MaxLength(50)] public IReadOnlyList<Guid> FarmerIds { get; init; } = []; public DateTime? NewDueAtUtc { get; init; } }
-public sealed class UpdateFarmTaskRequest { public FarmTaskAction Action { get; init; } [StringLength(2000)] public string? Result { get; init; } [StringLength(2000)] public string? FailureReason { get; init; } public Guid? FarmerId { get; init; } [Range(0, 100)] public int? ProgressPercent { get; init; } [StringLength(1000)] public string? Notes { get; init; } }
+public sealed class UpdateFarmTaskRequest { public FarmTaskAction Action { get; init; } [StringLength(2000)] public string? Result { get; init; } [StringLength(2000)] public string? FailureReason { get; init; } public Guid? FarmerId { get; init; } [Range(0, 100)] public int? ProgressPercent { get; init; } [StringLength(1000)] public string? Notes { get; init; } public IReadOnlyList<string>? ImageUrls { get; init; } }

@@ -87,6 +87,7 @@ public sealed class FarmTaskAssignment : AuditableEntity
     public string? ProgressNote { get; set; }
     public string? Result { get; set; }
     public string? FailureReason { get; set; }
+    public string? ImageUrls { get; set; }
     public DateTime? AcceptedAtUtc { get; set; }
     public DateTime? StartedAtUtc { get; set; }
     public DateTime? SubmittedAtUtc { get; set; }
