@@ -159,6 +159,8 @@ public static class DependencyInjection
         services.AddScoped<IBillService, BillService>();
         services.AddScoped<IContractPackageService, ContractPackageService>();
         services.AddScoped<IDiscountCodeService, DiscountCodeService>();
+        services.AddScoped<IPayOSService, PayOSService>();
+        services.AddScoped<ICloudinaryService, CloudinaryService>();
 
         return services;
     }

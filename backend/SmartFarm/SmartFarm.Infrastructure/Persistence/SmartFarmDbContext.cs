@@ -92,6 +92,7 @@ public sealed class SmartFarmDbContext(DbContextOptions<SmartFarmDbContext> opti
     public DbSet<ContractPackage> ContractPackages => Set<ContractPackage>();
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<FieldSurveyReport> FieldSurveyReports => Set<FieldSurveyReport>();
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
 
     // ─── RAG Knowledge Base ──────────────────────────────────────────────────
     public DbSet<AgricultureDocument> AgricultureDocuments => Set<AgricultureDocument>();

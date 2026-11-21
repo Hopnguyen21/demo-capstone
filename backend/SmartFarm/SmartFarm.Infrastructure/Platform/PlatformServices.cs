@@ -124,14 +124,14 @@ public sealed class PlatformAdminService(
                 if (plain.Length > 0 && SecretProtector.LooksMasked(plain)) continue;
                 if (plain.Length > 0)
                 {
-                    if (plain.Length < 20 || plain.Any(char.IsWhiteSpace))
-                        throw new RequestValidationException(update.Key, "Khoá API không hợp lệ (tối thiểu 20 ký tự, không có khoảng trắng).");
+                    if (plain.Length < 10 || plain.Any(char.IsWhiteSpace))
+                        throw new RequestValidationException(update.Key, "Khoá API / Token không hợp lệ (tối thiểu 10 ký tự, không có khoảng trắng).");
                     if (SigningKey.Length < 32)
                         throw new RequestValidationException(update.Key, "Chưa cấu hình Jwt:SigningKey nên không thể mã hoá khoá API để lưu.");
                     plain = SecretProtector.Protect(plain, SigningKey);
                 }
                 update = new UpdatePlatformSettingItem(update.Key, plain);
-                geminiTouched = true;
+                if (update.Key == PlatformSettingKeys.GeminiApiKey) geminiTouched = true;
             }
             else if (update.Key == PlatformSettingKeys.GeminiModel)
             {
@@ -155,7 +155,8 @@ public sealed class PlatformAdminService(
             });
             if (existing is null)
             {
-                db.PlatformSettings.Add(new PlatformSetting { Key = update.Key, Value = update.Value, Group = isSecretKey || update.Key == PlatformSettingKeys.GeminiModel ? "Ai" : "Custom", DataType = "String", IsSecret = isSecretKey, UpdatedByUserId = updatedByUserId, UpdatedAtUtc = DateTime.UtcNow });
+                var group = update.Key.StartsWith("PayOS") ? "Payment" : (update.Key.StartsWith("Cloudinary") ? "Media" : (isSecretKey || update.Key == PlatformSettingKeys.GeminiModel ? "Ai" : "Custom"));
+                db.PlatformSettings.Add(new PlatformSetting { Key = update.Key, Value = update.Value, Group = group, DataType = "String", IsSecret = isSecretKey, UpdatedByUserId = updatedByUserId, UpdatedAtUtc = DateTime.UtcNow });
             }
             else
             {

@@ -2517,6 +2517,38 @@ export const billService = {
   updateStatus: async (id: string, status: string | number, notes?: string) => (await apiClient.put(`/api/v1/bills/${id}/status`, { status, notes })).data,
   delete: async (id: string) => (await apiClient.delete(`/api/v1/bills/${id}`)).data,
 };
+
+export const paymentService = {
+  getPayOSConfig: async () => (await apiClient.get('/api/v1/payments/payos/config')).data,
+  updatePayOSConfig: async (data: { clientId: string; apiKey?: string; checksumKey?: string }) =>
+    (await apiClient.put('/api/v1/payments/payos/config', data)).data,
+  testPayOSConnection: async () => (await apiClient.post('/api/v1/payments/payos/test-connection')).data,
+  confirmPayOSWebhook: async (webhookUrl: string) =>
+    (await apiClient.post('/api/v1/payments/payos/confirm-webhook', { webhookUrl })).data,
+  createBillPayment: async (billId: string, data?: { amount?: number; returnUrl?: string; cancelUrl?: string }) =>
+    (await apiClient.post(`/api/v1/payments/payos/create-bill-payment/${billId}`, data || {})).data,
+  checkPayOSStatus: async (orderCode: number | string) =>
+    (await apiClient.get(`/api/v1/payments/payos/check-status/${orderCode}`)).data,
+  getBillTransactions: async (billId: string) =>
+    (await apiClient.get(`/api/v1/payments/payos/transactions/${billId}`)).data,
+};
+
+export const cloudinaryService = {
+  getConfig: async () => (await apiClient.get('/api/v1/media/cloudinary/config')).data,
+  updateConfig: async (data: { cloudName: string; apiKey: string; apiSecret?: string }) =>
+    (await apiClient.put('/api/v1/media/cloudinary/config', data)).data,
+  testConnection: async () => (await apiClient.post('/api/v1/media/cloudinary/test-connection')).data,
+  uploadFile: async (file: File, folder?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (folder) fd.append('folder', folder);
+    return (await apiClient.post('/api/v1/media/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })).data;
+  },
+  uploadBase64: async (base64Data: string, fileName?: string, folder?: string) =>
+    (await apiClient.post('/api/v1/media/upload-base64', { base64Data, fileName, folder })).data,
+};
 export const contractPackageService = {
   getAll: async (activeOnly?: boolean, isCustom = false) => (await apiClient.get('/api/v1/contract-packages', { params: { activeOnly, isCustom } })).data,
   create: async (data: any) => (await apiClient.post('/api/v1/contract-packages', data)).data,

@@ -22,6 +22,14 @@ public static class PlatformSettingKeys
     /// <summary>Nhiều khoá Gemini (mỗi khoá một project để cộng dồn quota): mảng JSON, lưu mã hoá cả mảng.</summary>
     public const string GeminiApiKeys = "Gemini:ApiKeys";
     public const string GeminiModel = "Gemini:Model";
+    /// <summary>Cấu hình cổng thanh toán PayOS do Admin nhập</summary>
+    public const string PayOSClientId = "PayOS:ClientId";
+    public const string PayOSApiKey = "PayOS:ApiKey";
+    public const string PayOSChecksumKey = "PayOS:ChecksumKey";
+    /// <summary>Cấu hình lưu trữ media Cloudinary do Admin nhập</summary>
+    public const string CloudinaryCloudName = "Cloudinary:CloudName";
+    public const string CloudinaryApiKey = "Cloudinary:ApiKey";
+    public const string CloudinaryApiSecret = "Cloudinary:ApiSecret";
 }
 
 public sealed record PlatformSettingDefinition(string Key, decimal Default, decimal Min, decimal Max, string Group, string DataType, string Description);
@@ -44,7 +52,12 @@ public static class PlatformSettingsStore
             "Số phút tối đa kể từ lần đo cuối để số liệu cảm biến còn được coi là mới."),
     ];
 
-    public static bool IsSecretKey(string key) => key is PlatformSettingKeys.GeminiApiKey or PlatformSettingKeys.GeminiApiKeys;
+    public static bool IsSecretKey(string key) =>
+        key is PlatformSettingKeys.GeminiApiKey
+            or PlatformSettingKeys.GeminiApiKeys
+            or PlatformSettingKeys.PayOSApiKey
+            or PlatformSettingKeys.PayOSChecksumKey
+            or PlatformSettingKeys.CloudinaryApiSecret;
 
     public static PlatformSettingDefinition? Find(string key) => Definitions.FirstOrDefault(x => x.Key == key);
 

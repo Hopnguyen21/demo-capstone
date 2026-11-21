@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Receipt, Plus, Search, Filter, DollarSign, CheckCircle2, Clock,
-  AlertTriangle, XCircle, CreditCard, Calendar, Eye, Trash2, ArrowUpRight
+  AlertTriangle, XCircle, CreditCard, Calendar, Eye, Trash2, ArrowUpRight, QrCode
 } from 'lucide-react';
 import { Button, Modal, Input } from '../../components/ui/BaseUI';
 import { useAuth } from '@/app/providers/AuthContext';
 import { billService, zoneContractService, extractApiError } from '../../services';
 import { Bill, BillStatus, ZoneContract } from '../../types';
+import { PayOSPaymentModal } from '../../components/finance/PayOSPaymentModal';
 
 export const BillsPage: React.FC = () => {
   const { role } = useAuth();
@@ -23,6 +24,8 @@ export const BillsPage: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isPayOSModalOpen, setIsPayOSModalOpen] = useState(false);
+  const [payOSBill, setPayOSBill] = useState<Bill | null>(null);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -107,6 +110,11 @@ export const BillsPage: React.FC = () => {
     setPaymentAmount(bill.remainingAmount);
     setPaymentNotes('');
     setIsPaymentModalOpen(true);
+  };
+
+  const handleOpenPayOS = (bill: Bill) => {
+    setPayOSBill(bill);
+    setIsPayOSModalOpen(true);
   };
 
   const handleSubmitPayment = async (e: React.FormEvent) => {
@@ -319,6 +327,15 @@ export const BillsPage: React.FC = () => {
                     <td className="p-3.5 text-slate-500">{new Date(b.dueDate).toLocaleDateString('vi-VN')}</td>
                     <td className="p-3.5">{renderStatusBadge(b.status)}</td>
                     <td className="p-3.5 text-right space-x-1.5 whitespace-nowrap">
+                      {b.remainingAmount > 0 && b.status !== 'Cancelled' && b.status !== 5 && (
+                        <button
+                          onClick={() => handleOpenPayOS(b)}
+                          className="px-2.5 py-1 bg-emerald-600 text-white hover:bg-emerald-700 rounded font-bold inline-flex items-center gap-1 shadow-xs transition-colors"
+                          title="Thanh toán trực tuyến quét mã VietQR qua cổng PayOS"
+                        >
+                          <QrCode size={13} /> PayOS
+                        </button>
+                      )}
                       {isManager && b.remainingAmount > 0 && b.status !== 'Cancelled' && b.status !== 5 && (
                         <button
                           onClick={() => handleOpenPayment(b)}
@@ -456,6 +473,22 @@ export const BillsPage: React.FC = () => {
                 <span className="font-bold text-amber-700">Còn lại phải thu:</span>
                 <span className="font-black text-amber-700">{selectedBill.remainingAmount.toLocaleString('vi-VN')} đ</span>
               </div>
+            </div>
+
+            {/* Quick Link to PayOS VietQR */}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+              <div>
+                <span className="font-bold text-emerald-900 block">Thanh toán tự động qua PayOS (VietQR)</span>
+                <span className="text-[11px] text-emerald-700">Tạo mã QR để quét app ngân hàng và hệ thống tự động gạch nợ tức thì</span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => { setIsPaymentModalOpen(false); handleOpenPayOS(selectedBill); }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0 ml-2"
+              >
+                <QrCode size={13} className="mr-1" /> Mở PayOS QR
+              </Button>
             </div>
 
             <div>
@@ -600,6 +633,14 @@ export const BillsPage: React.FC = () => {
               </div>
 
               <div className="space-x-2">
+                {selectedBill.remainingAmount > 0 && selectedBill.status !== 'Cancelled' && selectedBill.status !== 5 && (
+                  <Button
+                    onClick={() => { setIsDetailModalOpen(false); handleOpenPayOS(selectedBill); }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                  >
+                    <QrCode size={14} className="mr-1" /> Quét mã PayOS
+                  </Button>
+                )}
                 {isManager && selectedBill.remainingAmount > 0 && selectedBill.status !== 'Cancelled' && selectedBill.status !== 5 && (
                   <Button
                     onClick={() => { setIsDetailModalOpen(false); handleOpenPayment(selectedBill); }}
@@ -616,6 +657,18 @@ export const BillsPage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Modal Thanh toán trực tuyến qua cổng PayOS */}
+      <PayOSPaymentModal
+        isOpen={isPayOSModalOpen}
+        onClose={() => { setIsPayOSModalOpen(false); setPayOSBill(null); }}
+        bill={payOSBill}
+        onPaymentSuccess={async () => {
+          setIsPayOSModalOpen(false);
+          setPayOSBill(null);
+          await loadData();
+        }}
+      />
     </div>
   );
 };

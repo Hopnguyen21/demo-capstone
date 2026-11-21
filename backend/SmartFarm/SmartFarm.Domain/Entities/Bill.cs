@@ -22,5 +22,6 @@ public sealed class Bill : AuditableEntity
     public string? Notes { get; set; }
     public Guid CreatedByUserId { get; set; }
     public AppUser? CreatedByUser { get; set; }
+    public ICollection<PaymentTransaction> PaymentTransactions { get; set; } = new List<PaymentTransaction>();
 }
 

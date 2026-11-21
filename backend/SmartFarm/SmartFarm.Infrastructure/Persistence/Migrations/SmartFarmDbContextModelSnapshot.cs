@@ -4773,6 +4773,94 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("BankBin")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("BillId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long>("OrderCode")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PaymentLinkId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("QrCode")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WebhookPayloadJson")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BillId");
+
+                    b.HasIndex("OrderCode")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("PaymentTransactions", (string)null);
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.PlantingSeason", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7557,6 +7645,16 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SmartFarm.Domain.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("SmartFarm.Domain.Entities.Bill", "Bill")
+                        .WithMany("PaymentTransactions")
+                        .HasForeignKey("BillId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Bill");
+                });
+
             modelBuilder.Entity("SmartFarm.Domain.Entities.PlantingSeason", b =>
                 {
                     b.HasOne("SmartFarm.Domain.Entities.Crop", "Crop")
@@ -8125,6 +8223,11 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                     b.Navigation("RefreshTokens");
 
                     b.Navigation("ZoneAccesses");
+                });
+
+            modelBuilder.Entity("SmartFarm.Domain.Entities.Bill", b =>
+                {
+                    b.Navigation("PaymentTransactions");
                 });
 
             modelBuilder.Entity("SmartFarm.Domain.Entities.Crop", b =>

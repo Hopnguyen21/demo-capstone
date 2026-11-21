@@ -102,4 +102,17 @@ public sealed class PersistenceModelTests
         Assert.NotNull(entity.FindNavigation(nameof(FieldSurveyReport.Farm)));
         Assert.NotNull(entity.FindNavigation(nameof(FieldSurveyReport.CreatedByUser)));
     }
+
+    [Fact]
+    public void Model_contains_PaymentTransactions()
+    {
+        using var context = CreateContext();
+        var entity = context.Model.FindEntityType(typeof(PaymentTransaction));
+        Assert.NotNull(entity);
+        Assert.Equal("PaymentTransactions", entity.GetTableName());
+        Assert.NotNull(entity.FindProperty(nameof(PaymentTransaction.OrderCode)));
+        Assert.NotNull(entity.FindProperty(nameof(PaymentTransaction.Amount)));
+        Assert.NotNull(entity.FindProperty(nameof(PaymentTransaction.Status)));
+        Assert.Contains(entity.GetIndexes(), idx => idx.IsUnique && idx.Properties.Any(p => p.Name == nameof(PaymentTransaction.OrderCode)));
+    }
 }
