@@ -54,7 +54,7 @@ export const FarmerHome: React.FC = () => {
   const [isActuatorBusy, setIsActuatorBusy] = useState(false);
   const [irrigationSuccessMessage, setIrrigationSuccessMessage] = useState<string | null>(null);
 
-  const farmId = selectedFarmId || (user as any)?.farmId || '30000000-0000-0000-0000-000000000001';
+  const farmId = (user as any)?.farmId || selectedFarmId || '30000000-0000-0000-0000-000000000001';
   const currentFarm = authFarms.find(f => f.farmId === farmId);
 
   const loadData = useCallback(async () => {

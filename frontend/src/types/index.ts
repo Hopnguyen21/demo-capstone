@@ -5,6 +5,7 @@ export type UserRole = 'PLATFORM_ADMIN' | 'PLATFORM_TECHNICIAN' | 'FARM_OWNER' |
 export interface User {
   userId: string;
   tenantId?: string;
+  farmId?: string;
   username: string;
   email: string;
   fullName: string;

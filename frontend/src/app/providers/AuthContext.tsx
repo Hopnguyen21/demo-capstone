@@ -50,6 +50,7 @@ function mapBackendUser(bUser: any): User {
   return {
     userId: bUser.userId || '20000000-0000-0000-0000-000000000001',
     tenantId: bUser.tenantId || undefined,
+    farmId: bUser.farmId || undefined,
     username: bUser.email?.split('@')[0] || 'user',
     email: bUser.email || '',
     fullName: bUser.fullName || bUser.email || 'SmartFarm User',
@@ -110,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const refreshFarmsAndZones = async () => {
+  const refreshFarmsAndZones = async (currentUser?: User | null) => {
     setFarmZonesRevision(revision => revision + 1);
     setFarms([]);
     setZones([]);
@@ -120,8 +121,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const realFarms = await farmService.getFarms();
       const farmList = Array.isArray(realFarms) ? realFarms : [];
       setFarms(farmList);
-      const farmId = farmList[0]?.farmId || '';
-      setSelectedFarmId(farmId);
+      const effectiveUser = currentUser !== undefined ? currentUser : user;
+      const targetFarmId = effectiveUser?.farmId
+        ? (farmList.find(f => f.farmId === effectiveUser.farmId)?.farmId || effectiveUser.farmId)
+        : (farmList[0]?.farmId || '');
+      setSelectedFarmId(targetFarmId);
     } catch {
       setFarms([]);
       setZones([]);
@@ -189,7 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRole(mapped.role);
     localStorage.setItem('smartfarm_role', mapped.role);
     localStorage.setItem('smartfarm_user', JSON.stringify(mapped));
-    await refreshFarmsAndZones();
+    await refreshFarmsAndZones(mapped);
     return mapped;
   };
 
@@ -213,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const mapped = mapBackendUser(rawUser);
         setUser(mapped);
         localStorage.setItem('smartfarm_user', JSON.stringify(mapped));
-        await refreshFarmsAndZones();
+        await refreshFarmsAndZones(mapped);
         return;
       } catch (err) {
         console.warn('Backend login for role failed:', err);

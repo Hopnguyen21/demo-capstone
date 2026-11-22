@@ -40,9 +40,9 @@ const readFileAsBase64 = (file: File): Promise<string> => {
 };
 
 export const FarmerTasksPage: React.FC = () => {
-  const { selectedFarmId, zones } = useAuth();
+  const { user, selectedFarmId, zones } = useAuth();
   const [filter, setFilter] = useState<'TODO' | 'REVIEW' | 'DONE' | 'ALL'>('TODO');
-  const farmId = selectedFarmId;
+  const farmId = (user as any)?.farmId || selectedFarmId;
   const [searchParams] = useSearchParams();
   const focusTaskId = searchParams.get('taskId');
   const focusRef = useRef<HTMLDivElement | null>(null);
