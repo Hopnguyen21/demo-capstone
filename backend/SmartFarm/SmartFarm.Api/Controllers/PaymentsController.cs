@@ -74,6 +74,17 @@ public sealed class PaymentsController(IPayOSService payOSService) : ControllerB
         return Ok(result);
     }
 
+    /// <summary>Xác nhận thanh toán thủ công khi ngân hàng/PayOS đồng bộ chậm hoặc test localhost (FarmOwner, PlatformAdmin, PlatformTechnician)</summary>
+    [HttpPost("api/v1/payments/payos/confirm-manual/{orderCode:long}")]
+    [Authorize(Roles = "FarmOwner,PlatformAdmin,PlatformTechnician")]
+    public async Task<ActionResult<PayOSPaymentStatusResult>> ConfirmManualPayment(
+        long orderCode,
+        CancellationToken ct)
+    {
+        var result = await payOSService.ConfirmManualPaymentAsync(orderCode, User.GetUserId(), ct);
+        return Ok(result);
+    }
+
     /// <summary>Webhook nhận thông báo thanh toán thành công tự động từ PayOS</summary>
     [HttpPost("api/v1/payments/payos/webhook")]
     [AllowAnonymous]

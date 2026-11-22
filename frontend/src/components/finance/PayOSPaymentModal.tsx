@@ -33,6 +33,7 @@ export const PayOSPaymentModal: React.FC<PayOSPaymentModalProps> = ({
   const [payAmount, setPayAmount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [checking, setChecking] = useState<boolean>(false);
+  const [manualConfirming, setManualConfirming] = useState<boolean>(false);
   const [paymentData, setPaymentData] = useState<any | null>(null);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -143,6 +144,21 @@ export const PayOSPaymentModal: React.FC<PayOSPaymentModalProps> = ({
     }
   };
 
+  const handleConfirmManual = async () => {
+    if (!paymentData?.orderCode) return;
+    setManualConfirming(true);
+    try {
+      const res = await paymentService.confirmManualPayOS(paymentData.orderCode);
+      if (res && res.isSuccess) {
+        handleSuccess();
+      }
+    } catch (err: any) {
+      setErrorMessage(extractApiError(err) || 'Lỗi xác nhận thanh toán thủ công.');
+    } finally {
+      setManualConfirming(false);
+    }
+  };
+
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
@@ -156,9 +172,11 @@ export const PayOSPaymentModal: React.FC<PayOSPaymentModalProps> = ({
   };
 
   // Generate VietQR Image URL
-  const vietQrImageUrl = paymentData
-    ? `https://img.vietqr.io/image/${paymentData.bankBin || '970422'}-${paymentData.bankAccountNumber}-compact2.png?amount=${paymentData.amount}&addInfo=${encodeURIComponent(paymentData.description)}&accountName=${encodeURIComponent(paymentData.bankAccountName || '')}`
-    : '';
+  const vietQrImageUrl = paymentData?.qrCode
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(paymentData.qrCode)}`
+    : paymentData
+      ? `https://img.vietqr.io/image/${paymentData.bankBin || '970422'}-${paymentData.bankAccountNumber}-compact2.png?amount=${paymentData.amount}&addInfo=${encodeURIComponent(paymentData.description)}&accountName=${encodeURIComponent(paymentData.bankAccountName || '')}`
+      : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
@@ -248,9 +266,23 @@ export const PayOSPaymentModal: React.FC<PayOSPaymentModalProps> = ({
               </div>
 
               {errorMessage && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <span>{errorMessage}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  <div className="pt-2 border-t border-rose-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-[11px] text-rose-600 font-medium">Bạn đã chuyển tiền qua ngân hàng rồi?</span>
+                    <button
+                      type="button"
+                      onClick={handleConfirmManual}
+                      disabled={manualConfirming}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-colors"
+                    >
+                      {manualConfirming ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                      {manualConfirming ? 'Đang hoàn tất...' : 'Xác nhận hoàn tất thanh toán ngay'}
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -381,9 +413,23 @@ export const PayOSPaymentModal: React.FC<PayOSPaymentModalProps> = ({
               </div>
 
               {errorMessage && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <span>{errorMessage}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{errorMessage}</span>
+                  </div>
+                  <div className="pt-2 border-t border-rose-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-[11px] text-rose-600 font-medium">Bạn đã chuyển tiền qua ngân hàng rồi?</span>
+                    <button
+                      type="button"
+                      onClick={handleConfirmManual}
+                      disabled={manualConfirming}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-[11px] inline-flex items-center justify-center gap-1 shadow-xs transition-colors"
+                    >
+                      {manualConfirming ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                      {manualConfirming ? 'Đang hoàn tất...' : 'Xác nhận hoàn tất thanh toán ngay'}
+                    </button>
+                  </div>
                 </div>
               )}
 

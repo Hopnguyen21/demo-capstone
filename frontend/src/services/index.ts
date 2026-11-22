@@ -2553,6 +2553,8 @@ export const paymentService = {
     (await apiClient.post(`/api/v1/payments/payos/create-bill-payment/${billId}`, data || {})).data,
   checkPayOSStatus: async (orderCode: number | string) =>
     (await apiClient.get(`/api/v1/payments/payos/check-status/${orderCode}`)).data,
+  confirmManualPayOS: async (orderCode: number | string) =>
+    (await apiClient.post(`/api/v1/payments/payos/confirm-manual/${orderCode}`)).data,
   getBillTransactions: async (billId: string) =>
     (await apiClient.get(`/api/v1/payments/payos/transactions/${billId}`)).data,
 };

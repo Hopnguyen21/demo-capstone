@@ -69,6 +69,7 @@ public interface IPayOSService
     Task<PayOSTestResult> TestConnectionAsync(CancellationToken ct);
     Task<PayOSPaymentLinkResult> CreateBillPaymentLinkAsync(Guid billId, decimal? customAmount, Guid userId, string? returnUrl, string? cancelUrl, CancellationToken ct);
     Task<PayOSPaymentStatusResult> CheckPaymentStatusAsync(long orderCode, CancellationToken ct);
+    Task<PayOSPaymentStatusResult> ConfirmManualPaymentAsync(long orderCode, Guid userId, CancellationToken ct);
     Task<bool> ProcessWebhookAsync(string rawJson, CancellationToken ct);
     Task<bool> ConfirmWebhookUrlAsync(string webhookUrl, CancellationToken ct);
     Task<IReadOnlyList<PayOSTransactionView>> GetTransactionsByBillIdAsync(Guid billId, CancellationToken ct);

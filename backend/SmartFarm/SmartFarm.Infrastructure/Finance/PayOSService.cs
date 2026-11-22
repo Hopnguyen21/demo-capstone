@@ -338,13 +338,16 @@ public sealed class PayOSService(
         var accountName = dataElem.TryGetProperty("accountName", out var nmElem) ? nmElem.GetString() : null;
         var status = dataElem.TryGetProperty("status", out var stElem) ? stElem.GetString() ?? "PENDING" : "PENDING";
 
+        // PayOS often attaches an order prefix (e.g. CSA9LWHTV76) in VietQR addInfo. Extract it so user sees & copies exact content.
+        var exactContent = ExtractTransferContentFromQr(qrCode) ?? description;
+
         // Save PaymentTransaction in DB
         var transaction = new PaymentTransaction
         {
             OrderCode = orderCode,
             BillId = bill.Id,
             Amount = roundedAmount,
-            Description = description,
+            Description = exactContent,
             Status = status,
             PaymentLinkId = paymentLinkId,
             CheckoutUrl = checkoutUrl,
@@ -363,7 +366,7 @@ public sealed class PayOSService(
         return new PayOSPaymentLinkResult(
             OrderCode: orderCode,
             Amount: roundedAmount,
-            Description: description,
+            Description: exactContent,
             Status: status,
             CheckoutUrl: checkoutUrl,
             QrCode: qrCode,
@@ -443,6 +446,30 @@ public sealed class PayOSService(
             IsSuccess: isPaid,
             TransactionDateTime: createdAt,
             Reference: transaction?.Reference);
+    }
+
+    public async Task<PayOSPaymentStatusResult> ConfirmManualPaymentAsync(long orderCode, Guid userId, CancellationToken ct)
+    {
+        var transaction = await db.PaymentTransactions
+            .Include(t => t.Bill)
+            .FirstOrDefaultAsync(t => t.OrderCode == orderCode, ct)
+            ?? throw new ResourceNotFoundException($"Không tìm thấy giao dịch thanh toán #{orderCode}");
+
+        if (transaction.Status != "PAID")
+        {
+            var now = DateTime.UtcNow.ToString("o");
+            await MarkPaymentSuccessAsync(transaction, transaction.Amount, now, $"MANUAL-{DateTime.UtcNow:yyyyMMddHHmmss}", ct);
+        }
+
+        return new PayOSPaymentStatusResult(
+            OrderCode: orderCode,
+            Status: "PAID",
+            Amount: transaction.Amount,
+            AmountPaid: transaction.Amount,
+            AmountRemaining: 0,
+            IsSuccess: true,
+            TransactionDateTime: transaction.PaidAtUtc?.ToString("o"),
+            Reference: transaction.Reference);
     }
 
     public async Task<bool> ProcessWebhookAsync(string rawJson, CancellationToken ct)
@@ -622,4 +649,28 @@ public sealed class PayOSService(
         "970454" => "VietCapitalBank (Bản Việt)",
         _ => !string.IsNullOrEmpty(bin) ? $"Ngân hàng (BIN {bin})" : "Ngân hàng thụ hưởng"
     };
+
+    private static string? ExtractTransferContentFromQr(string? qrCode)
+    {
+        if (string.IsNullOrWhiteSpace(qrCode)) return null;
+        var idx62 = qrCode.IndexOf("62", StringComparison.Ordinal);
+        while (idx62 >= 0 && idx62 + 4 < qrCode.Length)
+        {
+            if (int.TryParse(qrCode.Substring(idx62 + 2, 2), out var len62) && idx62 + 4 + len62 <= qrCode.Length)
+            {
+                var tag62Value = qrCode.Substring(idx62 + 4, len62);
+                var idx08 = tag62Value.IndexOf("08", StringComparison.Ordinal);
+                if (idx08 >= 0 && idx08 + 4 <= tag62Value.Length)
+                {
+                    if (int.TryParse(tag62Value.Substring(idx08 + 2, 2), out var len08) && idx08 + 4 + len08 <= tag62Value.Length)
+                    {
+                        var content = tag62Value.Substring(idx08 + 4, len08).Trim();
+                        if (!string.IsNullOrEmpty(content)) return content;
+                    }
+                }
+            }
+            idx62 = qrCode.IndexOf("62", idx62 + 1, StringComparison.Ordinal);
+        }
+        return null;
+    }
 }
