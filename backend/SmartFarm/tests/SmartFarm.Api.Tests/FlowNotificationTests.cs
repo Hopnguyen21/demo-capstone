@@ -83,4 +83,46 @@ public class FlowNotificationTests
         Assert.NotEqual(first.NotificationId, third.NotificationId);
         Assert.Equal(2, await db.Notifications.CountAsync());
     }
+
+    [Fact]
+    public async Task Assigning_service_request_to_technician_creates_notification_with_direct_target_url()
+    {
+        using var factory = new TestApplicationFactory(); var seed = await factory.SeedAsync();
+        Guid srId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var farm = await db.Farms.SingleAsync(x => x.Id == seed.FarmAId);
+            var sr = new ServiceRequest
+            {
+                TenantId = farm.TenantId,
+                FarmId = farm.Id,
+                ZoneId = seed.ZoneAId,
+                CreatedByOwnerId = seed.OwnerAId,
+                Source = "Owner",
+                FailureCode = "INSTALLATION",
+                Description = "Yêu cầu lắp đặt cảm biến độ ẩm đất và van điện",
+                Status = ServiceRequestStatus.Open
+            };
+            db.ServiceRequests.Add(sr);
+            await db.SaveChangesAsync();
+            srId = sr.Id;
+        }
+
+        using var client = factory.CreateClient();
+        await LoginAsync(client, "admin@example.com");
+        var assignResponse = await client.PostAsJsonAsync($"/api/v1/service-requests/{srId}/assign", new
+        {
+            technicianUserId = seed.TechnicianId,
+            notes = "Phân công kỹ thuật viên Nam khảo sát thực địa"
+        });
+        assignResponse.EnsureSuccessStatusCode();
+
+        var techNotes = await NotificationsAsync(factory, "technician@example.com", NotificationType.Service);
+        Assert.NotEmpty(techNotes);
+        var note = techNotes.First(n => n.ReferenceId == srId.ToString());
+        Assert.Contains("yêu cầu", note.Title.ToLower());
+        Assert.Equal($"/technician/dashboard?requestId={srId}", note.TargetUrl);
+        Assert.False(note.IsRead);
+    }
 }

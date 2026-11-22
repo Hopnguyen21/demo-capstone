@@ -31,6 +31,7 @@ export const TechnicianDashboard: React.FC = () => {
 
   const installationRequests = requests.filter(r => r.requestType === 'INSTALLATION' || r.requestType === 'INITIAL_SETUP');
   const maintenanceRequests = requests.filter(r => r.requestType === 'MAINTENANCE' || r.requestType === 'REPAIR' || r.requestType === 'REPLACEMENT');
+  const assignedRequests = requests.filter(r => r.status === 'ASSIGNED');
 
   const acceptedByOwnerCount = requests.filter(r => r.isAcceptedByOwner).length;
 
@@ -54,6 +55,45 @@ export const TechnicianDashboard: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Newly Assigned Service Requests Alert Banner */}
+      {assignedRequests.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-sky-500/10 border-2 border-sky-500/30 text-sky-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 rounded-2xl bg-sky-600 text-white shadow-sm shrink-0 mt-0.5">
+              <Wrench size={22} className="animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-sky-200 text-sky-900 text-[10px] font-bold uppercase tracking-wider">
+                  Thông báo phân công việc mới
+                </span>
+                <span className="text-xs text-sky-800 font-medium">Chờ KTV tiếp nhận</span>
+              </div>
+              <h3 className="font-bold text-base text-sky-950 mt-1">
+                Bạn có {assignedRequests.length} yêu cầu kỹ thuật mới được Admin phân công!
+              </h3>
+              <p className="text-xs text-sky-900/90 mt-0.5 leading-relaxed">
+                Yêu cầu: <strong className="font-bold">"{assignedRequests[0]?.title}"</strong> tại {assignedRequests[0]?.farmName || 'Trang trại'} ({assignedRequests[0]?.zoneName || 'Zone'})
+                {assignedRequests.length > 1 ? ` và ${assignedRequests.length - 1} yêu cầu khác` : ''}.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0">
+            <Button
+              size="sm"
+              onClick={() => {
+                const req = assignedRequests[0];
+                const isInst = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
+                navigate(isInst ? '/technician/provisioning' : '/technician/maintenance');
+              }}
+              className="w-full sm:w-auto bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-xs"
+            >
+              <CheckCircle2 size={14} className="mr-1.5" /> Tiếp nhận & Xử lý
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

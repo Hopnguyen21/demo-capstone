@@ -134,6 +134,7 @@ export const FarmerHome: React.FC = () => {
   }, [tasks]);
 
   const todoTasks = useMemo(() => myTasks.filter(t => ['pending', 'accepted', 'inprogress', 'overdue', 'failed'].includes(String(t.status || '').toLowerCase())), [myTasks]);
+  const pendingTasks = useMemo(() => myTasks.filter(t => String(t.status || '').toLowerCase() === 'pending'), [myTasks]);
   const reviewTasks = useMemo(() => myTasks.filter(t => String(t.status || '').toLowerCase() === 'completedpendingreview'), [myTasks]);
   const doneTasks = useMemo(() => myTasks.filter(t => ['approved', 'declined', 'cancelled'].includes(String(t.status || '').toLowerCase())), [myTasks]);
   const overdueTasks = useMemo(() => myTasks.filter(t => String(t.status || '').toLowerCase() === 'overdue' || dueLabel(t.dueAtUtc ?? t.dueDate).tone === 'late'), [myTasks]);
@@ -378,6 +379,49 @@ export const FarmerHome: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* ─── NEW TASK ASSIGNMENT ALERT BANNER ─── */}
+      {pendingTasks.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 text-amber-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 rounded-2xl bg-amber-500 text-white shadow-sm shrink-0 mt-0.5">
+              <ClipboardList size={22} className="animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold uppercase tracking-wider">
+                  Thông báo giao việc mới
+                </span>
+                <span className="text-xs text-amber-800 font-medium">Chờ bạn nhận việc</span>
+              </div>
+              <h3 className="font-bold text-base text-amber-950 mt-1">
+                Bạn vừa được giao {pendingTasks.length} công việc mới!
+              </h3>
+              <p className="text-xs text-amber-900/90 mt-0.5 leading-relaxed">
+                Công việc: <strong className="font-bold">"{pendingTasks[0]?.title}"</strong>{pendingTasks[0]?.zoneName ? ` tại khu vực ${pendingTasks[0].zoneName}` : ''}
+                {pendingTasks.length > 1 ? ` và ${pendingTasks.length - 1} việc khác` : ''}. Hãy xác nhận nhận việc để bắt đầu thực hiện.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0">
+            <Button
+              size="sm"
+              onClick={() => handleQuickTaskAction(pendingTasks[0], 'Accept')}
+              className="w-full sm:w-auto bg-[#119653] hover:bg-[#0c733f] text-white font-bold text-xs shadow-xs"
+            >
+              <CheckCircle2 size={14} className="mr-1.5" /> Nhận việc ngay
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate('/farmer/tasks')}
+              className="w-full sm:w-auto border-amber-300 bg-white text-amber-900 hover:bg-amber-50 font-bold text-xs"
+            >
+              Xem chi tiết <ChevronRight size={14} className="ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ─── 2. QUICK FIELD ACTIONS (LỐI TẮT THỰC ĐỊA) ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

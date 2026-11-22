@@ -326,6 +326,13 @@ public sealed class PlatformAdminService(
                 db.PlatformHardwareItems.Add(technicianItem);
             }
         }
+        Notifications.FlowNotifications.Add(db, technician.Id, null,
+            "Cấp phát thiết bị phần cứng mới",
+            $"Bạn vừa được cấp phát thiết bị “{item.Name}” ({item.Code}) số lượng {quantity} vào kho cá nhân.",
+            NotificationType.IoT,
+            item.Id.ToString(),
+            AlertSeverity.Info,
+            "/technician/inventory");
         await db.SaveChangesAsync(ct);
         return ToView(item.AssignedTechnicianId == technician.Id ? item : await db.PlatformHardwareItems.AsNoTracking().OrderByDescending(x => x.CreatedAtUtc).FirstAsync(x => x.AssignedTechnicianId == technician.Id && x.Code == item.Code, ct));
     }

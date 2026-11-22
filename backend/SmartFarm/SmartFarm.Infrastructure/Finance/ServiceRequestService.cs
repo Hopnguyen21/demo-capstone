@@ -170,8 +170,13 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
                 });
             }
         }
-        FlowNotifications.Add(db, tech.Id, null, from == ServiceRequestStatus.Assigned ? "Yêu cầu được giao lại cho bạn" : "Bạn có yêu cầu mới",
-            "Admin vừa giao cho bạn một yêu cầu dịch vụ/lắp đặt. Mở để nhận việc.", NotificationType.Service, r.Id.ToString());
+        FlowNotifications.Add(db, tech.Id, null,
+            from == ServiceRequestStatus.Assigned ? "Yêu cầu kỹ thuật được phân công lại" : "Bạn có yêu cầu kỹ thuật mới",
+            $"Admin vừa phân công cho bạn yêu cầu “{r.Description}” tại trang trại {r.Farm?.Name ?? "Trang trại"}. Mở để tiếp nhận và thực hiện.",
+            NotificationType.Service,
+            r.Id.ToString(),
+            AlertSeverity.Info,
+            $"/technician/dashboard?requestId={r.Id}");
         await db.SaveChangesAsync(ct); return await Load(id, ct); }
     public async Task<ServiceRequestView> AcceptAsync(Guid tech, Guid id, CancellationToken ct) { var r = await Assigned(tech, id, ct); Move(r, tech, ServiceRequestStatus.Assigned, ServiceRequestStatus.InProgress, ServiceHistoryEventType.Accepted, null); r.AcceptedAtUtc = clock.GetUtcNow().UtcDateTime; await db.SaveChangesAsync(ct); return await Load(id, ct); }
     public async Task<ServiceRequestView> DiagnoseAsync(Guid tech, Guid id, DiagnoseServiceRequestCommand c, CancellationToken ct) { var r = await Assigned(tech, id, ct); Move(r, tech, ServiceRequestStatus.InProgress, ServiceRequestStatus.Diagnosed, ServiceHistoryEventType.Diagnosed, c.Diagnosis); r.InspectionNotes = FinanceService.Required(c.InspectionNotes, "inspectionNotes", 2000); r.Diagnosis = FinanceService.Required(c.Diagnosis, "diagnosis", 2000); r.ResolutionAction = c.ResolutionAction; await db.SaveChangesAsync(ct); return await Load(id, ct); }

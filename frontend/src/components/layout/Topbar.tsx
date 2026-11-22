@@ -25,6 +25,9 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [liveToast, setLiveToast] = useState<NotificationItem | null>(null);
+  const knownNotifIdsRef = useRef<Set<string>>(new Set());
+  const isFirstFetchRef = useRef<boolean>(true);
 
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -91,10 +94,39 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
       const combined = [...contractNotifs, ...(list || [])];
       setNotifications(combined);
       setUnreadCount(count + contractNotifs.length);
+
+      // Phát hiện thông báo phân công việc mới để hiện toast pop-up
+      if (!isFirstFetchRef.current) {
+        const brandNew = combined.find(
+          n => !n.isRead && !knownNotifIdsRef.current.has(n.notificationId)
+        );
+        if (brandNew) {
+          setLiveToast(brandNew);
+        }
+      }
+      isFirstFetchRef.current = false;
+      combined.forEach(n => knownNotifIdsRef.current.add(n.notificationId));
     } catch {
       // Fallback
     }
   };
+
+  const resolveTargetUrl = (n: NotificationItem): string => {
+    if (n.targetUrl) return n.targetUrl;
+    if (n.type === 'Task') return `/farmer/tasks${(n as any).referenceId ? `?taskId=${(n as any).referenceId}` : ''}`;
+    if (n.type === 'Service') return `/technician/dashboard${(n as any).referenceId ? `?requestId=${(n as any).referenceId}` : ''}`;
+    if (n.type === 'IoT' || (n as any).type === 'StockOut') return '/technician/inventory';
+    if (n.type === 'Contract') return '/owner/farms';
+    return role === 'FARMER' ? '/farmer/tasks' : role === 'PLATFORM_TECHNICIAN' ? '/technician/dashboard' : '/owner/alerts';
+  };
+
+  useEffect(() => {
+    if (!liveToast) return;
+    const timer = setTimeout(() => {
+      setLiveToast(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [liveToast]);
 
   useEffect(() => {
     fetchNotifications();
@@ -246,7 +278,8 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
                           await notificationService.markAsRead(n.notificationId).catch(() => null);
                         }
                         setShowNotificationMenu(false);
-                        if (n.targetUrl) navigate(n.targetUrl);
+                        const target = resolveTargetUrl(n);
+                        if (target) navigate(target);
                       }}
                       className={`p-3 rounded-xl border text-xs cursor-pointer transition-all hover:shadow-sm ${n.isRead
                         ? 'bg-slate-50/70 border-slate-200/60 opacity-80'
@@ -304,15 +337,15 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
 
               {/* Footer: View All Alerts */}
               <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">Hiển thị {notifications.length} cảnh báo gần nhất</span>
+                <span className="text-[11px] text-slate-400">Hiển thị {notifications.length} thông báo gần nhất</span>
                 <button
                   onClick={() => {
                     setShowNotificationMenu(false);
-                    navigate(role === 'FARMER' ? '/farmer/alerts' : '/owner/alerts');
+                    navigate(role === 'FARMER' ? '/farmer/tasks' : role === 'PLATFORM_TECHNICIAN' ? '/technician/dashboard' : '/owner/alerts');
                   }}
                   className="text-xs font-semibold text-[#119653] hover:underline flex items-center gap-1 hover:text-[#0c733f] transition-colors"
                 >
-                  Xem tất cả cảnh báo <ExternalLink size={11} />
+                  {role === 'FARMER' ? 'Xem danh sách công việc' : role === 'PLATFORM_TECHNICIAN' ? 'Xem điều hành kỹ thuật' : 'Xem tất cả cảnh báo'} <ExternalLink size={11} />
                 </button>
               </div>
             </div>
@@ -379,6 +412,56 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
         </div>
       </div>
       <UserProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
+
+      {/* Live Toast Popup for Newly Assigned Work */}
+      {liveToast && (
+        <div className="fixed top-20 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] bg-white text-slate-900 rounded-2xl shadow-2xl border-2 border-[#119653] p-4 animate-in slide-in-from-top-4 duration-300">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-emerald-500 text-white shrink-0 mt-0.5">
+                <Bell size={18} className="animate-bounce" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    {liveToast.type === 'Task' ? 'Công việc mới' : liveToast.type === 'Service' ? 'Yêu cầu kỹ thuật' : 'Thông báo mới'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">Vừa xong</span>
+                </div>
+                <h4 className="font-bold text-sm text-slate-900 mt-1 leading-snug">{liveToast.title}</h4>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed line-clamp-2">{liveToast.message}</p>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    onClick={async () => {
+                      if (!liveToast.isRead && !liveToast.notificationId.startsWith('contract-')) {
+                        await notificationService.markAsRead(liveToast.notificationId).catch(() => null);
+                      }
+                      const dest = resolveTargetUrl(liveToast);
+                      setLiveToast(null);
+                      if (dest) navigate(dest);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-[#119653] hover:bg-[#0e8046] text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-colors"
+                  >
+                    Xem ngay <ExternalLink size={12} />
+                  </button>
+                  <button
+                    onClick={() => setLiveToast(null)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-colors"
+                  >
+                    Bỏ qua
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setLiveToast(null)}
+              className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

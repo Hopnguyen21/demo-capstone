@@ -163,6 +163,30 @@ export const FarmerTasksPage: React.FC = () => {
         <div className="text-center py-12 bg-white border border-dashed border-slate-200 rounded-2xl text-xs text-slate-500">Bạn chưa được giao công việc nào.</div>
       )}
 
+      {tasks.length > 0 && tasks.some(t => t.assignments[0]?.status === 'Pending') && (
+        <div className="p-4 bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-950 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs shrink-0">
+              <CheckSquare size={18} className="animate-bounce" />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs uppercase tracking-wider text-amber-900">
+                Thông báo: Có {tasks.filter(t => t.assignments[0]?.status === 'Pending').length} công việc mới được giao
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Chủ trang trại đã phân công việc mới cho bạn. Hãy bấm <strong>Nhận việc</strong> trên từng thẻ công việc để bắt đầu thực hiện.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setFilter('TODO')}
+            className="self-start sm:self-auto px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-colors shadow-xs shrink-0"
+          >
+            Xem danh sách chờ nhận
+          </button>
+        </div>
+      )}
+
       {tasks.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {([['TODO', 'Cần làm'], ['REVIEW', 'Chờ duyệt'], ['DONE', 'Đã xong'], ['ALL', 'Tất cả']] as const).map(([key, text]) => {

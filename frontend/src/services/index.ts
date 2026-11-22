@@ -2182,7 +2182,7 @@ export interface NotificationItem {
   tenantId?: string | null;
   title: string;
   message: string;
-  type: 'System' | 'Alert' | 'Task' | 'IoT' | 'Inventory' | 'Advice';
+  type: 'System' | 'Alert' | 'Task' | 'IoT' | 'Inventory' | 'Advice' | 'Service' | 'StockOut' | 'Contract';
   severity: 'Info' | 'Warning' | 'Critical';
   isRead: boolean;
   readAtUtc?: string | null;
