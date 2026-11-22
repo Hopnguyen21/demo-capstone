@@ -31,6 +31,8 @@ export const SettingsPage: React.FC = () => {
   const [payOSChecksumKey, setPayOSChecksumKey] = useState('');
   const [payOSApiKeyMasked, setPayOSApiKeyMasked] = useState('');
   const [payOSChecksumKeyMasked, setPayOSChecksumKeyMasked] = useState('');
+  const [isEditingPayOSApiKey, setIsEditingPayOSApiKey] = useState(false);
+  const [isEditingPayOSChecksumKey, setIsEditingPayOSChecksumKey] = useState(false);
   const [payOSIsConfigured, setPayOSIsConfigured] = useState(false);
   const [payOSSaving, setPayOSSaving] = useState(false);
   const [payOSMessage, setPayOSMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -45,6 +47,7 @@ export const SettingsPage: React.FC = () => {
   const [cloudinaryApiKey, setCloudinaryApiKey] = useState('');
   const [cloudinaryApiSecret, setCloudinaryApiSecret] = useState('');
   const [cloudinaryApiSecretMasked, setCloudinaryApiSecretMasked] = useState('');
+  const [isEditingCloudinarySecret, setIsEditingCloudinarySecret] = useState(false);
   const [cloudinaryIsConfigured, setCloudinaryIsConfigured] = useState(false);
   const [cloudinarySaving, setCloudinarySaving] = useState(false);
   const [cloudinaryMessage, setCloudinaryMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -107,6 +110,7 @@ export const SettingsPage: React.FC = () => {
       setCloudinaryApiSecretMasked(res.apiSecretMasked || '');
       setCloudinaryIsConfigured(Boolean(res.isConfigured));
       setCloudinaryApiSecret('');
+      setIsEditingCloudinarySecret(false);
       setCloudinaryMessage({ ok: true, text: 'Đã lưu cấu hình Cloudinary thành công!' });
       setTimeout(() => setCloudinaryMessage(null), 4000);
     } catch (err: any) {
@@ -167,6 +171,8 @@ export const SettingsPage: React.FC = () => {
       setPayOSIsConfigured(Boolean(res.isConfigured));
       setPayOSApiKey('');
       setPayOSChecksumKey('');
+      setIsEditingPayOSApiKey(false);
+      setIsEditingPayOSChecksumKey(false);
       setPayOSMessage({ ok: true, text: 'Đã lưu cấu hình cổng thanh toán PayOS thành công!' });
       setTimeout(() => setPayOSMessage(null), 4000);
     } catch (err: any) {
@@ -358,21 +364,50 @@ export const SettingsPage: React.FC = () => {
             <label className="block text-slate-700 font-semibold mb-1">
               API Key <span className="text-rose-500">*</span>
             </label>
-            {payOSApiKeyMasked && (
-              <div className="flex items-center gap-2 mb-1.5">
-                <code className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-700 font-mono text-[11px]">
-                  {payOSApiKeyMasked}
-                </code>
-                <span className="text-[11px] text-emerald-700 font-medium">Đã lưu mã hóa</span>
+            {payOSApiKeyMasked && !isEditingPayOSApiKey ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center justify-between px-3 py-2 bg-emerald-50/50 border border-emerald-200 rounded-lg text-slate-700 font-mono text-[11px]">
+                  <span className="flex items-center gap-2 text-slate-800 font-medium">
+                    <ShieldCheck size={14} className="text-emerald-600" />
+                    {payOSApiKeyMasked}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded">
+                    Đã lưu & Đang hoạt động
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditingPayOSApiKey(true)}
+                >
+                  Đổi khóa mới
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    value={payOSApiKey}
+                    onChange={e => setPayOSApiKey(e.target.value)}
+                    placeholder={payOSApiKeyMasked ? "Dán mã API Key mới từ PayOS..." : "Dán API Key từ PayOS..."}
+                    autoComplete="off"
+                    autoFocus={Boolean(payOSApiKeyMasked)}
+                  />
+                  {payOSApiKeyMasked && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setPayOSApiKey(''); setIsEditingPayOSApiKey(false); }}
+                    >
+                      Hủy
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
-            <Input
-              type="password"
-              value={payOSApiKey}
-              onChange={e => setPayOSApiKey(e.target.value)}
-              placeholder={payOSApiKeyMasked ? "Nhập API Key mới nếu muốn thay đổi..." : "Dán API Key từ PayOS..."}
-              autoComplete="off"
-            />
             <p className="mt-1 text-[11px] text-slate-500">Khoá API Key dùng để xác thực quyền gọi API tạo liên kết thanh toán.</p>
           </div>
 
@@ -381,21 +416,50 @@ export const SettingsPage: React.FC = () => {
             <label className="block text-slate-700 font-semibold mb-1">
               Checksum Key (Khóa băm chữ ký HMAC-SHA256) <span className="text-rose-500">*</span>
             </label>
-            {payOSChecksumKeyMasked && (
-              <div className="flex items-center gap-2 mb-1.5">
-                <code className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-700 font-mono text-[11px]">
-                  {payOSChecksumKeyMasked}
-                </code>
-                <span className="text-[11px] text-emerald-700 font-medium">Đã lưu mã hóa</span>
+            {payOSChecksumKeyMasked && !isEditingPayOSChecksumKey ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center justify-between px-3 py-2 bg-emerald-50/50 border border-emerald-200 rounded-lg text-slate-700 font-mono text-[11px]">
+                  <span className="flex items-center gap-2 text-slate-800 font-medium">
+                    <ShieldCheck size={14} className="text-emerald-600" />
+                    {payOSChecksumKeyMasked}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded">
+                    Đã lưu & Đang hoạt động
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditingPayOSChecksumKey(true)}
+                >
+                  Đổi khóa mới
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    value={payOSChecksumKey}
+                    onChange={e => setPayOSChecksumKey(e.target.value)}
+                    placeholder={payOSChecksumKeyMasked ? "Dán mã Checksum Key mới từ PayOS..." : "Dán Checksum Key từ PayOS..."}
+                    autoComplete="off"
+                    autoFocus={Boolean(payOSChecksumKeyMasked)}
+                  />
+                  {payOSChecksumKeyMasked && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setPayOSChecksumKey(''); setIsEditingPayOSChecksumKey(false); }}
+                    >
+                      Hủy
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
-            <Input
-              type="password"
-              value={payOSChecksumKey}
-              onChange={e => setPayOSChecksumKey(e.target.value)}
-              placeholder={payOSChecksumKeyMasked ? "Nhập Checksum Key mới nếu muốn thay đổi..." : "Dán Checksum Key từ PayOS..."}
-              autoComplete="off"
-            />
             <p className="mt-1 text-[11px] text-slate-500">Khoá bí mật dùng để tạo chữ ký đơn hàng và xác thực webhook trả về từ máy chủ PayOS.</p>
           </div>
 
@@ -529,21 +593,50 @@ export const SettingsPage: React.FC = () => {
             <label className="block text-slate-700 font-semibold mb-1">
               API Secret <span className="text-rose-500">*</span>
             </label>
-            {cloudinaryApiSecretMasked && (
-              <div className="flex items-center gap-2 mb-1.5">
-                <code className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-slate-700 font-mono text-[11px]">
-                  {cloudinaryApiSecretMasked}
-                </code>
-                <span className="text-[11px] text-emerald-700 font-medium">Đã lưu mã hóa</span>
+            {cloudinaryApiSecretMasked && !isEditingCloudinarySecret ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center justify-between px-3 py-2 bg-emerald-50/50 border border-emerald-200 rounded-lg text-slate-700 font-mono text-[11px]">
+                  <span className="flex items-center gap-2 text-slate-800 font-medium">
+                    <ShieldCheck size={14} className="text-emerald-600" />
+                    {cloudinaryApiSecretMasked}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded">
+                    Đã lưu & Đang hoạt động
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditingCloudinarySecret(true)}
+                >
+                  Đổi khóa mới
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    value={cloudinaryApiSecret}
+                    onChange={e => setCloudinaryApiSecret(e.target.value)}
+                    placeholder={cloudinaryApiSecretMasked ? "Dán API Secret mới từ Cloudinary..." : "Dán API Secret từ Cloudinary..."}
+                    autoComplete="off"
+                    autoFocus={Boolean(cloudinaryApiSecretMasked)}
+                  />
+                  {cloudinaryApiSecretMasked && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setCloudinaryApiSecret(''); setIsEditingCloudinarySecret(false); }}
+                    >
+                      Hủy
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
-            <Input
-              type="password"
-              value={cloudinaryApiSecret}
-              onChange={e => setCloudinaryApiSecret(e.target.value)}
-              placeholder={cloudinaryApiSecretMasked ? "Nhập API Secret mới nếu muốn thay đổi..." : "Dán API Secret từ Cloudinary..."}
-              autoComplete="off"
-            />
             <p className="mt-1 text-[11px] text-slate-500">Khoá bí mật dùng để tạo chữ ký SHA-1 upload an toàn. Lưu mã hóa AES-256 trong Database.</p>
           </div>
 
