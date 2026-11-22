@@ -583,7 +583,7 @@ export const ZoneContractCreateModal: React.FC<ZoneContractCreateModalProps> = (
                       <Input
                         type="number"
                         min={0}
-                        step={100000}
+                        step="any"
                         value={customPackagePrice}
                         onChange={e => setCustomPackagePrice(Number(e.target.value))}
                         required={applyPackage && packageMode === 'custom'}

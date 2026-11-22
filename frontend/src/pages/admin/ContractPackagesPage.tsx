@@ -383,7 +383,7 @@ export const ContractPackagesPage: React.FC = () => {
               <input
                 type="number"
                 min="0"
-                step="500000"
+                step="any"
                 value={price}
                 onChange={e => setPrice(parseFloat(e.target.value) || 0)}
                 className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-[#119653] font-bold text-emerald-700 text-sm"

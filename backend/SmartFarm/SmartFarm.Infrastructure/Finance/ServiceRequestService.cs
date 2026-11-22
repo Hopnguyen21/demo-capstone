@@ -111,10 +111,93 @@ public sealed class ServiceRequestService(SmartFarmDbContext db, TimeProvider cl
             }
             else
             {
-                // Lắp mới và Zone chưa có đợt nào đang chạy: tạo đợt mới với vụ trồng thật của Zone (không dùng Guid.Empty).
+                // Lắp mới và Zone chưa có đợt nào đang chạy: liên kết với vụ mùa thực tế, hoặc tự động khởi tạo vụ mùa dự kiến cho Zone.
                 var season = await db.PlantingSeasons.Where(s => s.ZoneId == zoneId && s.Status != PlantingSeasonStatus.Cancelled)
-                    .OrderByDescending(s => s.Status == PlantingSeasonStatus.InProgress).ThenByDescending(s => s.CreatedAtUtc).FirstOrDefaultAsync(ct)
-                    ?? throw new ResourceConflictException("Zone has no planting season; create a season before requesting an installation.");
+                    .OrderByDescending(s => s.Status == PlantingSeasonStatus.InProgress).ThenByDescending(s => s.CreatedAtUtc).FirstOrDefaultAsync(ct);
+
+                if (season == null)
+                {
+                    var targetZone = await db.Zones.Include(z => z.Crop).Include(z => z.GrowthProfile).ThenInclude(gp => gp!.Stages).ThenInclude(s => s.Requirements)
+                        .SingleOrDefaultAsync(z => z.Id == zoneId, ct);
+
+                    var cropId = targetZone?.CropId;
+                    var growthProfileId = targetZone?.GrowthProfileId;
+
+                    if (!cropId.HasValue || !growthProfileId.HasValue)
+                    {
+                        var defaultProfile = await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements)
+                            .Where(p => p.IsSystemDefined).OrderBy(p => p.CreatedAtUtc).FirstOrDefaultAsync(ct)
+                            ?? await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements).OrderBy(p => p.CreatedAtUtc).FirstOrDefaultAsync(ct);
+
+                        if (defaultProfile != null)
+                        {
+                            cropId ??= defaultProfile.CropId;
+                            growthProfileId ??= defaultProfile.Id;
+                        }
+                    }
+
+                    if (!cropId.HasValue)
+                    {
+                        var defaultCrop = await db.Crops.OrderBy(c => c.CreatedAtUtc).FirstOrDefaultAsync(ct);
+                        cropId = defaultCrop?.Id;
+                    }
+
+                    var profile = await db.GrowthProfiles.Include(p => p.Stages).ThenInclude(s => s.Requirements)
+                        .FirstOrDefaultAsync(p => p.Id == growthProfileId, ct);
+                    var firstStage = profile?.Stages.OrderBy(s => s.StageOrder).FirstOrDefault();
+
+                    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                    if (cropId.HasValue && profile != null && firstStage != null)
+                    {
+                        season = new PlantingSeason
+                        {
+                            ZoneId = zoneId,
+                            CropId = cropId.Value,
+                            VarietyId = targetZone?.CropVarietyId,
+                            GrowthProfileId = profile.Id,
+                            CurrentGrowthStageId = firstStage.Id,
+                            Name = $"Vụ chuẩn bị canh tác - {targetZone?.Name ?? "Zone"}",
+                            StartDate = today,
+                            ExpectedEndDate = today.AddDays(90),
+                            Status = PlantingSeasonStatus.Planned
+                        };
+                        foreach (var req in firstStage.Requirements)
+                        {
+                            season.AppliedRequirements.Add(new SeasonAppliedRequirement
+                            {
+                                ParameterCode = req.ParameterCode,
+                                MinValue = req.MinValue,
+                                TargetValue = req.TargetValue,
+                                MaxValue = req.MaxValue,
+                                Unit = req.Unit
+                            });
+                        }
+                        db.PlantingSeasons.Add(season);
+                        await db.SaveChangesAsync(ct);
+                    }
+                    else
+                    {
+                        var anyCrop = await db.Crops.FirstOrDefaultAsync(ct);
+                        var anyProfile = await db.GrowthProfiles.Include(p => p.Stages).FirstOrDefaultAsync(ct);
+                        var anyStage = anyProfile?.Stages.FirstOrDefault() ?? await db.GrowthStages.FirstOrDefaultAsync(ct);
+
+                        season = new PlantingSeason
+                        {
+                            ZoneId = zoneId,
+                            CropId = cropId ?? anyCrop?.Id ?? Guid.NewGuid(),
+                            VarietyId = targetZone?.CropVarietyId,
+                            GrowthProfileId = growthProfileId ?? anyProfile?.Id ?? Guid.NewGuid(),
+                            CurrentGrowthStageId = anyStage?.Id ?? Guid.NewGuid(),
+                            Name = $"Vụ chuẩn bị lắp đặt IoT - {targetZone?.Name ?? "Zone"}",
+                            StartDate = today,
+                            ExpectedEndDate = today.AddDays(90),
+                            Status = PlantingSeasonStatus.Planned
+                        };
+                        db.PlantingSeasons.Add(season);
+                        await db.SaveChangesAsync(ct);
+                    }
+                }
+
                 var newDep = new DeploymentRequest
                 {
                     TenantId = tenant,
