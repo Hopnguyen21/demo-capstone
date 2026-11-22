@@ -128,16 +128,40 @@ export const userService = {
     return res.data;
   },
 
+  /** POST /api/v1/users (PlatformAdmin) */
+  createUser: async (data: { email: string; fullName: string; phone?: string; role: string; password: string; tenantId?: string; farmId?: string }) => {
+    const res = await apiClient.post('/api/v1/users', data);
+    return res.data;
+  },
+
+  /** PUT /api/v1/users/{userId} (PlatformAdmin) */
+  updateUser: async (userId: string, data: { fullName: string; phone?: string; role: string; status: string; tenantId?: string; farmId?: string }) => {
+    const res = await apiClient.put(`/api/v1/users/${userId}`, data);
+    return res.data;
+  },
+
+  /** PATCH /api/v1/users/{userId}/toggle-status (PlatformAdmin) */
+  toggleStatus: async (userId: string) => {
+    const res = await apiClient.patch(`/api/v1/users/${userId}/toggle-status`);
+    return res.data;
+  },
+
+  /** POST /api/v1/users/{userId}/reset-password (PlatformAdmin) */
+  resetPasswordAdmin: async (userId: string, newPassword: string) => {
+    const res = await apiClient.post(`/api/v1/users/${userId}/reset-password`, { newPassword });
+    return res.data;
+  },
+
+  /** DELETE /api/v1/users/{userId} (PlatformAdmin) */
+  deleteUser: async (userId: string) => {
+    const res = await apiClient.delete(`/api/v1/users/${userId}`);
+    return res.data;
+  },
+
   /** Alias: getEmployees = getUsers */
   getEmployees: async () => {
     const res = await apiClient.get('/api/v1/users');
     return res.data?.value ?? res.data ?? [];
-  },
-
-  /** PUT /api/v1/users/{userId} */
-  updateUser: async (userId: string, data: Record<string, unknown>) => {
-    const res = await apiClient.put(`/api/v1/users/${userId}`, data);
-    return res.data;
   },
 
   /**

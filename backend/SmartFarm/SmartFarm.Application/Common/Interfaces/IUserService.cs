@@ -11,4 +11,9 @@ public interface IUserService
     Task<ZoneAccessView> ReplaceZoneAccessAsync(Guid ownerUserId, Guid farmerUserId, ReplaceZoneAccessCommand command, CancellationToken cancellationToken);
     Task<UserDetailView> UpdateCurrentUserProfileAsync(Guid userId, UpdateUserProfileCommand command, CancellationToken cancellationToken);
     Task ChangePasswordAsync(Guid userId, ChangePasswordCommand command, CancellationToken cancellationToken);
+    Task<UserDetailView> CreateUserAsync(Guid callerUserId, CreateUserCommand command, CancellationToken cancellationToken);
+    Task<UserDetailView> UpdateUserAsync(Guid callerUserId, Guid targetUserId, UpdateUserCommand command, CancellationToken cancellationToken);
+    Task<UserDetailView> ToggleUserStatusAsync(Guid callerUserId, Guid targetUserId, CancellationToken cancellationToken);
+    Task ResetUserPasswordAsync(Guid callerUserId, Guid targetUserId, ResetUserPasswordCommand command, CancellationToken cancellationToken);
+    Task DeleteUserAsync(Guid callerUserId, Guid targetUserId, CancellationToken cancellationToken);
 }

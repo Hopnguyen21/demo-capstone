@@ -96,6 +96,113 @@ public sealed class UsersController(IUserService userService, IFarmInvitationSer
             new ReplaceZoneAccessCommand(request.Access.Select(x => new ZonePermissionCommand(x.ZoneId, x.CanControl)).ToList()),
             cancellationToken));
     }
+
+    // PlatformAdmin: Tạo tài khoản & Phân quyền trực tiếp
+    [Authorize(Roles = "PlatformAdmin")]
+    [HttpPost]
+    public async Task<ActionResult<UserDetailView>> Create(
+        [FromBody] CreateUserRequest request,
+        CancellationToken ct)
+    {
+        var user = await userService.CreateUserAsync(
+            User.GetUserId(),
+            new CreateUserCommand(request.Email, request.FullName, request.Phone, request.Role, request.Password, request.TenantId, request.FarmId),
+            ct);
+        return Created($"/api/v1/users/{user.UserId}", user);
+    }
+
+    // PlatformAdmin: Cập nhật thông tin & Phân quyền lại vai trò
+    [Authorize(Roles = "PlatformAdmin")]
+    [HttpPut("{userId:guid}")]
+    public async Task<ActionResult<UserDetailView>> Update(
+        Guid userId,
+        [FromBody] UpdateUserRequest request,
+        CancellationToken ct)
+    {
+        return Ok(await userService.UpdateUserAsync(
+            User.GetUserId(),
+            userId,
+            new UpdateUserCommand(request.FullName, request.Phone, request.Role, request.Status, request.TenantId, request.FarmId),
+            ct));
+    }
+
+    // PlatformAdmin: Khóa / Mở khóa nhanh tài khoản
+    [Authorize(Roles = "PlatformAdmin")]
+    [HttpPatch("{userId:guid}/toggle-status")]
+    public async Task<ActionResult<UserDetailView>> ToggleStatus(
+        Guid userId,
+        CancellationToken ct)
+    {
+        return Ok(await userService.ToggleUserStatusAsync(User.GetUserId(), userId, ct));
+    }
+
+    // PlatformAdmin: Đặt lại mật khẩu cho tài khoản
+    [Authorize(Roles = "PlatformAdmin")]
+    [HttpPost("{userId:guid}/reset-password")]
+    public async Task<IActionResult> ResetPassword(
+        Guid userId,
+        [FromBody] ResetUserPasswordRequest request,
+        CancellationToken ct)
+    {
+        await userService.ResetUserPasswordAsync(User.GetUserId(), userId, new ResetUserPasswordCommand(request.NewPassword), ct);
+        return Ok(new { message = "Đặt lại mật khẩu thành công!" });
+    }
+
+    // PlatformAdmin: Xóa tài khoản người dùng
+    [Authorize(Roles = "PlatformAdmin")]
+    [HttpDelete("{userId:guid}")]
+    public async Task<IActionResult> Delete(
+        Guid userId,
+        CancellationToken ct)
+    {
+        await userService.DeleteUserAsync(User.GetUserId(), userId, ct);
+        return NoContent();
+    }
+}
+
+public sealed class CreateUserRequest
+{
+    [Required, EmailAddress]
+    public string Email { get; init; } = string.Empty;
+
+    [Required, StringLength(100, MinimumLength = 2)]
+    public string FullName { get; init; } = string.Empty;
+
+    [StringLength(20)]
+    public string? Phone { get; init; }
+
+    [Required]
+    public UserRole Role { get; init; }
+
+    [Required, StringLength(100, MinimumLength = 8)]
+    public string Password { get; init; } = string.Empty;
+
+    public Guid? TenantId { get; init; }
+    public Guid? FarmId { get; init; }
+}
+
+public sealed class UpdateUserRequest
+{
+    [Required, StringLength(100, MinimumLength = 2)]
+    public string FullName { get; init; } = string.Empty;
+
+    [StringLength(20)]
+    public string? Phone { get; init; }
+
+    [Required]
+    public UserRole Role { get; init; }
+
+    [Required]
+    public AccountStatus Status { get; init; }
+
+    public Guid? TenantId { get; init; }
+    public Guid? FarmId { get; init; }
+}
+
+public sealed class ResetUserPasswordRequest
+{
+    [Required, StringLength(100, MinimumLength = 8)]
+    public string NewPassword { get; init; } = string.Empty;
 }
 
 public sealed class InviteFarmerRequest
