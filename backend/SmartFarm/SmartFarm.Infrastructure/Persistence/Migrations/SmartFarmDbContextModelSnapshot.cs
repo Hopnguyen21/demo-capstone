@@ -2162,6 +2162,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at_utc");
 
+                    b.Property<int?>("LoRaAddress")
+                        .HasColumnType("integer");
+
                     b.Property<decimal?>("Rssi")
                         .HasColumnType("numeric");
 

@@ -314,6 +314,7 @@ export interface Gateway {
   name: string;
   deviceCode: string;
   serialNumber: string;
+  loraAddress?: number | null;
   macAddress: string;
   latitude: number;
   longitude: number;
@@ -337,6 +338,7 @@ export interface SensorNode {
   name: string;
   nodeCode: string;
   serialNumber: string;
+  loraAddress?: number | null;
   latitude: number;
   longitude: number;
   status: 'ONLINE' | 'OFFLINE' | 'WARNING' | 'CRITICAL';

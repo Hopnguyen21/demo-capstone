@@ -233,5 +233,5 @@ public sealed class MqttActuatorFeedbackAdapter(SmartFarmDbContext db, IControlS
         return await control.ApplyFeedbackAsync(new(gatewayId, payload.CommandId, payload.DeviceId, payload.Status, payload.ObservedState, payload.OccurredAtUtc, payload.ErrorCode, payload.ErrorMessage), cancellationToken);
     }
 
-    private sealed class FeedbackPayload { public Guid CommandId { get; init; } public Guid DeviceId { get; init; } public ActuatorCommandStatus Status { get; init; } public string? ObservedState { get; init; } public DateTime OccurredAtUtc { get; init; } public string? ErrorCode { get; init; } public string? ErrorMessage { get; init; } }
+    private sealed class FeedbackPayload { public Guid CommandId { get; init; } public Guid DeviceId { get; init; } public ActuatorCommandStatus Status { get; init; } public string? ObservedState { get; init; } public DateTime OccurredAtUtc { get; init; } public string? ErrorCode { get; init; } public string? ErrorMessage { get; init; } public string? NodeHardwareAddress { get; init; } public int? RelayChannel { get; init; } }
 }

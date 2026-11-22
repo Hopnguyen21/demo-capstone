@@ -562,12 +562,17 @@ export const DevicesPage: React.FC = () => {
         </div>)}
       </div>}
 
-      {activeInventoryTab === 'PRICES' && <div className="bg-white border border-emerald-200 rounded-2xl shadow-sm p-4 space-y-4">
-        <div><h2 className="font-bold text-slate-900">Cấu hình giá thiết bị</h2><p className="text-sm text-slate-500 mt-1">Mỗi mã thiết bị chỉ nhập một giá. Khi lưu, giá được cập nhật cho toàn bộ bản ghi cùng mã để làm cơ sở lập hợp đồng.</p></div>
-        <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-          {priceGroups.map(group => <div key={group.key} className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4">
-            <div><div className="font-bold text-emerald-800">{priceGroupLabel(group.key)}</div><div className="text-sm text-slate-800">{group.items.map(item => item.name).filter((name, index, all) => all.indexOf(name) === index).slice(0, 3).join(' · ')}</div><div className="text-xs text-slate-500">{group.items.length} thiết bị thuộc nhóm · áp dụng chung, không theo mã</div></div>
-            <div className="flex items-end gap-2"><label className="text-xs font-semibold text-slate-600">Đơn giá nhóm (VNĐ)<Input type="number" min={1} step={1000} value={bulkPrices[group.key] ?? (group.price || '')} onChange={event => setBulkPrices(previous => ({ ...previous, [group.key]: Number(event.target.value) || 0 }))} /></label><Button type="button" className="bg-emerald-600 text-white" disabled={savingPriceCode === group.key} onClick={() => saveBulkPrice(group)}>{savingPriceCode === group.key ? 'Đang lưu...' : 'Lưu giá nhóm'}</Button></div>
+      {activeInventoryTab === 'PRICES' && <div className="bg-gradient-to-br from-white to-emerald-50/50 border border-emerald-200 rounded-2xl shadow-sm p-5 space-y-5">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3"><div><div className="text-xs uppercase tracking-widest font-bold text-emerald-600">Price book</div><h2 className="mt-1 text-xl font-bold text-slate-900">Bảng giá thiết bị</h2><p className="text-sm text-slate-500 mt-1 max-w-2xl">Thiết lập đơn giá chuẩn theo nhóm phần cứng. Một lần lưu sẽ áp dụng đồng nhất cho các bản ghi cùng nhóm để báo giá không bị lệch.</p></div><div className="rounded-2xl bg-white border border-emerald-100 px-4 py-3 text-right"><div className="text-xs text-slate-500">Nhóm đang quản lý</div><div className="text-2xl font-bold text-emerald-700">{priceGroups.length}</div></div></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {priceGroups.map(group => <div key={group.key} className="flex min-h-[270px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+            <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-100 text-sm font-black text-emerald-700">{group.key.slice(0, 2)}</div><div><div className="font-bold text-slate-900">{priceGroupLabel(group.key)}</div><div className="mt-1 text-xs text-slate-500">{group.items.length} thiết bị trong nhóm</div></div></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">Đơn giá chung</span></div>
+            <div className="mt-4 flex-1 rounded-xl bg-slate-50 p-3"><div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Thiết bị tiêu biểu</div><div className="mt-2 space-y-1 text-sm text-slate-700">{group.items.map(item => item.name).filter((name, index, all) => all.indexOf(name) === index).slice(0, 3).map(name => <div key={name} className="truncate">• {name}</div>)}</div></div>
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2"><label className="text-xs font-bold uppercase tracking-wide text-slate-600">Đơn giá áp dụng</label><span className="text-[11px] text-slate-400">Giá hiện tại: {group.price ? `${group.price.toLocaleString('vi-VN')} đ` : 'Chưa thiết lập'}</span></div>
+              <div className="flex items-center gap-2"><div className="relative flex-1"><Input type="number" min={1} step={1000} value={bulkPrices[group.key] ?? (group.price || '')} onChange={event => setBulkPrices(previous => ({ ...previous, [group.key]: Number(event.target.value) || 0 }))} className="h-11 rounded-xl border-slate-300 bg-white pr-12 text-right text-base font-bold text-slate-900 shadow-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" placeholder="0"/><span className="pointer-events-none absolute right-3 top-3 text-xs font-bold text-slate-400">VNĐ</span></div><Button type="button" className="h-11 rounded-xl bg-emerald-600 px-4 text-white shadow-sm hover:bg-emerald-700" disabled={savingPriceCode === group.key} onClick={() => saveBulkPrice(group)}>{savingPriceCode === group.key ? 'Đang lưu...' : 'Lưu'}</Button></div>
+              <div className="mt-2 text-[11px] text-slate-400">Giá này sẽ áp dụng cho toàn bộ nhóm.</div>
+            </div>
           </div>)}
           {priceGroups.length === 0 && <div className="p-6 text-center text-slate-500">Chưa có thiết bị trong kho.</div>}
         </div>
@@ -829,10 +834,8 @@ export const DevicesPage: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block font-bold text-slate-800 mb-1">Đơn giá nhập / đơn giá hợp đồng (VNĐ) *</label>
-            <Input type="number" min={0} step={1000} value={newItem.unitPrice} onChange={e => setNewItem({ ...newItem, unitPrice: Math.max(0, Number(e.target.value) || 0) })} placeholder="Ví dụ: 950000" required />
-            <p className="mt-1 text-[10px] text-slate-500">Giá này được dùng làm đơn giá mặc định khi lập hợp đồng.</p>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+            <strong>Đơn giá dùng chung:</strong> thiết bị mới sẽ dùng giá chung của mã/model trong danh mục. Có thể cấu hình một lần tại bảng giá kho sau khi thêm, không nhập giá riêng ở form này.
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

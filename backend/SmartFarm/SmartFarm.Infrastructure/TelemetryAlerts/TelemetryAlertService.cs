@@ -250,7 +250,7 @@ public sealed class TelemetryAlertService(
         var now = clock.GetUtcNow().UtcDateTime;
         var recentCutoff = now.AddHours(-24);
         var rows = await db.TelemetryReadings.AsNoTracking()
-            .Where(x => x.ZoneId == zoneId && x.CapturedAtUtc >= recentCutoff && x.CapturedAtUtc <= now)
+            .Where(x => x.ZoneId == zoneId && !x.MessageId.StartsWith("sim-") && x.CapturedAtUtc >= recentCutoff && x.CapturedAtUtc <= now)
             .OrderByDescending(x => x.CapturedAtUtc)
             .ThenByDescending(x => x.ReceivedAtUtc)
             .ToListAsync(ct);
@@ -258,7 +258,7 @@ public sealed class TelemetryAlertService(
         if (rows.Count == 0)
         {
             rows = await db.TelemetryReadings.AsNoTracking()
-                .Where(x => x.ZoneId == zoneId && x.CapturedAtUtc <= now)
+                .Where(x => x.ZoneId == zoneId && !x.MessageId.StartsWith("sim-") && x.CapturedAtUtc <= now)
                 .OrderByDescending(x => x.CapturedAtUtc)
                 .Take(50)
                 .ToListAsync(ct);
@@ -281,7 +281,7 @@ public sealed class TelemetryAlertService(
         var latest = deviceIds.Count == 0
             ? []
             : await db.TelemetryReadings.AsNoTracking()
-                .Where(x => deviceIds.Contains(x.DeviceId) && x.CapturedAtUtc <= now)
+                .Where(x => deviceIds.Contains(x.DeviceId) && !x.MessageId.StartsWith("sim-") && x.CapturedAtUtc <= now)
                 .GroupBy(x => new { x.DeviceId, x.ParameterCode })
                 .Select(g => g.OrderByDescending(x => x.CapturedAtUtc).ThenByDescending(x => x.ReceivedAtUtc).First())
                 .ToListAsync(ct);
@@ -466,7 +466,9 @@ public sealed class TelemetryAlertService(
     private async Task EnsureZoneAccessAsync(Guid userId, Guid tenantId, Guid zoneId, CancellationToken ct)
     {
         var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, ct) ?? throw new AuthorizationException();
-        if (user.Role == UserRole.PlatformAdmin) return;
+        // Platform staff read telemetry across tenants while carrying no
+        // tenant claim by design. Farm users remain tenant-scoped below.
+        if (user.Role is UserRole.PlatformAdmin or UserRole.PlatformTechnician) return;
         if (!await ZoneInTenantAsync(zoneId, tenantId, ct)) throw new ResourceNotFoundException("Zone was not found.");
         if (user.TenantId != tenantId) throw new AuthorizationException();
         if (user.Role == UserRole.FarmOwner) return;

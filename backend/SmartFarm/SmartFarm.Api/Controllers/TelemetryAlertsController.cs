@@ -8,15 +8,15 @@ using SmartFarm.Domain.Enums;
 
 namespace SmartFarm.Api.Controllers;
 
-[ApiController, Authorize(Roles = "FarmOwner,Farmer")]
+[ApiController, Authorize(Roles = "FarmOwner,Farmer,PlatformTechnician,PlatformAdmin")]
 public sealed class TelemetryController(ITelemetryAlertService service) : ControllerBase
 {
     // API catalog #69
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/latest")]
-    public async Task<ActionResult<LatestTelemetryView>> Latest(Guid zoneId, CancellationToken ct) => Ok(await service.LatestAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
+    public async Task<ActionResult<LatestTelemetryView>> Latest(Guid zoneId, CancellationToken ct) => Ok(await service.LatestAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, ct));
 
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/latest-by-device")]
-    public async Task<ActionResult<ZoneDeviceTelemetryView>> LatestByDevice(Guid zoneId, CancellationToken ct) => Ok(await service.LatestByDeviceAsync(User.GetUserId(), User.GetTenantId(), zoneId, ct));
+    public async Task<ActionResult<ZoneDeviceTelemetryView>> LatestByDevice(Guid zoneId, CancellationToken ct) => Ok(await service.LatestByDeviceAsync(User.GetUserId(), User.GetOptionalTenantId() ?? Guid.Empty, zoneId, ct));
 
     // API catalog #70
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/history")]

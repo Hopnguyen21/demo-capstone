@@ -10,7 +10,7 @@ public static class IoTDeploymentMapping
     public static DeviceView ToView(this Device x)
     {
         var test = x.ConnectionTests.OrderByDescending(t => t.ObservedAtUtc).FirstOrDefault();
-        return new(x.Id, x.FarmId, x.GatewayId, x.DeploymentRequestId, x.ZoneId, x.DeviceModelDefinitionId, x.HardwareAddress, x.DeviceType, x.Status, x.InstallationNotes, x.Sensors.Select(s => s.SensorType).ToList(), x.Actuators.Select(a => a.ActuatorType).ToList(), test is null ? null : new(test.Id, test.Succeeded, test.Rssi, test.Snr, test.RoundTripLatencyMs, test.ObservedAtUtc, test.ErrorCode, test.ErrorMessage), x.LastSeenAtUtc, x.HeartbeatIntervalSeconds, x.GpsLatitude, x.GpsLongitude, x.HardwareItemId);
+        return new(x.Id, x.FarmId, x.GatewayId, x.DeploymentRequestId, x.ZoneId, x.DeviceModelDefinitionId, x.HardwareAddress, x.DeviceType, x.Status, x.InstallationNotes, x.Sensors.Select(s => s.SensorType).ToList(), x.Actuators.Select(a => a.ActuatorType).ToList(), test is null ? null : new(test.Id, test.Succeeded, test.Rssi, test.Snr, test.RoundTripLatencyMs, test.ObservedAtUtc, test.ErrorCode, test.ErrorMessage), x.LastSeenAtUtc, x.HeartbeatIntervalSeconds, x.GpsLatitude, x.GpsLongitude, x.HardwareItemId, x.LoRaAddress);
     }
     /// <summary>Null-safe: chỉ dựng ngữ cảnh khi đủ dữ liệu liên quan đã được nạp (Farm, Zone → Field, PlantingSeason).</summary>
     private static DeploymentContextView? ContextOf(DeploymentRequest x) =>

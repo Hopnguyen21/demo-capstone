@@ -575,11 +575,35 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
             db.ServiceRequestQuotations.RemoveRange(existingDrafts);
         }
 
-        var items = command.Items.Select(i => new ServiceRequestQuotationItem
+        var codes = command.Items.Select(i => i.Code.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var catalogItems = await db.PlatformHardwareItems.AsNoTracking()
+            .Where(x => codes.Contains(x.Code))
+            .ToListAsync(ct);
+        // A quantity split assigned to a Technician creates a second inventory
+        // row with the same catalog Code. Quotations identify the catalog item
+        // by Code, so prefer the Technician-stock row and never throw on a
+        // duplicate code here.
+        var catalogByCode = catalogItems
+            .GroupBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(x => string.Equals(x.Status, "InTechnicianStock", StringComparison.OrdinalIgnoreCase))
+                      .ThenByDescending(x => x.AssignedTechnicianId.HasValue)
+                      .First(),
+                StringComparer.OrdinalIgnoreCase);
+        var items = command.Items.Select(i =>
         {
-            HardwareItemCode = i.Code, HardwareItemName = i.Name, Category = i.Category,
-            Unit = i.Unit, Quantity = i.Quantity, UnitPrice = i.UnitPrice, VatPercent = i.VatPercent,
-            TotalAmount = i.Quantity * i.UnitPrice * (1 + i.VatPercent / 100m), Notes = i.Notes
+            if (!catalogByCode.TryGetValue(i.Code.Trim(), out var catalog))
+                throw new RequestValidationException("items", $"Thiết bị {i.Code} không tồn tại trong danh mục/kho.");
+            if (catalog.UnitPrice <= 0)
+                throw new RequestValidationException("items", $"Thiết bị {catalog.Code} chưa có đơn giá chung hợp lệ trong danh mục.");
+            var unitPrice = catalog.UnitPrice;
+            return new ServiceRequestQuotationItem
+            {
+                HardwareItemCode = catalog.Code, HardwareItemName = catalog.Name, Category = catalog.Category,
+                Unit = i.Unit, Quantity = i.Quantity, UnitPrice = unitPrice, VatPercent = i.VatPercent,
+                TotalAmount = i.Quantity * unitPrice * (1 + i.VatPercent / 100m), Notes = i.Notes
+            };
         }).ToList();
         var subtotal = items.Sum(i => i.Quantity * i.UnitPrice);
         var vatAmount = items.Sum(i => i.TotalAmount) - subtotal;

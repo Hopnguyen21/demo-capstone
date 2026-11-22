@@ -231,7 +231,10 @@ export const SupportPage: React.FC = () => {
 
   const handleSignAcceptanceAndPay70 = async (requestId: string) => {
     const request = requests.find(r => r.serviceRequestId === requestId);
-    if (request?.deploymentLinkInvalid || request?.deploymentStatus !== 'Completed') {
+    // Older service-request responses do not include deploymentStatus. In that
+    // case the API remains the source of truth and performs the Completed check.
+    const deploymentStatus = String(request?.deploymentStatus || '').toUpperCase();
+    if (request?.deploymentLinkInvalid || (deploymentStatus && deploymentStatus !== 'COMPLETED')) {
       setErrorMsg('Chỉ nghiệm thu sau khi triển khai đúng farm/zone đã hoàn tất. Tải lại dữ liệu để kiểm tra trạng thái.');
       return;
     }
@@ -1415,7 +1418,7 @@ export const SupportPage: React.FC = () => {
                             </div>
                           </div>
 
-                          {req.deploymentStatus && req.deploymentStatus !== 'Completed' && (
+                          {req.deploymentStatus && String(req.deploymentStatus).toUpperCase() !== 'COMPLETED' && (
                             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2">
                               <AlertCircle size={16} className="text-amber-600 shrink-0" />
                               <span>
@@ -1426,10 +1429,10 @@ export const SupportPage: React.FC = () => {
 
                           <button
                             type="button"
-                            disabled={isProcessingId === req.serviceRequestId || (Boolean(req.deploymentStatus) && req.deploymentStatus !== 'Completed')}
+                            disabled={isProcessingId === req.serviceRequestId || (Boolean(req.deploymentStatus) && String(req.deploymentStatus).toUpperCase() !== 'COMPLETED')}
                             onClick={() => handleSignAcceptanceAndPay70(req.serviceRequestId)}
                             className={`w-full font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                              Boolean(req.deploymentStatus) && req.deploymentStatus !== 'Completed'
+                              Boolean(req.deploymentStatus) && String(req.deploymentStatus).toUpperCase() !== 'COMPLETED'
                                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
                                 : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg'
                             }`}

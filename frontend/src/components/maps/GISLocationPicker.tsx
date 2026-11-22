@@ -68,7 +68,7 @@ const createDevicePinIcon = (name: string, isActuator?: boolean, isOnline?: bool
     html: `
       <div style="position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer;">
         <div style="
-          background: ${isActuator ? '#0284c7' : '#059669'};
+          background: ${isOnline ? (isActuator ? '#0284c7' : '#059669') : '#64748b'};
           color: white;
           width: 26px;
           height: 26px;

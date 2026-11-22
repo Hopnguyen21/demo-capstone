@@ -375,9 +375,17 @@ export const FarmsPage: React.FC = () => {
   const visibleZoneMetrics = Array.isArray(zoneLatest?.metrics)
     ? zoneLatest.metrics.filter((metric: any) => assignedParameterCodes.has(String(metric.parameterCode)))
     : [];
-  const displayedZoneMetrics = visibleZoneMetrics.length > 0
-    ? visibleZoneMetrics
-    : (zoneLatest?.metrics || []);
+  const selectedZoneNodes = nodes.filter(n =>
+    n.zoneId === selectedZone?.zoneId || n.zoneId === (selectedZone as any)?.id
+  );
+  // Never show cached telemetry while every node is offline. The latest API
+  // response may contain the last persisted reading, but it is not a live
+  // reading unless the backend marks it fresh and a node is currently online.
+  const telemetryIsLive = selectedZoneNodes.some(n => n.status === 'ONLINE')
+    && zoneLatest?.hasFreshTelemetry === true;
+  const displayedZoneMetrics = telemetryIsLive
+    ? (visibleZoneMetrics.length > 0 ? visibleZoneMetrics : (zoneLatest?.metrics || []))
+    : [];
 
   // Deep-linking from OwnerDashboard, SupportPage or other pages
   const handledDeepLinkRef = React.useRef<string | null>(null);
@@ -725,7 +733,7 @@ export const FarmsPage: React.FC = () => {
         name: n.name || n.nodeCode || n.hardwareAddress || `Node ${idx + 1}`,
         code: n.nodeCode || n.hardwareAddress || `N-0${idx + 1}`,
         type: (n.actuatorsCount && n.actuatorsCount > 0) || (n.deviceType?.includes('Actuator')) || (n.hardwareAddress?.includes('VALVE')) ? 'ACTUATOR' : 'SENSOR',
-        status: n.status || 'ONLINE',
+        status: n.status || 'OFFLINE',
         batteryLevel: n.batteryLevel,
         coords: [n.latitude, n.longitude] as [number, number],
       }));
@@ -1965,7 +1973,11 @@ export const FarmsPage: React.FC = () => {
                           ))}
                         </div>
                       ) : (
-                        <div className="text-[11px] text-slate-500">Chưa có số đo của Zone này (hoặc chưa tải được).</div>
+                        <div className="text-[11px] text-slate-500">
+                          {selectedZoneNodes.length > 0 && !telemetryIsLive
+                            ? 'Node đang offline hoặc chưa có bản tin mới. Không hiển thị số đo cũ.'
+                            : 'Chưa có số đo của Zone này (hoặc chưa tải được).'}
+                        </div>
                       )}
                     </div>
 

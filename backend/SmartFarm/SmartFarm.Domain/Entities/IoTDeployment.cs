@@ -228,6 +228,7 @@ public sealed class Device : AuditableEntity
     public Farm Farm { get; set; } = null!;
     public Guid GatewayId { get; set; }
     public Gateway Gateway { get; set; } = null!;
+    public int? LoRaAddress { get; set; }
     public Guid DeploymentRequestId { get; set; }
     public DeploymentRequest DeploymentRequest { get; set; } = null!;
     public Guid? ZoneId { get; set; }

@@ -17,53 +17,13 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
   onToggleActuator,
   isProcessing = false,
 }) => {
-  const [demoActuators, setDemoActuators] = useState<Actuator[]>([]);
   const [selectedActuator, setSelectedActuator] = useState<Actuator | null>(null);
   const [targetState, setTargetState] = useState<'ON' | 'OFF'>('ON');
   const [durationMinutes, setDurationMinutes] = useState<number>(15);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [interlockError, setInterlockError] = useState<string | null>(null);
 
-  // Combine real actuators or demo actuators if empty
-  const effectiveActuators = actuators.length > 0 ? actuators : demoActuators;
-
-  const handleInitDemoActuators = () => {
-    setDemoActuators([
-      {
-        actuatorId: 'demo-pump-01',
-        actuatorCode: 'PUMP-MAIN',
-        name: 'Máy bơm tưới nhỏ giọt chính 1.5HP (Main Drip Pump)',
-        actuatorType: 'PUMP',
-        status: 'OFF',
-        zoneName: 'Zone Canh tác',
-        lastStateChangeAt: 'Hôm nay 08:30:12',
-        ratedPowerWatt: 1100,
-        relayChannel: 1,
-      } as Actuator,
-      {
-        actuatorId: 'demo-valve-01',
-        actuatorCode: 'VALVE-SOL',
-        name: 'Van điện từ Solenoid cấp dinh dưỡng phân bón A/B',
-        actuatorType: 'VALVE',
-        status: 'ON',
-        zoneName: 'Zone Canh tác',
-        lastStateChangeAt: 'Hôm nay 10:15:00',
-        ratedPowerWatt: 24,
-        relayChannel: 2,
-      } as Actuator,
-      {
-        actuatorId: 'demo-fan-01',
-        actuatorCode: 'FAN-AIR',
-        name: 'Quạt thông gió & đối lưu không khí vi khí hậu 200W',
-        actuatorType: 'FAN',
-        status: 'OFF',
-        zoneName: 'Zone Canh tác',
-        lastStateChangeAt: 'Hôm qua 16:45:00',
-        ratedPowerWatt: 200,
-        relayChannel: 3,
-      } as Actuator,
-    ]);
-  };
+  const effectiveActuators = actuators;
 
   // Helper to check interlock safety rule (BR-INTERLOCK-01: Disallow >= 2 pumps >= 500W simultaneously)
   const checkInterlockSafety = (actuator: Actuator, state: 'ON' | 'OFF'): boolean => {
@@ -100,21 +60,6 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
       return;
     }
     setIsModalOpen(false);
-
-    // If in demo mode, update local demo state
-    if (demoActuators.some(d => d.actuatorId === selectedActuator.actuatorId)) {
-      setDemoActuators(prev => prev.map(d => {
-        if (d.actuatorId === selectedActuator.actuatorId) {
-          return {
-            ...d,
-            status: targetState,
-            lastStateChangeAt: `Vừa xong (${new Date().toLocaleTimeString('vi-VN')})`,
-          };
-        }
-        return d;
-      }));
-      return;
-    }
 
     await onToggleActuator(selectedActuator.actuatorId, targetState, durationMinutes);
   };
@@ -226,11 +171,6 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
           </p>
         </div>
         
-        {effectiveActuators.length > 0 && demoActuators.length > 0 && (
-          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 shrink-0 self-start sm:self-auto flex items-center gap-1">
-            <Sparkles size={12} /> Chế độ Rơ-le Mô phỏng
-          </span>
-        )}
       </div>
 
       {/* When Empty: High-End Empty State Card */}
@@ -245,19 +185,8 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
               Chưa có Rơ-le Điều khiển nào được kết nối tại Zone này
             </h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Zone hiện tại chưa có module rơ-le phần cứng (bơm, van, quạt) liên kết với Gateway LoRa. 
-              Bạn có thể kích hoạt các Rơ-le mẫu thử nghiệm để kiểm tra tính năng bật/tắt và bảo vệ an toàn ngay lập tức.
+              Zone hiện tại chưa có module rơ-le phần cứng (bơm, van, quạt) liên kết với Gateway LoRa.
             </p>
-          </div>
-
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-            <Button
-              onClick={handleInitDemoActuators}
-              className="bg-[#119653] text-white hover:bg-emerald-700 font-bold shadow-md text-xs py-2.5 px-4"
-            >
-              <Sparkles size={15} className="mr-1.5 text-emerald-100" />
-              Kích hoạt 3 Rơ-le Thử nghiệm (Demo Relays)
-            </Button>
           </div>
         </div>
       ) : (

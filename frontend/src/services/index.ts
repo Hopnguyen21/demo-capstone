@@ -301,6 +301,10 @@ export const adminService = {
     const res = await apiClient.get('/api/v1/platform/hardware-items');
     return res.data?.value ?? res.data ?? [];
   },
+  getMyTechnicianHardware: async () => {
+    const res = await apiClient.get('/api/v1/platform/hardware-items/my-spare-parts');
+    return res.data?.value ?? res.data ?? [];
+  },
   createHardwareItem: async (data: any) => {
     const res = await apiClient.post('/api/v1/platform/hardware-items', data);
     return res.data;
@@ -1118,13 +1122,58 @@ export const telemetryService = {
   /** GET /api/v1/zones/{zoneId}/telemetry/latest-by-device — số đo mới nhất theo từng node */
   getLatestByDevice: async (zoneId: string) => {
     const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/latest-by-device`);
-    return res.data;
+    const raw = res.data?.value ?? res.data;
+    const devices = raw?.devices ?? raw?.Devices ?? [];
+    return {
+      zoneId: raw?.zoneId ?? raw?.ZoneId ?? zoneId,
+      devices: Array.isArray(devices)
+        ? devices.map((device: any) => {
+            const metrics = device?.metrics ?? device?.Metrics ?? [];
+            return {
+              ...device,
+              deviceId: device?.deviceId ?? device?.DeviceId,
+              hardwareAddress: device?.hardwareAddress ?? device?.HardwareAddress,
+              status: device?.status ?? device?.Status,
+              batteryLevel: device?.batteryLevel ?? device?.BatteryLevel,
+              rssi: device?.rssi ?? device?.Rssi,
+              metrics: Array.isArray(metrics)
+                ? metrics.map((metric: any) => ({
+                    ...metric,
+                    parameterCode: metric?.parameterCode ?? metric?.ParameterCode,
+                    value: metric?.value ?? metric?.Value,
+                    unit: metric?.unit ?? metric?.Unit,
+                    capturedAtUtc: metric?.capturedAtUtc ?? metric?.CapturedAtUtc,
+                    receivedAtUtc: metric?.receivedAtUtc ?? metric?.ReceivedAtUtc,
+                    isFresh: metric?.isFresh ?? metric?.IsFresh,
+                  }))
+                : [],
+            };
+          })
+        : [],
+    };
   },
 
   /** GET /api/v1/zones/{zoneId}/telemetry/latest */
   getRealtime: async (zoneId: string) => {
     const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/latest`);
-    return res.data;
+    const raw = res.data?.value ?? res.data;
+    const metrics = raw?.metrics ?? raw?.Metrics ?? [];
+    return {
+      zoneId: raw?.zoneId ?? raw?.ZoneId ?? zoneId,
+      latestReceivedAtUtc: raw?.latestReceivedAtUtc ?? raw?.LatestReceivedAtUtc,
+      hasFreshTelemetry: raw?.hasFreshTelemetry ?? raw?.HasFreshTelemetry,
+      metrics: Array.isArray(metrics)
+        ? metrics.map((metric: any) => ({
+            ...metric,
+            parameterCode: metric?.parameterCode ?? metric?.ParameterCode,
+            value: metric?.value ?? metric?.Value,
+            unit: metric?.unit ?? metric?.Unit,
+            capturedAtUtc: metric?.capturedAtUtc ?? metric?.CapturedAtUtc,
+            receivedAtUtc: metric?.receivedAtUtc ?? metric?.ReceivedAtUtc,
+            isFresh: metric?.isFresh ?? metric?.IsFresh,
+          }))
+        : [],
+    };
   },
 
   /** GET /api/v1/zones/{zoneId}/telemetry/history */

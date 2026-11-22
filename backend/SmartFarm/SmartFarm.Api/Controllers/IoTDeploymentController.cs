@@ -180,7 +180,10 @@ public sealed class IoTHardwareController(IIoTDeploymentService service, MqttBro
     public async Task<ActionResult<ProvisionDevicesView>> ProvisionDevices(ProvisionDevicesRequest body, CancellationToken ct) => Ok(await service.ProvisionDevicesAsync(User.GetUserId(), body.ToCommand(), ct));
     [HttpPost("api/v1/technician/hardware-preparations/{hardwareItemId:guid}/start"), Authorize(Roles = "PlatformTechnician")]
     public async Task<ActionResult<HardwarePreparationView>> StartPreparation(Guid hardwareItemId, CancellationToken ct) => Ok(await service.StartHardwarePreparationAsync(User.GetUserId(), hardwareItemId, ct));
-    [HttpGet("api/v1/technician/hardware-preparations"), Authorize(Roles = "PlatformTechnician")]
+    // The service validates the canonical PlatformTechnician role from the DB.
+    // Do not rely on the JWT role claim here: older Technician sessions use a
+    // normalized claim and were incorrectly turned into an empty UI list.
+    [HttpGet("api/v1/technician/hardware-preparations"), Authorize]
     public async Task<ActionResult<IReadOnlyList<HardwarePreparationView>>> ListPreparations(CancellationToken ct) => Ok(await service.ListHardwarePreparationsAsync(User.GetUserId(), ct));
     [HttpPost("api/v1/technician/hardware-preparations/{preparationId:guid}/status"), Authorize(Roles = "PlatformTechnician")]
     public async Task<ActionResult<HardwarePreparationView>> AdvancePreparation(Guid preparationId, HardwarePreparationStatusRequest body, CancellationToken ct) => Ok(await service.AdvanceHardwarePreparationAsync(User.GetUserId(), preparationId, body.Status, body.NodeId, body.LoRaAddress, body.BoardProfile, body.Notes, ct));

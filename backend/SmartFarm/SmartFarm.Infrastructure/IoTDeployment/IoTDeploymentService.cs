@@ -410,7 +410,8 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         var nodes = provisionedNodes.Select(x =>
         {
             var resolvedId = x.HardwareItemId ?? (hardwareItemsByCode.TryGetValue(x.HardwareAddress, out var codeId) ? codeId : Guid.Empty);
-            if (resolvedId == Guid.Empty || !preparationAddresses.TryGetValue(resolvedId, out var loraAddress) || loraAddress <= 0)
+            var loraAddress = x.LoRaAddress ?? (resolvedId != Guid.Empty && preparationAddresses.TryGetValue(resolvedId, out var preparedAddress) ? preparedAddress : 0);
+            if (resolvedId == Guid.Empty || loraAddress <= 0)
                 throw new ResourceConflictException($"Node {x.HardwareAddress} has no verified LoRa address from Hardware Preparation.");
             return new FirmwareNodeConfigView(x.Id, x.HardwareAddress, x.ZoneId ?? gateway.DeploymentRequest.ZoneId, loraAddress, x.DeviceType);
         }).ToList();
@@ -628,9 +629,40 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         if (command.FarmId != r.FarmId) throw new RequestValidationException("farmId", "Farm does not match the Deployment Request.");
         var addresses = command.Nodes.Select(x => x.HardwareAddress.Trim().ToUpperInvariant()).ToList();
         var requestedHardwareIds = command.Nodes.Where(x => x.HardwareItemId.HasValue).Select(x => x.HardwareItemId!.Value).Distinct().ToList();
-        var readyPreparations = await db.HardwarePreparationSessions.AsNoTracking()
-            .Where(x => requestedHardwareIds.Contains(x.HardwareItemId) && x.Status == HardwarePreparationStatus.ReadyForDeployment)
+        // Existing GIS rows may have been created before Hardware Preparation
+        // was completed and therefore carry no HardwareItemId. Resolve them by
+        // the prepared Node address before provisioning.
+        var preparedByAddress = await db.HardwarePreparationSessions
+            .Where(x => x.Status == HardwarePreparationStatus.ReadyForDeployment && x.NodeId != null && addresses.Contains(x.NodeId.ToUpper()))
+            .OrderByDescending(x => x.UpdatedAtUtc)
             .ToListAsync(ct);
+        foreach (var prepared in preparedByAddress)
+        {
+            if (!requestedHardwareIds.Contains(prepared.HardwareItemId)) requestedHardwareIds.Add(prepared.HardwareItemId);
+        }
+        var usedLoRaAddresses = (await db.Devices.AsNoTracking()
+            .Where(x => x.GatewayId == g.Id && x.LoRaAddress.HasValue && x.Status != DeviceStatus.Decommissioned)
+            .Select(x => x.LoRaAddress!.Value)
+            .ToListAsync(ct)).ToHashSet();
+        var preparationRows = await db.HardwarePreparationSessions
+            .Where(x => requestedHardwareIds.Contains(x.HardwareItemId) && x.Status == HardwarePreparationStatus.ReadyForDeployment)
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ToListAsync(ct);
+        foreach (var preparation in preparationRows.GroupBy(x => x.HardwareItemId).Select(x => x.First()))
+        {
+            if (preparation.LoRaAddress.HasValue) continue;
+            var nextAddress = 101;
+            while (usedLoRaAddresses.Contains(nextAddress)) nextAddress++;
+            preparation.LoRaAddress = nextAddress;
+            usedLoRaAddresses.Add(nextAddress);
+        }
+        var readyPreparations = preparationRows
+            .Where(x => requestedHardwareIds.Contains(x.HardwareItemId) && x.Status == HardwarePreparationStatus.ReadyForDeployment)
+            .ToList();
+        var assignedLoRaByHardware = preparationRows
+            .Where(x => x.LoRaAddress.HasValue)
+            .GroupBy(x => x.HardwareItemId)
+            .ToDictionary(x => x.Key, x => x.First().LoRaAddress!.Value);
         // Khi triển khai theo hợp đồng hoặc phiếu xuất kho đã duyệt, cho phép kỹ thuật viên cấp phát Node
         // vào Gateway mà không bắt buộc phải có phiên HardwarePreparation thủ công qua bước "Giao cho KTV".
         var defaultSensorModel = r.PlanItems.FirstOrDefault(p => p.DeviceModelDefinition != null && p.DeviceModelDefinition.DeviceType == DeviceType.SensorNode)?.DeviceModelDefinitionId;
@@ -666,10 +698,19 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         foreach (var device in owned)
         {
             var requested = command.Nodes.First(x => string.Equals(x.HardwareAddress.Trim(), device.HardwareAddress, StringComparison.OrdinalIgnoreCase));
+            var preparedHardwareId = requested.HardwareItemId ?? preparedByAddress
+                .FirstOrDefault(x => string.Equals(x.NodeId, device.HardwareAddress, StringComparison.OrdinalIgnoreCase))?.HardwareItemId;
+            var preparedLoRa = preparedHardwareId.HasValue
+                ? preparedByAddress.FirstOrDefault(x => x.HardwareItemId == preparedHardwareId)?.LoRaAddress
+                : null;
             if (requested.DeviceType != device.DeviceType) throw new ResourceConflictException($"Địa chỉ {device.HardwareAddress} đã được cấp phát là {device.DeviceType}, không đổi loại Node được.");
-            if (!device.HardwareItemId.HasValue && requested.HardwareItemId.HasValue)
+            if (!device.LoRaAddress.HasValue && preparedLoRa.HasValue)
+                device.LoRaAddress = preparedLoRa.Value;
+            else if (!device.LoRaAddress.HasValue && preparedHardwareId.HasValue && assignedLoRaByHardware.TryGetValue(preparedHardwareId.Value, out var existingAddress))
+                device.LoRaAddress = existingAddress;
+            if (!device.HardwareItemId.HasValue && preparedHardwareId.HasValue)
             {
-                device.HardwareItemId = requested.HardwareItemId;
+                device.HardwareItemId = preparedHardwareId;
                 linkDevices.Add(device);
             }
         }
@@ -677,7 +718,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         if (conflicting.Count > 0) throw new ResourceConflictException($"A hardware address is already provisioned on another Gateway: {string.Join(", ", conflicting.Select(x => x.HardwareAddress))}.");
         var modelIds = command.Nodes.Select(ResolveModelId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList();
         if (await db.DeviceModelDefinitions.CountAsync(x => modelIds.Contains(x.Id) && x.IsActive, ct) != modelIds.Count) throw new RequestValidationException("deviceModelId", "One or more Device Models are invalid.");
-        var newDevices = command.Nodes.Where(x => !owned.Any(d => d.HardwareAddress == x.HardwareAddress.Trim().ToUpperInvariant())).Select(x => new Device { FarmId = r.FarmId, GatewayId = g.Id, DeploymentRequestId = r.Id, HardwareAddress = x.HardwareAddress.Trim().ToUpperInvariant(), DeviceType = x.DeviceType, DeviceModelDefinitionId = ResolveModelId(x), HardwareItemId = x.HardwareItemId }).ToList();
+        var newDevices = command.Nodes.Where(x => !owned.Any(d => d.HardwareAddress == x.HardwareAddress.Trim().ToUpperInvariant())).Select(x => new Device { FarmId = r.FarmId, GatewayId = g.Id, DeploymentRequestId = r.Id, HardwareAddress = x.HardwareAddress.Trim().ToUpperInvariant(), DeviceType = x.DeviceType, DeviceModelDefinitionId = ResolveModelId(x), HardwareItemId = x.HardwareItemId, LoRaAddress = x.HardwareItemId.HasValue && assignedLoRaByHardware.TryGetValue(x.HardwareItemId.Value, out var assignedAddress) ? assignedAddress : null }).ToList();
         await DeductTechnicianStockForNewNodesAsync(technicianId, newDevices.Concat(linkDevices).ToList(), ct);
         db.Devices.AddRange(newDevices);
         AddDecision(r, technicianId, "DevicesProvisioned", r.Status, r.Status, $"Count={owned.Count + newDevices.Count}");
@@ -859,23 +900,41 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
     public async Task<IReadOnlyList<HardwarePreparationView>> ListHardwarePreparationsAsync(Guid technicianId, CancellationToken ct)
     {
         await EnsureTechnicianAsync(technicianId, ct);
-        return (await db.HardwarePreparationSessions.AsNoTracking().Where(x => x.TechnicianUserId == technicianId).OrderByDescending(x => x.CreatedAtUtc).ToListAsync(ct)).Select(PreparationView).ToList();
+        // The Gateway popup is a deployment work queue. Any PlatformTechnician
+        // may see hardware that has already reached ReadyForDeployment; the
+        // write/provision endpoints still enforce technician ownership.
+        var readySessions = await db.HardwarePreparationSessions.AsNoTracking()
+            .Where(x => x.Status == HardwarePreparationStatus.ReadyForDeployment)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(ct);
+        Console.WriteLine($"[HardwarePreparation] user={technicianId} readySessions={readySessions.Count} ids={string.Join(',', readySessions.Select(x => x.NodeId ?? x.HardwareItemId.ToString()))}");
+        return readySessions.Select(PreparationView).ToList();
     }
 
     public async Task<HardwarePreparationView> AdvanceHardwarePreparationAsync(Guid technicianId, Guid preparationId, HardwarePreparationStatus nextStatus, string? nodeId, int? loraAddress, string? boardProfile, string? notes, CancellationToken ct)
     {
         await EnsureTechnicianAsync(technicianId, ct);
         var session = await db.HardwarePreparationSessions.SingleOrDefaultAsync(x => x.Id == preparationId && x.TechnicianUserId == technicianId, ct) ?? throw new ResourceNotFoundException("Preparation session was not found.");
-        var allowed = (session.Status, nextStatus) switch { (HardwarePreparationStatus.HardwarePreparation, HardwarePreparationStatus.FirmwarePrepared) => true, (HardwarePreparationStatus.FirmwarePrepared, HardwarePreparationStatus.IdentityVerified) => true, (HardwarePreparationStatus.IdentityVerified, HardwarePreparationStatus.ConnectivityVerified) => true, (HardwarePreparationStatus.ConnectivityVerified, HardwarePreparationStatus.ReadyForDeployment) => true, (_, HardwarePreparationStatus.Faulty) => true, (_, HardwarePreparationStatus.Maintenance) => true, _ => false };
+        var isGateway = session.DeviceType.Contains("Gateway", StringComparison.OrdinalIgnoreCase);
+        var allowed = (session.Status, nextStatus) switch { (HardwarePreparationStatus.HardwarePreparation, HardwarePreparationStatus.FirmwarePrepared) => true, (HardwarePreparationStatus.FirmwarePrepared, HardwarePreparationStatus.IdentityVerified) => true, (HardwarePreparationStatus.IdentityVerified, HardwarePreparationStatus.ConnectivityVerified) => true, (HardwarePreparationStatus.ConnectivityVerified, HardwarePreparationStatus.ReadyForDeployment) => true, (HardwarePreparationStatus.IdentityVerified, HardwarePreparationStatus.ReadyForDeployment) when !isGateway => true, (_, HardwarePreparationStatus.Faulty) => true, (_, HardwarePreparationStatus.Maintenance) => true, _ => false };
         if (!allowed) throw new ResourceConflictException($"Invalid preparation transition {session.Status} -> {nextStatus}.");
         if ((nextStatus == HardwarePreparationStatus.FirmwarePrepared || nextStatus == HardwarePreparationStatus.ReadyForDeployment) && !await db.FirmwareInstallations.AnyAsync(x => x.PreparationSessionId == session.Id && x.Result == FirmwareInstallationResult.Succeeded, ct))
             throw new ResourceConflictException("A successful firmware installation record is required before this transition.");
-        if (nextStatus == HardwarePreparationStatus.IdentityVerified && !session.DeviceType.Contains("Gateway", StringComparison.OrdinalIgnoreCase))
+        if (nextStatus == HardwarePreparationStatus.IdentityVerified && isGateway)
         {
-            var identity = Required(nodeId ?? session.NodeId, "nodeId", 100);
-            if (!loraAddress.HasValue || loraAddress is < 0 or > 65535) throw new RequestValidationException("loRaAddress", "LoRa Address must be between 0 and 65535.");
+            var gatewayItem = await db.PlatformHardwareItems.AsNoTracking().SingleAsync(x => x.Id == session.HardwareItemId, ct);
+            if (string.IsNullOrWhiteSpace(gatewayItem.MacAddress) && string.IsNullOrWhiteSpace(gatewayItem.SerialNumber))
+                throw new ResourceConflictException("Gateway must have a MAC address or serial number before identity verification.");
+            var enrollment = await db.GatewayEnrollments.AsNoTracking().SingleOrDefaultAsync(x => x.HardwareItemId == session.HardwareItemId && x.Status == "Enrolled", ct);
+            if (enrollment?.HandshakeVerifiedAtUtc is null)
+                throw new ResourceConflictException("Gateway bootstrap handshake from the real ESP has not been verified yet.");
+        }
+        if (nextStatus == HardwarePreparationStatus.IdentityVerified && !isGateway)
+        {
+            var identity = Required(nodeId ?? session.NodeId ?? $"NODE-{session.HardwareItemId.ToString()[..8].ToUpperInvariant()}", "nodeId", 100);
+            if (loraAddress.HasValue && loraAddress is < 0 or > 65535) throw new RequestValidationException("loRaAddress", "LoRa Address must be between 0 and 65535.");
             if (await db.HardwarePreparationSessions.AnyAsync(x => x.Id != session.Id && x.NodeId == identity, ct) || await db.Devices.AnyAsync(x => x.HardwareAddress == identity, ct)) throw new ResourceConflictException("Node ID is already registered.");
-            if (await db.HardwarePreparationSessions.AnyAsync(x => x.Id != session.Id && x.LoRaAddress == loraAddress, ct)) throw new ResourceConflictException("LoRa Address is already assigned to another preparation session.");
+            if (loraAddress.HasValue && await db.HardwarePreparationSessions.AnyAsync(x => x.Id != session.Id && x.LoRaAddress == loraAddress, ct)) throw new ResourceConflictException("LoRa Address is already assigned to another preparation session.");
         }
         if (nextStatus == HardwarePreparationStatus.ConnectivityVerified && session.ConnectivityCheckPassed != true)
         {
@@ -883,8 +942,8 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         }
         if (nextStatus == HardwarePreparationStatus.ConnectivityVerified && session.DeviceType.Contains("Gateway", StringComparison.OrdinalIgnoreCase))
         {
-            var gateway = await db.GatewayEnrollments.Include(x => x.Gateway).SingleOrDefaultAsync(x => x.HardwareItemId == session.HardwareItemId && x.Status == "Activated", ct);
-            if (gateway?.Gateway?.LastSeenAtUtc is null) throw new ResourceConflictException("Gateway heartbeat has not been received after activation.");
+            var enrollment = await db.GatewayEnrollments.AsNoTracking().SingleOrDefaultAsync(x => x.HardwareItemId == session.HardwareItemId && x.HandshakeVerifiedAtUtc != null, ct);
+            if (enrollment is null) throw new ResourceConflictException("Gateway MQTT/bootstrap handshake has not been received from the real ESP.");
         }
         session.Status = nextStatus; session.NodeId = nodeId ?? session.NodeId; session.LoRaAddress = loraAddress ?? session.LoRaAddress; session.BoardProfile = boardProfile ?? session.BoardProfile; session.Notes = notes ?? session.Notes; session.CompletedAtUtc = nextStatus == HardwarePreparationStatus.ReadyForDeployment ? DateTime.UtcNow : null;
         await db.SaveChangesAsync(ct); return PreparationView(session);
@@ -971,7 +1030,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
             .Where(x => x.HardwareItemId == hardwareItemId && x.TechnicianUserId == technicianId)
             .OrderByDescending(x => x.UpdatedAtUtc)
             .FirstOrDefaultAsync(ct);
-        return enrollment is null ? null : new(enrollment.Id, enrollment.HardwareItemId, enrollment.MacAddress, enrollment.ChipId, enrollment.GatewaySerial, enrollment.Status, enrollment.EnrolledAtUtc, enrollment.Gateway?.Id);
+        return enrollment is null ? null : new(enrollment.Id, enrollment.HardwareItemId, enrollment.MacAddress, enrollment.ChipId, enrollment.GatewaySerial, enrollment.Status, enrollment.EnrolledAtUtc, enrollment.Gateway?.Id, enrollment.HandshakeVerifiedAtUtc);
     }
     public async Task<GatewayEnrollmentView> ActivateGatewayEnrollmentAsync(Guid technicianId, Guid enrollmentId, ActivateGatewayEnrollmentCommand command, CancellationToken ct)
     {

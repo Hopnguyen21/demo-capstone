@@ -35,8 +35,9 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   onSendContractSuccess,
 }) => {
   const bp = useBusinessParameters(); const depositPct = bp.depositPercent;
-  // Default quotation items matching Image 2 table layout!
-  const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([
+  // Thiết bị phải được chọn từ kho và dùng đơn giá chung trong danh mục.
+  const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([]);
+  /*
     {
       id: 'item-gw-01',
       code: 'GW-ESP32-DL01',
@@ -97,7 +98,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
       notes: 'Điều chế xung PWM châm dung dịch A/B',
       isSelected: false,
     }
-  ]);
+  ]); */
 
   const [contractNote, setContractNote] = useState(
     'Báo giá lắp đặt trọn gói hệ thống IoT nhà màng. Đã bao gồm thiết bị, công lắp đặt thực địa và bảo hành 2 năm.'
@@ -135,9 +136,18 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setLoadingWarehouse(true);
-      adminService.getHardwareItems()
-        .then((items: any[]) => {
-          if (Array.isArray(items)) setWarehouseItems(items);
+      Promise.all([
+        adminService.getMyTechnicianHardware().catch(() => []),
+        adminService.getHardwareItems().catch(() => []),
+      ])
+        .then(([technicianItems, platformItems]: [any[], any[]]) => {
+          const tech = (Array.isArray(technicianItems) ? technicianItems : [])
+            .map(item => ({ ...item, inventorySource: 'Kho KTV' }));
+          const technicianCodes = new Set(tech.map(item => String(item.code || '').toLowerCase()));
+          const central = (Array.isArray(platformItems) ? platformItems : [])
+            .filter(item => !technicianCodes.has(String(item.code || '').toLowerCase()))
+            .map(item => ({ ...item, inventorySource: 'Kho nền tảng' }));
+          setWarehouseItems([...tech, ...central]);
         })
         .catch(err => console.warn('Could not fetch warehouse hardware items', err))
         .finally(() => setLoadingWarehouse(false));
@@ -167,7 +177,11 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
       q => (q.code && whItem.code && q.code.toLowerCase() === whItem.code.toLowerCase()) || q.id === whItem.id
     );
 
-    const price = Number(whItem.unitPrice || 0) || 1200000;
+    const price = Number(whItem.unitPrice || 0);
+    if (price <= 0) {
+      alert('Thiết bị chưa có đơn giá chung trong danh mục, không thể thêm.');
+      return;
+    }
     const vat = 8;
     const cat = String(whItem.category || '').toUpperCase();
     const unit = whItem.unit || (cat === 'GATEWAY' ? 'Trạm' : (cat.includes('SENSOR') || cat === 'NODE') ? 'Node' : 'Bộ');
@@ -228,7 +242,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
     );
   };
 
-  const addNewItem = () => {
+  /* const addNewItem = () => {
     if (isLocked) return;
     const newItemId = `item-custom-${Date.now()}`;
     setQuotationItems([
@@ -246,7 +260,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         isSelected: true,
       }
     ]);
-  };
+  }; */
 
   const updateItemField = (id: string, field: keyof QuotationItem, value: any) => {
     if (isLocked) return;
@@ -389,14 +403,14 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                   >
                     <Warehouse size={13} /> + Thêm thiết bị từ kho
                   </Button>
-                  <button
+                  {/* <button
                     type="button"
                     onClick={addNewItem}
                     className="text-[11px] text-sky-600 hover:text-sky-800 font-semibold hover:underline flex items-center gap-1 ml-1"
                     title="Nhập thiết bị ngoài danh mục kho"
                   >
                     + Nhập ngoài
-                  </button>
+                  </button> */}
                   <span className="text-slate-300">|</span>
                   <button
                     type="button"
@@ -486,14 +500,9 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                         />
                       </td>
                       <td className="p-2 text-right">
-                        <input
-                          type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateItemField(item.id, 'unitPrice', Number(e.target.value))}
-                          disabled={isLocked}
-                          readOnly={isLocked}
-                          className="w-full text-right font-mono font-medium text-slate-700 bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none disabled:cursor-not-allowed"
-                        />
+                        <span className="font-mono font-medium text-slate-700">
+                          {Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ
+                        </span>
                       </td>
                       <td className="p-2 text-center font-mono text-slate-500">{item.vatPercent}%</td>
                       <td className="p-2 text-center">
@@ -664,7 +673,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] flex items-center gap-2">
           <Info size={15} className="text-emerald-700 shrink-0" />
           <span>
-            Chọn các thiết bị (Gateway, Sensor Node, Van, Bơm) sẵn có trong kho để đưa trực tiếp vào Bảng báo giá & Hợp đồng.
+            Chọn thiết bị từ <strong>Kho KTV</strong> để đưa vào Bảng báo giá & Hợp đồng. Kho nền tảng vẫn được hiển thị để bổ sung thiết bị chưa cấp phát.
           </span>
         </div>
 
@@ -716,6 +725,9 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                       <strong className="text-slate-900 font-mono text-xs">{item.code}</strong>
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                         {item.category || 'THIẾT BỊ'}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700">
+                        {item.inventorySource || 'Kho nền tảng'}
                       </span>
                       {item.quantityInStock !== undefined && (
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${

@@ -4,7 +4,7 @@ import {
   Activity, Radio, FileText, Cpu, AlertOctagon, Sparkles 
 } from 'lucide-react';
 import { Button, StatusBadge } from '../../components/ui/BaseUI';
-import { controlService } from '../../services';
+import { controlService, zoneService } from '../../services';
 import { EnvironmentalParametersPanel } from '../../components/control/EnvironmentalParametersPanel';
 import { ActuatorControlGrid } from '../../components/control/ActuatorControlGrid';
 import { SafetyInterlockRulesCard } from '../../components/control/SafetyInterlockRulesCard';
@@ -23,8 +23,10 @@ export const ControlPage: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      const zones = await zoneService.getZones();
+      const zoneIds = (Array.isArray(zones) ? zones : []).map((z: any) => z.zoneId || z.id).filter(Boolean);
       const [actData, cfgData, logData] = await Promise.all([
-        controlService.getActuators ? controlService.getActuators() : Promise.resolve([]),
+        Promise.all(zoneIds.map((zoneId: string) => controlService.getActuators(zoneId))).then((items) => items.flat()),
         controlService.getEnvironmentalConfigs(),
         controlService.getControlLogs()
       ]);
@@ -44,7 +46,9 @@ export const ControlPage: React.FC = () => {
 
   const handleToggleActuator = async (actuatorId: string, targetState: 'ON' | 'OFF', durationMinutes?: number) => {
     try {
-      const updated = await controlService.toggleActuator(actuatorId, targetState);
+      const actuator = actuators.find((item) => item.actuatorId === actuatorId);
+      if (!actuator?.zoneId) throw new Error('Actuator is not assigned to a Zone');
+      const updated = await controlService.toggleActuator(actuator.zoneId, actuatorId, targetState, durationMinutes);
       setNotification({
         type: 'success',
         message: `Đã phát lệnh ${targetState === 'ON' ? 'BẬT' : 'TẮT'} rơ-le thiết bị [${updated?.name}] qua LoRa Gateway!`
