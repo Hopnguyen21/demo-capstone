@@ -127,7 +127,7 @@ public sealed class IoTHardwareController(IIoTDeploymentService service, MqttBro
         var gateway = await service.GetGatewayAsync(User.GetUserId(), User.GetOptionalTenantId(), gatewayId, ct);
         return Ok(new { gatewayId, mqttConnected = mqttBroker.IsConnected(gateway.MqttClientId) });
     }
-    [HttpPut("api/v1/gateways/{gatewayId:guid}/configuration"), Authorize(Roles = "PlatformTechnician")]
+    [HttpPut("api/v1/gateways/{gatewayId:guid}/configuration"), Authorize(Roles = "FarmOwner,PlatformTechnician")]
     public async Task<ActionResult<GatewayView>> ConfigureGateway(Guid gatewayId, GatewayConfigurationRequest body, CancellationToken ct)
     {
         var result = await service.ConfigureGatewayAsync(User.GetUserId(), gatewayId, new(body.NodeIds, body.TelemetryIntervalSec, body.SamplesPerInterval, body.InstallationLocation, body.PollingIntervalSeconds, body.HeartbeatIntervalSeconds, body.ResponseTimeoutMs, body.RetryCount), ct);
