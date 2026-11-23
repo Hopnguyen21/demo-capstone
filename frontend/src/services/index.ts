@@ -1794,6 +1794,14 @@ export const supportService = {
               paid30At: isDepositPaid ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
               payment30Method: 'BANK_TRANSFER',
               payment30Ref: `PAY30-${id.substring(0, 8).toUpperCase()}`,
+              contractPackageId: q.contractPackageId,
+              contractPackageName: q.contractPackageName,
+              packagePrice: q.packagePrice,
+              discountCode: q.discountCode,
+              discountAmount: q.discountAmount,
+              discountPercent: q.discountPercent,
+              notes: q.notes,
+              contractTerms: q.contractTerms,
             };
 
             acceptanceDetails = {
@@ -2066,7 +2074,11 @@ export const supportService = {
         notes: i.notes || ''
       })),
       notes: contract?.notes || 'Báo giá & Hợp đồng triển khai thiết bị IoT',
-      contractTerms: contract?.terms || 'Bảo hành 24 tháng theo tiêu chuẩn SmartFarm.'
+      contractTerms: contract?.terms || 'Bảo hành 24 tháng theo tiêu chuẩn SmartFarm.',
+      contractPackageId: contract?.contractPackageId || null,
+      discountCode: contract?.discountCode || null,
+      discountAmount: contract?.discountAmount || null,
+      discountPercent: contract?.discountPercent || null
     });
     return res.data;
   },

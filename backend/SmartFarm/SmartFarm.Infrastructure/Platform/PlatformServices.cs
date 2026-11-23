@@ -593,29 +593,80 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                 StringComparer.OrdinalIgnoreCase);
         var items = command.Items.Select(i =>
         {
-            if (!catalogByCode.TryGetValue(i.Code.Trim(), out var catalog))
-                throw new RequestValidationException("items", $"Thiết bị {i.Code} không tồn tại trong danh mục/kho.");
-            if (catalog.UnitPrice <= 0)
-                throw new RequestValidationException("items", $"Thiết bị {catalog.Code} chưa có đơn giá chung hợp lệ trong danh mục.");
-            var unitPrice = catalog.UnitPrice;
+            var unitPrice = i.UnitPrice;
+            var category = i.Category;
+            var name = i.Name;
+            if (catalogByCode.TryGetValue(i.Code.Trim(), out var catalog))
+            {
+                if (catalog.UnitPrice > 0) unitPrice = catalog.UnitPrice;
+                if (!string.IsNullOrWhiteSpace(catalog.Category)) category = catalog.Category;
+                if (!string.IsNullOrWhiteSpace(catalog.Name)) name = catalog.Name;
+            }
             return new ServiceRequestQuotationItem
             {
-                HardwareItemCode = catalog.Code, HardwareItemName = catalog.Name, Category = catalog.Category,
+                HardwareItemCode = i.Code, HardwareItemName = name, Category = category,
                 Unit = i.Unit, Quantity = i.Quantity, UnitPrice = unitPrice, VatPercent = i.VatPercent,
                 TotalAmount = i.Quantity * unitPrice * (1 + i.VatPercent / 100m), Notes = i.Notes
             };
         }).ToList();
-        var subtotal = items.Sum(i => i.Quantity * i.UnitPrice);
-        var vatAmount = items.Sum(i => i.TotalAmount) - subtotal;
-        var total = subtotal + vatAmount;
+
+        // Xử lý gói dịch vụ duy trì nếu có chọn
+        ContractPackage? package = null;
+        if (command.ContractPackageId.HasValue && command.ContractPackageId.Value != Guid.Empty)
+        {
+            package = await db.ContractPackages.AsNoTracking().FirstOrDefaultAsync(p => p.Id == command.ContractPackageId.Value, ct);
+        }
+
+        var hardwareSubtotal = items.Sum(i => i.Quantity * i.UnitPrice);
+        var hardwareVatAmount = items.Sum(i => i.TotalAmount) - hardwareSubtotal;
+        var packagePrice = package?.Price ?? 0m;
+
+        var subtotal = hardwareSubtotal + packagePrice;
+        var vatAmount = hardwareVatAmount; // VAT thiết bị
+        var totalBeforeDiscount = subtotal + vatAmount;
+
+        // Xử lý chiết khấu / mã giảm giá
+        decimal discountAmount = 0m;
+        decimal discountPercent = command.DiscountPercent ?? 0m;
+
+        if (command.DiscountAmount.HasValue && command.DiscountAmount.Value > 0)
+        {
+            discountAmount = Math.Min(command.DiscountAmount.Value, totalBeforeDiscount);
+        }
+        else if (discountPercent > 0)
+        {
+            discountAmount = Math.Round(totalBeforeDiscount * (discountPercent / 100m));
+        }
+
+        var total = Math.Max(0, totalBeforeDiscount - discountAmount);
         var depositPercent = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
         var depositAmount = total * depositPercent / 100m; // Deposit30Percent giữ tên cột cũ nhưng theo tỷ lệ cấu hình
+
+        // Lưu thông tin gói và giảm giá vào Notes và ContractTerms để tái tạo / liên kết đầy đủ
+        var metaPrefix = "";
+        if (package != null || !string.IsNullOrWhiteSpace(command.DiscountCode) || discountAmount > 0)
+        {
+            var metaObj = new
+            {
+                packageId = package?.Id,
+                packageName = package?.PackageName,
+                packagePrice = package?.Price,
+                discountCode = command.DiscountCode,
+                discountAmount = discountAmount,
+                discountPercent = discountPercent
+            };
+            metaPrefix = $"[QUOTATION_META:{JsonSerializer.Serialize(metaObj)}] ";
+        }
+
         var q = new ServiceRequestQuotation
         {
             ServiceRequestId = serviceRequestId, TechnicianUserId = technicianId,
             Subtotal = subtotal, VatPercent = command.Items.Count > 0 ? command.Items[0].VatPercent : 8,
             VatAmount = vatAmount, TotalAmount = total, Deposit30Percent = depositAmount,
-            Remaining70Percent = total - depositAmount, Notes = command.Notes, ContractTerms = command.ContractTerms, Status = "SentToOwner"
+            Remaining70Percent = total - depositAmount,
+            Notes = $"{metaPrefix}{command.Notes}".Trim(),
+            ContractTerms = command.ContractTerms,
+            Status = "SentToOwner"
         };
         foreach (var i in items) q.Items.Add(i);
         db.ServiceRequestQuotations.Add(q);
@@ -779,6 +830,24 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                     ? string.Join(", ", quotation.Items.Select(i => $"{i.Quantity}x {i.HardwareItemName}"))
                     : "Gói thiết bị IoT & Cảm biến vi khí hậu theo hợp đồng dịch vụ";
 
+                var meta = ParseQuotationMeta(quotation.Notes);
+                var cleanNotes = quotation.Notes;
+                if (!string.IsNullOrWhiteSpace(cleanNotes) && cleanNotes.StartsWith("[QUOTATION_META:"))
+                {
+                    var endIdx = cleanNotes.IndexOf("]");
+                    if (endIdx >= 0)
+                    {
+                        cleanNotes = cleanNotes.Substring(endIdx + 1).Trim();
+                    }
+                }
+
+                var packageInfo = meta?.packageName != null
+                    ? $" | Gói duy trì: {meta.packageName} ({meta.packagePrice?.ToString("N0") ?? "0"} đ)"
+                    : "";
+                var discountInfo = (meta?.discountAmount ?? 0m) > 0
+                    ? $" | Giảm giá: -{meta!.discountAmount:N0} đ (Mã: {meta.discountCode ?? "Ưu đãi"})"
+                    : "";
+
                 var zoneContract = new ZoneContract
                 {
                     TenantId = effectiveTenantId,
@@ -791,6 +860,9 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                     MonthlyRentVnd = 0m,
                     DepositVnd = quotation.Deposit30Percent,
                     TotalContractValueVnd = quotation.TotalAmount,
+                    DiscountVnd = meta?.discountAmount ?? 0m,
+                    DiscountPercent = meta?.discountPercent ?? 0m,
+                    ContractPackageId = meta?.packageId,
                     VatPercent = quotation.VatPercent,
                     VatAmountVnd = quotation.VatAmount,
                     EquipmentJson = quotation.Items is { Count: > 0 }
@@ -805,8 +877,8 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                     LesseePhone = signerOwner?.Phone,
                     LesseeAddress = ownerFarmLocation,
                     SignedAtUtc = DateTime.UtcNow,
-                    SpecialTerms = $"Thiết bị bao gồm: {hardwareItems}. Tạm ứng 30%: {quotation.Deposit30Percent:N0} đ, Còn lại 70%: {quotation.Remaining70Percent:N0} đ. Thuế VAT 8%: {quotation.VatAmount:N0} đ.",
-                    Notes = $"[Hợp đồng ký từ Cổng Dịch vụ #{sr.Id.ToString()[..8].ToUpper()}] {quotation.Notes}"
+                    SpecialTerms = $"Thiết bị bao gồm: {hardwareItems}{packageInfo}{discountInfo}. Tạm ứng 30%: {quotation.Deposit30Percent:N0} đ, Còn lại 70%: {quotation.Remaining70Percent:N0} đ. Thuế VAT 8%: {quotation.VatAmount:N0} đ.",
+                    Notes = $"[Hợp đồng ký từ Cổng Dịch vụ #{sr.Id.ToString()[..8].ToUpper()}] {cleanNotes}"
                 };
 
                 // Previous active contracts for this zone become renewed/superseded
@@ -861,11 +933,49 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         return new(payment.Id, payment.PaymentStage, payment.Amount, payment.PaymentMethod, payment.TransactionReference, payment.SignerFullName, payment.Status, payment.PaidAtUtc);
     }
 
-    private static QuotationView ToView(ServiceRequestQuotation q) => new(
-        q.Id, q.ServiceRequestId, q.TechnicianUserId, q.Subtotal, q.VatPercent, q.VatAmount,
-        q.TotalAmount, q.Deposit30Percent, q.Remaining70Percent, q.Notes, q.ContractTerms, q.Status,
-        q.Items.Select(i => new QuotationItemView(i.Id, i.HardwareItemCode, i.HardwareItemName, i.Category, i.Unit, i.Quantity, i.UnitPrice, i.VatPercent, i.TotalAmount, i.Notes)).ToList(),
-        q.CreatedAtUtc);
+    private sealed record QuotationMeta(Guid? packageId, string? packageName, decimal? packagePrice, string? discountCode, decimal? discountAmount, decimal? discountPercent);
+
+    private static QuotationMeta? ParseQuotationMeta(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes) || !notes.StartsWith("[QUOTATION_META:")) return null;
+        var endIdx = notes.IndexOf("]");
+        if (endIdx < 0) return null;
+        var json = notes.Substring("[QUOTATION_META:".Length, endIdx - "[QUOTATION_META:".Length);
+        try
+        {
+            return JsonSerializer.Deserialize<QuotationMeta>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static QuotationView ToView(ServiceRequestQuotation q)
+    {
+        var meta = ParseQuotationMeta(q.Notes);
+        var cleanNotes = q.Notes;
+        if (!string.IsNullOrWhiteSpace(cleanNotes) && cleanNotes.StartsWith("[QUOTATION_META:"))
+        {
+            var endIdx = cleanNotes.IndexOf("]");
+            if (endIdx >= 0)
+            {
+                cleanNotes = cleanNotes.Substring(endIdx + 1).Trim();
+            }
+        }
+
+        return new(
+            q.Id, q.ServiceRequestId, q.TechnicianUserId, q.Subtotal, q.VatPercent, q.VatAmount,
+            q.TotalAmount, q.Deposit30Percent, q.Remaining70Percent, cleanNotes, q.ContractTerms, q.Status,
+            q.Items.Select(i => new QuotationItemView(i.Id, i.HardwareItemCode, i.HardwareItemName, i.Category, i.Unit, i.Quantity, i.UnitPrice, i.VatPercent, i.TotalAmount, i.Notes)).ToList(),
+            q.CreatedAtUtc,
+            meta?.packageId,
+            meta?.packageName,
+            meta?.packagePrice,
+            meta?.discountCode,
+            meta?.discountAmount,
+            meta?.discountPercent);
+    }
 }
 
 // ─── GIS Service ──────────────────────────────────────────────────────────────
