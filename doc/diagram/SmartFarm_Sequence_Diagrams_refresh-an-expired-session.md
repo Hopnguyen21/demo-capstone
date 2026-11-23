@@ -1,0 +1,24 @@
+# Refresh an expired session
+
+Source: `SmartFarm_R4_Sequence_Diagrams_Part2.drawio`.
+
+```mermaid
+flowchart LR
+  title["Refresh an expired session"]
+  source["SmartFarm  /  6c839e3  /  AuthController.cs · AuthService.RefreshAsync"]
+  actor_0["actor-0"]
+  actor_label_0["Signed-in user"]
+  participant_1["«boundary»<br/>:MonitoringRealtime"]
+  participant_2["«controller»<br/>:AuthController"]
+  participant_3["«service»<br/>:AuthService"]
+  participant_4["«persistence»<br/>:SmartFarmDbContext"]
+  frame_0["frame-0"]
+  tab_0["alt"]
+  guard_0["[invalid or revoked token]"]
+  otherwise_0["[preconditions satisfied]"]
+  activation_0["activation-0"]
+  activation_1["activation-1"]
+  activation_2["activation-2"]
+  activation_3["activation-3"]
+  implementation_note["Refresh tokens are stored only as hashes and are rotated on each use."]
+```
