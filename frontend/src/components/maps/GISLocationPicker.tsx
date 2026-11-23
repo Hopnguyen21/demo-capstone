@@ -68,7 +68,7 @@ const createDevicePinIcon = (name: string, isActuator?: boolean, isOnline?: bool
     html: `
       <div style="position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer;">
         <div style="
-          background: ${isOnline ? (isActuator ? '#0284c7' : '#059669') : '#64748b'};
+          background: ${isOnline ? (isActuator ? '#0284c7' : '#059669') : '#dc2626'};
           color: white;
           width: 26px;
           height: 26px;
@@ -1222,7 +1222,9 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
               const isOnline = dev.status === 'ONLINE' || dev.status === 'Online';
               return (
                 <Marker
-                  key={`dev-marker-${dev.id}`}
+                  // Recreate the Leaflet icon when liveness changes; otherwise
+                  // Leaflet can retain the previous green SVG/HTML icon.
+                  key={`dev-marker-${dev.id}-${isOnline ? 'online' : 'offline'}`}
                   position={dev.coords}
                   icon={createDevicePinIcon(dev.code || dev.name, isActuator, isOnline)}
                 >

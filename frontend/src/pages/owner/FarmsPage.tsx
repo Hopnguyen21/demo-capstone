@@ -9,7 +9,7 @@ import { StatusBadge, Button, Modal, Input } from '../../components/ui/BaseUI';
 import {
   Building2, MapPin, Layers, Plus, PlusCircle, ArrowUpRight, ChevronRight, Sprout,
   CornerDownRight, Home, ArrowLeft, Cpu, Activity, Gauge, Sliders, Calendar,
-  Radio, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3, Wrench, Trash2,
+  Radio, Settings2, CheckCircle2, UserCheck, UserX, User, Database, Save, Edit3, Wrench, Trash2,
   Scale, TrendingUp, PackageCheck, Sparkles, AlertCircle, FileText, ShieldCheck,
   Clock, Percent, DollarSign, Tag, History, RefreshCw, AlertTriangle, Link, Award
 } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { GrowthProfilesManager } from '../../components/crops/GrowthProfilesManager';
 import { GISLocationPicker, extractPolygonPoints, toGeoJsonPolygon, calculatePolygonAreaM2, getPolygonCenter } from '../../components/maps/GISLocationPicker';
 import { CF3ControlSection } from '../../components/control/CF3ControlSection';
+import { GatewayConfigModal } from '../../components/control/GatewayConfigModal';
 import { OpenMeteoWeatherWidget } from '../../components/weather/OpenMeteoWeatherWidget';
 import { ZoneContractDetailsModal } from '../../components/contracts/ZoneContractDetailsModal';
 import { ZoneContractRenewModal } from '../../components/contracts/ZoneContractRenewModal';
@@ -178,6 +179,8 @@ export const FarmsPage: React.FC = () => {
 
   // Drill-down State Hierarchy: Farm ➔ Field ➔ Zone
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
+  const [selectedZoneGateway, setSelectedZoneGateway] = useState<any | null>(null);
+  const [showZoneGatewayConfig, setShowZoneGatewayConfig] = useState(false);
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
 
@@ -289,6 +292,20 @@ export const FarmsPage: React.FC = () => {
 
       telemetryService.getRealtime(zid).then(setZoneLatest).catch(() => setZoneLatest(null));
 
+      // Gateway phục vụ Zone: chỉ dùng để hiển thị trạng thái và cấu hình vận hành;
+      // không cho đổi quan hệ Gateway–Node tại màn hình này.
+      deviceService.getGateways(selectedFarm?.farmId).then(async (items: any[]) => {
+        const gateways = Array.isArray(items) ? items : [];
+        const zoneNodes = await deviceService.getNodes(zid).catch(() => []);
+        const gateway = gateways.find((g: any) =>
+          Array.isArray(g.configuredNodeIds) && zoneNodes.some((n: any) =>
+            g.configuredNodeIds.some((id: string) => String(id) === String(n.deviceId || n.id)))
+        ) || gateways[0] || null;
+        if (!gateway) { setSelectedZoneGateway(null); return; }
+        const mqtt = await deviceService.getGatewayMqttStatus(gateway.gatewayId || gateway.id).catch(() => null);
+        setSelectedZoneGateway({ ...gateway, mqttConnected: mqtt?.mqttConnected === true });
+      }).catch(() => setSelectedZoneGateway(null));
+
       // Fetch mapped nodes for this zone so Owner can view them on the GIS map and Live Telemetry card
       supportService.getMappedNodes(zid).then(async mapped => {
         if (Array.isArray(mapped) && mapped.length > 0) {
@@ -378,14 +395,13 @@ export const FarmsPage: React.FC = () => {
   const selectedZoneNodes = nodes.filter(n =>
     n.zoneId === selectedZone?.zoneId || n.zoneId === (selectedZone as any)?.id
   );
-  // Never show cached telemetry while every node is offline. The latest API
-  // response may contain the last persisted reading, but it is not a live
-  // reading unless the backend marks it fresh and a node is currently online.
+  // Keep the last persisted reading for continuity, but distinguish it from
+  // live data whenever all mapped nodes are offline.
   const telemetryIsLive = selectedZoneNodes.some(n => n.status === 'ONLINE')
     && zoneLatest?.hasFreshTelemetry === true;
-  const displayedZoneMetrics = telemetryIsLive
-    ? (visibleZoneMetrics.length > 0 ? visibleZoneMetrics : (zoneLatest?.metrics || []))
-    : [];
+  const displayedZoneMetrics = visibleZoneMetrics.length > 0
+    ? visibleZoneMetrics
+    : (zoneLatest?.metrics || []);
 
   // Deep-linking from OwnerDashboard, SupportPage or other pages
   const handledDeepLinkRef = React.useRef<string | null>(null);
@@ -1948,6 +1964,49 @@ export const FarmsPage: React.FC = () => {
                     />
                   </div>
 
+                  {/* Gateway phục vụ Zone: cấu hình vận hành, không thay đổi gán Node */}
+                  <div className={`hidden p-4 rounded-2xl shadow-xs border-2 ${selectedZoneGateway?.mqttConnected ? 'bg-emerald-50/40 border-emerald-200' : 'bg-rose-50/40 border-rose-200'}`}>
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${selectedZoneGateway?.mqttConnected ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                          <Radio size={20} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-slate-900 text-sm">Gateway phục vụ Zone</h4>
+                            {selectedZoneGateway && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedZoneGateway.mqttConnected ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                              {selectedZoneGateway.mqttConnected ? 'ĐANG ONLINE' : 'ĐANG OFFLINE'}
+                            </span>}
+                          </div>
+                          {selectedZoneGateway ? (
+                            <div className="text-[11px] text-slate-600 font-mono mt-0.5">
+                              Serial: {selectedZoneGateway.gatewaySerial || selectedZoneGateway.serialNumber || '—'} · MAC: {selectedZoneGateway.macAddress || '—'}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-500">Chưa có Gateway được gán cho Zone này.</div>
+                          )}
+                        </div>
+                      </div>
+                      {selectedZoneGateway && (
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowZoneGatewayConfig(true)}>
+                            <Settings2 size={13} className="mr-1" /> Cấu hình cơ bản
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    {selectedZoneGateway && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mt-4 text-[11px]">
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200"><span className="text-slate-500 block">MQTT</span><strong className={selectedZoneGateway.mqttConnected ? 'text-emerald-700' : 'text-rose-700'}>{selectedZoneGateway.mqttConnected ? 'Online' : 'Offline'}</strong></div>
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200"><span className="text-slate-500 block">Config</span><strong>v{selectedZoneGateway.configVersion || 1}</strong></div>
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200"><span className="text-slate-500 block">Firmware</span><strong>{selectedZoneGateway.firmwareVersion || '—'}</strong></div>
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200"><span className="text-slate-500 block">Node đã gán</span><strong>{selectedZoneGateway.configuredNodeIds?.length ?? selectedZoneGateway.connectedNodes ?? 0}</strong></div>
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200"><span className="text-slate-500 block">Gửi dữ liệu</span><strong>{selectedZoneGateway.telemetryIntervalSec || 60}s</strong></div>
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200"><span className="text-slate-500 block">Last seen</span><strong>{selectedZoneGateway.lastSeenAtUtc ? new Date(selectedZoneGateway.lastSeenAtUtc).toLocaleTimeString('vi-VN') : '—'}</strong></div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Card 2: Thông tin Node & Cảm biến Trả về của Zone này (Đặt ngay dưới Vị trí GIS Map của Zone này) */}
                   <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
                     <div className="flex items-center justify-between">
@@ -1960,7 +2019,10 @@ export const FarmsPage: React.FC = () => {
                     </div>
 
                     <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
-                      <div className="text-[11px] font-bold text-emerald-900">Số đo mới nhất của Zone (tổng hợp từ các cảm biến, không phải từng node)</div>
+                      <div className="text-[11px] font-bold text-emerald-900 flex items-center justify-between gap-2">
+                        <span>{telemetryIsLive ? 'Telemetry Live của Zone' : 'Số đo cuối cùng của Zone (không phải dữ liệu Live)'}</span>
+                        {!telemetryIsLive && displayedZoneMetrics.length > 0 && <span className="text-[10px] text-amber-700">Node Offline</span>}
+                      </div>
                       {displayedZoneMetrics.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                           {displayedZoneMetrics.map((m: any) => (
@@ -1975,7 +2037,7 @@ export const FarmsPage: React.FC = () => {
                       ) : (
                         <div className="text-[11px] text-slate-500">
                           {selectedZoneNodes.length > 0 && !telemetryIsLive
-                            ? 'Node đang offline hoặc chưa có bản tin mới. Không hiển thị số đo cũ.'
+                            ? 'Node đang offline và chưa có số đo cuối cùng để hiển thị.'
                             : 'Chưa có số đo của Zone này (hoặc chưa tải được).'}
                         </div>
                       )}
@@ -2066,6 +2128,26 @@ export const FarmsPage: React.FC = () => {
 
                 {/* Right Column: Crop Stage, Yield Tracking, and Employee Assignment */}
                 <div className="space-y-5">
+                  {/* Gateway is kept beside Zone information so Live Telemetry remains visible in the left column. */}
+                  <div className={`p-4 rounded-2xl shadow-xs border-2 ${selectedZoneGateway?.mqttConnected ? 'bg-emerald-50/40 border-emerald-200' : 'bg-rose-50/40 border-rose-200'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 ${selectedZoneGateway?.mqttConnected ? 'bg-emerald-600' : 'bg-rose-600'}`}><Radio size={18} /></div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap"><h4 className="font-bold text-slate-900 text-sm">Gateway phục vụ Zone</h4>{selectedZoneGateway && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white ${selectedZoneGateway.mqttConnected ? 'bg-emerald-600' : 'bg-rose-600'}`}>{selectedZoneGateway.mqttConnected ? 'ONLINE' : 'OFFLINE'}</span>}</div>
+                          <div className="text-[10px] text-slate-600 font-mono truncate">{selectedZoneGateway ? `${selectedZoneGateway.gatewaySerial || 'Gateway'} · ${selectedZoneGateway.macAddress || '—'}` : 'Chưa có Gateway gán cho Zone'}</div>
+                        </div>
+                      </div>
+                      {selectedZoneGateway && <Button size="sm" variant="outline" className="text-[11px] shrink-0" onClick={() => setShowZoneGatewayConfig(true)}><Settings2 size={12} className="mr-1" />Cấu hình</Button>}
+                    </div>
+                    {selectedZoneGateway && <div className="grid grid-cols-2 gap-2 mt-3 text-[10px]">
+                      <div className="p-2 bg-white rounded-lg border border-slate-200"><span className="text-slate-500 block">Config</span><strong>v{selectedZoneGateway.configVersion || 1}</strong></div>
+                      <div className="p-2 bg-white rounded-lg border border-slate-200"><span className="text-slate-500 block">Firmware</span><strong>{selectedZoneGateway.firmwareVersion || '—'}</strong></div>
+                      <div className="p-2 bg-white rounded-lg border border-slate-200"><span className="text-slate-500 block">Node đã gán</span><strong>{selectedZoneGateway.configuredNodeIds?.length ?? selectedZoneGateway.connectedNodes ?? 0}</strong></div>
+                      <div className="p-2 bg-white rounded-lg border border-slate-200"><span className="text-slate-500 block">Last seen</span><strong>{selectedZoneGateway.lastSeenAtUtc ? new Date(selectedZoneGateway.lastSeenAtUtc).toLocaleTimeString('vi-VN') : '—'}</strong></div>
+                    </div>}
+                  </div>
+
                   {/* Crop Info Card */}
                   <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
                     <div className="flex items-center justify-between">
@@ -3012,6 +3094,22 @@ export const FarmsPage: React.FC = () => {
       )}
 
       {/* Modal Add Field inside Selected Farm */}
+      {selectedZoneGateway && (
+        <GatewayConfigModal
+          isOpen={showZoneGatewayConfig}
+          onClose={() => setShowZoneGatewayConfig(false)}
+          gateway={selectedZoneGateway}
+          onSuccess={async () => {
+            const id = selectedZoneGateway.gatewayId || selectedZoneGateway.id;
+            const [gateway, mqtt] = await Promise.all([
+              deviceService.getGatewayById(id).catch(() => selectedZoneGateway),
+              deviceService.getGatewayMqttStatus(id).catch(() => null),
+            ]);
+            setSelectedZoneGateway({ ...gateway, mqttConnected: mqtt?.mqttConnected === true });
+          }}
+        />
+      )}
+
       <Modal isOpen={showAddFieldModal} title={`Thêm Phân khu Lô đất Mới vào "${selectedFarm?.name || 'Trang trại'}"`} onClose={() => setShowAddFieldModal(false)}>
         <div className="space-y-4 text-xs">
           <div className={`p-3 rounded-xl text-xs flex justify-between items-center ${farmAvailableArea <= 0 ? 'bg-red-50 border border-red-200 text-red-900' : 'bg-sky-50 border border-sky-200 text-sky-900'

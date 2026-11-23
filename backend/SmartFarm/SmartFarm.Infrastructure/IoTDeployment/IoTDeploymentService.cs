@@ -370,8 +370,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
     public async Task<GatewayView> GetGatewayAsync(Guid userId, Guid? tenantId, Guid gatewayId, CancellationToken ct) { var g = await db.Gateways.AsNoTracking().Include(x => x.Devices).Include(x => x.Farm).SingleOrDefaultAsync(x => x.Id == gatewayId, ct) ?? throw new ResourceNotFoundException("Gateway was not found."); await EnsureHardwareReadAsync(userId, tenantId, g.Farm.TenantId, g.DeploymentRequestId, ct); return g.ToView(); }
     public async Task<GatewayFirmwareConfigView> GetFirmwareConfigAsync(Guid technicianId, Guid gatewayId, CancellationToken ct)
     {
-        await EnsureTechnicianAsync(technicianId, ct);
-        var gateway = await TechnicianGatewayAsync(technicianId, gatewayId, ct);
+        var gateway = await GatewayForConfigurationAsync(technicianId, gatewayId, ct);
         // Query by the FK explicitly. This must not depend on the navigation
         // collection being populated by a previous tracked Gateway instance.
         // Provisioned-but-not-yet-GIS-assigned nodes still belong here.
@@ -422,8 +421,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
     }
     public async Task<GatewayView> ConfigureGatewayAsync(Guid technicianId, Guid gatewayId, GatewayConfigurationCommand command, CancellationToken ct)
     {
-        await EnsureTechnicianAsync(technicianId, ct);
-        var gateway = await TechnicianGatewayAsync(technicianId, gatewayId, ct) ?? throw new ResourceNotFoundException("Gateway was not found for this Technician.");
+        var gateway = await GatewayForConfigurationAsync(technicianId, gatewayId, ct);
         if (command.TelemetryIntervalSec is < 10 or > 86400) throw new RequestValidationException("telemetryIntervalSec", "Telemetry interval must be between 10 and 86400 seconds.");
         if (command.SamplesPerInterval is < 1 or > 60) throw new RequestValidationException("samplesPerInterval", "Samples per interval must be between 1 and 60.");
         var nodeIds = command.NodeIds.Distinct().ToList();
@@ -863,7 +861,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         return await db.DeviceComponents.AsNoTracking().Include(x => x.HardwareItem).Where(x => x.DeviceId == deviceId)
             .Select(x => new DeviceComponentView(x.Id, x.DeviceId, x.HardwareItemId, x.HardwareItem.Code, x.HardwareItem.Name, x.ComponentType, x.Quantity, x.Unit, x.Notes)).ToListAsync(ct);
     }
-    public async Task<DeviceView> ConfigureActuatorsAsync(Guid technicianId, Guid deviceId, IReadOnlyList<ActuatorInput> actuators, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var d = await TechnicianDeviceAsync(technicianId, deviceId, ct); if (d.DeviceType != DeviceType.ActuatorNode) throw new ResourceConflictException("Only an ActuatorNode accepts actuator configuration."); if (actuators.Count == 0 || actuators.Any(x => x.RelayChannel is < 1 or > 8 || x.MaxDurationMinutes is < 1 or > 30 || x.RatedPowerWatt is <= 0 || x.FlowRateLitersPerMinute is <= 0) || actuators.GroupBy(x => x.RelayChannel).Any(g => g.Count() > 1)) throw new RequestValidationException("actuators", "Relay channels must be unique (1–8), duration must be 1–30 minutes, and optional power/flow ratings must be positive."); db.DeviceActuators.RemoveRange(d.Actuators); db.DeviceActuators.AddRange(actuators.Select(x => new DeviceActuator { DeviceId = d.Id, ActuatorType = Required(x.ActuatorType, "actuatorType", 50), RelayChannel = x.RelayChannel, RatedPowerWatt = x.RatedPowerWatt, FlowRateLitersPerMinute = x.FlowRateLitersPerMinute, MaxDurationMinutes = x.MaxDurationMinutes })); d.Status = DeviceStatus.ActuatorsConfigured; await db.SaveChangesAsync(ct); return await LoadDeviceAsync(d.Id, ct); }
+    public async Task<DeviceView> ConfigureActuatorsAsync(Guid technicianId, Guid deviceId, IReadOnlyList<ActuatorInput> actuators, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var d = await TechnicianDeviceAsync(technicianId, deviceId, ct); if (actuators.Count == 0 || actuators.Any(x => x.RelayChannel is < 1 or > 8 || x.MaxDurationMinutes is < 1 or > 30 || x.RatedPowerWatt is <= 0 || x.FlowRateLitersPerMinute is <= 0) || actuators.GroupBy(x => x.RelayChannel).Any(g => g.Count() > 1)) throw new RequestValidationException("actuators", "Relay channels must be unique (1–8), duration must be 1–30 minutes, and optional power/flow ratings must be positive."); db.DeviceActuators.RemoveRange(d.Actuators); db.DeviceActuators.AddRange(actuators.Select(x => new DeviceActuator { DeviceId = d.Id, ActuatorType = Required(x.ActuatorType, "actuatorType", 50), RelayChannel = x.RelayChannel, RatedPowerWatt = x.RatedPowerWatt, FlowRateLitersPerMinute = x.FlowRateLitersPerMinute, MaxDurationMinutes = x.MaxDurationMinutes })); d.Status = DeviceStatus.ActuatorsConfigured; await db.SaveChangesAsync(ct); return await LoadDeviceAsync(d.Id, ct); }
     public async Task<DeviceView> AssignAsync(Guid technicianId, Guid zoneId, Guid deviceId, AssignDeviceCommand command, CancellationToken ct) { await EnsureTechnicianAsync(technicianId, ct); var d = await TechnicianDeviceAsync(technicianId, deviceId, ct); var r = await TechnicianRequestAsync(technicianId, d.DeploymentRequestId, ct); EnsureStatus(r, DeploymentRequestStatus.Installing); if (r.ZoneId != zoneId || d.FarmId != r.FarmId) throw new ResourceNotFoundException("Zone is outside the Device Deployment Request."); if (d.ZoneId.HasValue || d.Status is DeviceStatus.Assigned or DeviceStatus.Offline) throw new ResourceConflictException("Device is already assigned."); if (d.Status is not (DeviceStatus.SensorsConfigured or DeviceStatus.ActuatorsConfigured or DeviceStatus.Online)) throw new ResourceConflictException("Device must complete Hardware Preparation and peripheral configuration before GIS assignment."); var latestTest = await db.DeviceConnectionTests.Where(x => x.DeviceId == d.Id).OrderByDescending(x => x.ObservedAtUtc).FirstOrDefaultAsync(ct); if (latestTest?.Succeeded != true) throw new ResourceConflictException("Device must have a successful latest connectivity test before GIS assignment."); if (d.DeviceModelDefinitionId is null || !r.PlanItems.Any(x => x.DeviceModelDefinitionId == d.DeviceModelDefinitionId)) throw new ResourceConflictException("Device Model is not in the confirmed deployment plan."); var assignedCount = await db.Devices.CountAsync(x => x.DeploymentRequestId == r.Id && x.ZoneId == zoneId && x.DeviceModelDefinitionId == d.DeviceModelDefinitionId, ct); var planned = r.PlanItems.Single(x => x.DeviceModelDefinitionId == d.DeviceModelDefinitionId).Quantity; if (assignedCount >= planned) throw new ResourceConflictException("Confirmed quantity for this Device Model is already assigned.");         d.ZoneId = zoneId;
         // Cho phép gán thiết bị vào Zone theo hợp đồng và kế hoạch triển khai đã duyệt
         d.Status = DeviceStatus.Assigned;
@@ -1167,6 +1165,18 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         // Gateway của trang trại do đợt lắp đặt trước kích hoạt: KTV đang có yêu cầu xử lý ở chính trang trại đó cũng được dùng/cấu hình.
         var inFarmScope = !assignedToDeployment && !assignedToService && (await TechnicianFarmScope.LoadAsync(db, tech, ct)).Contains(gateway.FarmId);
         if (!assignedToDeployment && !assignedToService && !inFarmScope) throw new ResourceNotFoundException("Gateway was not found for this Technician.");
+        return gateway;
+    }
+    private async Task<Gateway> GatewayForConfigurationAsync(Guid userId, Guid id, CancellationToken ct)
+    {
+        var gateway = await db.Gateways.Include(x => x.Devices).Include(x => x.DeploymentRequest)
+            .SingleOrDefaultAsync(x => x.Id == id, ct)
+            ?? throw new ResourceNotFoundException("Gateway was not found.");
+        var user = await UserAsync(userId, ct);
+        if (user.Role is UserRole.FarmOwner or UserRole.Farmer)
+            await EnsureFarmReadAsync(userId, user.TenantId, gateway.FarmId, ct);
+        else
+            await TechnicianGatewayAsync(userId, id, ct);
         return gateway;
     }
     private async Task<Device> TechnicianDeviceAsync(Guid tech, Guid id, CancellationToken ct) => await DeviceQuery().SingleOrDefaultAsync(x => x.Id == id && (x.DeploymentRequest.TechnicianUserId == tech || db.ServiceRequests.Any(s => s.DeploymentRequestId == x.DeploymentRequestId && s.AssignedTechnicianId == tech)), ct) ?? throw new ResourceNotFoundException("Device was not found for this Technician.");

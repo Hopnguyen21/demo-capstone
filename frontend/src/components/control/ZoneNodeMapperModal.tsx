@@ -612,8 +612,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   );
   const [selectedSensorCodes, setSelectedSensorCodes] = useState<string[]>([]);
   const [componentConfigTab, setComponentConfigTab] = useState<
-    "SENSORS" | "COMPONENTS"
+    "SENSORS" | "ACTUATORS" | "COMPONENTS"
   >("SENSORS");
+  const [selectedActuators, setSelectedActuators] = useState<any[]>([]);
   const [selectedComponentQuantities, setSelectedComponentQuantities] =
     useState<Record<string, number>>({});
   const [gateways, setGateways] = useState<any[]>([]);
@@ -2100,6 +2101,13 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         .filter(Boolean),
     );
     setSelectedComponentQuantities({});
+    setSelectedActuators((node as any).actuators?.length ? (node as any).actuators.map((a: any) => ({
+      actuatorType: a.actuatorType || "RELAY",
+      relayChannel: Number(a.relayChannel || 1),
+      ratedPowerWatt: Number(a.ratedPowerWatt || 1),
+      flowRateLitersPerMinute: Number(a.flowRateLitersPerMinute || 1),
+      maxDurationMinutes: Number(a.maxDurationMinutes || 30),
+    })) : [{ actuatorType: "RELAY", relayChannel: 1, ratedPowerWatt: 1, flowRateLitersPerMinute: 1, maxDurationMinutes: 30 }]);
     deviceService
       .getComponents(node.nodeId)
       .then((rows: any[]) => {
@@ -2117,7 +2125,26 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     // the user presses Save, so reopening must reload the last saved config.
     setSelectedSensorCodes([]);
     setSelectedComponentQuantities({});
+    setSelectedActuators([]);
     setSensorConfigNode(null);
+  };
+
+  const saveActuatorConfiguration = async () => {
+    if (!sensorConfigNode?.nodeId || selectedActuators.length === 0) return;
+    try {
+      await deviceService.configureActuators(sensorConfigNode.nodeId, selectedActuators.map((a: any) => ({
+        actuatorType: String(a.actuatorType || "RELAY"),
+        relayChannel: Number(a.relayChannel),
+        ratedPowerWatt: Number(a.ratedPowerWatt),
+        flowRateLitersPerMinute: Number(a.flowRateLitersPerMinute),
+        maxDurationMinutes: Number(a.maxDurationMinutes),
+      })));
+      setSensorConfigNode(null);
+      setSuccessToast(`Đã lưu ${selectedActuators.length} actuator cho Node [${sensorConfigNode.nodeCode}].`);
+      setTimeout(() => setSuccessToast(null), 3000);
+    } catch (error: any) {
+      alert(error?.response?.data?.detail || "Không thể lưu cấu hình relay/actuator.");
+    }
   };
 
   const saveComponentConfiguration = async () => {
@@ -3028,6 +3055,13 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             </Button>
             <Button
               type="button"
+              variant={componentConfigTab === "ACTUATORS" ? "primary" : "outline"}
+              onClick={() => setComponentConfigTab("ACTUATORS")}
+            >
+              Rơ-le / Actuator
+            </Button>
+            <Button
+              type="button"
               variant={
                 componentConfigTab === "COMPONENTS" ? "primary" : "outline"
               }
@@ -3099,6 +3133,22 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                 >
                   Lưu cấu hình cảm biến
                 </Button>
+              </div>
+            </>
+          ) : componentConfigTab === "ACTUATORS" ? (
+            <>
+              <p className="text-slate-600">Khai báo relay thật gắn trên Node. Kênh này phải trùng với firmware Node.</p>
+              <div className="border rounded-lg divide-y">
+                {selectedActuators.map((actuator, index) => (
+                  <div key={index} className="grid grid-cols-2 gap-2 p-3">
+                    <input className="border rounded p-2" placeholder="Tên relay" value={actuator.actuatorType} onChange={e => setSelectedActuators(rows => rows.map((r, i) => i === index ? { ...r, actuatorType: e.target.value } : r))} />
+                    <input className="border rounded p-2" type="number" min={1} max={8} placeholder="Kênh" value={actuator.relayChannel} onChange={e => setSelectedActuators(rows => rows.map((r, i) => i === index ? { ...r, relayChannel: Number(e.target.value) } : r))} />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 border-t pt-3">
+                <Button type="button" variant="outline" onClick={closeSensorConfiguration}>Hủy</Button>
+                <Button type="button" className="bg-emerald-600 text-white" onClick={saveActuatorConfiguration}>Lưu cấu hình actuator</Button>
               </div>
             </>
           ) : (

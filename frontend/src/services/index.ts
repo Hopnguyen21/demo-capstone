@@ -1015,6 +1015,10 @@ export const deviceService = {
     const res = await apiClient.put(`/api/v1/devices/${deviceId}/components`, { components });
     return res.data?.value ?? res.data ?? [];
   },
+  configureActuators: async (deviceId: string, actuators: Array<{ actuatorType: string; relayChannel: number; ratedPowerWatt?: number; flowRateLitersPerMinute?: number; maxDurationMinutes: number }>) => {
+    const res = await apiClient.put(`/api/v1/devices/${deviceId}/actuators`, { actuators });
+    return res.data?.value ?? res.data;
+  },
 
   /** GET /api/v1/zones/{zoneId}/sensors -> derived from zone devices */
   getSensors: async (zoneId?: string) => {
