@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useBusinessParameters } from '../../services/businessParameters';
 import { Modal, Button, Input } from '../ui/BaseUI';
 import { ServiceRequest, QuotationItem } from '../../types';
-import { supportService, adminService } from '../../services';
+import { supportService, adminService, contractPackageService, discountService } from '../../services';
+import { ContractPackage, DiscountCode } from '../../types';
 import {
   FileText, Send, CheckCircle2, ShieldCheck, Info,
   Package, DollarSign, Calculator, Cpu, Sparkles, Building2, User, Lock,
-  Plus, Search, Warehouse, Boxes, Check, ArrowRight
+  Plus, Search, Warehouse, Boxes, Check, ArrowRight, Tag, Layers, RefreshCw
 } from 'lucide-react';
 
 export interface HardwareItem {
@@ -282,17 +283,153 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
     setQuotationItems(prev => prev.filter(item => item.id !== id));
   };
 
-  const [applyRepeatDiscount, setApplyRepeatDiscount] = useState<boolean>(true);
+  // Contract Packages & Maintenance
+  const [contractPackages, setContractPackages] = useState<ContractPackage[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState<string>('');
+  const [loadingPackages, setLoadingPackages] = useState(false);
+
+  // Discount Codes
+  const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
+  const [discountInputCode, setDiscountInputCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<{
+    code: string;
+    percent: number;
+    amount: number;
+    description?: string;
+  } | null>(null);
+  const [discountMessage, setDiscountMessage] = useState<string | null>(null);
+  const [isCheckingDiscount, setIsCheckingDiscount] = useState(false);
+
+  // Legacy Repeat Discount checkbox toggle
+  const [applyRepeatDiscount, setApplyRepeatDiscount] = useState<boolean>(false);
   const [repeatDiscountPercent, setRepeatDiscountPercent] = useState<number>(15);
 
+  useEffect(() => {
+    if (isOpen) {
+      setLoadingPackages(true);
+      contractPackageService.getAll(true, false)
+        .then(pkgs => {
+          const list = Array.isArray(pkgs) ? pkgs : [];
+          setContractPackages(list);
+        })
+        .catch(err => console.warn('Could not fetch contract packages', err))
+        .finally(() => setLoadingPackages(false));
+
+      discountService.getAll(true)
+        .then(codes => {
+          const list = Array.isArray(codes) ? codes : [];
+          setDiscountCodes(list);
+        })
+        .catch(err => console.warn('Could not fetch discount codes', err));
+    }
+  }, [isOpen]);
+
+  const selectedPackage = contractPackages.find(p => p.id === selectedPackageId);
+  const packagePrice = selectedPackage ? Number(selectedPackage.price || 0) : 0;
+
   const selectedItems = quotationItems.filter(i => i.isSelected);
-  const subtotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
-  const vatTotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity * (i.vatPercent / 100)), 0);
+  const hardwareSubtotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
+  const hardwareVatTotal = selectedItems.reduce((acc, i) => acc + (i.unitPrice * i.quantity * (i.vatPercent / 100)), 0);
+
+  // Tạm tính (Subtotal) = Tiền thiết bị chưa VAT + Giá gói dịch vụ duy trì
+  const subtotal = hardwareSubtotal + packagePrice;
+  const vatTotal = hardwareVatTotal;
   const grandTotalBeforeDiscount = subtotal + vatTotal;
-  const discountAmount = applyRepeatDiscount ? Math.round(grandTotalBeforeDiscount * (repeatDiscountPercent / 100)) : 0;
+
+  // Tính chiết khấu
+  const discountAmount = useMemo(() => {
+    if (appliedDiscount && appliedDiscount.amount > 0) {
+      return Math.min(appliedDiscount.amount, grandTotalBeforeDiscount);
+    }
+    if (appliedDiscount && appliedDiscount.percent > 0) {
+      return Math.round(grandTotalBeforeDiscount * (appliedDiscount.percent / 100));
+    }
+    if (applyRepeatDiscount && repeatDiscountPercent > 0) {
+      return Math.round(grandTotalBeforeDiscount * (repeatDiscountPercent / 100));
+    }
+    return 0;
+  }, [appliedDiscount, applyRepeatDiscount, repeatDiscountPercent, grandTotalBeforeDiscount]);
+
+  const discountPercent = useMemo(() => {
+    if (appliedDiscount && appliedDiscount.percent > 0) {
+      return appliedDiscount.percent;
+    }
+    if (applyRepeatDiscount) {
+      return repeatDiscountPercent;
+    }
+    if (grandTotalBeforeDiscount > 0 && discountAmount > 0) {
+      return Math.round((discountAmount / grandTotalBeforeDiscount) * 100);
+    }
+    return 0;
+  }, [appliedDiscount, applyRepeatDiscount, repeatDiscountPercent, discountAmount, grandTotalBeforeDiscount]);
+
   const grandTotal = Math.max(0, grandTotalBeforeDiscount - discountAmount);
   const deposit30 = Math.round(grandTotal * depositPct / 100);
   const remaining70 = grandTotal - deposit30;
+
+  const handleApplyDiscountCode = async (codeToValidate?: string) => {
+    const code = (codeToValidate ?? discountInputCode).trim().toUpperCase();
+    if (!code) {
+      setAppliedDiscount(null);
+      setDiscountMessage(null);
+      return;
+    }
+    setIsCheckingDiscount(true);
+    setDiscountMessage(null);
+    try {
+      const res = await discountService.validateCode(code, grandTotalBeforeDiscount);
+      if (res && res.isValid) {
+        setAppliedDiscount({
+          code: res.code,
+          percent: res.discountPercent,
+          amount: res.discountAmount,
+          description: res.message
+        });
+        setApplyRepeatDiscount(false);
+        setDiscountMessage(`✅ ${res.message || 'Mã giảm giá hợp lệ!'}`);
+      } else {
+        setAppliedDiscount(null);
+        setDiscountMessage(`⚠️ ${res?.message || 'Mã giảm giá không hợp lệ hoặc không đủ điều kiện.'}`);
+      }
+    } catch (err: any) {
+      setAppliedDiscount(null);
+      setDiscountMessage('Lỗi khi kiểm tra mã giảm giá.');
+    } finally {
+      setIsCheckingDiscount(false);
+    }
+  };
+
+  const handleAutoApplyBestDiscount = async () => {
+    setIsCheckingDiscount(true);
+    setDiscountMessage(null);
+    try {
+      const res = await discountService.getBestDiscount(grandTotalBeforeDiscount);
+      if (res && res.hasDiscount) {
+        setAppliedDiscount({
+          code: res.code,
+          percent: res.discountPercent,
+          amount: res.discountAmount,
+          description: res.description
+        });
+        setDiscountInputCode(res.code);
+        setApplyRepeatDiscount(false);
+        setDiscountMessage(res.note || `🎉 Đã áp dụng mã tốt nhất: [${res.code}] giảm ${res.discountAmount.toLocaleString('vi-VN')} đ!`);
+      } else {
+        setAppliedDiscount(null);
+        setDiscountMessage('ℹ️ Giá trị hợp đồng hiện tại chưa đủ điều kiện áp dụng mã giảm giá nào.');
+      }
+    } catch (err) {
+      setDiscountMessage('Không thể tìm mã giảm giá phù hợp.');
+    } finally {
+      setIsCheckingDiscount(false);
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+    setAppliedDiscount(null);
+    setDiscountInputCode('');
+    setDiscountMessage(null);
+  };
 
   const handleSendContract = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,20 +437,28 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
       alert('🔒 Hợp đồng đã được Chủ trang trại ký kết và thanh toán cọc. Kỹ thuật viên không được phép chỉnh sửa hợp đồng.');
       return;
     }
-    if (selectedItems.length === 0) {
-      alert('⚠️ Vui lòng chọn ít nhất 1 sản phẩm/thiết bị để lập Báo giá & Hợp đồng!');
+    if (selectedItems.length === 0 && !selectedPackageId) {
+      alert('⚠️ Vui lòng chọn ít nhất 1 sản phẩm/thiết bị hoặc 1 Gói dịch vụ duy trì để lập Báo giá & Hợp đồng!');
       return;
     }
 
-    const finalNotes = applyRepeatDiscount && discountAmount > 0
-      ? `${contractNote} [Ưu đãi mua lần 2 trong 2 tháng: Giảm ${repeatDiscountPercent}% (-${discountAmount.toLocaleString('vi-VN')} VNĐ)].`
-      : contractNote;
+    let discountNote = '';
+    if (appliedDiscount && discountAmount > 0) {
+      discountNote = ` [Áp dụng mã ưu đãi ${appliedDiscount.code}: Giảm ${discountAmount.toLocaleString('vi-VN')} VNĐ (${discountPercent}%)].`;
+    } else if (applyRepeatDiscount && discountAmount > 0) {
+      discountNote = ` [Ưu đãi mua lần 2 trong 2 tháng: Giảm ${repeatDiscountPercent}% (-${discountAmount.toLocaleString('vi-VN')} VNĐ)].`;
+    }
+
+    const packageNote = selectedPackage ? ` [Gói duy trì: ${selectedPackage.packageName} (${packagePrice.toLocaleString('vi-VN')} VNĐ)].` : '';
+    const finalNotes = `${contractNote}${packageNote}${discountNote}`.trim();
 
     await supportService.sendContract(request.serviceRequestId, {
       items: selectedItems,
       subtotal,
       vatTotal,
-      discountPercent: applyRepeatDiscount ? repeatDiscountPercent : 0,
+      contractPackageId: selectedPackageId || null,
+      discountCode: appliedDiscount?.code || (applyRepeatDiscount ? 'REPEAT_PURCHASE' : null),
+      discountPercent: discountPercent,
       discountAmount,
       totalAmount: grandTotal,
       deposit30Percent: deposit30,
@@ -551,21 +696,165 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
           </div>
         </div>
 
-        {/* Discount 2nd purchase within 2 months option */}
-        <div className="p-3 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400 rounded-xl space-y-1.5 text-xs text-amber-950 shadow-xs">
+        {/* Contract Package Selection (Gói dịch vụ duy trì canh tác) */}
+        <div className="space-y-2 p-3 bg-gradient-to-r from-emerald-50/70 via-teal-50/50 to-white border border-emerald-200 rounded-xl">
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 font-bold cursor-pointer select-none">
+            <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+              <Layers size={15} className="text-[#119653]" /> Gói Dịch Vụ Canh Tác / Bảo Trì Hệ Thống
+            </h4>
+            <span className="text-[11px] text-slate-500 italic">
+              {loadingPackages ? 'Đang tải gói...' : `${contractPackages.length} gói khả dụng`}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div>
+              <select
+                value={selectedPackageId}
+                onChange={e => setSelectedPackageId(e.target.value)}
+                disabled={isLocked}
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              >
+                <option value="">-- Không đăng ký kèm gói dịch vụ (Chỉ mua thiết bị) --</option>
+                {contractPackages.map(pkg => (
+                  <option key={pkg.id} value={pkg.id}>
+                    {pkg.packageName} - {Number(pkg.price || 0).toLocaleString('vi-VN')} đ ({pkg.durationMonths || 12} tháng, tối đa {pkg.maxZones || 1} Zone)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedPackage ? (
+              <div className="p-2 bg-emerald-100/60 border border-emerald-300 rounded-lg flex items-center justify-between text-xs text-emerald-950">
+                <div>
+                  <div className="font-bold flex items-center gap-1">
+                    <CheckCircle2 size={13} className="text-emerald-700" />
+                    <span>{selectedPackage.packageName}</span>
+                  </div>
+                  <div className="text-[10px] text-emerald-800 line-clamp-1">
+                    {selectedPackage.description || `Thời hạn: ${selectedPackage.durationMonths || 12} tháng | Hỗ trợ tối đa ${selectedPackage.maxZones || 1} phân khu`}
+                  </div>
+                </div>
+                <div className="text-right font-mono font-bold text-emerald-900 text-sm shrink-0 ml-2">
+                  +{packagePrice.toLocaleString('vi-VN')} đ
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-slate-500 text-xs flex items-center justify-center">
+                <span>Chọn gói dịch vụ để cộng vào hóa đơn hợp đồng</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Discount Section: System Codes or 2nd Purchase Discount */}
+        <div className="p-3 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border-2 border-amber-400 rounded-xl space-y-2 text-xs text-amber-950 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold flex items-center gap-1.5 text-xs text-amber-950 uppercase tracking-wide">
+              <Tag size={15} className="text-amber-700" /> Áp dụng Mã Giảm Giá & Ưu Đãi Hợp Đồng
+            </span>
+            {appliedDiscount && (
+              <button
+                type="button"
+                onClick={handleRemoveDiscount}
+                disabled={isLocked}
+                className="text-[11px] text-rose-600 hover:text-rose-800 font-bold hover:underline"
+              >
+                Gỡ bỏ mã
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+            <div className="md:col-span-5 flex items-center gap-1.5">
+              <input
+                type="text"
+                value={discountInputCode}
+                onChange={e => setDiscountInputCode(e.target.value.toUpperCase())}
+                placeholder="Nhập mã giảm giá (ví dụ: TET2026, VIP10...)"
+                disabled={isLocked}
+                className="w-full p-1.5 bg-white border border-amber-300 rounded-lg font-mono font-bold text-slate-900 uppercase placeholder:normal-case placeholder:font-normal text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isLocked || isCheckingDiscount || !discountInputCode.trim()}
+                onClick={() => handleApplyDiscountCode()}
+                className="shrink-0 bg-white hover:bg-amber-50 text-amber-900 border-amber-400 font-bold text-[11px] py-1 px-2.5"
+              >
+                {isCheckingDiscount ? 'Kiểm tra...' : 'Áp dụng'}
+              </Button>
+            </div>
+
+            <div className="md:col-span-4 flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={isLocked || isCheckingDiscount}
+                onClick={handleAutoApplyBestDiscount}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] flex items-center gap-1 py-1 px-2.5 shadow-2xs"
+              >
+                <Sparkles size={13} /> Tìm mã tốt nhất
+              </Button>
+            </div>
+
+            <div className="md:col-span-3 text-right">
+              {appliedDiscount && (
+                <div className="font-mono font-bold text-emerald-800 text-sm">
+                  -{(discountAmount).toLocaleString('vi-VN')} đ ({discountPercent}%)
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick pick from active system discount codes */}
+          {discountCodes.length > 0 && !appliedDiscount && (
+            <div className="pt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="text-slate-600 font-medium">Mã gợi ý:</span>
+              {discountCodes.slice(0, 4).map(dc => {
+                const isPercent = dc.discountType === 'Percentage' || dc.discountType === 1;
+                const badgeText = isPercent ? `-${dc.discountValue}%` : `-${Number(dc.discountValue || 0).toLocaleString('vi-VN')}đ`;
+                return (
+                  <button
+                    key={dc.id}
+                    type="button"
+                    onClick={() => {
+                      setDiscountInputCode(dc.code);
+                      handleApplyDiscountCode(dc.code);
+                    }}
+                    disabled={isLocked}
+                    className="px-2 py-0.5 rounded bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 font-mono font-bold transition-colors cursor-pointer"
+                  >
+                    {dc.code} ({badgeText})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {discountMessage && (
+            <p className="text-[11px] font-medium leading-snug">
+              {discountMessage}
+            </p>
+          )}
+
+          {/* Fallback Checkbox: Ưu đãi mua lần 2 */}
+          <div className="pt-2 border-t border-amber-300/60 flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={applyRepeatDiscount}
                 disabled={isLocked}
-                onChange={e => setApplyRepeatDiscount(e.target.checked)}
+                onChange={e => {
+                  setApplyRepeatDiscount(e.target.checked);
+                  if (e.target.checked) setAppliedDiscount(null);
+                }}
                 className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
               />
-              <Sparkles size={16} className="text-amber-600 animate-pulse" />
-              <span>🎉 ƯU ĐÃI ĐẶC QUYỀN: Giảm giá Mua lần 2 trong vòng 2 tháng</span>
+              <span className="font-semibold text-slate-800">Hoặc áp dụng Ưu đãi Mua lần 2 trong vòng 2 tháng:</span>
             </label>
-            <div className="flex items-center gap-1.5 font-bold">
+            <div className="flex items-center gap-1 font-bold">
               <span>Mức giảm:</span>
               <input
                 type="number"
@@ -574,39 +863,42 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                 value={repeatDiscountPercent}
                 disabled={isLocked || !applyRepeatDiscount}
                 onChange={e => setRepeatDiscountPercent(Number(e.target.value))}
-                className="w-14 p-1 bg-white border border-amber-300 rounded text-center font-bold text-amber-800"
+                className="w-12 p-0.5 bg-white border border-amber-300 rounded text-center font-bold text-amber-800"
               />
               <span>%</span>
             </div>
           </div>
-          {applyRepeatDiscount && (
-            <p className="text-[11px] text-amber-900 leading-snug">
-              Áp dụng chính sách chiết khấu <strong>{repeatDiscountPercent}%</strong> trực tiếp vào đơn hàng/hợp đồng cho khách hàng mua lần thứ 2 trong vòng 60 ngày!
-            </p>
-          )}
         </div>
 
         {/* Contract Financial Summary Box */}
         <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-emerald-200 rounded-xl space-y-2">
           <div className="flex items-center justify-between text-slate-700 text-xs">
-            <span>Tiền hàng chưa thuế:</span>
-            <span className="font-mono font-semibold">{subtotal.toLocaleString('vi-VN')} VNĐ</span>
+            <span>Tiền thiết bị IoT (chưa VAT):</span>
+            <span className="font-mono font-semibold">{hardwareSubtotal.toLocaleString('vi-VN')} VNĐ</span>
           </div>
+          {selectedPackage && (
+            <div className="flex items-center justify-between text-emerald-800 text-xs font-medium">
+              <span>+ Phí gói dịch vụ duy trì ({selectedPackage.packageName}):</span>
+              <span className="font-mono font-semibold">{packagePrice.toLocaleString('vi-VN')} VNĐ</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-slate-700 text-xs">
-            <span>Thuế VAT (8%):</span>
+            <span>Thuế VAT thiết bị (8%):</span>
             <span className="font-mono font-semibold">{vatTotal.toLocaleString('vi-VN')} VNĐ</span>
           </div>
-          {applyRepeatDiscount && discountAmount > 0 && (
+          {discountAmount > 0 && (
             <div className="flex items-center justify-between text-purple-700 text-xs font-semibold bg-purple-50/70 p-1.5 rounded-lg border border-purple-200">
               <span className="flex items-center gap-1">
                 <Sparkles size={13} className="text-amber-500" />
-                <span>• Chiết khấu Mua lần 2 trong 2 tháng ({repeatDiscountPercent}%):</span>
+                <span>
+                  • Chiết khấu ưu đãi {appliedDiscount ? `[${appliedDiscount.code}]` : 'Mua lần 2'} ({discountPercent}%):
+                </span>
               </span>
               <span className="font-mono font-bold text-purple-800">-{discountAmount.toLocaleString('vi-VN')} VNĐ</span>
             </div>
           )}
           <div className="flex items-center justify-between text-sm font-bold text-slate-900 pt-1.5 border-t border-emerald-200">
-            <span>TỔNG GIÁ TRỊ HỢP ĐỒNG:</span>
+            <span>TỔNG GIÁ TRỊ HỢP ĐỒNG (BILL):</span>
             <span className="font-mono text-emerald-950 text-base">{grandTotal.toLocaleString('vi-VN')} VNĐ</span>
           </div>
 

@@ -39,7 +39,14 @@ public static class QuotationDefaults
 }
 /// <summary>Bản nháp báo giá dựng từ dự toán Owner đã lưu kèm Deployment Request. Kỹ thuật viên chỉnh sửa rồi gửi bằng POST quotation.</summary>
 public sealed record QuotationEstimateDraftView(Guid ServiceRequestId, Guid DeploymentRequestId, decimal VatPercent, IReadOnlyList<QuotationItemInput> Items, decimal Subtotal, decimal Total);
-public sealed record CreateQuotationCommand(IReadOnlyList<QuotationItemInput> Items, string? Notes, string? ContractTerms);
+public sealed record CreateQuotationCommand(
+    IReadOnlyList<QuotationItemInput> Items,
+    string? Notes,
+    string? ContractTerms,
+    Guid? ContractPackageId = null,
+    string? DiscountCode = null,
+    decimal? DiscountAmount = null,
+    decimal? DiscountPercent = null);
 
 public sealed record QuotationItemView(Guid Id, string Code, string Name, string Category, string Unit, int Quantity, decimal UnitPrice, decimal VatPercent, decimal TotalAmount, string? Notes);
 public sealed record QuotationView(
@@ -56,7 +63,13 @@ public sealed record QuotationView(
     string? ContractTerms,
     string Status,
     IReadOnlyList<QuotationItemView> Items,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    Guid? ContractPackageId = null,
+    string? ContractPackageName = null,
+    decimal? PackagePrice = null,
+    string? DiscountCode = null,
+    decimal? DiscountAmount = null,
+    decimal? DiscountPercent = null);
 
 // ─── Contract Signing & Payments ──────────────────────────────────────────────
 public sealed record SignContractDepositCommand(string SignerFullName, string PaymentMethod, string? TransactionReference, string? Notes, decimal? ExpectedDepositAmount = null);

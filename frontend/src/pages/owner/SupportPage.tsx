@@ -1095,8 +1095,29 @@ export const SupportPage: React.FC = () => {
                               </div>
                             )}
 
+                            {contract.contractPackageName && (
+                              <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-50/60 p-2 rounded-lg border border-emerald-200">
+                                <span className="flex items-center gap-1.5">
+                                  <span>📦 Gói Dịch Vụ Canh Tác / Bảo Trì:</span>
+                                  <strong>{contract.contractPackageName}</strong>
+                                </span>
+                                <span className="font-mono">+{Number(contract.packagePrice || 0).toLocaleString('vi-VN')} VNĐ</span>
+                              </div>
+                            )}
+
+                            {contract.discountAmount && contract.discountAmount > 0 && (
+                              <div className="flex justify-between text-purple-800 font-semibold bg-purple-50/60 p-2 rounded-lg border border-purple-200">
+                                <span className="flex items-center gap-1.5">
+                                  <span>🏷️ Mã Giảm Giá / Ưu Đãi:</span>
+                                  <strong className="font-mono">[{contract.discountCode || 'Ưu đãi'}]</strong>
+                                  {contract.discountPercent ? <span>({contract.discountPercent}%)</span> : null}
+                                </span>
+                                <span className="font-mono">-{Number(contract.discountAmount).toLocaleString('vi-VN')} VNĐ</span>
+                              </div>
+                            )}
+
                             <div className="flex justify-between text-slate-600">
-                              <span>Tổng cộng chi phí (đã gồm VAT 8%):</span>
+                              <span>Tổng cộng chi phí (đã gồm VAT 8% & chiết khấu):</span>
                               <strong className="font-mono text-slate-900 font-bold">{contract.totalAmount.toLocaleString('vi-VN')} VNĐ</strong>
                             </div>
 

@@ -570,6 +570,12 @@ export interface ContractDetails {
   payment30Ref?: string;
   notes?: string;
   contractTerms?: string;
+  contractPackageId?: string;
+  contractPackageName?: string;
+  packagePrice?: number;
+  discountCode?: string;
+  discountAmount?: number;
+  discountPercent?: number;
 }
 
 export interface AcceptanceDetails {
