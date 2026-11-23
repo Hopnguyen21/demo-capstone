@@ -137,7 +137,10 @@ public sealed class MqttBrokerHost(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "MQTT telemetry rejected from {ClientId} on {Topic}.", args.ClientId, message.Topic);
+                var validation = ex is SmartFarm.Application.Common.Exceptions.RequestValidationException vex
+                    ? string.Join("; ", vex.Errors.SelectMany(item => item.Value.Select(error => $"{item.Key}: {error}")))
+                    : ex.Message;
+                logger.LogError(ex, "MQTT telemetry rejected from {ClientId} on {Topic}: {Validation}.", args.ClientId, message.Topic, validation);
             }
         }
         else if (message.Topic.EndsWith("/actuator-feedback", StringComparison.Ordinal))

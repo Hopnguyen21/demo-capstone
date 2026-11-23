@@ -80,9 +80,12 @@ public sealed class TelemetryAlertService(
                 throw new RequestValidationException("readings", $"{reading.ParameterCode} is not declared on this Node.");
             if (season is not null)
             {
-                if (!requirements.TryGetValue(reading.ParameterCode, out var requirement))
-                    throw new RequestValidationException("readings", $"{reading.ParameterCode} is not required by the current Growth Stage.");
-                if (!string.Equals(requirement.Unit, reading.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
+                // A declared physical sensor may report telemetry even when the
+                // current Growth Stage has no threshold for that parameter.
+                // Growth-stage requirements constrain alerts/automation, not
+                // whether raw measurements may be stored.
+                if (requirements.TryGetValue(reading.ParameterCode, out var requirement) &&
+                    !string.Equals(requirement.Unit, reading.Unit.Trim(), StringComparison.OrdinalIgnoreCase))
                     throw new RequestValidationException("readings", $"Unit for {reading.ParameterCode} must be '{requirement.Unit}'.");
             }
             ValidateRange(reading);
@@ -135,7 +138,10 @@ public sealed class TelemetryAlertService(
         var activeZone = zone!;
         foreach (var input in envelope.Readings)
         {
-            var requirement = requirements[input.ParameterCode];
+            // No growth-stage requirement means: store the reading, but do not
+            // invent a system alert rule or evaluate automation for it.
+            if (!requirements.TryGetValue(input.ParameterCode, out var requirement))
+                continue;
             var rules = await db.AlertRules
                 .Where(x => x.ZoneId == envelope.ZoneId && x.GrowthStageId == activeSeason.CurrentGrowthStageId &&
                             x.ParameterCode == input.ParameterCode && x.ArchivedAtUtc == null && x.IsActive)
@@ -407,7 +413,6 @@ public sealed class TelemetryAlertService(
     public async Task ArchiveRuleAsync(Guid ownerId, Guid tenantId, Guid zoneId, Guid ruleId, CancellationToken ct)
     {
         await EnsureOwnerZoneAsync(ownerId, tenantId, zoneId, ct); var rule = await RuleAsync(zoneId, ruleId, ct);
-        if (rule.IsSystemGenerated) throw new ResourceConflictException("System rules cannot be archived.");
         rule.ArchivedAtUtc = clock.GetUtcNow().UtcDateTime; rule.IsActive = false; await db.SaveChangesAsync(ct);
     }
 

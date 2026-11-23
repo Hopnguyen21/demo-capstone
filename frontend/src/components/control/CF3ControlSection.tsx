@@ -26,6 +26,7 @@ export interface CF3ControlSectionProps {
   subtitle?: string;
   defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null;
   nodes?: any[];
+  gatewayOnline?: boolean;
 }
 
 export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
@@ -37,6 +38,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   subtitle,
   defaultTab = null,
   nodes,
+  gatewayOnline = false,
 }) => {
   const { zones: authZones } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null>(defaultTab);
@@ -69,7 +71,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
 
   // Never present a decorative "online" state.  The control surface may only
   // claim a live gateway when the API has supplied an explicit MQTT heartbeat.
-  const hasLiveGateway = (nodes || []).some((node: any) =>
+  const hasLiveGateway = gatewayOnline || (nodes || []).some((node: any) =>
     node?.mqttConnected === true ||
     node?.gatewayConnected === true ||
     String(node?.gatewayStatus || '').toUpperCase() === 'ONLINE'
@@ -290,7 +292,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       )}
 
       {/* Modern High-End Executive Control Section Header */}
-      <div className="relative bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] p-6 rounded-3xl border border-emerald-400/30 text-white shadow-lg overflow-hidden">
+      <div className="relative bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] p-5 md:p-6 rounded-3xl border border-emerald-400/30 text-white shadow-lg overflow-hidden">
         {/* Subtle decorative glow */}
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-300/10 rounded-full blur-3xl pointer-events-none" />
@@ -322,7 +324,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           {/* Main Title & Action Buttons Row */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
             <div className="space-y-1">
-              <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <h2 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
                 {title || `Điều khiển & Lịch tưới Vi khí hậu cho ${scopeLabel}`}
               </h2>
               <p className="text-xs md:text-sm text-emerald-100 max-w-2xl leading-relaxed">
@@ -365,22 +367,22 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
         </div>
       </div>
 
-      {/* 4 Interactive Feature Cards Arranged Vertically ("để dọc") */}
-      <div className="flex flex-col gap-3">
+      {/* Four feature cards: compact dashboard grid for faster scanning. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* 1. Cảnh báo Zone */}
         <div
           role="button"
           tabIndex={0}
           onClick={() => setActiveSubTab('ALERTS')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('ALERTS'); }}
-          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer min-h-[122px] overflow-hidden ${
             activeSubTab === 'ALERTS'
               ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-300 shadow-md'
               : 'bg-white hover:bg-rose-50/30 border-slate-200/90 hover:border-rose-300 shadow-xs hover:shadow-sm'
           }`}
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-500/20 group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-500/20 group-hover:scale-105 transition-transform">
               <ShieldAlert size={22} />
             </div>
             <div>
@@ -392,7 +394,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                   Giám sát 24/7
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+              <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                 Theo dõi các vi phạm ngưỡng nhiệt độ, độ ẩm đất, rủi ro ngập úng và kích hoạt quy trình ứng phó.
               </p>
             </div>
@@ -413,14 +415,14 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           tabIndex={0}
           onClick={() => setActiveSubTab('ACTUATORS')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('ACTUATORS'); }}
-          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer min-h-[122px] overflow-hidden ${
             activeSubTab === 'ACTUATORS'
               ? 'bg-emerald-50/90 border-[#119653] ring-2 ring-emerald-300 shadow-md'
               : 'bg-white hover:bg-emerald-50/30 border-slate-200/90 hover:border-emerald-300 shadow-xs hover:shadow-sm'
           }`}
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-[#119653] text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-[#119653] text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 group-hover:scale-105 transition-transform">
               <Power size={22} />
             </div>
             <div>
@@ -432,7 +434,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                   {actuators.length} Thiết bị
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+              <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                 Bật/tắt thủ công Bơm, Quạt làm mát, Đèn quang hợp và Van tưới LoRa kèm bảo vệ Hardware Failsafe.
               </p>
             </div>
@@ -453,14 +455,14 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           tabIndex={0}
           onClick={() => setActiveSubTab('ENV_PARAMS')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('ENV_PARAMS'); }}
-          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer min-h-[122px] overflow-hidden ${
             activeSubTab === 'ENV_PARAMS'
               ? 'bg-sky-50/90 border-sky-400 ring-2 ring-sky-300 shadow-md'
               : 'bg-white hover:bg-sky-50/30 border-slate-200/90 hover:border-sky-300 shadow-xs hover:shadow-sm'
           }`}
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-sky-500/20 group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-sky-500/20 group-hover:scale-105 transition-transform">
               <Sliders size={22} />
             </div>
             <div>
@@ -472,14 +474,14 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                   Ngưỡng Canh tác
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+              <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                 Thiết lập dải độ ẩm đất, nhiệt độ, độ ẩm không khí và cường độ ánh sáng tối ưu cho cây trồng.
               </p>
             </div>
           </div>
           <div className="mt-3 sm:mt-0 flex items-center justify-between sm:justify-end gap-3 pl-16 sm:pl-0">
             <span className="text-xs font-semibold text-sky-700">
-              4 Chỉ số Mục tiêu
+              Theo dữ liệu Node
             </span>
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-sky-600 group-hover:bg-sky-700 shadow-xs transition-all">
               Mở thẻ <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
@@ -493,14 +495,14 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           tabIndex={0}
           onClick={() => setActiveSubTab('SCHEDULES')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveSubTab('SCHEDULES'); }}
-          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-4.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer min-h-[122px] overflow-hidden ${
             activeSubTab === 'SCHEDULES'
               ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300 shadow-md'
               : 'bg-white hover:bg-amber-50/30 border-slate-200/90 hover:border-amber-300 shadow-xs hover:shadow-sm'
           }`}
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/20 group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/20 group-hover:scale-105 transition-transform">
               <Calendar size={22} />
             </div>
             <div>
@@ -512,7 +514,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                   {schedules.length + autoRules.length} Lịch & Luật
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+              <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                 Lịch tưới Sáng-Trưa-Chiều đồng bộ VietGAP kèm các bộ luật kích hoạt rơ-le theo cảm biến thực tế.
               </p>
             </div>

@@ -6,7 +6,7 @@ import {
   X, ChevronDown, ChevronUp, Play, Pause, RefreshCw, Power, Info, Sparkles, AlertOctagon, HelpCircle
 } from 'lucide-react';
 import { Button, StatusBadge, Modal } from '../ui/BaseUI';
-import { alertService, deviceService } from '../../services';
+import { alertService, controlService, deviceService, telemetryService, seasonService } from '../../services';
 import { useAuth } from '@/app/providers/AuthContext';
 import { Alert, AlertRule as DomainAlertRule } from '../../types';
 
@@ -31,6 +31,9 @@ interface AlertRule {
   severity: 'WARNING' | 'CRITICAL';
   action: string;
   enabled: boolean;
+  actuatorId?: string;
+  actionMode?: 'TurnOn' | 'TurnOff';
+  durationSeconds?: number;
 }
 
 interface LiveAlert {
@@ -94,14 +97,19 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
   useEffect(() => {
     if (passedNodes && passedNodes.length > 0) {
-      setInternalNodes(passedNodes);
+      const scoped = zoneId
+        ? passedNodes.filter((node: any) => node.zoneId === zoneId || node.ZoneId === zoneId)
+        : passedNodes;
+      setInternalNodes(scoped);
       return;
     }
     deviceService.getNodes(zoneId).then(data => {
       if (Array.isArray(data)) {
         if (zoneId) {
           const matched = data.filter((d: any) => d.zoneId === zoneId || (d as any).id === zoneId);
-          setInternalNodes(matched.length > 0 ? matched : data);
+          // Never fall back to nodes from another Zone. An empty match means
+          // this Zone has no identifiable node configuration yet.
+          setInternalNodes(matched);
         } else {
           setInternalNodes(data);
         }
@@ -109,60 +117,59 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
     }).catch(() => { });
   }, [zoneId, passedNodes]);
 
-  // Compute active metrics matching ONLY actual connected nodes/modules
-  const activeMetrics = React.useMemo(() => {
-    if (!internalNodes || internalNodes.length === 0) {
-      return METRICS;
-    }
-
-    const detected = new Set<string>();
-    detected.add('battery'); // Always include battery for active IoT nodes
-
-    internalNodes.forEach(node => {
-      const text = [
-        node.name,
-        node.category,
-        node.deviceType,
-        node.model,
-        node.manufacturer,
-        node.nodeCode,
-        ...(Array.isArray(node.sensors) ? node.sensors.map((s: any) => typeof s === 'string' ? s : (s.sensorType || s.name || '')) : [])
-      ].filter(Boolean).join(' ').toLowerCase();
-
-      // Temperature detection
-      if (text.includes('nhiệt') || text.includes('temp') || text.includes('sht') || text.includes('dht') || text.includes('bme') || text.includes('air') || text.includes('khí hậu')) {
-        detected.add('temperature');
-      }
-      // Humidity detection
-      if (text.includes('ẩm kk') || text.includes('độ ẩm') || text.includes('humid') || text.includes('sht') || text.includes('dht') || text.includes('bme') || text.includes('air') || text.includes('khí hậu')) {
-        detected.add('humidity');
-      }
-      // Soil moisture detection
-      if (text.includes('đất') || text.includes('soil') || text.includes('fdr') || text.includes('rs485')) {
-        detected.add('soil_moisture');
-      }
-      // Light detection
-      if (text.includes('sáng') || text.includes('light') || text.includes('lux') || text.includes('bh1750') || text.includes('solar') || text.includes('quang')) {
-        detected.add('light');
-      }
-      // CO2 detection
-      if (text.includes('co2') || text.includes('scd') || text.includes('carbon') || text.includes('khí co2')) {
-        detected.add('co2');
-      }
-    });
-
-    const filtered = METRICS.filter(m => detected.has(m.key));
-    return filtered.length > 0 ? filtered : METRICS;
-  }, [internalNodes]);
+  // Cards are driven only by measurements actually returned by telemetry.
+  const [telemetryMetricKeys, setTelemetryMetricKeys] = useState<Set<string>>(new Set());
+  const activeMetrics = React.useMemo(
+    () => METRICS.filter(metric => telemetryMetricKeys.has(metric.key)),
+    [telemetryMetricKeys]
+  );
 
   const activeMetricKeys = React.useMemo(() => new Set(activeMetrics.map(m => m.key)), [activeMetrics]);
 
-  const [rules, setRules] = useState<AlertRule[]>(() => {
-    if (zoneId) {
-      return DEFAULT_ZONE_RULES.filter(r => r.zoneId === zoneId || r.zoneId === 'all');
-    }
-    return DEFAULT_ZONE_RULES;
-  });
+  const [rules, setRules] = useState<AlertRule[]>([]);
+
+  const metricToParameter: Record<string, string> = {
+    temperature: 'Temperature',
+    soil_moisture: 'SoilMoisture',
+    humidity: 'AirHumidity',
+    light: 'LightIntensity',
+  };
+
+  const parameterToMetric: Record<string, string> = {
+    Temperature: 'temperature',
+    SoilMoisture: 'soil_moisture',
+    AirHumidity: 'humidity',
+    LightIntensity: 'light',
+  };
+
+  // Rules in this panel must come from the backend; the old implementation
+  // only changed React state, so nothing was persisted or evaluated by IoT.
+  useEffect(() => {
+    if (!zoneId) return;
+    alertService.getAlertRules(zoneId).then((items: any[]) => {
+      if (!Array.isArray(items)) return;
+      setRules(items.map(item => {
+        const metric = parameterToMetric[item.parameterCode] || item.parameterCode;
+        const md = METRICS.find(x => x.key === metric);
+        return {
+          id: item.ruleId,
+          name: `${md?.label || metric} - Cảnh báo ngưỡng`,
+          metric,
+          unit: md?.unit || '',
+          minThreshold: Number(item.minThreshold),
+          maxThreshold: Number(item.maxThreshold),
+          zone: targetZone?.name || 'Zone hiện tại',
+          zoneId,
+          severity: item.severity === 'Critical' ? 'CRITICAL' : 'WARNING',
+          action: 'Gửi cảnh báo an toàn Zone',
+          enabled: item.isActive !== false,
+        };
+      }));
+    }).catch(err => {
+      console.error('Không tải được luật cảnh báo Zone:', err);
+      setRules([]);
+    });
+  }, [zoneId, targetZone?.name]);
 
   const displayRules = React.useMemo(() => {
     return rules.filter(r => activeMetricKeys.has(r.metric));
@@ -181,15 +188,20 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
   const [activeActions, setActiveActions] = useState<Record<string, { action: string; since: string }>>({});
-  const [sensorValues, setSensorValues] = useState<Record<string, number>>(() =>
-    Object.fromEntries(METRICS.map(m => [m.key, m.baseVal]))
-  );
+  const [sensorValues, setSensorValues] = useState<Record<string, number>>({});
 
   const [simRunning, setSimRunning] = useState(true);
   const [simExpanded, setSimExpanded] = useState(false);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [ruleForm, setRuleForm] = useState<Partial<AlertRule>>({});
+  const [ruleSaveError, setRuleSaveError] = useState<string | null>(null);
+  const [zoneActuators, setZoneActuators] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!zoneId) return;
+    controlService.getActuators(zoneId).then(setZoneActuators).catch(() => setZoneActuators([]));
+  }, [zoneId]);
 
   // AI assistant popup modal state
   const [aiAdviceModalAlert, setAiAdviceModalAlert] = useState<Alert | LiveAlert | null>(null);
@@ -240,30 +252,38 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
   useEffect(() => {
     checkRules(sensorValues);
-  }, [checkRules]);
+  }, [checkRules, sensorValues]);
 
+  // Read the same latest telemetry used by the rest of the farm UI. Never
+  // synthesize values here: missing/stale telemetry must remain missing/stale.
   useEffect(() => {
-    if (!simRunning) return;
-    const t = setInterval(() => {
-      tickRef.current += 1;
-      setSensorValues(prev => {
+    if (!zoneId || !simRunning) return;
+    let cancelled = false;
+    const loadTelemetry = async () => {
+      try {
+        const latest = await telemetryService.getRealtime(zoneId);
+        if (cancelled) return;
         const next: Record<string, number> = {};
-        activeMetrics.forEach(m => {
-          // slight drift simulation
-          const current = prev[m.key] ?? m.baseVal;
-          const drift = current * (1 + (Math.random() * 0.002 - 0.001));
-          next[m.key] = parseFloat(Math.min(m.max, Math.max(m.min, drift)).toFixed(2));
+        (latest.metrics || []).forEach((metric: any) => {
+          const code = String(metric.parameterCode || '').toLowerCase();
+          const key = code === 'temperature' ? 'temperature' : code === 'airhumidity' ? 'humidity' : code === 'soilmoisture' ? 'soil_moisture' : code === 'lightintensity' ? 'light' : null;
+          if (key && Number.isFinite(Number(metric.value)) && metric.isFresh !== false) next[key] = Number(metric.value);
         });
-        checkRules(next);
-        return { ...prev, ...next };
-      });
-    }, 5000);
-    return () => clearInterval(t);
-  }, [simRunning, checkRules, activeMetrics]);
+        setTelemetryMetricKeys(new Set(Object.keys(next)));
+        setSensorValues(next);
+      } catch (err) {
+        if (!cancelled) console.error('Không tải được telemetry thật cho cảnh báo:', err);
+      }
+    };
+    void loadTelemetry();
+    const timer = window.setInterval(loadTelemetry, 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [zoneId, simRunning]);
 
   const openNewRule = () => {
     const firstMetric = activeMetrics[0] || METRICS[0];
     setEditingRule(null);
+    setRuleSaveError(null);
     setRuleForm({
       name: '',
       metric: firstMetric.key,
@@ -274,6 +294,9 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       zoneId: zoneId || 'zone-01',
       severity: 'WARNING',
       action: firstMetric.key === 'temperature' ? 'Bật quạt đối lưu & Phun sương' : firstMetric.key === 'humidity' ? 'Bật phun sương vi khí hậu' : 'Bật máy bơm tưới',
+      actuatorId: zoneActuators[0]?.actuatorId,
+      actionMode: 'TurnOn',
+      durationSeconds: 60,
       enabled: true,
     });
     setShowRuleModal(true);
@@ -281,12 +304,16 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
   const openEditRule = (r: AlertRule) => {
     setEditingRule(r);
+    setRuleSaveError(null);
     setRuleForm({ ...r });
     setShowRuleModal(true);
   };
 
-  const saveRule = () => {
-    if (!ruleForm.name) return;
+  const saveRule = async () => {
+    if (!ruleForm.name?.trim()) {
+      setRuleSaveError('Vui lòng nhập Tên Quy tắc Cảnh báo.');
+      return;
+    }
     const m = activeMetrics.find(x => x.key === ruleForm.metric) || METRICS.find(x => x.key === ruleForm.metric);
     const rule: AlertRule = {
       id: editingRule?.id || `r-${Date.now()}`,
@@ -300,10 +327,83 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       severity: (ruleForm.severity as any) || 'WARNING',
       action: ruleForm.action || '',
       enabled: ruleForm.enabled ?? true,
+      actuatorId: ruleForm.actuatorId,
+      actionMode: ruleForm.actionMode || 'TurnOn',
+      durationSeconds: Number(ruleForm.durationSeconds || 60),
     };
 
-    setRules(prev => editingRule ? prev.map(r => r.id === editingRule.id ? rule : r) : [...prev, rule]);
-    setShowRuleModal(false);
+    try {
+      if (!zoneId) throw new Error('Zone chưa được xác định.');
+      if (!rule.actuatorId) throw new Error('Zone chưa có actuator/relay được chọn.');
+      // The alert-rule API is intentionally tied to the active Growth Stage.
+      // Check it here so the modal reports the real prerequisite instead of
+      // showing ASP.NET's generic validation title.
+      const seasons = await seasonService.getSeasons(zoneId);
+      const activeSeason = (seasons || []).find((s: any) => s.status === 'ACTIVE' || s.status === 'InProgress');
+      if (!activeSeason) throw new Error('Zone chưa có vụ mùa đang canh tác. Hãy bắt đầu vụ mùa trước khi tạo quy tắc.');
+      const payload = {
+        parameterCode: metricToParameter[rule.metric] || 'Temperature',
+        minThreshold: rule.minThreshold,
+        maxThreshold: rule.maxThreshold,
+        severity: rule.severity === 'CRITICAL' ? 'Critical' : 'Warning',
+        cooldownMinutes: 30,
+        isActive: rule.enabled,
+      };
+      if (editingRule && /^[0-9a-f-]{36}$/i.test(editingRule.id)) {
+        await alertService.updateAlertRule(zoneId, editingRule.id, payload);
+      } else {
+        await alertService.createAlertRule(zoneId, payload);
+      }
+      // The alert rule stores the threshold; the existing control-rule engine
+      // performs the real relay/LoRa action. Link both threshold directions to
+      // the first actuator in this Zone so the action field is operational.
+      const actuators = await controlService.getActuators(zoneId);
+      const actuator = (actuators || []).find((item: any) => item.actuatorId === rule.actuatorId) || (actuators || []).find((item: any) => Number(item.relayChannel ?? 1) === 1) || actuators?.[0];
+      if (actuator && !editingRule) {
+        const parameterCode = metricToParameter[rule.metric] || 'Temperature';
+        const base = {
+          parameterCode,
+          conditionDurationMinutes: 1,
+          actuatorId: actuator.actuatorId,
+          action: rule.actionMode || 'TurnOn',
+          durationSeconds: Math.max(1, Math.min(1800, Number(rule.durationSeconds || 60))),
+          priority: rule.severity === 'CRITICAL' ? 1 : 2,
+          cooldownMinutes: 30,
+          enableRainDelay: true,
+          rainThresholdPercent: 70,
+          isActive: rule.enabled,
+        };
+        await controlService.createAutoRule(zoneId, {
+          ...base,
+          name: `${rule.name} (vượt MAX)`,
+          operator: 'GreaterThan',
+          threshold: rule.maxThreshold,
+        });
+        await controlService.createAutoRule(zoneId, {
+          ...base,
+          name: `${rule.name} (dưới MIN)`,
+          operator: 'LessThan',
+          threshold: rule.minThreshold,
+        });
+      }
+      const refreshed = await alertService.getAlertRules(zoneId);
+      setRules((refreshed || []).map((item: any) => {
+        const metric = parameterToMetric[item.parameterCode] || item.parameterCode;
+        const md = METRICS.find(x => x.key === metric);
+        return { id: item.ruleId, name: `${md?.label || metric} - Cảnh báo ngưỡng`, metric, unit: md?.unit || '', minThreshold: Number(item.minThreshold), maxThreshold: Number(item.maxThreshold), zone: targetZone?.name || 'Zone hiện tại', zoneId, severity: item.severity === 'Critical' ? 'CRITICAL' : 'WARNING', action: 'Gửi cảnh báo an toàn Zone', enabled: item.isActive !== false };
+      }));
+      setShowRuleModal(false);
+    } catch (err: any) {
+      console.error('Không lưu được luật cảnh báo Zone:', err);
+      const data = err?.response?.data;
+      const validation = data?.errors
+        ? Object.entries(data.errors)
+            .flatMap(([field, messages]: [string, any]) => (Array.isArray(messages) ? messages : [messages]).map(message => `${field}: ${message}`))
+            .join(' ')
+        : '';
+      const detail = validation || data?.detail || data?.title || data?.message || err?.message || 'Không thể lưu luật cảnh báo.';
+      setRuleSaveError(String(detail));
+    }
   };
 
   const activeLiveCount = liveAlerts.filter(a => !a.acked).length;
@@ -350,7 +450,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       {/* Sensor Live Gauge Chips matching active node sensors */}
       <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-${Math.min(6, Math.max(2, activeMetrics.length))} gap-3`}>
         {activeMetrics.map(m => {
-          const val = sensorValues[m.key] ?? m.baseVal;
+          const val = sensorValues[m.key];
           const Icon = m.icon;
           const violatingRule = rules.find(r => r.enabled && r.metric === m.key && (val < r.minThreshold || val > r.maxThreshold));
 
@@ -369,7 +469,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
               <div className="flex items-baseline justify-between">
                 <span className={`text-base font-extrabold font-mono ${violatingRule ? 'text-rose-700' : 'text-slate-900'}`}>
-                  {fmtVal(val, m.key)}
+                  {val === undefined ? '—' : fmtVal(val, m.key)}
                   <span className="text-xs font-normal text-slate-500 ml-0.5">{m.unit}</span>
                 </span>
               </div>
@@ -495,7 +595,23 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                 >
                   {/* Toggle Switch */}
                   <button
-                    onClick={() => setRules(prev => prev.map(r => r.id === rule.id ? { ...r, enabled: !r.enabled } : r))}
+                    onClick={async () => {
+                      const enabled = !rule.enabled;
+                      setRules(prev => prev.map(r => r.id === rule.id ? { ...r, enabled } : r));
+                      if (zoneId && /^[0-9a-f-]{36}$/i.test(rule.id)) {
+                        try {
+                          await alertService.updateAlertRule(zoneId, rule.id, {
+                            minThreshold: rule.minThreshold,
+                            maxThreshold: rule.maxThreshold,
+                            severity: rule.severity === 'CRITICAL' ? 'Critical' : 'Warning',
+                            cooldownMinutes: 30,
+                            isActive: enabled,
+                          });
+                        } catch (err) {
+                          console.error('Không cập nhật được trạng thái luật cảnh báo:', err);
+                        }
+                      }
+                    }}
                     className={`w-9 h-5 rounded-full transition-all shrink-0 relative ${rule.enabled ? 'bg-emerald-600' : 'bg-slate-300'}`}
                     title={rule.enabled ? 'Đang bật' : 'Đang tắt'}
                   >
@@ -546,7 +662,12 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                       <Edit3 size={15} />
                     </button>
                     <button
-                      onClick={() => setRules(prev => prev.filter(r => r.id !== rule.id))}
+                      onClick={async () => {
+                        if (zoneId && /^[0-9a-f-]{36}$/i.test(rule.id)) {
+                          try { await alertService.deleteAlertRule(zoneId, rule.id); } catch (err) { console.error('Không xóa được luật cảnh báo:', err); return; }
+                        }
+                        setRules(prev => prev.filter(r => r.id !== rule.id));
+                      }}
                       className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"
                       title="Xóa luật"
                     >
@@ -614,21 +735,21 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
         <div className="flex items-center gap-2 font-mono text-[11px]">
           <span className={`w-2 h-2 rounded-full ${simRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
           <Cpu size={14} className="text-emerald-400" />
-          <span>Mô phỏng IoT Live Feed: {simRunning ? 'ĐANG CHẠY (5s/tick)' : 'TẠM DỪNG'}</span>
+          <span>Telemetry Node thực: {simRunning ? 'ĐANG CẬP NHẬT (5s)' : 'TẠM DỪNG'}</span>
         </div>
 
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800 hover:bg-slate-700" onClick={() => setSimRunning(!simRunning)}>
             {simRunning ? <Pause size={13} className="mr-1 text-amber-400" /> : <Play size={13} className="mr-1 text-emerald-400" />}
-            {simRunning ? 'Tạm dừng' : 'Kích hoạt'}
+            {simRunning ? 'Tạm dừng đọc' : 'Đọc telemetry'}
           </Button>
 
           <Button size="sm" variant="outline" className="text-white border-slate-700 bg-slate-800 hover:bg-slate-700" onClick={() => {
-            const resetVals = Object.fromEntries(METRICS.map(m => [m.key, m.baseVal]));
-            setSensorValues(resetVals);
-            checkRules(resetVals);
+            setSensorValues({});
+            setLiveAlerts([]);
+            setActiveActions({});
           }}>
-            <RefreshCw size={13} className="mr-1 text-slate-300" /> Reset Cảm biến
+            <RefreshCw size={13} className="mr-1 text-slate-300" /> Xóa số đo hiển thị
           </Button>
         </div>
       </div>
@@ -703,17 +824,48 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold text-slate-800 mb-1">Hành động Tự động khi Vi phạm *</label>
+            <label className="block font-bold text-slate-800 mb-1">Thiết bị chấp hành khi vi phạm *</label>
+            <select
+              value={ruleForm.actuatorId || ''}
+              onChange={e => setRuleForm({ ...ruleForm, actuatorId: e.target.value })}
+              className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900"
+            >
+              <option value="">-- Chọn relay/actuator của Zone --</option>
+              {zoneActuators.map((a: any) => <option key={a.actuatorId} value={a.actuatorId}>{a.name || a.actuatorCode || 'Actuator'} - Kênh {a.relayChannel ?? 1}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-800 mb-1">Lệnh</label>
+              <select
+                value={ruleForm.actionMode || 'TurnOn'}
+                onChange={e => setRuleForm({ ...ruleForm, actionMode: e.target.value as 'TurnOn' | 'TurnOff' })}
+                className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900"
+              >
+                <option value="TurnOn">Bật relay</option>
+                <option value="TurnOff">Tắt relay</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-800 mb-1">Thời gian chạy (giây)</label>
+              <input type="number" min={1} max={1800} value={ruleForm.durationSeconds ?? 60} onChange={e => setRuleForm({ ...ruleForm, durationSeconds: Number(e.target.value) })} className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-800 mb-1">Mô tả hành động</label>
             <input
               type="text"
               value={ruleForm.action || ''}
               onChange={e => setRuleForm({ ...ruleForm, action: e.target.value })}
-              placeholder="Ví dụ: Bật máy bơm tưới / Bật quạt thông gió 15 phút"
+              placeholder="Ví dụ: Bơm tưới luống phía Tây"
               className="w-full p-2.5 border border-slate-300 rounded-xl bg-white font-medium text-xs text-slate-900"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            {ruleSaveError && <div className="mr-auto max-w-[55%] text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-2">{ruleSaveError}</div>}
             <Button variant="ghost" onClick={() => setShowRuleModal(false)}>Hủy</Button>
             <Button onClick={saveRule}>Lưu Quy tắc Cảnh báo</Button>
           </div>
