@@ -22,6 +22,18 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
             .Where(x => x.Device.ZoneId == zoneId)
             .OrderBy(x => x.RelayChannel)
             .ToListAsync(ct);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var actuatorIds = items.Select(x => x.Id).ToArray();
+        var activeCommands = await db.ActuatorCommands
+            .AsNoTracking()
+            .Where(x => actuatorIds.Contains(x.ActuatorId)
+                && (x.Status == ActuatorCommandStatus.Pending || x.Status == ActuatorCommandStatus.Sent
+                    || (x.Status == ActuatorCommandStatus.Acknowledged && x.ExecutionEndsAtUtc > now)))
+            .OrderByDescending(x => x.QueuedAtUtc)
+            .ToListAsync(ct);
+        var currentCommands = activeCommands
+            .GroupBy(x => x.ActuatorId)
+            .ToDictionary(g => g.Key, g => g.First());
         return items.Select(x => new ZoneActuatorItemView(
             x.Id,
             x.DeviceId,
@@ -43,7 +55,9 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
                 _ => "PUMP"
             },
             x.RelayChannel,
-            x.Device.Status == DeviceStatus.Online ? "OFF" : "MAINTENANCE",
+            currentCommands.TryGetValue(x.Id, out var command)
+                ? command.Action == ActuatorCommandAction.TurnOn ? "ON" : "OFF"
+                : x.Device.Status == DeviceStatus.Online ? "OFF" : "MAINTENANCE",
             x.RatedPowerWatt,
             x.MaxDurationMinutes,
             x.FlowRateLitersPerMinute

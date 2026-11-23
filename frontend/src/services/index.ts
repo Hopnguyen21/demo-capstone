@@ -1447,7 +1447,16 @@ export const controlService = {
     return res.data;
   },
 
-  getActuators: async (zoneId?: string) => deviceService.getActuators(zoneId),
+  /** GET /api/v1/zones/{zoneId}/actuators
+   * Use the control API as the source of truth.  The device/node projection
+   * may contain legacy actuator identifiers that are not the DeviceActuator
+   * GUID required by the command endpoint.
+   */
+  getActuators: async (zoneId?: string) => {
+    if (!zoneId) return [];
+    const res = await apiClient.get(`/api/v1/zones/${zoneId}/actuators`);
+    return res.data?.value ?? res.data ?? [];
+  },
 
   /** GET /api/v1/control/environmental-configs */
   getEnvironmentalConfigs: async (zoneId?: string) => {

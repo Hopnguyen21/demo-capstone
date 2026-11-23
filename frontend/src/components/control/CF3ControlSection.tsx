@@ -157,18 +157,61 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
     loadScopedData();
   }, [farmId, fieldId, zoneId, scopeLevel]);
 
+  // Reconcile hardware-driven transitions (failsafe timeout, local relay
+  // change, or gateway feedback) without requiring a page refresh.
+  useEffect(() => {
+    if (!zoneId || actuators.length === 0) return;
+    let cancelled = false;
+    const syncActuatorStatuses = async () => {
+      const results = await Promise.all(actuators.map(async actuator => {
+        try {
+          const status = await controlService.getActuatorStatus(zoneId, actuator.actuatorId);
+          return { actuatorId: actuator.actuatorId, state: String(status?.currentState || '').toUpperCase() };
+        } catch {
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      setActuators(current => current.map(actuator => {
+        const result = results.find(item => item?.actuatorId === actuator.actuatorId);
+        if (!result) return actuator;
+        if (result.state === 'RUNNING' || result.state === 'ON') return { ...actuator, status: 'ON' };
+        if (result.state === 'OFF') return { ...actuator, status: 'OFF' };
+        return actuator;
+      }));
+    };
+    const timer = window.setInterval(() => { void syncActuatorStatuses(); }, 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [zoneId, actuators.length]);
+
   const handleToggleActuator = async (actuatorId: string, targetState: 'ON' | 'OFF', durationMinutes?: number) => {
     try {
-      const updated = await controlService.toggleActuator(actuatorId, targetState);
+      if (!zoneId) throw new Error('Zone chưa được xác định để điều khiển actuator.');
+      const updated = await controlService.toggleActuator(zoneId, actuatorId, targetState, durationMinutes ?? 15);
+      // Reflect the accepted/acknowledged command immediately.  A background
+      // reload can otherwise briefly re-read the device projection (which is
+      // intentionally OFF by default) and overwrite the live command state.
+      const acknowledged = String(updated?.status || '').toUpperCase() === 'ACKNOWLEDGED'
+        || String(updated?.observedState || '').toUpperCase() === 'RUNNING';
+      setActuators(current => current.map(actuator => actuator.actuatorId === actuatorId
+        ? {
+            ...actuator,
+            status: targetState === 'ON' && acknowledged ? 'ON' : targetState,
+            lastStateChangeAt: new Date().toISOString(),
+          }
+        : actuator));
       setNotification({
         type: 'success',
         message: `Đã phát lệnh ${targetState === 'ON' ? 'BẬT' : 'TẮT'} thiết bị [${updated?.name}] qua LoRa Gateway!`
       });
-      loadScopedData();
-    } catch (err) {
+      // Do not immediately reload the device projection here.  That projection
+      // can lag behind the acknowledged LoRa command and would overwrite the
+      // live ON state after a short delay while the ESP32 is still running it.
+    } catch (err: any) {
+      console.error('Actuator command failed:', err);
       setNotification({
         type: 'error',
-        message: 'Lỗi phát lệnh điều khiển rơ-le qua LoRa!'
+        message: err?.response?.data?.detail || err?.response?.data?.message || err?.message || 'Lỗi phát lệnh điều khiển rơ-le qua LoRa!'
       });
     }
   };
