@@ -21,6 +21,9 @@ export interface ZoneCustomScheduleData {
   seasonStartDate: string;
   seasonDurationDays: number;
   dayOverrides: Record<number, IrrigationSession[]>;
+  // The sessions currently shown by the calendar. This is populated even when
+  // the user has not customized a specific day yet.
+  sessions: IrrigationSession[];
   lastSavedAt: string;
 }
 
@@ -35,7 +38,7 @@ interface CropCalendarViewProps {
   cropName?: string;
   seasonStartDate?: string;    // e.g. '2026-10-15'
   seasonDurationDays?: number; // e.g. 45
-  onSaveZoneSchedule?: (savedData: ZoneCustomScheduleData) => void;
+  onSaveZoneSchedule?: (savedData: ZoneCustomScheduleData) => void | Promise<void>;
   onResetToTemplate?: () => void;
 }
 
@@ -257,7 +260,12 @@ export const CropCalendarView: React.FC<CropCalendarViewProps> = ({
   };
 
   // Save the entire customized schedule for this Zone
-  const handleSaveZoneCustomSchedule = () => {
+  const handleSaveZoneCustomSchedule = async () => {
+    const displayedSessions = [
+      getSessionForDay(selectedDay, 'MORNING'),
+      getSessionForDay(selectedDay, 'NOON'),
+      getSessionForDay(selectedDay, 'AFTERNOON'),
+    ];
     const scheduleData: ZoneCustomScheduleData = {
       zoneId: zoneId || 'default-zone',
       zoneName,
@@ -265,6 +273,7 @@ export const CropCalendarView: React.FC<CropCalendarViewProps> = ({
       seasonStartDate: startDateStr,
       seasonDurationDays: totalDays,
       dayOverrides,
+      sessions: displayedSessions,
       lastSavedAt: new Date().toISOString(),
     };
 
@@ -277,7 +286,7 @@ export const CropCalendarView: React.FC<CropCalendarViewProps> = ({
     }
 
     if (onSaveZoneSchedule) {
-      onSaveZoneSchedule(scheduleData);
+      await onSaveZoneSchedule(scheduleData);
     }
 
     setSaveSuccessMsg(`Đã lưu thành công lịch tưới ${totalDays} ngày riêng cho Zone "${zoneName}"! Hệ thống mẫu gốc hoàn toàn được bảo toàn.`);

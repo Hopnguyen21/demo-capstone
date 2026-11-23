@@ -711,11 +711,45 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
                         seasonStartDate="2026-10-15"
                         seasonDurationDays={45}
                         readOnly={false}
-                        onSaveZoneSchedule={(saved) => {
-                          setNotification({
-                            type: 'success',
-                            message: `Đã lưu thành công lịch tưới ${saved.seasonDurationDays} ngày riêng cho Zone "${saved.zoneName}"! Cấu hình này độc lập và không làm thay đổi thư viện chuẩn của hệ thống.`
-                          });
+                        onSaveZoneSchedule={async (saved) => {
+                          const targetZoneId = saved.zoneId || zoneId;
+                          const defaultActuator = actuators.find(actuator => (actuator.relayChannel ?? 1) === 1) || actuators[0];
+                          if (!targetZoneId || !defaultActuator) {
+                            setNotification({ type: 'error', message: 'Zone chưa có actuator kênh 1 để gắn lịch.' });
+                            return;
+                          }
+
+                          const overriddenSessions = Object.values(saved.dayOverrides || {}).flat();
+                          const sourceSessions = overriddenSessions.length > 0
+                            ? overriddenSessions
+                            : (saved.sessions?.length ? saved.sessions : (activePlan?.sessions || []));
+                          const sessions = Array.from(new Map(sourceSessions
+                            .filter(session => session.enabled && /^\d{1,2}:\d{2}$/.test(session.startTime))
+                            .map(session => [`${session.title}|${session.startTime}`, session]))
+                            .values());
+                          // Calendar sessions are the source of truth.  Matching by
+                          // display name left stale Cron rows behind when a title
+                          // changed (e.g. "Hạ nhiệt" vs "Giảm nhiệt"). Replace the
+                          // zone's calendar rows atomically from the user's point
+                          // of view so time, title and duration stay in sync.
+                          const existingZoneSchedules = schedules.filter(schedule => schedule.zoneId === targetZoneId);
+                          await Promise.all(existingZoneSchedules.map(schedule =>
+                            controlService.archiveSchedule(targetZoneId, schedule.scheduleId)
+                          ));
+                          await Promise.all(sessions.map(session => {
+                            const [hour, minute] = session.startTime.split(':').map(Number);
+                            return controlService.createSeasonSchedule(targetZoneId, {
+                              name: session.title,
+                              actuatorId: defaultActuator.actuatorId,
+                              cronExpression: `${minute} ${hour} * * *`,
+                              durationSeconds: Math.max(1, Math.round(session.durationMinutes * 60)),
+                              enableRainDelay: true,
+                              rainThresholdPercent: 70,
+                              isActive: true,
+                            });
+                          }));
+                          await loadScopedData();
+                          setNotification({ type: 'success', message: `Đã lưu ${sessions.length} ca tưới vào backend, mặc định actuator kênh 1.` });
                         }}
                         onResetToTemplate={() => {
                           setNotification({
