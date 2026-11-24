@@ -42,7 +42,7 @@ export const ControlHistoryLogsTable: React.FC<ControlHistoryLogsTableProps> = (
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 font-mono">
-              STEP 10 OF CF3
+              NHẬT KÝ VẬN HÀNH IOT
             </span>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <FileText className="text-[#119653]" size={18} />

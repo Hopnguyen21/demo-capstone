@@ -212,7 +212,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
     const res = await controlService.emergencyStopAll();
     setNotification({
       type: 'error',
-      message: `HỦY LỆNH KHẨN CẤP (BR-CANCEL-01): Tắt toàn bộ ${res.stoppedCount} rơ-le!`
+      message: `ĐÃ DỪNG KHẨN CẤP HỆ THỐNG: Ngắt an toàn toàn bộ ${res.stoppedCount} rơ-le!`
     });
     loadScopedData();
   };
@@ -292,7 +292,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="bg-white/20 text-white font-mono text-[10px] font-bold px-2.5 py-1 rounded-full border border-white/30 flex items-center gap-1.5 tracking-wider uppercase">
-                <Sparkles size={11} className="text-white" /> TIÊU CHUẨN CF3 ({scopeLabel})
+                <Sparkles size={11} className="text-white" /> HỆ THỐNG ĐIỀU KHIỂN TỰ ĐỘNG ({scopeLabel})
               </span>
               <span className="text-[11px] text-emerald-100 font-mono hidden sm:inline-block">
                 • IOT SMART CONTROL HUB

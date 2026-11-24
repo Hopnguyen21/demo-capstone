@@ -20,7 +20,7 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
           <div className="flex items-center gap-2">
             <ShieldCheck className="text-emerald-600" size={20} />
             <h3 className="text-base font-bold text-slate-900">
-              Quy tắc An toàn & Khóa liên động (CF3 Business Safety Rules)
+              Quy tắc An toàn & Khóa liên động Phần cứng (Failsafe & Interlock)
             </h3>
           </div>
           <p className="text-xs text-slate-600 mt-1">
@@ -44,11 +44,11 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
 
       {/* Rules Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* BR-INTERLOCK-01 */}
+        {/* Khóa liên động Công suất */}
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-amber-100 text-amber-900 rounded border border-amber-200">
-              BR-INTERLOCK-01
+              BẢO VỆ CÔNG SUẤT
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
           </div>
@@ -60,11 +60,11 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
           </p>
         </div>
 
-        {/* BR-SAFE-01 */}
+        {/* Tự ngắt Failsafe */}
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded border border-emerald-200">
-              BR-SAFE-01
+              TỰ NGẮT FAILSAFE
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
           </div>
@@ -76,11 +76,11 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
           </p>
         </div>
 
-        {/* BR-WEATHER-01 */}
+        {/* Thích ứng thời tiết */}
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-sky-100 text-sky-900 rounded border border-sky-200">
-              BR-WEATHER-01
+              THÍCH ỨNG THỜI TIẾT
             </span>
             <span className="w-2 h-2 rounded-full bg-sky-500" />
           </div>
@@ -92,11 +92,11 @@ export const SafetyInterlockRulesCard: React.FC<SafetyInterlockRulesCardProps> =
           </p>
         </div>
 
-        {/* BR-PREEMPTION-01 */}
+        {/* Ưu tiên điều khiển */}
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-purple-100 text-purple-900 rounded border border-purple-200">
-              BR-PREEMPTION-01
+              ƯU TIÊN ĐIỀU KHIỂN
             </span>
             <span className="w-2 h-2 rounded-full bg-purple-500" />
           </div>

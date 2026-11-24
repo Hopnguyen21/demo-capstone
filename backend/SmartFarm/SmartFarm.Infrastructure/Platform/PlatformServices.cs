@@ -785,12 +785,16 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
             throw new RequestValidationException("signerFullName", "Signer name and transaction reference are required.");
         // Chốt số tiền cọc theo tỷ lệ Admin cấu hình TẠI THỜI ĐIỂM KÝ: hợp đồng chưa cọc theo tỷ lệ mới; từ đây (đã ký) số này không đổi nữa.
         // Chỉ tính lại theo tỷ lệ hiện hành khi Owner CHƯA từng xem báo giá (ký thẳng qua API); đã xem thì giữ đúng số đã chốt lúc xem.
+        var signPct = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
         if (!await OwnerHasViewedAsync(quotation.Id, ct))
         {
-            var signPct = await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.DepositPercent, ct);
             quotation.Deposit30Percent = quotation.TotalAmount * signPct / 100m;
             quotation.Remaining70Percent = quotation.TotalAmount - quotation.Deposit30Percent;
         }
+        var appliedDepositPct = quotation.TotalAmount > 0m
+            ? Math.Round(quotation.Deposit30Percent * 100m / quotation.TotalAmount, 2)
+            : signPct;
+        var appliedRemainingPct = Math.Max(0m, 100m - appliedDepositPct);
         // Owner ký đúng số tiền đã thấy: nếu Admin vừa đổi tỷ lệ cọc giữa lúc Owner xem và lúc ký thì từ chối (409) để Owner xem lại số mới.
         if (command.ExpectedDepositAmount is decimal expected && Math.Abs(expected - quotation.Deposit30Percent) > 1m)
             throw new ResourceConflictException($"The deposit amount changed to {quotation.Deposit30Percent:0.##} (the deposit percentage was updated). Reload the quotation and sign again.");
@@ -877,7 +881,7 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
                     LesseePhone = signerOwner?.Phone,
                     LesseeAddress = ownerFarmLocation,
                     SignedAtUtc = DateTime.UtcNow,
-                    SpecialTerms = $"Thiết bị bao gồm: {hardwareItems}{packageInfo}{discountInfo}. Tạm ứng 30%: {quotation.Deposit30Percent:N0} đ, Còn lại 70%: {quotation.Remaining70Percent:N0} đ. Thuế VAT 8%: {quotation.VatAmount:N0} đ.",
+                    SpecialTerms = $"Thiết bị bao gồm: {hardwareItems}{packageInfo}{discountInfo}. Tạm ứng {appliedDepositPct:0.##}%: {quotation.Deposit30Percent:N0} đ, Còn lại {appliedRemainingPct:0.##}%: {quotation.Remaining70Percent:N0} đ. Thuế VAT {quotation.VatPercent:0.##}%: {quotation.VatAmount:N0} đ.",
                     Notes = $"[Hợp đồng ký từ Cổng Dịch vụ #{sr.Id.ToString()[..8].ToUpper()}] {cleanNotes}"
                 };
 

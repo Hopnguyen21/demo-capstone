@@ -10,20 +10,20 @@ export const FarmerIrrigationPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#119653] text-white font-mono">
-              TIÊU CHUẨN CF3 - FARM WORKER HUB
+              TRUNG TÂM TƯỚI TIÊU THỰC ĐỊA
             </span>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Sliders className="text-[#119653]" size={22} /> Kích hoạt Bơm Tưới Thực địa & Điều khiển Rơ-le
             </h1>
           </div>
           <p className="text-xs text-slate-600 mt-1">
-            Nông dân được cấp quyền bật/tắt tưới thủ công theo phân khu phụ trách và theo dõi lịch tưới tự động theo tiêu chuẩn an toàn BR-SAFE-01.
+            Nông dân được cấp quyền bật/tắt tưới thủ công theo phân khu phụ trách và theo dõi lịch tưới tự động với cơ chế tự ngắt bảo vệ an toàn phần cứng.
           </p>
         </div>
 
         <div className="flex items-center gap-2 text-xs font-mono">
           <span className="px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 font-bold flex items-center gap-1.5">
-            <ShieldCheck size={14} className="text-[#119653]" /> BR-SAFE-01: Giới hạn 15 phút
+            <ShieldCheck size={14} className="text-[#119653]" /> Bảo vệ tự ngắt: Tối đa 15 phút/lượt
           </span>
         </div>
       </div>

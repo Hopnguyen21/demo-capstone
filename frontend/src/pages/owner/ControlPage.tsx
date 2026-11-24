@@ -66,7 +66,7 @@ export const ControlPage: React.FC = () => {
     const res = await controlService.emergencyStopAll();
     setNotification({
       type: 'error',
-      message: `ĐÃ PHÁT LỆNH HỦY KHẨN CẤP (BR-CANCEL-01): Tắt toàn bộ ${res.stoppedCount} rơ-le đang chạy!`
+      message: `ĐÃ DỪNG KHẨN CẤP HỆ THỐNG: Ngắt toàn bộ ${res.stoppedCount} rơ-le đang chạy!`
     });
     loadData();
   };
@@ -78,7 +78,7 @@ export const ControlPage: React.FC = () => {
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-800/30 text-emerald-100 border border-emerald-300/40 font-mono tracking-wide backdrop-blur-xs">
-              LUỒNG CF3: SMART ENVIRONMENTAL CONTROL
+              HỆ THỐNG ĐIỀU KHIỂN VI KHÍ HẬU THÔNG MINH
             </span>
             <span className="flex items-center gap-1.5 text-xs text-emerald-100 font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse" />
@@ -90,7 +90,7 @@ export const ControlPage: React.FC = () => {
             Điều khiển Vi khí hậu & Chấp hành Thực địa
           </h1>
           <p className="text-xs text-emerald-100 max-w-2xl leading-relaxed">
-            Hệ thống tự động và điều khiển thủ công cho Bơm tưới, Van solenoid, Quạt đối lưu và Đèn quang hợp theo quy trình 10 bước chuẩn VietGAP / GlobalGAP.
+            Hệ thống tự động và điều khiển thủ công cho Bơm tưới, Van solenoid, Quạt đối lưu và Đèn quang hợp theo tiêu chuẩn canh tác thông minh VietGAP / GlobalGAP.
           </p>
         </div>
 
@@ -156,7 +156,7 @@ export const ControlPage: React.FC = () => {
           }`}
         >
           <Power size={16} className={activeTab === 'ACTUATORS' ? 'text-white' : 'text-slate-500'} />
-          Điều khiển Rơ-le & Cấu hình Ngưỡng (Steps 1-9)
+          Điều khiển Rơ-le & Cấu hình Ngưỡng
         </button>
 
         <button
@@ -168,7 +168,7 @@ export const ControlPage: React.FC = () => {
           }`}
         >
           <ShieldAlert size={16} className={activeTab === 'SAFETY' ? 'text-white' : 'text-slate-500'} />
-          Quy tắc An toàn Interlock (Business Rules)
+          Quy tắc An toàn & Khóa liên động
         </button>
 
         <button
@@ -180,7 +180,7 @@ export const ControlPage: React.FC = () => {
           }`}
         >
           <FileText size={16} className={activeTab === 'LOGS' ? 'text-white' : 'text-slate-500'} />
-          Nhật ký Lịch sử Điều khiển (Step 10)
+          Nhật ký Lịch sử Điều khiển
         </button>
       </div>
 

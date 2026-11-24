@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -18,7 +18,6 @@ internal sealed class AuthService(
     IOptions<JwtOptions> jwtOptions,
     TimeProvider timeProvider) : IAuthService
 {
-    private static readonly ConcurrentDictionary<string, (string Otp, DateTime ExpiresAtUtc)> ResetOtps = new();
 
     public async Task<UserView> RegisterAsync(RegisterUserCommand command, CancellationToken cancellationToken)
     {
@@ -169,22 +168,40 @@ internal sealed class AuthService(
     {
         var normalizedEmail = NormalizeEmail(command.Email);
         var user = await dbContext.AppUsers.SingleOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
-        var expires = DateTime.UtcNow.AddMinutes(15);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var expires = now.AddMinutes(15);
 
         if (user is null)
         {
             return new ForgotPasswordResponse(
                 "Nếu email tồn tại trong hệ thống, mã xác nhận OTP đã được gửi.",
-                null,
                 expires);
         }
 
-        var otp = new Random().Next(100000, 999999).ToString();
-        ResetOtps[normalizedEmail] = (otp, expires);
+        var otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString("D6");
+        var otpHash = TokenHash.Create($"OTP:{normalizedEmail}:{otp}");
+
+        var previousOtps = await dbContext.RefreshTokens
+            .Where(x => x.AppUserId == user.Id && x.AccessTokenJti == "PASSWORD_RESET_OTP" && x.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var prev in previousOtps)
+        {
+            prev.RevokedAtUtc = now;
+        }
+
+        dbContext.RefreshTokens.Add(new RefreshToken
+        {
+            AppUserId = user.Id,
+            TokenHash = otpHash,
+            AccessTokenJti = "PASSWORD_RESET_OTP",
+            AccessTokenExpiresAtUtc = expires,
+            ExpiresAtUtc = expires,
+            CreatedAtUtc = now
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         return new ForgotPasswordResponse(
-            "Mã xác nhận OTP đặt lại mật khẩu đã được tạo (hiệu lực 15 phút).",
-            otp,
+            "Nếu email tồn tại trong hệ thống, mã xác nhận OTP đặt lại mật khẩu đã được gửi (hiệu lực 15 phút).",
             expires);
     }
 
@@ -196,30 +213,35 @@ internal sealed class AuthService(
             throw new RequestValidationException(nameof(command.Otp), "Mã OTP xác thực không được để trống.");
         }
 
-        if (!ResetOtps.TryGetValue(normalizedEmail, out var entry) || entry.ExpiresAtUtc < DateTime.UtcNow || entry.Otp != command.Otp.Trim())
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var user = await dbContext.AppUsers
+            .Include(x => x.RefreshTokens)
+            .SingleOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
+
+        var expectedHash = TokenHash.Create($"OTP:{normalizedEmail}:{command.Otp.Trim()}");
+        var otpRecord = user?.RefreshTokens.FirstOrDefault(x =>
+            x.AccessTokenJti == "PASSWORD_RESET_OTP" &&
+            !x.RevokedAtUtc.HasValue &&
+            x.ExpiresAtUtc >= now &&
+            x.TokenHash == expectedHash);
+
+        if (user is null || otpRecord is null)
         {
             throw new RequestValidationException(nameof(command.Otp), "Mã xác thực OTP không chính xác hoặc đã hết hạn.");
         }
 
         ValidatePassword(command.NewPassword);
 
-        var user = await dbContext.AppUsers
-            .Include(x => x.RefreshTokens)
-            .SingleOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken)
-            ?? throw new ResourceNotFoundException("Tài khoản không tồn tại.");
-
         user.PasswordHash = passwordHasher.HashPassword(user, command.NewPassword);
         user.FailedLoginAttempts = 0;
         user.LockedUntilUtc = null;
         if (user.Status == AccountStatus.Locked) user.Status = AccountStatus.Active;
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
         foreach (var rt in user.RefreshTokens.Where(t => !t.RevokedAtUtc.HasValue))
         {
             rt.RevokedAtUtc = now;
         }
 
-        ResetOtps.TryRemove(normalizedEmail, out _);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

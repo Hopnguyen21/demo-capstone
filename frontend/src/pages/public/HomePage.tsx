@@ -318,7 +318,7 @@ export const HomePage: React.FC = () => {
                 Bộ luật IF-THEN tự động bảo vệ cây trồng: bật tưới khi ẩm đất &lt; 60%, ngắt quạt khi lạnh, cùng nút Dừng khẩn cấp (Emergency Stop) 1 chạm.
               </p>
               <div className="flex items-center text-xs font-bold text-teal-800 group-hover:translate-x-1 transition-transform">
-                <span>Trạm điều khiển CF3</span>
+                <span>Trạm điều khiển tự động</span>
                 <ChevronRight size={14} />
               </div>
             </div>
@@ -348,7 +348,7 @@ export const HomePage: React.FC = () => {
                 Tích hợp AI RAG chẩn đoán bệnh cây qua hình ảnh thực địa, đề xuất lịch bón phân và cảnh báo rủi ro thời tiết cực đoan trước 24 giờ.
               </p>
               <div className="flex items-center text-xs font-bold text-indigo-900 group-hover:translate-x-1 transition-transform">
-                <span>Trải nghiệm AI Demo</span>
+                <span>Khám phá Trợ lý AI</span>
                 <ChevronRight size={14} />
               </div>
             </div>
@@ -670,7 +670,7 @@ export const HomePage: React.FC = () => {
               <ul className="space-y-2 text-xs">
                 <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Bản đồ vệ tinh GIS Nông trang</a></li>
                 <li><a href="#hardware" className="hover:text-emerald-300 transition-colors">Trạm LoRa Gateway & Sensor Nodes</a></li>
-                <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Bộ luật Tự động hóa CF3</a></li>
+                <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Hệ thống Tự động hóa Vi khí hậu</a></li>
                 <li><a href="#solutions" className="hover:text-emerald-300 transition-colors">Trợ lý AI Nông học Gemini</a></li>
               </ul>
             </div>

@@ -7,7 +7,7 @@ public sealed record LoginCommand(string Email, string Password);
 public sealed record LogoutCommand(string? RefreshToken, bool RevokeAllDevices);
 
 public sealed record ForgotPasswordCommand(string Email);
-public sealed record ForgotPasswordResponse(string Message, string? DemoOtp, DateTime ExpiresAtUtc);
+public sealed record ForgotPasswordResponse(string Message, DateTime ExpiresAtUtc);
 public sealed record ResetPasswordCommand(string Email, string Otp, string NewPassword);
 
 public sealed record UserView(

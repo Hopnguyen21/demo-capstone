@@ -713,7 +713,7 @@ export const OwnerDashboard: React.FC = () => {
                   <Sprout size={18} className="text-[#119653]" /> Các Phân khu Zone đang Canh tác ({activeZones.length} Zones)
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Nhấn vào bất kỳ Zone nào để chuyển trực tiếp sang bảng điều khiển CF3 & cấu hình rơ-le
+                  Nhấn vào bất kỳ Zone nào để chuyển trực tiếp sang bảng điều khiển vi khí hậu & cấu hình rơ-le
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={() => navigate('/owner/farms')} className="text-xs">
@@ -755,7 +755,7 @@ export const OwnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-[#119653] font-bold group-hover:translate-x-1 transition-transform pt-1 border-t border-slate-200">
-                      <span>Vào Điều khiển & Lịch tưới CF3</span>
+                      <span>Vào Điều khiển & Lịch tưới</span>
                       <ArrowUpRight size={14} />
                     </div>
                   </div>
@@ -825,7 +825,7 @@ export const OwnerDashboard: React.FC = () => {
                   <span className="text-[10px] text-slate-400 font-mono">15m trước</span>
                 </div>
                 <div className="text-[11px] text-slate-500">
-                  Zone 1 đã tưới đủ 500ml/gốc theo Lịch tưới Sáng (CF4). Rơ-le ngắt an toàn.
+                  Zone 1 đã tưới đủ 500ml/gốc theo Lịch tưới Sáng định kỳ. Rơ-le ngắt an toàn.
                 </div>
               </div>
 

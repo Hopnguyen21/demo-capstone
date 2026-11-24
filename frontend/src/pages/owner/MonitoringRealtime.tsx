@@ -209,7 +209,7 @@ export const MonitoringRealtime: React.FC = () => {
                 {trustTag === 'DEMO' && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-300">
                     <Sparkles size={12} />
-                    DEMO MODE
+                    CHẾ ĐỘ THỬ NGHIỆM
                   </span>
                 )}
                 {trustTag === 'UNAVAILABLE' && (

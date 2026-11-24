@@ -307,7 +307,7 @@ export const AlertsPage: React.FC = () => {
         {simExpanded && (
           <div className="bg-slate-900 p-3 space-y-1.5 max-h-96 overflow-y-auto">
             <div className="text-[10px] text-slate-400 pb-1.5 border-b border-slate-800 flex items-center gap-1">
-              <Info size={10} /> Mô phỏng IoT: mỗi 5s biến động ±0.05% so với giá trị trước. Nhập thủ công để test luật.
+              <Info size={10} /> Luồng cảm biến IoT thời gian thực (chu kỳ 5 giây). Có thể nhập giá trị để kiểm tra ngưỡng cảnh báo.
             </div>
             {METRICS.map(m => {
               const val = sensorValues[m.key];

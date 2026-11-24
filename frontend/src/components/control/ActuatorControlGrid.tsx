@@ -38,7 +38,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
     );
 
     if (otherPumpsRunning.length >= 1) {
-      setInterlockError(`BR-INTERLOCK-01: Cấm kích hoạt đồng thời 2 bơm công suất lớn trong cùng hệ thống. Bơm [${otherPumpsRunning[0].name}] đang hoạt động!`);
+      setInterlockError(`Khóa an toàn công suất: Không kích hoạt đồng thời 2 bơm công suất lớn trong cùng hệ thống. Bơm [${otherPumpsRunning[0].name}] đang hoạt động!`);
       return false;
     }
 
@@ -325,7 +325,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
               <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
                 <div className="flex items-center justify-between font-bold text-amber-950">
                   <span className="flex items-center gap-1.5">
-                    <Clock size={15} className="text-amber-700" /> Hẹn giờ Tự Ngắt Failsafe (BR-SAFE-01)
+                    <Clock size={15} className="text-amber-700" /> Hẹn giờ Tự Ngắt An toàn (Failsafe Timer)
                   </span>
                   <span className="text-amber-900 font-mono text-sm px-2 py-0.5 bg-white rounded border border-amber-300">
                     {durationMinutes} Phút

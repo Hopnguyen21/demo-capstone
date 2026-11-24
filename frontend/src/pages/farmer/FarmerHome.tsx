@@ -231,7 +231,7 @@ export const FarmerHome: React.FC = () => {
     setIrrigationSuccessMessage(null);
     try {
       await controlService.toggleActuator(selectedIrrigationZoneId, selectedActuatorId, 'ON', irrigationMinutes);
-      setIrrigationSuccessMessage(`Đã bật thiết bị tưới trong ${irrigationMinutes} phút (BR-SAFE-01 an toàn). Hệ thống sẽ tự động ngắt.`);
+      setIrrigationSuccessMessage(`Đã bật thiết bị tưới trong ${irrigationMinutes} phút. Hệ thống sẽ tự động ngắt an toàn khi hết giờ.`);
       setTimeout(() => {
         setIrrigationSuccessMessage(null);
         setIsIrrigationModalOpen(false);
@@ -434,7 +434,7 @@ export const FarmerHome: React.FC = () => {
           </div>
           <div>
             <div className="text-xs font-bold text-slate-900 group-hover:text-[#119653]">Bật tưới nhanh</div>
-            <div className="text-[10px] text-slate-500">Chuẩn an toàn BR-SAFE-01</div>
+            <div className="text-[10px] text-slate-500">Hẹn giờ tự ngắt an toàn</div>
           </div>
         </button>
 
@@ -887,11 +887,11 @@ export const FarmerHome: React.FC = () => {
         </div>
       </Modal>
 
-      {/* ─── MODAL 2: TƯỚI THỦ CÔNG NHANH (QUY CHUẨN BR-SAFE-01) ─── */}
+      {/* ─── MODAL 2: TƯỚI THỦ CÔNG NHANH ─── */}
       <Modal
         isOpen={isIrrigationModalOpen}
         onClose={() => setIsIrrigationModalOpen(false)}
-        title="Kích Hoạt Tưới Thủ Công An Toàn (BR-SAFE-01)"
+        title="Kích Hoạt Tưới Thủ Công An Toàn"
       >
         <div className="space-y-4">
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1 text-amber-900">

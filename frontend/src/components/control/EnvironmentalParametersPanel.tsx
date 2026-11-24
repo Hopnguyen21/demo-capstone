@@ -381,11 +381,11 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 font-mono">
-              STEP 1 OF CF3
+              NGƯỠNG VI KHÍ HẬU MỤC TIÊU
             </span>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Sliders className="text-[#119653]" size={18} />
-              Set / Confirm Environmental Control Parameters
+              Thiết lập & Xác nhận Tham số Môi trường Canh tác
             </h3>
           </div>
           <p className="text-xs text-slate-600 mt-1">

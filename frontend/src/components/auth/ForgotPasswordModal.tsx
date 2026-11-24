@@ -19,12 +19,10 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [demoOtpHint, setDemoOtpHint] = useState<string | null>(null);
 
   const handleClose = () => {
     setError(null);
     setSuccess(null);
-    setDemoOtpHint(null);
     setStep(1);
     onClose();
   };
@@ -40,15 +38,10 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
     setLoading(true);
     setError(null);
     setSuccess(null);
-    setDemoOtpHint(null);
 
     try {
       const res = await authService.forgotPassword(trimmedEmail);
       setSuccess(res.message || 'Mã OTP đã được gửi đến email của bạn.');
-      if (res.demoOtp) {
-        setDemoOtpHint(res.demoOtp);
-        setOtp(res.demoOtp); // Auto-fill for convenience in Demo
-      }
       setStep(2);
     } catch (err: any) {
       setError(extractApiError(err) || 'Không thể tạo mã xác thực. Vui lòng kiểm tra lại email.');
@@ -125,18 +118,6 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
           <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2">
             <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
             <span>{success}</span>
-          </div>
-        )}
-
-        {demoOtpHint && (
-          <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-center justify-between">
-            <span className="flex items-center gap-1.5 font-medium">
-              <ShieldCheck size={15} className="text-amber-600" />
-              Mã OTP Demo tạo tự động:
-            </span>
-            <span className="font-mono font-bold text-sm bg-white px-2 py-0.5 rounded border border-amber-300 text-amber-700">
-              {demoOtpHint}
-            </span>
           </div>
         )}
 
