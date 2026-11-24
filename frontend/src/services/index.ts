@@ -772,6 +772,12 @@ export const seasonService = {
     return res.data;
   },
 
+  /** POST /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/start */
+  startSeason: async (zoneId: string, seasonId: string) => {
+    const res = await apiClient.post(`/api/v1/zones/${zoneId}/planting-seasons/${seasonId}/start`);
+    return res.data;
+  },
+
   /** PUT /api/v1/zones/{zoneId}/planting-seasons/{seasonId}/yield */
   recordYield: async (
     zoneId: string,

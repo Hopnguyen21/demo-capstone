@@ -148,23 +148,33 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
     const fetchZoneData = async () => {
       try {
         // Truy vấn đồng thời bối cảnh mùa vụ (requirements trong DB) và đo đạc thực tế của Zone
-        const [ctxData, realtimeData] = await Promise.all([
+        const [ctxData, latestByDevice] = await Promise.all([
           aiService.getContext(selectedZoneId).catch(() => null),
-          telemetryService.getRealtime(selectedZoneId).catch(() => null),
+          telemetryService.getLatestByDevice(selectedZoneId).catch(() => null),
         ]);
 
         if (!isMounted) return;
 
         // Trích xuất danh sách cảm biến thực tế được lưu trong DB
-        const rawTelemetry = (ctxData?.telemetry && Array.isArray(ctxData.telemetry) && ctxData.telemetry.length > 0)
-          ? ctxData.telemetry
-          : (realtimeData?.metrics && Array.isArray(realtimeData.metrics))
-          ? realtimeData.metrics.map((m: any) => ({
-              parameterCode: m.parameterCode,
-              value: m.value,
-              unit: m.unit,
-              isFresh: m.isFresh,
+        // Only expose parameters from fresh readings of currently online,
+        // mapped devices. The context endpoint may contain historical or
+        // aggregated readings from other nodes in the Zone.
+        const liveDevices = Array.isArray(latestByDevice?.devices)
+          ? latestByDevice.devices.filter((device: any) =>
+              String(device.status || '').toUpperCase() === 'ONLINE')
+          : [];
+        const liveTelemetry = liveDevices.flatMap((device: any) =>
+          (Array.isArray(device.metrics) ? device.metrics : [])
+            .filter((metric: any) => metric.isFresh !== false)
+            .map((metric: any) => ({
+              parameterCode: metric.parameterCode,
+              value: metric.value,
+              unit: metric.unit,
+              isFresh: metric.isFresh,
             }))
+        );
+        const rawTelemetry = liveTelemetry.length > 0
+          ? liveTelemetry
           : [];
 
         const dbRequirements: any[] = ctxData?.requirements || [];
@@ -268,7 +278,7 @@ export const EnvironmentalParametersPanel: React.FC<EnvironmentalParametersPanel
         max: 40,
         step: 1,
         formatVal: `${currentTarget}°C`,
-        subText: `Tự động bật Quạt đối lưu khi T > ${currentTarget}°C`,
+        subText: `Kích hoạt khi T > ${currentTarget}°C`,
       };
     }
 

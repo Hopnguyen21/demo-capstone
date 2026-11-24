@@ -3072,6 +3072,7 @@ export const FarmsPage: React.FC = () => {
                 fieldId={selectedField?.fieldId}
                 zoneId={selectedZone.zoneId}
                 nodes={nodes.filter(n => (n.zoneId === selectedZone.zoneId || n.zoneId === (selectedZone as any).id))}
+                gatewayOnline={selectedZoneGateway?.mqttConnected === true || String(selectedZoneGateway?.status || '').toUpperCase() === 'ONLINE'}
                 title={`Điều khiển & Lịch tưới Vi khí hậu cho Zone "${selectedZone.name}"`}
                 subtitle="Thiết lập ngưỡng vi khí hậu riêng cho vụ trồng, bật/tắt thiết bị rơ-le và xem lịch tưới trực tiếp tại Zone này."
               />

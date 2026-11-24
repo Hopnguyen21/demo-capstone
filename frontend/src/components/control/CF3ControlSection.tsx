@@ -26,6 +26,7 @@ export interface CF3ControlSectionProps {
   subtitle?: string;
   defaultTab?: 'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS' | null;
   nodes?: any[];
+  gatewayOnline?: boolean;
 }
 
 export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
@@ -37,6 +38,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
   subtitle,
   defaultTab = null,
   nodes,
+  gatewayOnline = false,
 }) => {
   const { zones: authZones } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'ACTUATORS' | 'SCHEDULES' | 'ENV_PARAMS'>(defaultTab || 'ACTUATORS');
@@ -59,7 +61,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
 
   // Never present a decorative "online" state.  The control surface may only
   // claim a live gateway when the API has supplied an explicit MQTT heartbeat.
-  const hasLiveGateway = (nodes || []).some((node: any) =>
+  const hasLiveGateway = gatewayOnline || (nodes || []).some((node: any) =>
     node?.mqttConnected === true ||
     node?.gatewayConnected === true ||
     String(node?.gatewayStatus || '').toUpperCase() === 'ONLINE'
@@ -280,7 +282,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
       )}
 
       {/* Modern High-End Executive Control Section Header */}
-      <div className="relative bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] p-6 rounded-3xl border border-emerald-400/30 text-white shadow-lg overflow-hidden">
+      <div className="relative bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] p-5 md:p-6 rounded-3xl border border-emerald-400/30 text-white shadow-lg overflow-hidden">
         {/* Subtle decorative glow */}
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-300/10 rounded-full blur-3xl pointer-events-none" />
@@ -312,7 +314,7 @@ export const CF3ControlSection: React.FC<CF3ControlSectionProps> = ({
           {/* Main Title & Action Buttons Row */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
             <div className="space-y-1">
-              <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <h2 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
                 {title || `Điều khiển & Lịch tưới Vi khí hậu cho ${scopeLabel}`}
               </h2>
               <p className="text-xs md:text-sm text-emerald-100 max-w-2xl leading-relaxed">

@@ -448,6 +448,19 @@ export const PlantingSeasonsPage: React.FC = () => {
     }
   };
 
+  const handleStartPlantingSeason = async (batch: PlantingSeason) => {
+    if (!batch.zoneId || !batch.plantingSeasonId) return;
+    setErrorMessage(null);
+    try {
+      await seasonService.startSeason(batch.zoneId, batch.plantingSeasonId);
+      setSuccessToast(`Đã bắt đầu vụ mùa cho ${batch.zoneName}.`);
+      window.setTimeout(() => setSuccessToast(null), 4000);
+      await loadData();
+    } catch (err: any) {
+      setErrorMessage(`Không thể bắt đầu vụ mùa: ${extractApiError(err)}`);
+    }
+  };
+
   // Open Edit Master Season
   const handleOpenEditMasterSeason = (s: FarmingSeason) => {
     setEditingMasterSeason(s);
@@ -777,6 +790,11 @@ export const PlantingSeasonsPage: React.FC = () => {
 
                       <div className="flex items-center gap-2 shrink-0">
                         <StatusBadge status={b.status} />
+                        {String(b.status).toUpperCase() === 'PLANNED' && (
+                          <Button size="sm" variant="primary" onClick={() => void handleStartPlantingSeason(b)}>
+                            <Play size={12} className="mr-1" /> Bắt đầu vụ
+                          </Button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenZoneHistory(b.zoneId, b.zoneName || 'Phân khu')}
