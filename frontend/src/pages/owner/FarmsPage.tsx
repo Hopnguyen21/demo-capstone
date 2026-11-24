@@ -3411,6 +3411,7 @@ export const FarmsPage: React.FC = () => {
         isOpen={showInstallModal}
         title="Gửi Yêu cầu Lắp đặt Thiết bị IoT & Khảo sát Thực địa"
         onClose={() => setShowInstallModal(false)}
+        size="lg"
       >
         <div className="space-y-4 text-xs">
           {/* Target Hierarchy Location Breadcrumb */}
@@ -3491,6 +3492,35 @@ export const FarmsPage: React.FC = () => {
               </Button>
             </div>
           )}
+
+          {/* Thuật toán tổ ong (Honeycomb Grid Estimation) tích hợp trực tiếp */}
+          <div className="bg-slate-50 border border-emerald-200/90 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                <Radio size={14} className="text-emerald-600" />
+                Dự toán cấu hình theo Thuật toán Mạng Tổ Ong (Honeycomb Grid):
+              </span>
+              <span className="text-[11px] text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded font-semibold">
+                Chuẩn hóa kỹ thuật IoT
+              </span>
+            </div>
+            <HoneycombEstimator
+              areaM2={Number(installTargetZone?.areaM2 || installTargetField?.areaM2 || selectedZone?.areaM2 || 2000)}
+              cropName={installTargetZone?.currentCrop || installTargetZone?.cropName || (selectedZone as any)?.currentCrop || 'Cà chua (Solanum lycopersicum)'}
+              zoneName={installTargetZone?.name || selectedZone?.name || installTargetField?.name || 'Khu vực'}
+              farmId={selectedFarm?.farmId}
+              zoneId={installTargetZone?.zoneId || (installTargetZone as any)?.id || selectedZone?.zoneId}
+              defaultExpanded={true}
+              onApplyEstimate={(res) => {
+                setInstallCategory('ALL_IN_ONE');
+                const area = Number(installTargetZone?.areaM2 || installTargetField?.areaM2 || selectedZone?.areaM2 || 2000);
+                const targetName = installTargetZone?.name || installTargetField?.name || 'Khu vực';
+                const text = `[Dự toán mạng Tổ Ong (Honeycomb Grid)]\n• Đối tượng: ${targetName} | Diện tích: ${area.toLocaleString()} m² | Bán kính phủ R = ${res.sensingRadiusM}m\n• Cấu hình khuyến nghị: ${res.gateways} LoRa Gateway, ${res.sensors} Trạm cảm biến vi khí hậu, ${res.actuators} Node điều khiển tưới\n• Dự toán thiết bị tạm tính: ${res.totalCostVnd.toLocaleString('vi-VN')} đ (Khoảng: ${res.minCostVnd.toLocaleString('vi-VN')} đ - ${res.maxCostVnd.toLocaleString('vi-VN')} đ)\n• Đề nghị kỹ thuật viên khảo sát thực địa bố trí mạng theo cấu hình tổ ong tối ưu này.`;
+                setInstallDescription(text);
+                setInstallTitle(`Yêu cầu gói thiết bị Tổ Ong cho ${targetName} (${res.sensors} Sensors + ${res.actuators} Actuators)`);
+              }}
+            />
+          </div>
 
           {/* Device Category */}
           <div>

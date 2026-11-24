@@ -182,15 +182,15 @@ export const ProvisioningPage: React.FC = () => {
         </div>
       )}
 
-      <section className="p-4 bg-slate-900 text-white rounded-2xl border border-emerald-500/30 shadow-md space-y-3">
-        <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-sm">Luồng Deployment IoT chuẩn</h2><p className="text-[11px] text-slate-300">Chuyển request sang Installing, sau đó thực hiện Gateway Enrollment và Hardware Preparation.</p></div><Button size="sm" variant="outline" onClick={refreshDeploymentRequests} className="text-white border-slate-500">Làm mới</Button></div>
-        {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-slate-800 border border-slate-700"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-slate-300">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-slate-700 text-xs font-bold">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
+      <section className="p-4 bg-emerald-900 text-white rounded-2xl border border-emerald-700/80 shadow-md space-y-3">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-sm text-emerald-100">Luồng Deployment IoT chuẩn</h2><p className="text-[11px] text-emerald-200/90">Chuyển request sang Installing, sau đó thực hiện Gateway Enrollment và Hardware Preparation.</p></div><Button size="sm" variant="outline" onClick={refreshDeploymentRequests} className="text-white border-emerald-600 hover:bg-emerald-800">Làm mới</Button></div>
+        {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-emerald-950 border border-emerald-800"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-emerald-200">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-emerald-800 text-xs font-bold text-emerald-100">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 hover:bg-emerald-500 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
       </section>
 
       {/* Workflow Steps Indicator */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs font-semibold">
         <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center gap-2.5 shadow-2xs">
-          <div className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">1</div>
+          <div className="w-7 h-7 rounded-full bg-emerald-800 text-white flex items-center justify-center text-xs font-bold shrink-0">1</div>
           <div>
             <span className="block text-slate-900">1. Lập Báo giá & Hợp đồng</span>
             <span className="text-[10px] text-slate-500 font-normal">Kỹ thuật viên soạn danh sách thiết bị</span>
@@ -492,12 +492,12 @@ export const ProvisioningPage: React.FC = () => {
                     )}
 
                     {/* Interactive Actions for Technician */}
-                    <div className="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                    <div className="p-3.5 bg-emerald-900 border border-emerald-700/80 text-white rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-2">
-                        <MapPin size={16} className="text-emerald-400 shrink-0" />
+                        <MapPin size={16} className="text-emerald-300 shrink-0" />
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa Kỹ thuật</span>
-                          <span className="text-white font-semibold">
+                          <span className="text-emerald-200 block text-[10px] uppercase font-bold tracking-wide">Thao tác Thực địa Kỹ thuật</span>
+                          <span className="text-emerald-50 font-semibold">
                             {is30Paid ? 'Hợp đồng đã ký & cọc (Không thể sửa) • Tiến hành Vào Zone Chấm Node' : 'Cần gửi Báo giá Hợp đồng & cọc 30% trước khi chấm Node'}
                           </span>
                         </div>
@@ -507,7 +507,7 @@ export const ProvisioningPage: React.FC = () => {
                         {/* BUTTON 0: PHIẾU BÁO CÁO KHẢO SÁT THỰC ĐỊA */}
                         <Button
                           onClick={() => setSelectedRequestForSurvey(req)}
-                          className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/50"
+                          className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/50"
                           title="Lập hoặc xem Phiếu khảo sát thực địa trước khi ký hợp đồng"
                         >
                           <FileText size={15} className="text-emerald-300" />
@@ -519,7 +519,7 @@ export const ProvisioningPage: React.FC = () => {
                           is30Paid ? (
                             <Button
                               onClick={() => setSelectedRequestForExperiment(req)}
-                              className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center gap-1.5 shadow-sm border border-slate-600"
+                              className="bg-emerald-950/80 hover:bg-emerald-950 text-emerald-100 font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/60"
                               title="Hợp đồng đã được ký kết & đặt cọc 30%. Xem chi tiết (Chỉ đọc, không thể sửa)"
                             >
                               <Lock size={14} className="text-amber-400" />

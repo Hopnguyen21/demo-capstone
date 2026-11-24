@@ -287,17 +287,17 @@ export const ServiceRequestsPage: React.FC = () => {
                 </p>
 
                 {/* Admin Assignment Control Panel */}
-                <div className="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                <div className="p-3.5 bg-emerald-900 border border-emerald-700/80 text-white rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <Wrench size={16} className={req.assignedTechnicianName ? "text-emerald-400 shrink-0" : "text-amber-400 shrink-0"} />
+                    <Wrench size={16} className={req.assignedTechnicianName ? "text-emerald-300 shrink-0" : "text-amber-300 shrink-0"} />
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Trạng thái Phân công Kỹ thuật viên</span>
+                      <span className="text-emerald-200 block text-[10px] uppercase font-bold tracking-wide">Trạng thái Phân công Kỹ thuật viên</span>
                       {req.assignedTechnicianName ? (
-                        <strong className="text-emerald-400 font-bold flex items-center gap-1">
+                        <strong className="text-emerald-300 font-bold flex items-center gap-1">
                           <CheckCircle2 size={14} /> Đã phân công: {techDisplayName}
                         </strong>
                       ) : (
-                        <span className="text-amber-400 font-bold flex items-center gap-1">
+                        <span className="text-amber-300 font-bold flex items-center gap-1">
                           <Clock size={14} /> Chưa có Kỹ thuật viên tiếp nhận
                         </span>
                       )}
@@ -308,7 +308,7 @@ export const ServiceRequestsPage: React.FC = () => {
                     <Button
                       size="sm"
                       onClick={() => setSelectedRequestForSurvey(req)}
-                      className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/40"
+                      className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/60"
                       title="Xem hoặc bổ sung Phiếu báo cáo khảo sát thực địa của kỹ thuật viên"
                     >
                       <ClipboardList size={14} className="text-emerald-300" />
@@ -319,7 +319,7 @@ export const ServiceRequestsPage: React.FC = () => {
                         <select
                           value={assignedTechMap[req.serviceRequestId] || req.assignedTechnician || technicians[0]?.userId || ''}
                           onChange={e => setAssignedTechMap({ ...assignedTechMap, [req.serviceRequestId]: e.target.value })}
-                          className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg p-1.5 focus:outline-none cursor-pointer"
+                          className="bg-emerald-950 border border-emerald-700 text-emerald-100 text-xs rounded-lg p-1.5 focus:outline-none cursor-pointer"
                         >
                           {technicians.map(t => (
                             <option key={t.userId} value={t.userId}>{t.fullName}</option>

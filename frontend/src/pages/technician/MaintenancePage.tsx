@@ -252,12 +252,12 @@ export const MaintenancePage: React.FC = () => {
                 </p>
 
                 {/* Interactive Actions for Technician */}
-                <div className="p-3.5 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                <div className="p-3.5 bg-emerald-900 border border-emerald-700/80 text-white rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <MapPin size={16} className="text-amber-400 shrink-0" />
+                    <MapPin size={16} className="text-amber-300 shrink-0" />
                     <div>
-                      <span className="text-slate-400 block text-[10px] uppercase font-bold">Thao tác Thực địa Bảo trì</span>
-                      <span className="text-white font-semibold">Chấm lại Node trên sơ đồ GIS hoặc thực hiện Hot-Swap 1-đổi-1</span>
+                      <span className="text-emerald-200 block text-[10px] uppercase font-bold tracking-wide">Thao tác Thực địa Bảo trì</span>
+                      <span className="text-emerald-50 font-semibold">Chấm lại Node trên sơ đồ GIS hoặc thực hiện Hot-Swap 1-đổi-1</span>
                     </div>
                   </div>
 
@@ -265,7 +265,7 @@ export const MaintenancePage: React.FC = () => {
                     {/* Survey report button */}
                     <Button
                       onClick={() => setSelectedRequestForSurvey(req)}
-                      className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/50"
+                      className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm border border-emerald-600/50"
                       title="Lập hoặc xem Phiếu khảo sát thực địa hiện trạng thiết bị"
                     >
                       <FileText size={14} className="text-emerald-300" />
@@ -278,7 +278,7 @@ export const MaintenancePage: React.FC = () => {
                         setHotSwapTargetReq(req.serviceRequestId);
                         setIsHotSwapOpen(true);
                       }}
-                      className="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold"
+                      className="bg-emerald-950/80 hover:bg-emerald-950 text-amber-300 border border-emerald-600/60 font-bold"
                     >
                       <RefreshCw size={14} className="mr-1.5" /> Hot-Swap Node
                     </Button>
@@ -307,11 +307,11 @@ export const MaintenancePage: React.FC = () => {
                       <div className="relative group">
                         <Button
                           disabled
-                          className="bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed"
+                          className="bg-emerald-950/60 text-emerald-300/50 border border-emerald-800/80 cursor-not-allowed"
                         >
-                          <Lock size={14} className="mr-1.5 text-slate-500" /> Xác nhận Hoàn thành
+                          <Lock size={14} className="mr-1.5 text-emerald-400/40" /> Xác nhận Hoàn thành
                         </Button>
-                        <div className="absolute right-0 bottom-full mb-1 hidden group-hover:block w-56 p-2 bg-slate-800 text-amber-300 text-[10px] rounded shadow-lg border border-slate-700">
+                        <div className="absolute right-0 bottom-full mb-1 hidden group-hover:block w-56 p-2 bg-emerald-950 text-amber-200 text-[10px] rounded shadow-lg border border-emerald-700">
                           Chờ Chủ trang trại (Owner) bấm "Đã nghiệm thu" mới kích hoạt nút này!
                         </div>
                       </div>

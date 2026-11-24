@@ -1244,10 +1244,10 @@ export const AIAssistantPage: React.FC = () => {
                     <RagSourcesAccordion sources={msg.sources} />
                   )}
 
-                  {/* Log dữ liệu BE gửi cho AI */}
-                  {!isUser && (msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson) && (
+                  {/* Log dữ liệu BE gửi cho AI (Đã ẩn theo yêu cầu) */}
+                  {/* {!isUser && (msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson) && (
                     <AiPayloadLogViewer snapshotJson={msg.contextSnapshotJson || msg.recommendation?.contextSnapshotJson} />
-                  )}
+                  )} */}
 
                   <span className={`text-[10px] block text-right font-medium opacity-75 pt-1 ${isUser ? 'text-emerald-100' : 'text-slate-400'}`}>
                     {msg.createdAt || msg.timestamp}
