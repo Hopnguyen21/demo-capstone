@@ -40,6 +40,7 @@ public interface IIoTDeploymentService
     Task<NodeRegistryPackageView> GetNodeRegistryAsync(Guid gatewayId, CancellationToken ct);
     Task<FirmwareJobView> ScheduleFirmwareAsync(Guid technicianId, Guid gatewayId, FirmwareCommand command, CancellationToken ct);
     Task<FirmwareJobView> RetryFirmwareAsync(Guid technicianId, Guid gatewayId, CancellationToken ct);
+    Task<int> DispatchDueFirmwareJobsAsync(CancellationToken ct);
     Task<FirmwareJobView?> GetLatestFirmwareJobAsync(Guid userId, Guid gatewayId, CancellationToken ct);
     Task<IReadOnlyList<FirmwareReleaseView>> ListFirmwareReleasesAsync(Guid adminId, CancellationToken ct);
     Task<IReadOnlyList<FirmwareReleaseView>> ListApprovedFirmwareReleasesAsync(CancellationToken ct);

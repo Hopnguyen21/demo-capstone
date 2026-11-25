@@ -36,6 +36,8 @@ public sealed class DeploymentRequest : AuditableEntity
     public DeploymentRequestStatus Status { get; set; }
     public string RequiredParametersCsv { get; set; } = string.Empty;
     public string? OwnerNotes { get; set; }
+    /// <summary>Immutable JSON snapshot of the owner-side IoT estimation inputs and result.</summary>
+    public string? EstimateSnapshotJson { get; set; }
     public string? FailureCode { get; set; }
     public string? FailureDescription { get; set; }
     public DateTime? SubmittedAtUtc { get; set; }
@@ -164,6 +166,13 @@ public sealed class FirmwareJob : AuditableEntity
     public string? ArtifactSha256 { get; set; }
     public DateTime ScheduledAtUtc { get; set; }
     public FirmwareJobStatus Status { get; set; } = FirmwareJobStatus.Scheduled;
+    public string? CommandId { get; set; }
+    public int AttemptCount { get; set; }
+    public DateTime? CommandSentAtUtc { get; set; }
+    public DateTime? StartedAtUtc { get; set; }
+    public DateTime? FinishedAtUtc { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? ErrorMessage { get; set; }
 }
 
 public sealed class FirmwareRelease : AuditableEntity

@@ -38,13 +38,9 @@ export const TechnicianDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Technician Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <span className="text-xs font-mono font-semibold text-emerald-100 uppercase tracking-wider">Field Service & Node Placement Center</span>
-          <h1 className="text-2xl font-bold text-white mt-1">Trung tâm Điều hành Kỹ thuật IoT</h1>
-          <p className="text-xs text-emerald-100 mt-1">
-            Vào Zone để **chấm vị trí Node**, nhận tín hiệu **Owner Nghiệm thu**, và **Xác nhận hoàn thành** công trình.
-          </p>
+          <h1 className="text-xl font-bold text-white">Trung tâm Điều hành Kỹ thuật IoT</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => navigate('/technician/provisioning')} className="w-full sm:w-auto bg-white hover:bg-emerald-50 text-[#119653] font-bold shadow-sm">

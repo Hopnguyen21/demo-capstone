@@ -23,8 +23,8 @@ export const SupportPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { farms, zones, user } = useAuth();
-  const currentOwnerName = user?.fullName || 'Chủ Trang Trại';
-  const defaultSignatureName = `${currentOwnerName} (Chủ Trang Trại)`;
+  const currentOwnerName = user?.fullName || '';
+  const defaultSignatureName = currentOwnerName ? `${currentOwnerName} (Chủ Trang Trại)` : 'Chủ Trang Trại';
 
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [zoneContracts, setZoneContracts] = useState<ZoneContract[]>([]);
@@ -56,17 +56,28 @@ export const SupportPage: React.FC = () => {
   // Form states for Owner Acceptance & 70% Final Payment
   const [acceptanceSignatures, setAcceptanceSignatures] = useState<Record<string, string>>({});
   const [paymentMethods70, setPaymentMethods70] = useState<Record<string, 'CASH' | 'BANK_TRANSFER'>>({});
+  const [acceptanceNotes, setAcceptanceNotes] = useState<Record<string, string>>({});
+  const [acceptanceConfirmed, setAcceptanceConfirmed] = useState<Record<string, boolean>>({});
 
   // Modal Owner Create Support / Maintenance Request
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newReq, setNewReq] = useState({
-    farmId: '30000000-0000-0000-0000-000000000001',
-    zoneId: '32000000-0000-0000-0000-000000000001',
+    farmId: '',
+    zoneId: '',
     requestType: 'MAINTENANCE' as 'INSTALLATION' | 'MAINTENANCE',
     title: '',
     description: '',
     priority: 'HIGH' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
   });
+
+  useEffect(() => {
+    if (!newReq.farmId && farms.length > 0) {
+      setNewReq(prev => ({ ...prev, farmId: farms[0].farmId }));
+    }
+    if (!newReq.zoneId && zones.length > 0) {
+      setNewReq(prev => ({ ...prev, zoneId: zones[0].zoneId }));
+    }
+  }, [farms, zones, newReq.farmId, newReq.zoneId]);
 
   // State for Payment Success Screen / Receipt Modal
   interface PaymentSuccessModalData {
@@ -240,11 +251,20 @@ export const SupportPage: React.FC = () => {
     }
     const signature = acceptanceSignatures[requestId] || defaultSignatureName;
     const method = paymentMethods70[requestId] || 'BANK_TRANSFER';
+    const notes = acceptanceNotes[requestId]?.trim() || '';
+    if (!acceptanceConfirmed[requestId]) {
+      setErrorMsg('Vui lòng xác nhận đã kiểm tra và nghiệm thu thiết bị trước khi ký bàn giao.');
+      return;
+    }
+    if (!notes) {
+      setErrorMsg('Vui lòng nhập ghi chú hoặc kết quả nghiệm thu thực địa.');
+      return;
+    }
     setIsProcessingId(requestId);
     setErrorMsg(null);
 
     try {
-      const paymentRes = await supportService.signAcceptanceAndPay70(requestId, signature, method);
+      const paymentRes = await supportService.signAcceptanceAndPay70(requestId, signature, method, notes);
       const req = requests.find(r => r.serviceRequestId === requestId);
       const amount = paymentRes?.amount || req?.contractDetails?.remaining70Percent || 0;
 
@@ -260,7 +280,7 @@ export const SupportPage: React.FC = () => {
         paidAt: paymentRes?.paidAtUtc || new Date().toISOString(),
         status: paymentRes?.status || 'Confirmed',
         contractTotal: req?.contractDetails?.totalAmount,
-        notes: 'Đã hoàn tất nghiệm thu bàn giao 100% công trình và thanh toán đầy đủ toàn bộ giá trị hợp đồng. Toàn bộ thiết bị đã chuyển sang trạng thái Vận hành chính thức!',
+        notes,
       });
 
       await loadRequests();
@@ -296,9 +316,9 @@ export const SupportPage: React.FC = () => {
 
       await supportService.createServiceRequest({
         farmId: newReq.farmId,
-        farmName: farm?.name || 'Trang trại Đà Lạt',
+        farmName: farm?.name || '',
         zoneId: newReq.zoneId,
-        zoneName: zone?.name || 'Nhà màng Z01',
+        zoneName: zone?.name || '',
         requestType: newReq.requestType,
         title: newReq.title,
         description: newReq.description,
@@ -310,8 +330,8 @@ export const SupportPage: React.FC = () => {
       await loadRequests();
       setIsModalOpen(false);
       setNewReq({
-        farmId: '30000000-0000-0000-0000-000000000001',
-        zoneId: '32000000-0000-0000-0000-000000000001',
+        farmId: farms[0]?.farmId || '',
+        zoneId: zones[0]?.zoneId || '',
         requestType: 'MAINTENANCE',
         title: '',
         description: '',
@@ -578,10 +598,7 @@ export const SupportPage: React.FC = () => {
         </div>
 
         {/* Toolbar Footer: List summary & Expand/Collapse toggle */}
-        <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100 px-1">
-          <span className="text-slate-500 font-medium">
-            Hiển thị <strong>{filteredRequests.length}</strong> / {requests.length} yêu cầu
-          </span>
+        <div className="flex items-center justify-end text-xs pt-2 border-t border-slate-100 px-1">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -632,15 +649,16 @@ export const SupportPage: React.FC = () => {
             const cardDepositPct = contractDepositPercent(contract, bp.depositPercent);
             const isContractSigned = Boolean((contract?.isSignedByOwner && contract?.is30PercentPaid) || req.isContractSigned || req.isDepositPaid || req.isFullyPaid);
             const isAcceptanceDone = Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER');
+            const isTechnicianAcceptanceDone = String(req.deploymentStatus || '').toUpperCase() === 'COMPLETED';
             const isCompleted = Boolean(
               isAcceptanceDone ||
               ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted', 'VERIFIED', 'Verified', 'COMPLETED', 'Completed'].includes(req.status as string) ||
               req.deploymentStatus === 'Completed' ||
               req.deploymentStatus === 'COMPLETED'
             );
-            const isCancelled = ['CANCELLED', 'Cancelled'].includes(req.status as string);
+            const isCancelled = (req as any).serviceRequestStatus === 'CANCELLED' || ['CANCELLED', 'Cancelled'].includes(req.status as string);
             const isExpanded = !!expandedRequestIds[req.serviceRequestId];
-            const isTechAssigned = Boolean(req.assignedTechnicianName && ['ASSIGNED', 'Assigned'].includes(req.status));
+            const isTechAssigned = Boolean(req.assignedTechnicianName && ['ASSIGNED', 'ASSIGNED'].includes((req as any).serviceRequestStatus || req.status));
 
             // Matching Zone resolution
             const matchingContract = zoneContracts.find(c =>
@@ -659,9 +677,8 @@ export const SupportPage: React.FC = () => {
               matchingZone?.name ||
               matchingContract?.zoneName ||
               (extractedZone ? (extractedZone.toLowerCase().startsWith('nhà màng') ? extractedZone : `Nhà màng "${extractedZone}"`) : '') ||
-              (req.zoneName && req.zoneName !== 'Nhà màng Z01' ? req.zoneName : '') ||
               req.zoneName ||
-              'Zone hợp đồng';
+              'Chưa xác định khu vực';
 
             const contractZoneDisplayName =
               rawContractZoneName.toLowerCase().startsWith('nhà màng') || rawContractZoneName.toLowerCase().startsWith('zone')
@@ -678,7 +695,7 @@ export const SupportPage: React.FC = () => {
             const priorityLabel =
               req.priority === 'CRITICAL' ? 'Khẩn cấp' :
               req.priority === 'HIGH' ? 'Ưu tiên cao' :
-              req.priority === 'MEDIUM' ? 'Trung bình' : 'Tiêu chuẩn';
+              req.priority === 'MEDIUM' ? 'Trung bình' : req.priority === 'LOW' ? 'Thấp' : 'Chưa phân loại';
 
             // Left stripe border color
             const borderAccent =
@@ -1000,7 +1017,7 @@ export const SupportPage: React.FC = () => {
                     </div>
 
                     {/* ─── SECTION 1: HỢP ĐỒNG & BÁO GIÁ LẮP ĐẶT (BƯỚC 1: KÝ HĐ & CỌC) ─── */}
-                    <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-2xs">
+                    <div className={`p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-2xs ${!isAcceptanceDone && !isTechnicianAcceptanceDone ? 'opacity-75' : ''}`}>
                       <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-3">
                         <div className="flex items-center gap-2">
                           <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800">
@@ -1379,6 +1396,12 @@ export const SupportPage: React.FC = () => {
                             Bạn cần ký Hợp đồng và thanh toán tạm ứng {cardDepositPct}% tại Bước 1 trước để kỹ thuật viên triển khai thực địa.
                           </p>
                         </div>
+                      ) : !isAcceptanceDone && !isTechnicianAcceptanceDone ? (
+                        <div className="p-5 bg-slate-50 text-slate-500 rounded-xl text-center text-xs space-y-1 border border-slate-200">
+                          <Lock size={20} className="mx-auto text-slate-400" />
+                          <p className="font-bold text-slate-700">Chờ Kỹ thuật viên nghiệm thu</p>
+                          <p className="text-[11px] text-slate-500">Chỉ mở ký biên bản và quyết toán sau khi Kỹ thuật viên hoàn tất nghiệm thu trên hệ thống.</p>
+                        </div>
                       ) : !isAcceptanceDone ? (
                         <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 text-xs">
                           <div className="flex items-center justify-between text-slate-800 font-bold">
@@ -1439,6 +1462,29 @@ export const SupportPage: React.FC = () => {
                             </div>
                           </div>
 
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Biên bản / ghi chú nghiệm thu thực địa *
+                            </label>
+                            <textarea
+                              value={acceptanceNotes[req.serviceRequestId] || ''}
+                              onChange={e => setAcceptanceNotes({ ...acceptanceNotes, [req.serviceRequestId]: e.target.value })}
+                              placeholder="Ví dụ: Đã kiểm tra Gateway, Node, tín hiệu LoRa và dữ liệu telemetry; thiết bị hoạt động đúng cấu hình."
+                              rows={3}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                            />
+                          </div>
+
+                          <label className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-950 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(acceptanceConfirmed[req.serviceRequestId])}
+                              onChange={e => setAcceptanceConfirmed({ ...acceptanceConfirmed, [req.serviceRequestId]: e.target.checked })}
+                              className="mt-0.5 accent-emerald-600"
+                            />
+                            <span>Tôi xác nhận đã kiểm tra thiết bị thực tế, vị trí Node, Gateway, tín hiệu kết nối và dữ liệu trả về; đồng ý ký biên bản nghiệm thu và quyết toán phần còn lại.</span>
+                          </label>
+
                           {req.deploymentStatus && String(req.deploymentStatus).toUpperCase() !== 'COMPLETED' && (
                             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2">
                               <AlertCircle size={16} className="text-amber-600 shrink-0" />
@@ -1450,10 +1496,10 @@ export const SupportPage: React.FC = () => {
 
                           <button
                             type="button"
-                            disabled={isProcessingId === req.serviceRequestId || (Boolean(req.deploymentStatus) && String(req.deploymentStatus).toUpperCase() !== 'COMPLETED')}
+                            disabled={isProcessingId === req.serviceRequestId || !isTechnicianAcceptanceDone}
                             onClick={() => handleSignAcceptanceAndPay70(req.serviceRequestId)}
                             className={`w-full font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                              Boolean(req.deploymentStatus) && String(req.deploymentStatus).toUpperCase() !== 'COMPLETED'
+                              !isTechnicianAcceptanceDone
                                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
                                 : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg'
                             }`}

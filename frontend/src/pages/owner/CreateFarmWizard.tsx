@@ -27,12 +27,18 @@ export const CreateFarmWizard: React.FC = () => {
     center: [11.9404, 108.4583] as [number, number],
     polygon: [] as [number, number][],
   });
+  const [farmLocationSelected, setFarmLocationSelected] = useState(false);
 
   // Form State for Field Level (Level 2)
   const [fieldData, setFieldData] = useState({
     name: '',
     description: '',
-    areaM2: '',
+    areaM2: calculatePolygonAreaM2([
+      [11.9419, 108.4563],
+      [11.9419, 108.4603],
+      [11.9389, 108.4603],
+      [11.9389, 108.4563],
+    ] as [number, number][]).toString(),
     center: [11.9404, 108.4583] as [number, number],
     polygon: [
       [11.9419, 108.4563],
@@ -46,7 +52,12 @@ export const CreateFarmWizard: React.FC = () => {
   const [zoneData, setZoneData] = useState({
     name: '',
     description: '',
-    areaM2: '',
+    areaM2: calculatePolygonAreaM2([
+      [11.9410, 108.4575],
+      [11.9410, 108.4591],
+      [11.9398, 108.4591],
+      [11.9398, 108.4575],
+    ] as [number, number][]).toString(),
     center: [11.9404, 108.4583] as [number, number],
     polygon: [
       [11.9410, 108.4575],
@@ -60,25 +71,29 @@ export const CreateFarmWizard: React.FC = () => {
   useEffect(() => {
     const [lat, lng] = farmData.center;
     if (lat && lng) {
+      const nextFieldPolygon: [number, number][] = [
+        [parseFloat((lat + 0.0015).toFixed(6)), parseFloat((lng - 0.0020).toFixed(6))],
+        [parseFloat((lat + 0.0015).toFixed(6)), parseFloat((lng + 0.0020).toFixed(6))],
+        [parseFloat((lat - 0.0015).toFixed(6)), parseFloat((lng + 0.0020).toFixed(6))],
+        [parseFloat((lat - 0.0015).toFixed(6)), parseFloat((lng - 0.0020).toFixed(6))],
+      ];
+      const nextZonePolygon: [number, number][] = [
+        [parseFloat((lat + 0.0006).toFixed(6)), parseFloat((lng - 0.0008).toFixed(6))],
+        [parseFloat((lat + 0.0006).toFixed(6)), parseFloat((lng + 0.0008).toFixed(6))],
+        [parseFloat((lat - 0.0006).toFixed(6)), parseFloat((lng + 0.0008).toFixed(6))],
+        [parseFloat((lat - 0.0006).toFixed(6)), parseFloat((lng - 0.0008).toFixed(6))],
+      ];
       setFieldData(prev => ({
         ...prev,
         center: farmData.center,
-        polygon: [
-          [parseFloat((lat + 0.0015).toFixed(6)), parseFloat((lng - 0.0020).toFixed(6))],
-          [parseFloat((lat + 0.0015).toFixed(6)), parseFloat((lng + 0.0020).toFixed(6))],
-          [parseFloat((lat - 0.0015).toFixed(6)), parseFloat((lng + 0.0020).toFixed(6))],
-          [parseFloat((lat - 0.0015).toFixed(6)), parseFloat((lng - 0.0020).toFixed(6))],
-        ],
+        polygon: nextFieldPolygon,
+        areaM2: calculatePolygonAreaM2(nextFieldPolygon).toString(),
       }));
       setZoneData(prev => ({
         ...prev,
         center: farmData.center,
-        polygon: [
-          [parseFloat((lat + 0.0006).toFixed(6)), parseFloat((lng - 0.0008).toFixed(6))],
-          [parseFloat((lat + 0.0006).toFixed(6)), parseFloat((lng + 0.0008).toFixed(6))],
-          [parseFloat((lat - 0.0006).toFixed(6)), parseFloat((lng + 0.0008).toFixed(6))],
-          [parseFloat((lat - 0.0006).toFixed(6)), parseFloat((lng - 0.0008).toFixed(6))],
-        ],
+        polygon: nextZonePolygon,
+        areaM2: calculatePolygonAreaM2(nextZonePolygon).toString(),
       }));
     }
   }, [farmData.center[0], farmData.center[1]]);
@@ -110,6 +125,8 @@ export const CreateFarmWizard: React.FC = () => {
   const [customStageDays, setCustomStageDays] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [iotEstimateSnapshot, setIotEstimateSnapshot] = useState<any>(null);
   const [wizardSuccessData, setWizardSuccessData] = useState<{
     farmId: string;
     fieldId?: string;
@@ -203,6 +220,8 @@ export const CreateFarmWizard: React.FC = () => {
     for (const [key, coords] of Object.entries(LOCATION_PRESETS)) {
       if (lower.includes(key)) {
         setFarmData(prev => ({ ...prev, center: coords }));
+        setFarmLocationSelected(true);
+        setValidationErrors(prev => ({ ...prev, farmLocation: '' }));
         setSearchNotice(`Đã định vị thành công: ${key.toUpperCase()}`);
         setIsSearchingAddress(false);
         setTimeout(() => setSearchNotice(null), 3500);
@@ -222,6 +241,8 @@ export const CreateFarmWizard: React.FC = () => {
           if (!isNaN(lat) && !isNaN(lon)) {
             const newCoords: [number, number] = [parseFloat(lat.toFixed(6)), parseFloat(lon.toFixed(6))];
             setFarmData(prev => ({ ...prev, center: newCoords }));
+            setFarmLocationSelected(true);
+            setValidationErrors(prev => ({ ...prev, farmLocation: '' }));
             setSearchNotice(`Đã định vị địa chỉ thành công qua proxy!`);
             setTimeout(() => setSearchNotice(null), 3500);
             found = true;
@@ -246,10 +267,60 @@ export const CreateFarmWizard: React.FC = () => {
   const levelTabs = [
     { id: 'FARM', label: '1. Tạo Trang trại', sub: 'Tên, địa chỉ & ranh giới GIS Trang trại', icon: Building2 },
     { id: 'FIELD', label: '2. Phân khu Lô đất', sub: 'Tạo Lô đất lồng trong Trang trại', icon: MapPin },
-    { id: 'ZONE', label: '3. Khu vực Đất trồng', sub: 'Tạo Nhà màng lồng trong Lô đất', icon: Sprout },
+    { id: 'ZONE', label: '3. Khu vực canh tác', sub: 'Tạo Zone lồng trong Lô đất', icon: Sprout },
     { id: 'CROP_SEASON', label: '4. Cây trồng & Vụ mùa', sub: 'Chọn giống & thiết lập vụ mùa', icon: Calendar },
     { id: 'REVIEW', label: wizardSuccessData ? '5. Đã hoàn tất' : '5. Xem lại & Gửi IoT', sub: wizardSuccessData ? 'Đã bàn giao Kỹ thuật viên thành công' : 'Xác nhận & gửi Kỹ thuật viên', icon: wizardSuccessData ? CheckCircle2 : ClipboardCheck },
   ];
+
+  const validateStep = (step: typeof activeTab): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    if (step === 'FARM') {
+      if (!farmData.name.trim()) errors.farmName = 'Vui lòng nhập tên trang trại.';
+      if (!farmData.address.trim()) errors.farmAddress = 'Vui lòng nhập địa chỉ hành chính.';
+      if (!farmLocationSelected) errors.farmLocation = 'Vui lòng bấm chọn vị trí trên bản đồ hoặc định vị từ địa chỉ.';
+      return errors;
+    }
+    if (step === 'FIELD') {
+      if (!fieldData.name.trim()) errors.fieldName = 'Vui lòng nhập tên phân khu / lô đất.';
+      return errors;
+    }
+    if (step === 'ZONE') {
+      if (!zoneData.name.trim()) errors.zoneName = 'Vui lòng nhập tên khu vực canh tác.';
+      return errors;
+    }
+    if (step === 'CROP_SEASON') {
+      if (!selectedCropId) errors.crop = 'Vui lòng chọn cây trồng.';
+      if (!selectedVarietyId) errors.variety = 'Vui lòng chọn giống thương mại.';
+      if (!selectedProfileId) errors.profile = 'Vui lòng chọn hồ sơ sinh trưởng.';
+      if (!cropData.seasonName.trim()) errors.seasonName = 'Vui lòng nhập tên vụ mùa.';
+      return errors;
+    }
+    return errors;
+  };
+
+  const goToTab = (target: typeof activeTab) => {
+    const targetIndex = levelTabs.findIndex(tab => tab.id === target);
+    const currentIndex = levelTabs.findIndex(tab => tab.id === activeTab);
+    if (targetIndex > currentIndex) {
+      for (let index = currentIndex; index < targetIndex; index += 1) {
+        const errors = validateStep(levelTabs[index].id as typeof activeTab);
+        if (Object.keys(errors).length > 0) {
+          setValidationErrors(errors);
+          return;
+        }
+      }
+    }
+    setValidationErrors({});
+    setActiveTab(target);
+  };
+
+  const isTabLocked = (index: number) => {
+    const currentIndex = levelTabs.findIndex(tab => tab.id === activeTab);
+    if (index <= currentIndex) return false;
+    return levelTabs
+      .slice(currentIndex, index)
+      .some(tab => Object.keys(validateStep(tab.id as typeof activeTab)).length > 0);
+  };
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -275,23 +346,28 @@ export const CreateFarmWizard: React.FC = () => {
         {levelTabs.map((tb, idx) => {
           const Icon = tb.icon;
           const isActive = activeTab === tb.id;
+          const isLocked = isTabLocked(idx);
           return (
             <button
               key={tb.id}
-              onClick={() => setActiveTab(tb.id as any)}
-              className={`p-3 text-left rounded-xl border transition-all ${isActive
+              onClick={() => { if (!isLocked) goToTab(tb.id as typeof activeTab); }}
+              disabled={isLocked}
+              aria-disabled={isLocked}
+              className={`p-3 text-left rounded-xl border transition-all ${isLocked
+                ? 'bg-slate-100 text-slate-400 border-slate-200 opacity-60 cursor-not-allowed'
+                : isActive
                 ? 'bg-[#119653] text-white border-[#119653] shadow-md ring-2 ring-[#119653]/30'
                 : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                 }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <Icon size={18} className={isActive ? 'text-white' : 'text-[#119653]'} />
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                <Icon size={18} className={isLocked ? 'text-slate-400' : isActive ? 'text-white' : 'text-[#119653]'} />
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isLocked ? 'bg-slate-200 text-slate-400' : isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
                   Bước {idx + 1}
                 </span>
               </div>
               <div className="font-bold text-xs truncate">{tb.label}</div>
-              <div className={`text-[10px] truncate mt-0.5 ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>{tb.sub}</div>
+              <div className={`text-[10px] truncate mt-0.5 ${isLocked ? 'text-slate-400' : isActive ? 'text-slate-300' : 'text-slate-500'}`}>{tb.sub}</div>
             </button>
           );
         })}
@@ -318,7 +394,8 @@ export const CreateFarmWizard: React.FC = () => {
               <div className="space-y-4 text-xs">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Tên Trang trại *</label>
-                  <Input value={farmData.name} onChange={e => setFarmData({ ...farmData, name: e.target.value })} placeholder="Nhập tên trang trại..." />
+                  <Input className={validationErrors.farmName ? 'border-red-500 focus:border-red-500' : ''} value={farmData.name} onChange={e => { setFarmData({ ...farmData, name: e.target.value }); setValidationErrors(prev => ({ ...prev, farmName: '' })); }} placeholder="Nhập tên trang trại..." />
+                  {validationErrors.farmName && <p className="mt-1 text-[11px] text-red-600">{validationErrors.farmName}</p>}
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Địa chỉ hành chính *</label>
@@ -326,7 +403,8 @@ export const CreateFarmWizard: React.FC = () => {
                     <div className="relative flex-1">
                       <Input
                         value={farmData.address}
-                        onChange={e => setFarmData({ ...farmData, address: e.target.value })}
+                        className={validationErrors.farmAddress ? 'border-red-500 focus:border-red-500' : ''}
+                        onChange={e => { setFarmData({ ...farmData, address: e.target.value }); setValidationErrors(prev => ({ ...prev, farmAddress: '' })); }}
                         placeholder="Tỉnh/Thành, Quận/Huyện, Xã/Phường..."
                         onKeyDown={e => {
                           if (e.key === 'Enter') {
@@ -335,6 +413,7 @@ export const CreateFarmWizard: React.FC = () => {
                           }
                         }}
                       />
+                      {validationErrors.farmAddress && <p className="mt-1 text-[11px] text-red-600">{validationErrors.farmAddress}</p>}
                     </div>
                     <Button
                       type="button"
@@ -375,7 +454,8 @@ export const CreateFarmWizard: React.FC = () => {
                 <GISLocationPicker
                   level="FARM"
                   center={farmData.center}
-                  onCenterChange={c => setFarmData(prev => ({ ...prev, center: c }))}
+                  showCenterMarker={farmLocationSelected}
+                  onCenterChange={c => { setFarmLocationSelected(true); setValidationErrors(prev => ({ ...prev, farmLocation: '' })); setFarmData(prev => ({ ...prev, center: c })); }}
                   polygon={farmData.polygon}
                   onPolygonChange={p => setFarmData(prev => ({ ...prev, polygon: p }))}
                   hidePolygon={true}
@@ -384,6 +464,7 @@ export const CreateFarmWizard: React.FC = () => {
                   height="360px"
                   onAddressChange={addr => setFarmData(prev => ({ ...prev, address: addr }))}
                 />
+                {validationErrors.farmLocation && <p className="mt-1 text-[11px] text-red-600">{validationErrors.farmLocation}</p>}
               </div>
             </div>
           </div>
@@ -417,7 +498,8 @@ export const CreateFarmWizard: React.FC = () => {
 
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Tên Phân khu / Lô đất *</label>
-                  <Input value={fieldData.name} onChange={e => setFieldData({ ...fieldData, name: e.target.value })} placeholder="Ví dụ: Lô A1 - Phân khu Cà chua" />
+                  <Input className={validationErrors.fieldName ? 'border-red-500 focus:border-red-500' : ''} value={fieldData.name} onChange={e => { setFieldData({ ...fieldData, name: e.target.value }); setValidationErrors(prev => ({ ...prev, fieldName: '' })); }} placeholder="Ví dụ: Lô A1 - Phân khu Cà chua" />
+                  {validationErrors.fieldName && <p className="mt-1 text-[11px] text-red-600">{validationErrors.fieldName}</p>}
                 </div>
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Mô tả đặc điểm Lô đất</label>
@@ -459,10 +541,10 @@ export const CreateFarmWizard: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Sprout size={20} className="text-[#119653]" /> Bước 3: Khu vực đất trồng (Zone) lồng trong Lô đất
+                  <Sprout size={20} className="text-[#119653]" /> Bước 3: Khu vực canh tác (Zone) lồng trong Lô đất
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Nhà màng / Khu vực tưới thuộc Lô đất <strong className="text-emerald-800">"{fieldData.name}"</strong> thuộc Trang trại <strong className="text-emerald-800">"{farmData.name}"</strong>.
+                  Khu vực canh tác / Khu vực tưới thuộc Lô đất <strong className="text-emerald-800">"{fieldData.name}"</strong> thuộc Trang trại <strong className="text-emerald-800">"{farmData.name}"</strong>.
                 </p>
               </div>
               <span className="text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 rounded-full border border-amber-200">
@@ -484,29 +566,30 @@ export const CreateFarmWizard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Tên Nhà màng / Khu vực Canh tác *</label>
-                  <Input value={zoneData.name} onChange={e => setZoneData({ ...zoneData, name: e.target.value })} placeholder="Ví dụ: Nhà màng Z01" />
+                  <label className="block text-slate-700 font-bold mb-1">Tên Khu vực canh tác (Zone) *</label>
+                  <Input className={validationErrors.zoneName ? 'border-red-500 focus:border-red-500' : ''} value={zoneData.name} onChange={e => { setZoneData({ ...zoneData, name: e.target.value }); setValidationErrors(prev => ({ ...prev, zoneName: '' })); }} placeholder="Ví dụ: Khu vực Z01 - Cà chua" />
+                  {validationErrors.zoneName && <p className="mt-1 text-[11px] text-red-600">{validationErrors.zoneName}</p>}
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Mô tả Đặc tính Nhà màng</label>
-                  <Input value={zoneData.description} onChange={e => setZoneData({ ...zoneData, description: e.target.value })} placeholder="Ví dụ: Nhà màng khép kín trang bị tưới nhỏ giọt" />
+                  <label className="block text-slate-700 font-bold mb-1">Mô tả Khu vực canh tác</label>
+                  <Input value={zoneData.description} onChange={e => setZoneData({ ...zoneData, description: e.target.value })} placeholder="Ví dụ: Khu vực có mái che, tưới nhỏ giọt" />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Diện tích Nhà màng (m²)</label>
+                  <label className="block text-slate-700 font-bold mb-1">Diện tích Khu vực (m²)</label>
                   <Input value={zoneData.areaM2} onChange={e => setZoneData({ ...zoneData, areaM2: e.target.value })} />
                 </div>
 
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2">
                   <Info size={16} className="text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <strong>Hướng dẫn GIS Nhà màng:</strong> Sử dụng công cụ vẽ trên Map hoặc nhấn <strong className="text-emerald-800 font-bold">"📍 Nhập Tọa độ (Lat/Lng)"</strong> trên bản đồ để nhập thủ công bảng tọa độ (yêu cầu <strong>tối thiểu 3 điểm</strong>).
+                    <strong>Hướng dẫn GIS Khu vực:</strong> Sử dụng công cụ vẽ trên Map hoặc nhấn <strong className="text-emerald-800 font-bold">"📍 Nhập Tọa độ (Lat/Lng)"</strong> trên bản đồ để nhập thủ công bảng tọa độ (yêu cầu <strong>tối thiểu 3 điểm</strong>).
                   </div>
                 </div>
               </div>
 
               {/* GIS Map Picker for Zone (Parent Farm & Parent Field shown) */}
               <div>
-                <label className="block text-slate-700 font-bold text-xs mb-1.5">GIS Map Vị trí Nhà màng (Lồng trong Lô đất & Trang trại)</label>
+                <label className="block text-slate-700 font-bold text-xs mb-1.5">GIS Map Vị trí Khu vực (Lồng trong Lô đất & Trang trại)</label>
                 <GISLocationPicker
                   level="ZONE"
                   center={zoneData.center}
@@ -589,7 +672,7 @@ export const CreateFarmWizard: React.FC = () => {
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <Calendar size={20} className="text-[#119653]" /> Bước 4: Thiết lập Cây trồng & Vụ mùa đầu tiên
                   </h3>
-                  <p className="text-xs text-slate-600 mt-0.5">Chọn giống cây canh tác và thiết lập lịch vụ mùa cho Nhà màng <strong className="text-emerald-800">"{zoneData.name}"</strong>.</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Chọn giống cây canh tác và thiết lập lịch vụ mùa cho Khu vực <strong className="text-emerald-800">"{zoneData.name}"</strong>.</p>
                 </div>
                 <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
                   Bước 4 / 5
@@ -929,7 +1012,7 @@ export const CreateFarmWizard: React.FC = () => {
                   {/* Zone info summary */}
                   <div className="p-3 bg-white border border-sky-200 rounded-lg space-y-1 text-[11px] text-slate-600">
                     <div className="flex justify-between">
-                      <span>Nhà màng:</span><strong className="text-slate-800">{zoneData.name}</strong>
+                      <span>Khu vực canh tác:</span><strong className="text-slate-800">{zoneData.name}</strong>
                     </div>
                     <div className="flex justify-between">
                       <span>Diện tích Zone:</span><strong className="text-emerald-800">{Number(zoneData.areaM2).toLocaleString('vi-VN')} m²</strong>
@@ -1087,6 +1170,7 @@ export const CreateFarmWizard: React.FC = () => {
                 areaM2={areaM2}
                 cropName={cropData.crop}
                 zoneName={zoneData.name}
+                onCalculationChange={setIotEstimateSnapshot}
               />
             </div>
           );
@@ -1121,7 +1205,7 @@ export const CreateFarmWizard: React.FC = () => {
                     <span className="flex items-center gap-1.5 text-sm">
                       <Building2 size={16} className="text-[#119653]" /> 1. Trang trại (Farm Level)
                     </span>
-                    <button onClick={() => setActiveTab('FARM')} className="text-[11px] text-[#119653] hover:underline font-semibold">Sửa</button>
+                    <button onClick={() => goToTab('FARM')} className="text-[11px] text-[#119653] hover:underline font-semibold">Sửa</button>
                   </div>
                   <div className="space-y-1.5 text-slate-700">
                     <div className="flex justify-between">
@@ -1143,16 +1227,16 @@ export const CreateFarmWizard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. Lô đất & Nhà màng */}
+                {/* 2. Lô đất & Khu vực canh tác */}
                 <div className="p-4 bg-sky-50/60 border border-sky-200 rounded-xl space-y-2.5">
                   <div className="font-bold text-sky-950 flex items-center justify-between pb-1.5 border-b border-sky-200/60">
                     <span className="flex items-center gap-1.5 text-sm">
-                      <MapPin size={16} className="text-sky-700" /> 2 & 3. Lô đất & Nhà màng (Field & Zone)
+                      <MapPin size={16} className="text-sky-700" /> 2 & 3. Lô đất & Khu vực canh tác (Field & Zone)
                     </span>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setActiveTab('FIELD')} className="text-[11px] text-sky-700 hover:underline font-semibold">Sửa Lô</button>
+                      <button onClick={() => goToTab('FIELD')} className="text-[11px] text-sky-700 hover:underline font-semibold">Sửa Lô</button>
                       <span className="text-slate-300">|</span>
-                      <button onClick={() => setActiveTab('ZONE')} className="text-[11px] text-sky-700 hover:underline font-semibold">Sửa Zone</button>
+                      <button onClick={() => goToTab('ZONE')} className="text-[11px] text-sky-700 hover:underline font-semibold">Sửa Zone</button>
                     </div>
                   </div>
                   <div className="space-y-1.5 text-slate-700">
@@ -1165,11 +1249,11 @@ export const CreateFarmWizard: React.FC = () => {
                       <span className="text-slate-800 font-medium">Đất đỏ Bazan / Đất thịt (Loam)</span>
                     </div>
                     <div className="flex justify-between pt-1 border-t border-sky-100">
-                      <span className="text-slate-500">Nhà màng (Zone):</span>
+                      <span className="text-slate-500">Khu vực canh tác (Zone):</span>
                       <strong className="text-sky-900">{zoneData.name}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Diện tích Nhà màng:</span>
+                      <span className="text-slate-500">Diện tích Khu vực:</span>
                       <strong className="text-emerald-800">{Number(zoneData.areaM2).toLocaleString('vi-VN')} m²</strong>
                     </div>
                     <div className="flex justify-between">
@@ -1185,7 +1269,7 @@ export const CreateFarmWizard: React.FC = () => {
                     <span className="flex items-center gap-1.5 text-sm">
                       <Sprout size={16} className="text-amber-700" /> 4. Cây trồng, Giống & Kế hoạch Vụ mùa (Crop & Season)
                     </span>
-                    <button onClick={() => setActiveTab('CROP_SEASON')} className="text-[11px] text-amber-700 hover:underline font-semibold">Sửa Vụ mùa</button>
+                    <button onClick={() => goToTab('CROP_SEASON')} className="text-[11px] text-amber-700 hover:underline font-semibold">Sửa Vụ mùa</button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-700">
                     <div>
@@ -1315,10 +1399,10 @@ export const CreateFarmWizard: React.FC = () => {
             <Button
               variant="outline"
               onClick={() => {
-                if (activeTab === 'FIELD') setActiveTab('FARM');
-                else if (activeTab === 'ZONE') setActiveTab('FIELD');
-                else if (activeTab === 'CROP_SEASON') setActiveTab('ZONE');
-                else if (activeTab === 'REVIEW') setActiveTab('CROP_SEASON');
+                if (activeTab === 'FIELD') goToTab('FARM');
+                else if (activeTab === 'ZONE') goToTab('FIELD');
+                else if (activeTab === 'CROP_SEASON') goToTab('ZONE');
+                else if (activeTab === 'REVIEW') goToTab('CROP_SEASON');
               }}
               disabled={activeTab === 'FARM'}
             >
@@ -1328,10 +1412,10 @@ export const CreateFarmWizard: React.FC = () => {
             {activeTab !== 'REVIEW' ? (
               <Button
                 onClick={() => {
-                  if (activeTab === 'FARM') setActiveTab('FIELD');
-                  else if (activeTab === 'FIELD') setActiveTab('ZONE');
-                  else if (activeTab === 'ZONE') setActiveTab('CROP_SEASON');
-                  else if (activeTab === 'CROP_SEASON') setActiveTab('REVIEW');
+                  if (activeTab === 'FARM') goToTab('FIELD');
+                  else if (activeTab === 'FIELD') goToTab('ZONE');
+                  else if (activeTab === 'ZONE') goToTab('CROP_SEASON');
+                  else if (activeTab === 'CROP_SEASON') goToTab('REVIEW');
                 }}
               >
                 Tiếp tục bước tiếp theo <ArrowRight size={16} className="ml-1" />
@@ -1344,6 +1428,7 @@ export const CreateFarmWizard: React.FC = () => {
                   setSubmitError(null);
                   try {
                     const chosenProf = serverProfiles.find(p => (p.profileId || p.id) === selectedProfileId);
+                    const chosenCrop = serverCrops.find(c => (c.cropId || c.id) === selectedCropId);
                     const effectiveVarietyId = chosenProf?.varietyId !== undefined
                       ? (chosenProf.varietyId || undefined)
                       : (selectedVarietyId || undefined);
@@ -1364,7 +1449,7 @@ export const CreateFarmWizard: React.FC = () => {
                         boundaryGeoJson: JSON.stringify(toGeoJsonPolygon(fieldData.polygon)),
                       },
                       zone: {
-                        name: zoneData.name.trim() || 'Nhà màng Z01',
+                        name: zoneData.name.trim() || 'Khu vực Z01',
                         areaM2: Number(zoneData.areaM2) || 2000,
                         zoneType: 'Greenhouse',
                         boundaryGeoJson: JSON.stringify(toGeoJsonPolygon(zoneData.polygon)),
@@ -1377,9 +1462,11 @@ export const CreateFarmWizard: React.FC = () => {
                         startDate: cropData.startDate ? `${cropData.startDate}T00:00:00Z` : new Date().toISOString(),
                         expectedEndDate: cropData.expectedHarvestDate ? `${cropData.expectedHarvestDate}T00:00:00Z` : undefined,
                       },
-                      initialDeploymentRequest: {
+                        initialDeploymentRequest: {
                         requiredParameters: ['SoilMoisture', 'Temperature', 'AirHumidity'],
-                        ownerNotes: `Cần ${cropData.gatewaysNeeded || 1} Gateway LoRa và ${cropData.nodesNeeded || 4} Sensor Node.`,
+                        ownerNotes: `Yêu cầu lắp đặt IoT cho khu vực ${zoneData.name.trim()}${chosenCrop?.name ? ` - cây ${chosenCrop.name}` : ''}. Nhu cầu: ${cropData.gatewaysNeeded || 1} Gateway LoRa và ${cropData.nodesNeeded || 4} Sensor Node.`,
+                          estimateItems: iotEstimateSnapshot?.estimateItems,
+                          estimateSnapshotJson: iotEstimateSnapshot ? JSON.stringify(iotEstimateSnapshot) : undefined,
                       },
                     });
 

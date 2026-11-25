@@ -6,11 +6,26 @@ import { ExperimentReportModal, HardwareItem } from '../../components/control/Ex
 import { FieldSurveyReportModal } from '../../components/reports/FieldSurveyReportModal';
 import { Button, StatusBadge } from '../../components/ui/BaseUI';
 import { 
-  CpuIcon, Wifi, CheckCircle2, ArrowRight, MapPin, 
-  CheckSquare, Layers, Lock, ShieldCheck, Wrench, Building2, 
+  Wifi, CheckCircle2, ArrowRight, MapPin, 
+  CheckSquare, Layers, Lock, ShieldCheck, Wrench, 
   FlaskConical, FileText, Send, DollarSign, ChevronDown, ChevronUp,
   Search, Filter, Clock
 } from 'lucide-react';
+
+const savedEstimateSnapshot = (deployment: any) => {
+  if (!deployment) return undefined;
+  if (deployment.estimateSnapshotJson) return deployment.estimateSnapshotJson;
+  const items = Array.isArray(deployment.estimateItems) ? deployment.estimateItems : [];
+  if (items.length === 0) return undefined;
+  const total = items.reduce((sum: number, item: any) => sum + Number(item.lineTotal ?? (Number(item.quantity || 0) * Number(item.unitPrice || 0))), 0);
+  return JSON.stringify({
+    algorithmName: 'Hexagonal WSN', algorithmVersion: 'v1',
+    gateways: items.filter((x: any) => x.role === 'Gateway').reduce((n: number, x: any) => n + Number(x.quantity || 0), 0),
+    sensors: items.filter((x: any) => x.role === 'SensorNode').reduce((n: number, x: any) => n + Number(x.quantity || 0), 0),
+    actuators: items.filter((x: any) => x.role === 'ActuatorNode').reduce((n: number, x: any) => n + Number(x.quantity || 0), 0),
+    totalCostVnd: total, estimateItems: items,
+  });
+};
 
 export const ProvisioningPage: React.FC = () => {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
@@ -26,6 +41,7 @@ export const ProvisioningPage: React.FC = () => {
   const [expandedRequestIds, setExpandedRequestIds] = useState<Record<string, boolean>>({});
   const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'INSTALLATION' | 'MAINTENANCE'>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [deploymentStatusFilter, setDeploymentStatusFilter] = useState<string>('SUBMITTED');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const toggleExpand = (id: string) => {
@@ -140,6 +156,10 @@ export const ProvisioningPage: React.FC = () => {
 
   // Filter requests based on tab, status and search
   const filteredRequests = requests.filter(req => {
+    const linkedDeployment = deploymentRequests.find(item => String(item.requestId || item.deploymentRequestId) === String(req.deploymentRequestId));
+    const linkedDeploymentStatus = String(linkedDeployment?.status || '').toUpperCase();
+    // Deployment chưa được kỹ thuật viên nhận thì chưa được đưa xuống luồng báo giá/Service.
+    if (linkedDeployment && (linkedDeploymentStatus === 'SUBMITTED' || linkedDeploymentStatus === 'CANCELLED')) return false;
     const isInst = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
     const isMaint = req.requestType === 'MAINTENANCE' || req.requestType === 'REPAIR' || req.requestType === 'REPLACEMENT';
     if (activeTabFilter === 'INSTALLATION' && !isInst) return false;
@@ -160,17 +180,9 @@ export const ProvisioningPage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
+      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
-            <CpuIcon size={14} /> Quy trình Triển khai & Chấm Node IoT
-          </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white">
-            Quản lý Báo giá, Hợp đồng & Chấm vị trí Node Thực địa
-          </h1>
-          <p className="text-xs text-emerald-100 mt-1">
-            Kỹ thuật viên lập Báo giá & Hợp đồng gửi Owner &rarr; Sau khi Owner Ký & Thanh toán 30% Cọc &rarr; Kỹ thuật viên tiến hành Vào Zone Chấm Node.
-          </p>
+          <h1 className="text-xl md:text-2xl font-bold text-white">Quản lý Báo giá, Hợp đồng & Chấm vị trí Node Thực địa</h1>
         </div>
 
       </div>
@@ -182,9 +194,45 @@ export const ProvisioningPage: React.FC = () => {
         </div>
       )}
 
-      <section className="p-4 bg-emerald-900 text-white rounded-2xl border border-emerald-700/80 shadow-md space-y-3">
-        <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-sm text-emerald-100">Luồng Deployment IoT chuẩn</h2><p className="text-[11px] text-emerald-200/90">Chuyển request sang Installing, sau đó thực hiện Gateway Enrollment và Hardware Preparation.</p></div><Button size="sm" variant="outline" onClick={refreshDeploymentRequests} className="text-white border-emerald-600 hover:bg-emerald-800">Làm mới</Button></div>
-        {deploymentRequests.length === 0 ? <p className="text-xs text-amber-300">Chưa có Deployment Request IoT chuẩn được trả về cho Technician. Các thẻ bên dưới là Service Request cũ.</p> : <div className="space-y-2">{deploymentRequests.map((item: any) => { const id = item.requestId || item.deploymentRequestId; const status = String(item.status || 'Unknown'); const lower = status.toLowerCase(); const action = lower === 'submitted' ? 'Nhận yêu cầu' : lower === 'accepted' ? 'Khảo sát & chuyển bước' : lower === 'surveyed' ? 'Xác nhận kế hoạch' : lower === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null; return <div key={id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 rounded-lg bg-emerald-950 border border-emerald-800"><div><span className="font-mono text-xs text-emerald-300">#{id}</span><div className="text-[11px] text-emerald-200">Farm: {item.farmId} · Zone: {item.zoneId}</div></div><div className="flex items-center gap-2"><span className="px-2 py-1 rounded bg-emerald-800 text-xs font-bold text-emerald-100">{status}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 hover:bg-emerald-500 text-white">{action}</Button>}{lower === 'installing' && <span className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 text-xs font-bold">Sẵn sàng Provision Gateway</span>}</div></div>; })}</div>}
+      <section className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-sm text-slate-900">Yêu cầu triển khai IoT</h2>
+            <p className="text-[11px] text-slate-500">Ưu tiên tiếp nhận các yêu cầu mới trước khi chuyển sang báo giá và lắp đặt.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={deploymentStatusFilter} onChange={e => setDeploymentStatusFilter(e.target.value)} className="text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 font-semibold">
+              <option value="SUBMITTED">Chưa tiếp nhận</option>
+              <option value="ALL">Tất cả tiến độ</option>
+              <option value="ACCEPTED">Đã tiếp nhận</option>
+              <option value="SURVEYED">Đã khảo sát</option>
+              <option value="PLANCONFIRMED">Đã xác nhận kế hoạch</option>
+              <option value="INSTALLING">Đang lắp đặt</option>
+              <option value="COMPLETED">Đã hoàn tất</option>
+              <option value="CANCELLED">Đã hủy</option>
+            </select>
+            <Button size="sm" variant="outline" onClick={refreshDeploymentRequests}>Làm mới</Button>
+          </div>
+        </div>
+        {deploymentRequests.length === 0 ? (
+          <p className="text-xs text-slate-500">Chưa có yêu cầu triển khai cần xử lý.</p>
+        ) : (
+          <div className="grid gap-2 grid-cols-1">
+            {[...deploymentRequests].sort((a: any, b: any) => {
+              const rank: Record<string, number> = { submitted: 0, accepted: 1, surveyed: 2, planconfirmed: 3, installing: 4, completed: 5, cancelled: 6 };
+              return (rank[String(a.status || '').toLowerCase()] ?? 99) - (rank[String(b.status || '').toLowerCase()] ?? 99);
+            }).filter((item: any) => deploymentStatusFilter === 'ALL' || String(item.status || '').toUpperCase() === deploymentStatusFilter).map((item: any) => {
+              const id = item.requestId || item.deploymentRequestId;
+              const status = String(item.status || '').toLowerCase();
+              const labels: Record<string, string> = { submitted: 'Mới gửi', accepted: 'Đã tiếp nhận', surveyed: 'Đã khảo sát', planconfirmed: 'Đã xác nhận kế hoạch', installing: 'Đang lắp đặt', completed: 'Đã hoàn tất', cancelled: 'Đã hủy' };
+              const action = status === 'submitted' ? 'Nhận yêu cầu' : status === 'accepted' ? 'Khảo sát' : status === 'surveyed' ? 'Xác nhận kế hoạch' : status === 'planconfirmed' ? 'Bắt đầu lắp đặt' : null;
+              return <div key={id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">Yêu cầu triển khai #{String(id).slice(0, 8)}</div><div className="text-[11px] text-slate-500">{item.farmName || item.zoneName ? `${item.farmName || ''}${item.farmName && item.zoneName ? ' · ' : ''}${item.zoneName || ''}` : 'Khu vực chưa xác định'}</div></div>
+                <div className="flex items-center gap-2 shrink-0"><span className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 text-[11px] font-bold">{labels[status] || 'Chưa xác định'}</span>{action && <Button size="sm" onClick={() => advanceDeployment(item)} className="bg-emerald-600 text-white">{action}</Button>}</div>
+              </div>;
+            })}
+          </div>
+        )}
       </section>
 
       {/* Workflow Steps Indicator */}
@@ -246,7 +294,7 @@ export const ProvisioningPage: React.FC = () => {
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <span>⚡ Lắp đặt mới</span>
+            <span>⚡ Lắp đặt thiết bị</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
               activeTabFilter === 'INSTALLATION' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
             }`}>
@@ -292,10 +340,13 @@ export const ProvisioningPage: React.FC = () => {
               className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-semibold focus:outline-none focus:border-emerald-600"
             >
               <option value="ALL">Tất cả trạng thái</option>
-              <option value="OPEN">Chờ tiếp nhận (Open)</option>
-              <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
-              <option value="ACCEPTED_BY_OWNER">Đã nghiệm thu (Accepted)</option>
-              <option value="RESOLVED">Đã hoàn tất (Resolved)</option>
+              <option value="OPEN">Mới tạo / Chờ tiếp nhận</option>
+              <option value="IN_PROGRESS">Đang triển khai</option>
+              <option value="CONTRACT_SENT">Đã gửi báo giá</option>
+              <option value="CONTRACT_SIGNED_30PAID">Đã cọc 30%</option>
+              <option value="ACCEPTED_BY_OWNER">Đã nghiệm thu</option>
+              <option value="RESOLVED">Đã hoàn tất</option>
+              <option value="CLOSED">Đã đóng</option>
             </select>
           </div>
         </div>
@@ -303,9 +354,7 @@ export const ProvisioningPage: React.FC = () => {
 
       {/* List Action Toolbar */}
       <div className="flex items-center justify-between text-xs px-1">
-        <span className="text-slate-500 font-medium">
-          Danh sách yêu cầu kỹ thuật (<strong>{filteredRequests.length}</strong> yêu cầu) — <em>Bấm vào từng yêu cầu để mở rộng/thu gọn chi tiết:</em>
-        </span>
+        <span className="text-slate-700 font-semibold">Danh sách yêu cầu kỹ thuật ({filteredRequests.length})</span>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -388,7 +437,6 @@ export const ProvisioningPage: React.FC = () => {
                         </span>
                       )}
 
-                      <span className="text-[10px] text-slate-400 font-mono">#{req.serviceRequestId}</span>
                     </div>
 
                     <div className="flex items-baseline gap-2 flex-wrap">
@@ -400,18 +448,23 @@ export const ProvisioningPage: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap pt-0.5">
-                      <span className="font-semibold text-emerald-800 flex items-center gap-1">
-                        <Building2 size={13} /> {req.farmName} ({req.zoneName})
-                      </span>
-                      <span>•</span>
-                      <span>Khách hàng: <strong>{req.assignedOwnerName || 'Chủ Trang Trại'}</strong></span>
-                      <span>•</span>
-                      <span className="font-mono text-emerald-700 font-bold flex items-center gap-1">
-                        <Layers size={13} /> {req.mappedNodesCount || 0} Nodes đã chấm
-                      </span>
-                      <span>•</span>
-                      <span className="text-slate-400 font-mono">Ngày tạo: {new Date(req.createdAt).toLocaleDateString('vi-VN')}</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 text-[11px]">
+                      <div className="min-w-0">
+                        <span className="block text-slate-400">Khu vực</span>
+                        <strong className="text-emerald-800 truncate block">{req.farmName || 'Chưa xác định'}{req.zoneName ? ` · ${req.zoneName}` : ''}</strong>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="block text-slate-400">Chủ trang trại</span>
+                        <strong className="text-slate-700 truncate block">{req.assignedOwnerName || 'Chưa xác định'}</strong>
+                      </div>
+                      <div>
+                        <span className="block text-slate-400">GIS Node</span>
+                        <strong className="text-emerald-700">{req.mappedNodesCount || 0} node đã chấm</strong>
+                      </div>
+                      <div>
+                        <span className="block text-slate-400">Ngày tạo</span>
+                        <strong className="text-slate-600">{req.createdAt ? new Date(req.createdAt).toLocaleDateString('vi-VN') : 'Chưa có dữ liệu'}</strong>
+                      </div>
                     </div>
                   </div>
 
@@ -609,6 +662,7 @@ export const ProvisioningPage: React.FC = () => {
           isOpen={Boolean(selectedRequestForExperiment)}
           onClose={() => setSelectedRequestForExperiment(null)}
           request={selectedRequestForExperiment}
+          estimateSnapshotJson={savedEstimateSnapshot(deploymentRequests.find((item: any) => String(item.requestId || item.deploymentRequestId) === String(selectedRequestForExperiment.deploymentRequestId)))}
           onSendContractSuccess={handleSendContractSuccess}
         />
       )}
@@ -638,6 +692,7 @@ export const ProvisioningPage: React.FC = () => {
             zoneName: selectedRequestForSurvey.zoneName,
             title: selectedRequestForSurvey.title,
             status: selectedRequestForSurvey.status,
+            estimateSnapshotJson: savedEstimateSnapshot(deploymentRequests.find((item: any) => String(item.requestId || item.deploymentRequestId) === String(selectedRequestForSurvey.deploymentRequestId))),
           }}
           onSaved={() => {
             setSuccessMsg('Đã lưu phiếu khảo sát thực địa thành công!');

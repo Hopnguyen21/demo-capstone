@@ -928,7 +928,10 @@ public sealed class QuotationService(SmartFarmDbContext db) : IQuotationService
         sr.IsFullyPaid = true;
         quotation.Status = "Completed";
         // Nghiệm thu xong là kết thúc luồng lắp đặt: đóng phiếu (có ghi lịch sử) để không kẹt ở Assigned/InProgress.
-        SmartFarm.Infrastructure.IoTDeployment.DeploymentSupport.CloseInstallationRequest(db, sr, ownerId, DateTime.UtcNow, "Chủ trang trại ký nghiệm thu.");
+        var acceptanceNote = string.IsNullOrWhiteSpace(command.Notes)
+            ? "Chủ trang trại ký nghiệm thu."
+            : $"Chủ trang trại ký nghiệm thu: {command.Notes.Trim()}";
+        SmartFarm.Infrastructure.IoTDeployment.DeploymentSupport.CloseInstallationRequest(db, sr, ownerId, DateTime.UtcNow, acceptanceNote);
         db.ServiceRequestPayments.Add(payment);
         if (sr.AssignedTechnicianId is { } finalTech)
             Notifications.FlowNotifications.Add(db, finalTech, null, "Chủ trang trại đã ký nghiệm thu",
@@ -1306,6 +1309,7 @@ public sealed class FarmWizardService(SmartFarmDbContext db) : IFarmWizardServic
                                 OwnerUserId = ownerId, Status = DeploymentRequestStatus.Submitted,
                                 RequiredParametersCsv = string.Join(",", firstStage.Requirements.Select(x => x.ParameterCode).Distinct()),
                                 OwnerNotes = command.InitialDeploymentRequest.OwnerNotes,
+                                EstimateSnapshotJson = command.InitialDeploymentRequest.EstimateSnapshotJson,
                                 SubmittedAtUtc = DateTime.UtcNow
                             };
                             await AddEstimateItemsAsync(dr, command.InitialDeploymentRequest.EstimateItems, ct);

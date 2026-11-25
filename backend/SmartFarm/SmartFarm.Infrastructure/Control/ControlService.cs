@@ -9,7 +9,7 @@ using SmartFarm.Infrastructure.Platform;
 
 namespace SmartFarm.Infrastructure.Control;
 
-public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransport transport, IRainForecastProvider rain, TimeProvider clock) : IControlService
+public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransport transport, IRainForecastProvider rain, TimeProvider clock, INotificationService notifications) : IControlService
 {
     private static readonly TimeSpan FeedbackTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ConnectivityWindow = TimeSpan.FromMinutes(5);
@@ -115,14 +115,16 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
         var existing = await db.ActuatorCommands.Include(x => x.Events).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == key, ct); if (existing is not null) return ToView(existing);
         await EnsureReadyAsync(actuator.DeviceId, ct); await EnsureRainAsync(actuator, true, await PlatformSettingsStore.GetDecimalAsync(db, PlatformSettingKeys.RainGuardThresholdPercent, ct), request.Action, ct);
         var now = clock.GetUtcNow().UtcDateTime; var active = await ActiveCommandsAsync(actuator, now, ct);
-        if (active.Any(x => x.TriggerSource == CommandTriggerSource.Manual)) throw new ResourceConflictException("A manual command is already active in this Zone.");
-        if (active.Count > 0 && !request.OverrideActiveSchedules) throw new ResourceConflictException("An automated command is active; set overrideActiveSchedules to request safe preemption.");
+        if (request.Action == ActuatorCommandAction.TurnOn && active.Any(x => x.TriggerSource == CommandTriggerSource.Manual)) throw new ResourceConflictException("A manual command is already active in this Zone.");
+        if (request.Action == ActuatorCommandAction.TurnOn && active.Count > 0 && !request.OverrideActiveSchedules) throw new ResourceConflictException("An automated command is active; set overrideActiveSchedules to request safe preemption.");
         var command = BuildCommand(actuator, tenantId, userId, CommandTriggerSource.Manual, request.Action, request.DurationSeconds, key, request.Notes, now); db.ActuatorCommands.Add(command); await db.SaveChangesAsync(ct);
-        if (active.Count > 0)
+        if (active.Count > 0 && command.Action == ActuatorCommandAction.TurnOn)
         {
             foreach (var running in active) if (!await RequestStopAsync(running, "Preempted by manual command", ct)) { Fail(command, "PREEMPTION_FAILED", "Emergency stop could not be published.", now); await db.SaveChangesAsync(ct); return ToView(command); }
             return ToView(command);
         }
+        if (active.Count > 0 && command.Action == ActuatorCommandAction.TurnOff)
+            foreach (var running in active) await RequestStopAsync(running, "Stopped by manual OFF command", ct);
         await DispatchAsync(command, ct); return ToView(command);
     }
 
@@ -243,14 +245,37 @@ public sealed class ControlService(SmartFarmDbContext db, IActuatorCommandTransp
             var violates = rule.Operator switch { AutoRuleOperator.LessThan => reading.Value < rule.Threshold, AutoRuleOperator.LessThanOrEqual => reading.Value <= rule.Threshold, AutoRuleOperator.GreaterThan => reading.Value > rule.Threshold, _ => reading.Value >= rule.Threshold };
             if (!violates) { rule.ConditionTrueSinceUtc = null; continue; } rule.ConditionTrueSinceUtc ??= reading.CapturedAtUtc; if (now - rule.ConditionTrueSinceUtc < TimeSpan.FromMinutes(rule.ConditionDurationMinutes) || rule.LastTriggeredAtUtc?.AddMinutes(rule.CooldownMinutes) > now || await HasActiveManualAsync(zoneId, now, ct)) continue;
             var actuator = await ActuatorAsync(zoneId, rule.ActuatorId, ct); if (!await AutomatedGuardsPassAsync(actuator, rule.EnableRainDelay, rule.RainThresholdPercent, rule.Action, ct)) continue; var key = $"rule:{rule.Id:N}:{reading.Id:N}"; if (await db.ActuatorCommands.AnyAsync(x => x.TenantId == rule.TenantId && x.IdempotencyKey == key, ct)) continue;
-            var command = BuildCommand(actuator, rule.TenantId, null, CommandTriggerSource.AutoRule, rule.Action, rule.DurationSeconds, key, null, now); command.AutoRuleId = rule.Id; db.ActuatorCommands.Add(command); rule.LastTriggeredAtUtc = now; rule.ConditionTrueSinceUtc = null; await db.SaveChangesAsync(ct); await DispatchAsync(command, ct); fired++;
+            var command = BuildCommand(actuator, rule.TenantId, null, CommandTriggerSource.AutoRule, rule.Action, rule.DurationSeconds, key, null, now); command.AutoRuleId = rule.Id; db.ActuatorCommands.Add(command); rule.LastTriggeredAtUtc = now; rule.ConditionTrueSinceUtc = null; await db.SaveChangesAsync(ct); await DispatchAsync(command, ct);
+
+            // Auto-control trước đây chỉ tạo ActuatorCommand nên relay chạy
+            // nhưng Owner không nhận được notification. Ghi nhận đúng sự kiện
+            // phát lệnh để có thể đối soát trên chuông thông báo.
+            var zone = await db.Zones.Include(z => z.Field).ThenInclude(f => f.Farm).SingleAsync(z => z.Id == zoneId, ct);
+            var recipients = await db.AppUsers.AsNoTracking()
+                .Where(u => u.TenantId == rule.TenantId && (u.Role == UserRole.FarmOwner ||
+                    (u.Role == UserRole.Farmer && u.ZoneAccesses.Any(a => a.ZoneId == zoneId))))
+                .Select(u => u.Id).ToListAsync(ct);
+            foreach (var recipientId in recipients)
+            {
+                await notifications.CreateNotificationAsync(new(
+                    recipientId, rule.TenantId,
+                    $"Thiết bị tự động đã kích hoạt tại {zone.Name}",
+                    $"Đã phát lệnh {rule.Action} cho {actuator.ActuatorType}, thời gian {rule.DurationSeconds} giây do điều kiện cảnh báo vượt ngưỡng.",
+                    NotificationType.Alert, AlertSeverity.Warning, "/owner/alerts", command.Id.ToString(), SuppressIfUnread: true), ct);
+            }
+            fired++;
         }
         await db.SaveChangesAsync(ct); return fired;
     }
 
     private async Task DispatchAsync(ActuatorCommand command, CancellationToken ct)
     {
-        var now = clock.GetUtcNow().UtcDateTime; var result = await transport.PublishAsync(new(command.Id, command.GatewayId, command.DeviceId, command.ActuatorId, command.Action, command.DurationSeconds, now.AddSeconds(command.DurationSeconds)), ct);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var envelope = new CommandDispatchEnvelope(command.Id, command.GatewayId, command.DeviceId, command.ActuatorId, command.Action, command.DurationSeconds, now.AddSeconds(command.DurationSeconds));
+        // Tắt phải đi qua kênh dừng khẩn cấp để không bị xếp sau lệnh Bật/failsafe.
+        var result = command.Action == ActuatorCommandAction.TurnOff
+            ? await transport.PublishEmergencyStopAsync(envelope, ct)
+            : await transport.PublishAsync(envelope, ct);
         if (!result.Published) { Fail(command, result.ErrorCode ?? "TRANSPORT_UNAVAILABLE", result.ErrorMessage ?? "MQTT downlink was not published.", now); AddEvent(command, CommandEventKind.TransportFailure, command.Status, now, command.ErrorMessage); }
         else { command.Status = ActuatorCommandStatus.Sent; command.SentAtUtc = now; command.AckDeadlineAtUtc = now + FeedbackTimeout; AddEvent(command, CommandEventKind.Published, command.Status, now, "Downlink published; awaiting authenticated device feedback."); }
         await db.SaveChangesAsync(ct);

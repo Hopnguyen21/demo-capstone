@@ -8,7 +8,7 @@ import { FieldSurveyReportModal } from '../../components/reports/FieldSurveyRepo
 import { useAuth } from '@/app/providers/AuthContext';
 import {
   ClipboardList, UserCheck, Wrench, Building2, Cpu, CheckCircle2,
-  Clock, AlertCircle, ArrowUpRight, Search, Filter, ShieldCheck, User, Plus, CheckSquare, XCircle
+  Clock, AlertCircle, ArrowUpRight, Search, ShieldCheck, User, Plus, CheckSquare, XCircle
 } from 'lucide-react';
 
 export const ServiceRequestsPage: React.FC = () => {
@@ -22,11 +22,27 @@ export const ServiceRequestsPage: React.FC = () => {
 
   const loadRequests = async () => {
     try {
-      const data = await supportService.getServiceRequests();
-      if (Array.isArray(data)) setRequests(data);
       const uData = await userService.getUsers();
+      const userList = Array.isArray(uData) ? uData : [];
+      const userById = new Map(userList.map((u: any) => [String(u.userId || u.id), u]));
+      const data = await supportService.getServiceRequests();
+      if (Array.isArray(data)) {
+        const enriched = await Promise.all(data.map(async (request: any) => {
+          let owner = userById.get(String(request.createdByOwnerId || request.requestedBy));
+          let technician = userById.get(String(request.assignedTechnician || request.assignedTechnicianName));
+          // The admin user list can be tenant-scoped; resolve missing real users directly by ID.
+          if (!owner && request.createdByOwnerId) owner = await userService.getUserById(request.createdByOwnerId).catch(() => null);
+          if (!technician && request.assignedTechnician) technician = await userService.getUserById(request.assignedTechnician).catch(() => null);
+          return {
+            ...request,
+            requestedBy: owner?.fullName || owner?.email || request.requestedBy || 'Chưa xác định người tạo',
+            assignedTechnicianName: technician?.fullName || technician?.email || request.assignedTechnicianName || '',
+          };
+        }));
+        setRequests(enriched);
+      }
       if (Array.isArray(uData)) {
-        setTechnicians(uData.filter((u: any) => u.role === 'PLATFORM_TECHNICIAN' || u.role === 'PlatformTechnician'));
+        setTechnicians(userList.filter((u: any) => u.role === 'PLATFORM_TECHNICIAN' || u.role === 'PlatformTechnician'));
       }
     } catch (err) {
       console.error('Failed to load service requests:', err);
@@ -175,15 +191,16 @@ export const ServiceRequestsPage: React.FC = () => {
       )}
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white border border-slate-200 rounded-2xl shadow-xs">
-        <div className="flex items-center gap-2">
+      <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setActiveFilter('ALL')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               activeFilter === 'ALL' ? 'bg-[#119653] text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Tất cả Yêu cầu ({requests.length})
+            Tất cả ({requests.length})
           </button>
           <button
             onClick={() => setActiveFilter('OPEN')}
@@ -191,7 +208,7 @@ export const ServiceRequestsPage: React.FC = () => {
               activeFilter === 'OPEN' ? 'bg-amber-600 text-white shadow-xs' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
             }`}
           >
-            Chờ Phân công ({pendingCount})
+            Chờ phân công ({pendingCount})
           </button>
           <button
             onClick={() => setActiveFilter('IN_PROGRESS')}
@@ -199,7 +216,15 @@ export const ServiceRequestsPage: React.FC = () => {
               activeFilter === 'IN_PROGRESS' ? 'bg-sky-600 text-white shadow-xs' : 'bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100'
             }`}
           >
-            Đang triển khai ({inProgressCount})
+            Đang xử lý ({inProgressCount})
+          </button>
+          <button
+            onClick={() => setActiveFilter('RESOLVED')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeFilter === 'RESOLVED' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            Đã hoàn tất ({resolvedCount})
           </button>
         </div>
 
@@ -212,6 +237,7 @@ export const ServiceRequestsPage: React.FC = () => {
             className="pl-9 text-xs"
           />
         </div>
+        </div>
       </div>
 
       {/* Requests List */}
@@ -223,6 +249,7 @@ export const ServiceRequestsPage: React.FC = () => {
         ) : (
           filteredRequests.map(req => {
             const isPending = req.status === 'OPEN';
+            const isCancelled = (req as any).serviceRequestStatus === 'CANCELLED' || ['CANCELLED', 'Cancelled'].includes(req.status as string);
             const isInstallation = req.requestType === 'INSTALLATION' || req.requestType === 'INITIAL_SETUP';
             const isCompleted = ['RESOLVED', 'Resolved', 'CLOSED', 'Closed', 'WORK_COMPLETED', 'WorkCompleted', 'VERIFIED', 'Verified', 'COMPLETED', 'Completed'].includes(req.status as string)
               || Boolean(req.isAcceptedByOwner || req.acceptanceDetails?.isAcceptanceSigned || (req.status as any) === 'ACCEPTED_BY_OWNER')
@@ -252,6 +279,11 @@ export const ServiceRequestsPage: React.FC = () => {
                         {isInstallation ? '⚡ YÊU CẦU LẮP ĐẶT MỚI' : '🛠️ YÊU CẦU BẢO TRÌ & REPAIR'}
                       </span>
                       <ServiceRequestStatus request={req} />
+                      {isCancelled && (
+                        <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-300">
+                          ĐÃ HỦY
+                        </span>
+                      )}
                       {req.isAcceptedByOwner ? (
                         <span className="px-2 py-0.5 rounded bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1">
                           <CheckSquare size={11} /> OWNER ĐÃ NGHIỆM THU
@@ -278,7 +310,9 @@ export const ServiceRequestsPage: React.FC = () => {
 
                   <div className="text-right text-xs shrink-0">
                     <span className="text-slate-400 block text-[11px]">Thời gian gửi</span>
-                    <strong className="text-slate-700 font-mono">{new Date(req.createdAt).toLocaleString('vi-VN')}</strong>
+                    <strong className="text-slate-700 font-mono">
+                      {req.createdAt ? new Date(req.createdAt).toLocaleString('vi-VN') : 'Chưa có thời gian'}
+                    </strong>
                   </div>
                 </div>
 
@@ -292,7 +326,11 @@ export const ServiceRequestsPage: React.FC = () => {
                     <Wrench size={16} className={req.assignedTechnicianName ? "text-emerald-300 shrink-0" : "text-amber-300 shrink-0"} />
                     <div>
                       <span className="text-emerald-200 block text-[10px] uppercase font-bold tracking-wide">Trạng thái Phân công Kỹ thuật viên</span>
-                      {req.assignedTechnicianName ? (
+                      {isCancelled ? (
+                        <span className="text-rose-300 font-bold flex items-center gap-1">
+                          <XCircle size={14} /> Yêu cầu đã hủy
+                        </span>
+                      ) : req.assignedTechnicianName ? (
                         <strong className="text-emerald-300 font-bold flex items-center gap-1">
                           <CheckCircle2 size={14} /> Đã phân công: {techDisplayName}
                         </strong>
@@ -314,7 +352,7 @@ export const ServiceRequestsPage: React.FC = () => {
                       <ClipboardList size={14} className="text-emerald-300" />
                       <span>📋 Phiếu Khảo sát</span>
                     </Button>
-                    {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && ['OPEN', 'ASSIGNED'].includes(req.status) && (
+                    {!isCompleted && !isCancelled && ['OPEN', 'ASSIGNED'].includes((req as any).serviceRequestStatus || req.status) && (
                       <div className="flex items-center gap-2">
                         <select
                           value={assignedTechMap[req.serviceRequestId] || req.assignedTechnician || technicians[0]?.userId || ''}
@@ -326,12 +364,12 @@ export const ServiceRequestsPage: React.FC = () => {
                           ))}
                         </select>
                         <Button size="sm" onClick={() => handleAssignTechnician(req.serviceRequestId)} className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold">
-                          <UserCheck size={14} className="mr-1" /> {req.assignedTechnicianName ? 'Đổi Kỹ thuật viên' : 'Phân công ngay'}
+                          <UserCheck size={14} className="mr-1" /> Phân công
                         </Button>
                       </div>
                     )}
 
-                    {!isCompleted && !['CANCELLED', 'Cancelled'].includes(req.status) && (
+                    {!isCompleted && !isCancelled && !req.assignedTechnicianName && (req as any).serviceRequestStatus === 'OPEN' && (
                       <Button
                         size="sm"
                         variant="outline"

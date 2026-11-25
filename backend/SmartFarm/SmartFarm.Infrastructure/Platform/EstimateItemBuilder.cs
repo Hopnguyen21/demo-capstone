@@ -34,8 +34,6 @@ internal static class EstimateItemBuilder
                 if (!catalog.TryGetValue(hid, out var hw)) throw new RequestValidationException("estimateItems", "Có thiết bị trong dự toán không còn tồn tại trong danh mục.");
                 var role = PlatformAdminService.EstimateRoles.FirstOrDefault(r => string.Equals(r, i.Role?.Trim(), StringComparison.OrdinalIgnoreCase))
                     ?? throw new RequestValidationException("estimateItems", "Vai trò dòng dự toán không hợp lệ.");
-                if (hw.EstimateRole is not null && !string.Equals(hw.EstimateRole, role, StringComparison.OrdinalIgnoreCase))
-                    throw new RequestValidationException("estimateItems", $"Thiết bị {hw.Code} không có vai trò {role} trong danh mục.");
                 if (hw.UnitPrice <= 0) throw new RequestValidationException("estimateItems", $"Thiết bị {hw.Code} chưa có đơn giá hợp lệ trong danh mục.");
                 result.Add(new DeploymentEstimateItem { HardwareItemId = hw.Id, SortOrder = order++, Code = hw.Code, Name = hw.Name, Model = hw.Model, Role = role, Quantity = i.Quantity, UnitPrice = hw.UnitPrice, Notes = note });
             }

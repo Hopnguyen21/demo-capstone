@@ -4,6 +4,7 @@ import { Modal, Button, Input } from '../ui/BaseUI';
 import { ServiceRequest, QuotationItem } from '../../types';
 import { supportService, adminService, contractPackageService, discountService } from '../../services';
 import { ContractPackage, DiscountCode } from '../../types';
+import { EstimateSnapshotModal } from '../estimation/EstimateSnapshotModal';
 import {
   FileText, Send, CheckCircle2, ShieldCheck, Info,
   Package, DollarSign, Calculator, Cpu, Sparkles, Building2, User, Lock,
@@ -27,6 +28,7 @@ interface ExperimentReportModalProps {
   onClose: () => void;
   request: ServiceRequest;
   onSendContractSuccess?: () => void;
+  estimateSnapshotJson?: string | null;
 }
 
 export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
@@ -34,6 +36,7 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   onClose,
   request,
   onSendContractSuccess,
+  estimateSnapshotJson,
 }) => {
   const bp = useBusinessParameters(); const depositPct = bp.depositPercent;
   // Thiết bị phải được chọn từ kho và dùng đơn giá chung trong danh mục.
@@ -133,22 +136,28 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
   const [warehouseSearch, setWarehouseSearch] = useState('');
   const [warehouseCategory, setWarehouseCategory] = useState('ALL');
   const [loadingWarehouse, setLoadingWarehouse] = useState(false);
+  const [showEstimateSnapshot, setShowEstimateSnapshot] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setLoadingWarehouse(true);
-      Promise.all([
-        adminService.getMyTechnicianHardware().catch(() => []),
-        adminService.getHardwareItems().catch(() => []),
-      ])
-        .then(([technicianItems, platformItems]: [any[], any[]]) => {
-          const tech = (Array.isArray(technicianItems) ? technicianItems : [])
-            .map(item => ({ ...item, inventorySource: 'Kho KTV' }));
-          const technicianCodes = new Set(tech.map(item => String(item.code || '').toLowerCase()));
-          const central = (Array.isArray(platformItems) ? platformItems : [])
-            .filter(item => !technicianCodes.has(String(item.code || '').toLowerCase()))
-            .map(item => ({ ...item, inventorySource: 'Kho nền tảng' }));
-          setWarehouseItems([...tech, ...central]);
+      adminService.getHardwareItems()
+        .then((platformItems: any[]) => {
+          const available = (Array.isArray(platformItems) ? platformItems : [])
+            .filter(item => Number(item.quantityInStock || 0) > 0 && !['Deployed', 'Faulty', 'Maintenance', 'Retired'].includes(String(item.status)))
+            .map(item => ({ ...item, inventorySource: 'Kho chung' }));
+          const grouped = new Map<string, any>();
+          available.forEach(item => {
+            const key = String(item.code || item.name || item.id).trim().toUpperCase();
+            const current = grouped.get(key);
+            if (!current) grouped.set(key, { ...item, quantityInStock: Number(item.quantityInStock || 0), inventorySource: 'Kho chung' });
+            else grouped.set(key, {
+              ...current,
+              quantityInStock: Number(current.quantityInStock || 0) + Number(item.quantityInStock || 0),
+              unitPrice: Number(current.unitPrice || 0) > 0 ? current.unitPrice : item.unitPrice,
+            });
+          });
+          setWarehouseItems([...grouped.values()]);
         })
         .catch(err => console.warn('Could not fetch warehouse hardware items', err))
         .finally(() => setLoadingWarehouse(false));
@@ -481,6 +490,11 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
       size="full"
     >
       <form onSubmit={handleSendContract} className="space-y-4 text-xs">
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={() => setShowEstimateSnapshot(true)} className="flex items-center gap-1.5">
+            <Calculator size={14} /> Xem dự toán Tổ ong
+          </Button>
+        </div>
         {/* Warning Banner when locked */}
         {isLocked && (
           <div className="p-3.5 bg-amber-500/10 border-2 border-amber-500/40 text-amber-950 rounded-xl flex items-center gap-3 shadow-xs">
@@ -953,19 +967,20 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
         </div>
       </form>
     </Modal>
+      <EstimateSnapshotModal isOpen={showEstimateSnapshot} onClose={() => setShowEstimateSnapshot(false)} snapshot={estimateSnapshotJson} />
 
     {/* Modal Chọn Thiết Bị Từ Kho */}
     <Modal
       isOpen={isWarehouseModalOpen}
       onClose={() => setIsWarehouseModalOpen(false)}
-      title="📦 Chọn Thiết Bị & Vật Tư Từ Kho Nền Tảng (Hardware Inventory)"
+      title="📦 Chọn Thiết Bị & Vật Tư Của Công Ty"
       size="lg"
     >
       <div className="space-y-3 text-xs">
         <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] flex items-center gap-2">
           <Info size={15} className="text-emerald-700 shrink-0" />
           <span>
-            Chọn thiết bị từ <strong>Kho KTV</strong> để đưa vào Bảng báo giá & Hợp đồng. Kho nền tảng vẫn được hiển thị để bổ sung thiết bị chưa cấp phát.
+            Chọn thiết bị từ <strong>Kho chung</strong> để đưa vào Bảng báo giá & Hợp đồng. Danh mục và đơn giá được lấy trực tiếp từ hệ thống.
           </span>
         </div>
 
@@ -988,7 +1003,10 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
           >
             <option value="ALL">Tất cả chủng loại</option>
             <option value="GATEWAY">Trạm Gateway</option>
+            <option value="NODE_MODULE">Mô-đun Node</option>
             <option value="SENSOR">Cảm biến (Sensor Node)</option>
+            <option value="RELAY">Relay điều khiển</option>
+            <option value="PERIPHERAL">Thiết bị ngoại vi</option>
             <option value="VALVE">Van điều khiển (Valve)</option>
             <option value="PUMP">Bơm định lượng (Pump)</option>
           </select>
@@ -1018,9 +1036,6 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                         {item.category || 'THIẾT BỊ'}
                       </span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700">
-                        {item.inventorySource || 'Kho nền tảng'}
-                      </span>
                       {item.quantityInStock !== undefined && (
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                           item.quantityInStock > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'
@@ -1033,7 +1048,6 @@ export const ExperimentReportModal: React.FC<ExperimentReportModalProps> = ({
                     <p className="text-[11px] text-slate-500">
                       {item.model && <span>Model: {item.model} • </span>}
                       Đơn giá: <strong className="text-emerald-700 font-mono">{Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ</strong>
-                      {item.locationRack && <span className="text-slate-400 ml-2 font-mono">({item.locationRack})</span>}
                     </p>
                   </div>
 

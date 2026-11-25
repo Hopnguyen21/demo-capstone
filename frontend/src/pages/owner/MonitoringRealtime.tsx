@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useBusinessParameters } from '../../services/businessParameters';
+import { useNavigate } from 'react-router-dom';
 import { Sensor } from '../../types';
 import { deviceService, telemetryService, controlService, seasonService } from '../../services';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
-  Gauge, RefreshCw, Sun, CloudRain, ShieldCheck, Activity, AlertTriangle,
-  Radio, CheckCircle2, AlertOctagon, Wrench, Droplets, Clock, ShieldAlert,
-  Sliders, Info, Sparkles, X, ChevronDown, ChevronRight
+  Gauge, RefreshCw, Activity, AlertTriangle, AlertOctagon,
+  Clock, ChevronDown, ChevronRight, Sparkles, ArrowLeft, History
 } from 'lucide-react';
 import { StatusBadge, Button, CropRangeBand, Modal } from '../../components/ui/BaseUI';
 
@@ -69,7 +68,7 @@ const ParameterReading: React.FC<{ label: string; metric?: any; requirement?: an
 };
 
 export const MonitoringRealtime: React.FC = () => {
-  const rainPct = useBusinessParameters().rainGuardThresholdPercent;
+  const navigate = useNavigate();
   const { zones } = useAuth();
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   // Số đo mới nhất theo từng node của Zone (null = chưa tải được).
@@ -163,9 +162,9 @@ export const MonitoringRealtime: React.FC = () => {
       const isActuator = isActuatorNode(d);
       const label = isActuator ? `Node chấp hành ${++counters.actuator}` : `Node cảm biến ${++counters.sensor}`;
       const metrics: any[] = d.metrics ?? [];
-      const codes: string[] = [
-        ...new Set<string>([...(d.sensors ?? []).map(normalizeCode), ...metrics.map((m: any) => normalizeCode(m.parameterCode))])
-      ].sort((a, b) => PARAMETER_ORDER.indexOf(a) - PARAMETER_ORDER.indexOf(b));
+      // Chỉ hiển thị các thông số đã có reading thật từ telemetry.
+      const codes: string[] = [...new Set<string>(metrics.map((m: any) => normalizeCode(m.parameterCode)))]
+        .sort((a, b) => PARAMETER_ORDER.indexOf(a) - PARAMETER_ORDER.indexOf(b));
       return {
         deviceId: String(d.deviceId),
         hardwareAddress: d.hardwareAddress,
@@ -228,6 +227,24 @@ export const MonitoringRealtime: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => navigate(-1)}
+            className="text-xs flex items-center gap-1.5"
+          >
+            <ArrowLeft size={14} />
+            <span>Quay lại</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => navigate('/owner/monitoring/history')}
+            className="text-xs flex items-center gap-1.5"
+          >
+            <History size={14} />
+            <span>Lịch sử cảm biến</span>
+          </Button>
+
           {zones && zones.length > 1 && (
             <select
               value={selectedZoneId}
@@ -263,76 +280,37 @@ export const MonitoringRealtime: React.FC = () => {
         </div>
       </div>
 
-      {/* Triple-Lock Safety & Quality Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Safety Interlock Status */}
-        <div className="p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl flex items-start gap-3">
-          <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl mt-0.5">
-            <ShieldCheck size={18} />
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-900">Khóa An Toàn Liên Động (Interlock)</h4>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Tự ngắt tưới khi độ ẩm đất &gt; 85% • Khóa tự động khi cảm biến dự báo mưa &gt; {rainPct}%.
-            </p>
-            <span className="inline-block mt-1 text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-              ✓ Đang Kích Hoạt Bảo Vệ
-            </span>
-          </div>
-        </div>
-
-        {/* Offline Edge Autonomy Status */}
-        <div className="p-4 bg-sky-50/60 border border-sky-200/80 rounded-2xl flex items-start gap-3">
-          <div className="p-2 bg-sky-100 text-sky-700 rounded-xl mt-0.5">
-            <Radio size={18} />
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-900">Tự Hành Rìa Khi Mất Mạng (Edge Mode)</h4>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Gateway ESP32 lưu đệm lịch tưới 48h • Watchdog ngắt cứng sau tối đa 900s bơm.
-            </p>
-            <span className="inline-block mt-1 text-[10px] font-bold text-sky-800 bg-sky-100/80 px-2 py-0.5 rounded-md">
-              ✓ Gateway Master Polling OK
-            </span>
-          </div>
-        </div>
-
-        {/* Sensor Calibration Health */}
-        <div className="p-4 bg-amber-50/60 border border-amber-200/80 rounded-2xl flex items-start gap-3">
-          <div className="p-2 bg-amber-100 text-amber-700 rounded-xl mt-0.5">
-            <Wrench size={18} />
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-900">Hiệu Chuẩn Cảm Biến (Calibration)</h4>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Chu kỳ chuẩn hóa 180 ngày • Bù sai số Offset &amp; GainMultiplier tự động.
-            </p>
-            <span className="inline-block mt-1 text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md">
-              ✓ Độ Lệch Sai Số &lt; 1.5%
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Environmental Monitoring Panel */}
       <div className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-xs space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
           <div>
             <h3 className="text-base font-bold text-slate-900">{activeZoneName}</h3>
-            <p className="text-xs text-slate-500">Quy chuẩn vi khí hậu áp dụng: VietGAP TCVN 11892-1:2017</p>
+            <p className="text-xs text-slate-500">Số liệu mới nhất do Gateway và Node gửi về.</p>
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge status="ONLINE" label="Khu Vực An Toàn" />
-            <span className="text-[11px] text-slate-500 font-mono bg-slate-100 px-2 py-1 rounded-lg">
-              Chu kỳ: 60s
-            </span>
+            <StatusBadge
+              status={latestTelemetry?.hasFreshTelemetry ? 'ONLINE' : 'OFFLINE'}
+              label={latestTelemetry?.hasFreshTelemetry ? 'Có số liệu mới' : 'Chưa có số liệu mới'}
+            />
+            {latestTelemetry?.latestReceivedAtUtc && (
+              <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">
+                Nhận lúc: {formatTime(latestTelemetry.latestReceivedAtUtc)}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-          {Object.entries(PARAMETER_LABELS).map(([code, label]) => (
-            <ParameterReading key={code} label={label} metric={metricOf(code)} requirement={requirementOf(code)} />
-          ))}
+          {Object.entries(PARAMETER_LABELS)
+            .filter(([code]) => Boolean(metricOf(code)))
+            .map(([code, label]) => (
+              <ParameterReading key={code} label={label} metric={metricOf(code)} requirement={requirementOf(code)} />
+            ))}
+          {Object.keys(PARAMETER_LABELS).every(code => !metricOf(code)) && (
+            <div className="sm:col-span-2 lg:col-span-3 text-sm text-slate-500">
+              Chưa có reading cảm biến cho Zone này.
+            </div>
+          )}
         </div>
       </div>
 
@@ -444,6 +422,9 @@ export const MonitoringRealtime: React.FC = () => {
                             </tbody>
                           </table>
                         </div>
+                      )}
+                      {n.rows.length === 0 && !n.isActuator && (
+                        <p className="text-xs text-slate-500">Node chưa gửi reading cảm biến.</p>
                       )}
                     </div>
                   )}

@@ -22,7 +22,7 @@ namespace SmartFarm.Api.HostedServices;
 public sealed class MqttBrokerHost(
     IConfiguration configuration,
     IServiceScopeFactory scopes,
-    ILogger<MqttBrokerHost> logger) : BackgroundService, IActuatorCommandTransport
+    ILogger<MqttBrokerHost> logger) : BackgroundService, IActuatorCommandTransport, IFirmwareOtaTransport
 {
     private MqttServer? server;
     private readonly ConcurrentDictionary<string, byte> connectedClients = new(StringComparer.Ordinal);
@@ -178,6 +178,22 @@ public sealed class MqttBrokerHost(
             }
             catch (JsonException) { logger.LogWarning("Invalid configuration ACK from MQTT client {ClientId}.", args.ClientId); }
         }
+        else if (message.Topic.EndsWith("/ota-result", StringComparison.Ordinal))
+        {
+            var segments = message.Topic.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length != 4 || segments[0] != "smartfarm" || segments[1] != "gateways" || !Guid.TryParse(segments[2], out var gatewayId)) return;
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var gateway = await db.Gateways.SingleOrDefaultAsync(x => x.Id == gatewayId && x.MqttClientId == args.ClientId, CancellationToken.None);
+            if (gateway is null) return;
+            try
+            {
+                var result = JsonSerializer.Deserialize<GatewayOtaResultPayload>(message.PayloadSegment, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (result is null || string.IsNullOrWhiteSpace(result.MacAddress) || string.IsNullOrWhiteSpace(result.Version) || string.IsNullOrWhiteSpace(result.Result)) return;
+                await scope.ServiceProvider.GetRequiredService<IIoTDeploymentService>().RecordGatewayOtaResultAsync(new(result.MacAddress, result.Version, result.Result, result.ErrorCode, result.ErrorMessage, result.CommandId), CancellationToken.None);
+            }
+            catch (JsonException) { logger.LogWarning("Invalid OTA result from MQTT client {ClientId}.", args.ClientId); }
+        }
     }
 
     public Task<CommandTransportResult> PublishAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken)
@@ -212,6 +228,42 @@ public sealed class MqttBrokerHost(
             .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .Build();
         await server.InjectApplicationMessage(new InjectedMqttApplicationMessage(message) { SenderClientId = "smartfarm-backend" });
+    }
+
+    public async Task<CommandTransportResult> PublishAsync(Guid gatewayId, string commandId, string version, string firmwareUrl, string artifactSha256, CancellationToken cancellationToken)
+    {
+        if (server is null || !server.IsStarted) return new(false, "BROKER_OFFLINE", "MQTT host is not running.");
+        // Không chặn publish chỉ vì Gateway chưa kết nối đúng thời điểm dispatch.
+        // Lệnh OTA là retained; Gateway sẽ nhận ngay sau khi subscribe topic.
+        using (var scope = scopes.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SmartFarmDbContext>();
+            var exists = await db.Gateways.AsNoTracking().AnyAsync(x => x.Id == gatewayId, cancellationToken);
+            if (!exists)
+                return new(false, "GATEWAY_NOT_FOUND", "The Gateway does not exist.");
+        }
+        var topic = $"smartfarm/gateways/{gatewayId}/commands";
+        var payload = JsonSerializer.Serialize(new { type = "OTA", commandId, version, firmwareUrl, artifactSha256 });
+        var message = new MqttApplicationMessageBuilder()
+            .WithTopic(topic)
+            .WithPayload(payload)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            // Giữ lệnh OTA cuối cùng để Gateway nhận được ngay cả khi vừa
+            // kết nối MQTT sau thời điểm backend dispatch.
+            .WithRetainFlag(true)
+            .Build();
+        await server.InjectApplicationMessage(new InjectedMqttApplicationMessage(message) { SenderClientId = "smartfarm-backend" });
+        return new(true);
+    }
+
+    private sealed class GatewayOtaResultPayload
+    {
+        public string? CommandId { get; init; }
+        public string? MacAddress { get; init; }
+        public string? Version { get; init; }
+        public string? Result { get; init; }
+        public string? ErrorCode { get; init; }
+        public string? ErrorMessage { get; init; }
     }
 
     private async Task<CommandTransportResult> PublishCommandAsync(CommandDispatchEnvelope command, CancellationToken cancellationToken, bool isEmergencyStop)

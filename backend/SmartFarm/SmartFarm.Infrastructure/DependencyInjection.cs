@@ -169,8 +169,6 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, SmartFarm.Infrastructure.Notifications.NotificationService>();
         services.AddScoped<IZoneContractService, ZoneContractService>();
         services.AddScoped<IFieldSurveyReportService, FieldSurveyReportService>();
-        services.AddScoped<IStockOutService, StockOutService>();
-        services.AddScoped<IStockInService, StockInService>();
         services.AddScoped<IBillService, BillService>();
         services.AddScoped<IContractPackageService, ContractPackageService>();
         services.AddScoped<IDiscountCodeService, DiscountCodeService>();

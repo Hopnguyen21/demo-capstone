@@ -88,7 +88,7 @@ public sealed record FarmWizardZoneInput(string Name, decimal? AreaM2, string? Z
 public sealed record FarmWizardSeasonInput(string Name, Guid CropId, Guid? VarietyId, Guid? GrowthProfileId, DateTime StartDate, DateTime? ExpectedEndDate);
 /// <summary>Một dòng dự toán gửi kèm yêu cầu. Có HardwareItemId: server lấy mã/tên/giá từ kho (bỏ qua giá client). Role "Installation": chi phí thi công, cần UnitPrice.</summary>
 public sealed record FarmWizardEstimateItemInput(Guid? HardwareItemId, string Role, int Quantity, decimal? UnitPrice = null, string? Name = null, string? Notes = null);
-public sealed record FarmWizardDeploymentInput(IReadOnlyList<string>? RequiredParameters, string? OwnerNotes, IReadOnlyList<FarmWizardEstimateItemInput>? EstimateItems = null);
+public sealed record FarmWizardDeploymentInput(IReadOnlyList<string>? RequiredParameters, string? OwnerNotes, IReadOnlyList<FarmWizardEstimateItemInput>? EstimateItems = null, string? EstimateSnapshotJson = null);
 public sealed record FarmWizardSetupCommand(
     FarmWizardFarmInput Farm,
     FarmWizardFieldInput? Field,

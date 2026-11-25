@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
   LayoutDashboard, Building2, Database, Users, Sprout, Cpu, Radio, Activity,
   ShieldAlert, Settings, Wrench, Package, CpuIcon, MapPin, Gauge,
   Sliders, Calendar, Bot, FileText, ClipboardList, PackageCheck, Headphones,
-  ChevronRight, FileCheck, BookOpen, X, Tag
+  ChevronRight, ChevronLeft, FileCheck, BookOpen, X, Tag
 } from 'lucide-react';
 
 export interface NavItem {
@@ -22,6 +22,21 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { role } = useAuth();
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('smartfarm_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('smartfarm_sidebar_collapsed', String(isCollapsed));
+    } catch {
+      // Ignore storage restrictions; sidebar still works for the current session.
+    }
+  }, [isCollapsed]);
 
   const adminNav: NavItem[] = [
     { title: 'Platform Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
@@ -32,12 +47,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { title: 'Gói Duy Trì Dịch Vụ', path: '/admin/contract-packages', icon: <PackageCheck size={18} /> },
     { title: 'Hóa Đơn Thu Phí', path: '/admin/bills', icon: <FileCheck size={18} /> },
     { title: 'Mã Giảm Giá & Ưu Đãi', path: '/admin/discount-codes', icon: <Tag size={18} /> },
-    { title: 'Nhập & Xuất Kho IoT', path: '/admin/stock-outs', icon: <Package size={18} /> },
     { title: 'Thư viện Giống Cây', path: '/admin/crops', icon: <Sprout size={18} /> },
     { title: 'Quy chuẩn VietGAP', path: '/admin/vietgap', icon: <FileText size={18} /> },
     { title: 'Hồ sơ Sinh trưởng', path: '/admin/growth-profiles', icon: <Activity size={18} /> },
     { title: 'Kho Vật tư & Linh kiện', path: '/admin/devices', icon: <Package size={18} /> },
-    { title: 'Firmware Registry', path: '/admin/firmware', icon: <Cpu size={18} />, badge: 'OTA' },
+    { title: 'Quản lý Firmware', path: '/admin/firmware', icon: <Cpu size={18} />, badge: 'OTA' },
     { title: 'Sức khỏe Máy chủ & IoT', path: '/admin/system-health', icon: <Radio size={18} /> },
     { title: 'Nhật ký Audit Logs', path: '/admin/audit-logs', icon: <ShieldAlert size={18} /> },
     { title: 'Sao lưu & Khôi phục', path: '/admin/backup-restore', icon: <Database size={18} /> },
@@ -51,12 +65,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { title: 'Yêu cầu Bảo trì (Chấm Node)', path: '/technician/maintenance', icon: <Wrench size={18} /> },
     { title: 'Gói Duy Trì Dịch Vụ', path: '/technician/contract-packages', icon: <PackageCheck size={18} /> },
     { title: 'Hóa Đơn Thu Phí', path: '/technician/bills', icon: <FileCheck size={18} /> },
-    { title: 'Nhập & Xuất Kho IoT', path: '/technician/stock-outs', icon: <Package size={18} /> },
-    { title: 'Quản lý Gateway ESP32', path: '/technician/gateways', icon: <Radio size={18} /> },
     { title: 'Chẩn đoán Node & Cảm biến', path: '/technician/devices', icon: <Activity size={18} /> },
     { title: 'Kho Vật tư Linh kiện', path: '/technician/inventory', icon: <Package size={18} /> },
     { title: 'Chuẩn bị phần cứng', path: '/technician/hardware-preparation', icon: <Wrench size={18} /> },
-    { title: 'Gateway Enrollment', path: '/technician/gateway-enrollment', icon: <Radio size={18} /> },
+    { title: 'Kích hoạt Gateway', path: '/technician/gateway-enrollment', icon: <Radio size={18} /> },
     { title: 'Báo cáo Kỹ thuật', path: '/technician/reports', icon: <FileText size={18} /> },
   ];
 
@@ -95,11 +107,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const navItems = getNavItems();
 
-  const renderNavContent = (onItemClick?: () => void) => (
+  const renderNavContent = (onItemClick?: () => void, collapsed = false, showCollapseButton = false) => (
     <>
       <div className="space-y-1">
-        <div className="px-3 py-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          Menu Chức năng
+        <div className={`h-8 px-2 flex items-center ${collapsed ? 'justify-center' : 'justify-between'} text-[11px] font-bold text-slate-400 uppercase tracking-wider`}>
+          {!collapsed && <span>Menu Chức năng</span>}
+          {showCollapseButton && (
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(prev => !prev)}
+              className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 hover:text-[#119653] hover:border-emerald-300 shadow-xs transition-colors"
+              aria-label={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+              title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+            >
+              {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+            </button>
+          )}
         </div>
         {navItems.map(item => (
           <NavLink
@@ -107,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             to={item.path}
             onClick={onItemClick}
             className={({ isActive }) => `
-              flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all group
+              flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-3'} py-2.5 rounded-xl text-xs font-medium transition-all group
               ${isActive
                 ? 'bg-[#119653] text-white font-semibold shadow-xs'
                 : 'text-slate-600 hover:bg-emerald-50 hover:text-[#119653]'
@@ -116,17 +139,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           >
             {({ isActive }) => (
               <>
-                <div className="flex items-center gap-2.5">
+                <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2.5'} min-w-0`}>
                   <span className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-[#119653]'} transition-colors`}>{item.icon}</span>
-                  <span className="truncate">{item.title}</span>
+                  {!collapsed && <span className="truncate">{item.title}</span>}
                 </div>
-                {item.badge ? (
+                {!collapsed && item.badge ? (
                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${isActive ? 'bg-[#0e8046] text-white border border-white/20' : 'bg-emerald-50 text-[#119653] border border-emerald-200'}`}>
                     {item.badge}
                   </span>
-                ) : (
+                ) : !collapsed ? (
                   <ChevronRight size={12} className={`opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ${isActive ? 'text-emerald-100' : 'text-slate-400'}`} />
-                )}
+                ) : null}
               </>
             )}
           </NavLink>
@@ -174,8 +197,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       </aside>
 
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden lg:flex w-64 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 flex-col justify-between p-3 select-none overflow-y-auto shadow-xs shrink-0">
-        {renderNavContent()}
+      <aside className={`hidden lg:flex ${isCollapsed ? 'w-20' : 'w-64'} h-[calc(100vh-4rem)] bg-white border-r border-slate-200 flex-col justify-between p-3 select-none overflow-y-auto shadow-xs shrink-0 transition-[width] duration-300`}>
+        <div className="flex-1 min-h-0">
+          {renderNavContent(undefined, isCollapsed, true)}
+        </div>
       </aside>
     </>
   );

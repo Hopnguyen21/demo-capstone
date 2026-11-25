@@ -41,6 +41,7 @@ internal static class DeploymentSupport
         {
             TenantId = request.TenantId, FarmId = request.FarmId, ZoneId = request.ZoneId,
             DeploymentRequestId = request.Id, Source = "DeploymentRequest", FailureCode = "INSTALLATION",
+            CreatedByOwnerId = request.OwnerUserId,
             Description = request.OwnerNotes ?? "Yêu cầu khảo sát và lắp đặt IoT cho Zone."
         });
     }

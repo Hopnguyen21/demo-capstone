@@ -479,21 +479,15 @@ public sealed class SimulatedIotTelemetryWorker(
 
                     // Nếu có AlertRule do người dùng cấu hình riêng, ưu tiên sử dụng
                     var customRule = zoneRules.FirstOrDefault(r => r.ParameterCode == cfg.Param);
-                    if (customRule != null)
-                    {
-                        min = customRule.MinThreshold;
-                        max = customRule.MaxThreshold;
-                        sev = customRule.Severity;
-                    }
-                    else if (currentSeason != null)
-                    {
-                        var seasonReq = currentSeason.AppliedRequirements.FirstOrDefault(r => r.ParameterCode == cfg.Param);
-                        if (seasonReq != null)
-                        {
-                            min = seasonReq.MinValue;
-                            max = seasonReq.MaxValue;
-                        }
-                    }
+                    // Không tự tạo luật mặc định ở worker. Luật đã bị Owner xóa
+                    // phải thực sự biến mất và không được quay lại chỉ vì có
+                    // telemetry vượt ngưỡng. Ngưỡng mùa vụ chỉ phục vụ hồ sơ
+                    // sinh trưởng, không phải một AlertRule đang bật.
+                    if (customRule == null) continue;
+
+                    min = customRule.MinThreshold;
+                    max = customRule.MaxThreshold;
+                    sev = customRule.Severity;
 
                     var reading = readingsToAdd
                         .Where(r => r.ZoneId == zone.Id && r.ParameterCode == cfg.Param)
@@ -566,38 +560,8 @@ public sealed class SimulatedIotTelemetryWorker(
                         continue;
                     }
 
-                    // Tìm 1 alert rule có sẵn trong DB hoặc tạo alert rule đại diện hợp lệ
-                    Guid ruleId;
-                    if (customRule != null)
-                    {
-                        ruleId = customRule.Id;
-                    }
-                    else
-                    {
-                        var defaultRule = await db.AlertRules.FirstOrDefaultAsync(r => r.ZoneId == zone.Id && r.GrowthStageId == effectiveGrowthStageId, ct);
-                        if (defaultRule != null)
-                        {
-                            ruleId = defaultRule.Id;
-                        }
-                        else
-                        {
-                            var newRule = new AlertRule
-                            {
-                                Id = Guid.NewGuid(),
-                                ZoneId = zone.Id,
-                                GrowthStageId = effectiveGrowthStageId,
-                                ParameterCode = cfg.Param,
-                                MinThreshold = min,
-                                MaxThreshold = max,
-                                Severity = sev,
-                                CooldownMinutes = 15,
-                                IsActive = true,
-                                CreatedAtUtc = now
-                            };
-                            db.AlertRules.Add(newRule);
-                            ruleId = newRule.Id;
-                        }
-                    }
+                    // Chỉ tạo cảnh báo cho luật tùy chỉnh đang tồn tại.
+                    var ruleId = customRule!.Id;
 
                     // Tạo bản ghi Cảnh báo Alert mới với đầy đủ FK hợp lệ
                     var alert = new Alert

@@ -9,6 +9,11 @@ import { Button } from '../ui/BaseUI';
 import { adminService, discountService } from '../../services';
 
 export interface HoneycombEstimateResult {
+  algorithmName: string;
+  algorithmVersion: string;
+  areaM2: number;
+  cropName: string;
+  boundaryFactor: number;
   sensingRadiusM: number;
   cellAreaM2: number;
   interNodeDistanceM: number;
@@ -18,6 +23,14 @@ export interface HoneycombEstimateResult {
   totalCostVnd: number;
   minCostVnd: number;
   maxCostVnd: number;
+  estimateItems: Array<{
+    hardwareItemId?: string;
+    role: string;
+    quantity: number;
+    unitPrice?: number;
+    name?: string;
+    notes?: string;
+  }>;
 }
 
 interface HoneycombEstimatorProps {
@@ -28,6 +41,7 @@ interface HoneycombEstimatorProps {
   zoneId?: string;
   defaultExpanded?: boolean;
   onApplyEstimate?: (res: HoneycombEstimateResult) => void;
+  onCalculationChange?: (res: HoneycombEstimateResult) => void;
 }
 
 // Tham số đặc thù cây trồng cho mạng Tổ ong
@@ -51,6 +65,13 @@ export const CROP_HONEYCOMB_PROFILES: Record<string, {
     actuatorRatio: 0.5,
     recommendedSensors: 'Nhiệt ẩm + Ánh sáng lux + EC đất',
     description: 'Nhạy cảm với ẩm độ không khí và cường độ ánh sáng, vùng phủ tổ ong 13m tối ưu.'
+  },
+  'Dưa lưới (Cucumis melo)': {
+    icon: '🍈',
+    defaultRadiusM: 12,
+    actuatorRatio: 0.65,
+    recommendedSensors: 'Nhiệt ẩm vi khí hậu + Độ ẩm đất & EC',
+    description: 'Tán cây và mật độ trồng trong nhà màng cần theo dõi vi khí hậu và dinh dưỡng vùng rễ.'
   },
   'Dưa leo (Cucumis sativus)': {
     icon: '🥒',
@@ -86,26 +107,31 @@ export const HONEYCOMB_UNIT_PRICES = {
 
 export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
   areaM2,
-  cropName = 'Cà chua (Solanum lycopersicum)',
+  cropName = '',
   zoneName = 'Phân khu',
   farmId,
   zoneId,
   defaultExpanded = true,
-  onApplyEstimate
+  onApplyEstimate,
+  onCalculationChange
 }) => {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
   const [showFormulaModal, setShowFormulaModal] = useState<boolean>(false);
 
   // Profile cây trồng hiện tại
+  const normalizedCropName = cropName.toLowerCase();
   const matchedCropKey = Object.keys(CROP_HONEYCOMB_PROFILES).find(k =>
-    cropName.toLowerCase().includes(k.split(' ')[0].toLowerCase())
+    normalizedCropName.includes(k.split(' (')[0].toLowerCase()) ||
+    (k.match(/\(([^)]+)\)/)?.[1] ?? '').toLowerCase().split(',').some(scientificName =>
+      scientificName.trim() && normalizedCropName.includes(scientificName.trim())
+    )
   ) || 'Cà chua (Solanum lycopersicum)';
 
   const profile = CROP_HONEYCOMB_PROFILES[matchedCropKey];
 
-  // Bán kính phủ sóng ô lục giác R (mét) mặc định mật độ thưa (R = 25m) tối ưu chi phí
-  const [sensingRadius, setSensingRadius] = useState<number>(25);
+  // Bán kính được lấy theo profile cây trồng; không dùng một giá trị 25m cố định cho mọi loại cây.
+  const [sensingRadius, setSensingRadius] = useState<number | null>(null);
 
   // Dữ liệu thiết bị và đơn giá từ Database
   const [hardwareItems, setHardwareItems] = useState<any[]>([]);
@@ -133,7 +159,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
   }, [hardwareItems]);
 
   const sensorItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'AIR_SENSOR' || i.category === 'SENSOR_NODE') || {
+    return hardwareItems.find(i => i.category === 'SENSOR' || i.category === 'AIR_SENSOR' || i.category === 'SENSOR_NODE') || {
       name: `Node Cảm biến Môi trường Lục giác (${profile.recommendedSensors})`,
       model: 'SN-AIR-SHT30',
       unitPrice: HONEYCOMB_UNIT_PRICES.sensor,
@@ -141,7 +167,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
   }, [hardwareItems, profile.recommendedSensors]);
 
   const actuatorItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'VALVE' || i.category === 'PUMP') || {
+    return hardwareItems.find(i => i.category === 'RELAY' || i.category === 'VALVE' || i.category === 'PUMP' || i.category === 'ACTUATOR') || {
       name: 'Node Điều khiển Van Solenoid Tưới nhỏ giọt 4 Cổng',
       model: 'ACT-VALVE-01',
       unitPrice: HONEYCOMB_UNIT_PRICES.actuator,
@@ -149,7 +175,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
   }, [hardwareItems]);
 
   const accessoriesItem = useMemo(() => {
-    return hardwareItems.find(i => i.category === 'SPARE_PART') || {
+    return hardwareItems.find(i => i.category === 'PERIPHERAL' || i.category === 'SPARE_PART') || {
       name: 'Vật tư phụ kiện (Trụ cọc inox 304, cáp bọc chống nhiễu, hộp IP67)',
       model: 'SPARE-GEN-01',
       unitPrice: HONEYCOMB_UNIT_PRICES.accessories,
@@ -162,7 +188,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
   // Tính toán theo Thuật toán Mạng Tổ ong (Hexagonal Tessellation Algorithm)
   const calculation = useMemo(() => {
     const validArea = Math.max(50, Number(areaM2) || 1000);
-    const R = Math.max(6, Math.min(30, sensingRadius));
+    const R = Math.max(6, Math.min(30, sensingRadius ?? profile.defaultRadiusM));
 
     // 1. Diện tích 1 ô lục giác đều nội tiếp bán kính R: S = (3*sqrt(3)/2) * R^2
     const cellArea = (3 * Math.sqrt(3) / 2) * Math.pow(R, 2);
@@ -177,8 +203,8 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
     // 4. Số bộ điều khiển van/bơm Actuator
     const actuatorsCount = Math.max(1, Math.ceil(sensorsCount * profile.actuatorRatio));
 
-    // 5. Số Gateway (mỗi Gateway LoRa phủ được đến 15.000m2 nhà màng)
-    const gatewaysCount = Math.max(1, Math.ceil(validArea / 15000));
+    // 5. Mỗi Zone dùng một Gateway LoRa riêng để giữ topology và phạm vi quản lý rõ ràng.
+    const gatewaysCount = 1;
 
     // 6. Chi phí (Đồng bộ trực tiếp theo Đơn giá Database)
     const unitGwPrice = Number(gwItem.unitPrice) || HONEYCOMB_UNIT_PRICES.gateway;
@@ -190,14 +216,27 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
     const gatewayCost = gatewaysCount * unitGwPrice;
     const sensorCost = sensorsCount * unitSensorPrice;
     const actuatorCost = actuatorsCount * unitActuatorPrice;
-    const accessoriesCost = (sensorsCount + actuatorsCount) * unitAccessoriesPrice;
+    const loraModulesCount = gatewaysCount + sensorsCount;
+    const accessoriesCost = loraModulesCount * unitAccessoriesPrice;
     const installationCost = unitInstallationPrice;
 
     const totalCost = gatewayCost + sensorCost + actuatorCost + accessoriesCost + installationCost;
-    const minCost = Math.round(totalCost * 0.88);
-    const maxCost = Math.round(totalCost * 1.18);
+    const minCost = Math.round(totalCost * 0.85);
+    const maxCost = Math.round(totalCost * 1.15);
+    const estimateItems = [
+      gwItem.id && { hardwareItemId: gwItem.id, role: 'Gateway', quantity: gatewaysCount, name: 'Gateway LoRa đại diện' },
+      sensorItem.id && { hardwareItemId: sensorItem.id, role: 'SensorNode', quantity: sensorsCount, name: 'Sensor Node môi trường đại diện' },
+      actuatorItem.id && { hardwareItemId: actuatorItem.id, role: 'ActuatorNode', quantity: actuatorsCount, name: 'Node điều khiển tưới đại diện' },
+      accessoriesItem.id && { hardwareItemId: accessoriesItem.id, role: 'InstallKit', quantity: loraModulesCount, name: 'Mô-đun LoRa đại diện' },
+      { role: 'Installation', quantity: 1, unitPrice: unitInstallationPrice, name: 'Thi công, định vị GPS & cấu hình mạng mesh' },
+    ].filter(Boolean) as HoneycombEstimateResult['estimateItems'];
 
     const result: HoneycombEstimateResult = {
+      algorithmName: 'Hexagonal WSN',
+      algorithmVersion: 'v1',
+      areaM2: validArea,
+      cropName,
+      boundaryFactor,
       sensingRadiusM: R,
       cellAreaM2: Math.round(cellArea),
       interNodeDistanceM: Math.round(interNodeDist * 10) / 10,
@@ -206,7 +245,8 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       actuators: actuatorsCount,
       totalCostVnd: totalCost,
       minCostVnd: minCost,
-      maxCostVnd: maxCost
+      maxCostVnd: maxCost,
+      estimateItems
     };
 
     return {
@@ -218,10 +258,23 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
       accessoriesCost,
       installationCost
     };
-  }, [areaM2, sensingRadius, profile.actuatorRatio, gwItem, sensorItem, actuatorItem, accessoriesItem]);
+  }, [areaM2, cropName, sensingRadius, profile.defaultRadiusM, profile.actuatorRatio, gwItem, sensorItem, actuatorItem, accessoriesItem]);
+
+  const estimateReady = Boolean(
+    hasLoadedHardware &&
+    Number(areaM2) > 0 &&
+    cropName.trim() &&
+    [gwItem, sensorItem, actuatorItem, accessoriesItem].every((item: any) =>
+      item?.id && Number(item.unitPrice) > 0,
+    ),
+  );
 
   useEffect(() => {
-    if (calculation.totalCostVnd > 0) {
+    if (estimateReady) onCalculationChange?.(calculation);
+  }, [calculation, estimateReady, onCalculationChange]);
+
+  useEffect(() => {
+    if (estimateReady && calculation.totalCostVnd > 0) {
       discountService.getBestDiscount(calculation.totalCostVnd)
         .then(res => {
           if (res && res.hasDiscount) setBestDiscount(res);
@@ -229,9 +282,11 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
         })
         .catch(() => setBestDiscount(null));
     }
-  }, [calculation.totalCostVnd]);
+  }, [calculation.totalCostVnd, estimateReady]);
 
   const formatVND = (n: number) => n.toLocaleString('vi-VN') + ' đ';
+
+  if (!estimateReady) return null;
 
   return (
     <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white animate-in fade-in duration-200">
@@ -289,7 +344,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
               </div>
               <div className="font-bold text-2xl text-sky-800 font-mono">{calculation.gateways}</div>
               <div className="text-slate-600 font-bold text-xs">Trạm LoRa Gateway</div>
-              <div className="text-[10px] text-slate-500">Phủ sóng bán kính 800m</div>
+              <div className="text-[10px] text-slate-500">1 Gateway cho mỗi Zone</div>
               <div className="text-[11px] text-sky-700 font-bold font-mono border-t border-sky-100 pt-1.5">
                 {formatVND(calculation.gatewayCost)}
               </div>
@@ -331,7 +386,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
               <div className="flex items-center gap-2">
                 {hasLoadedHardware ? (
                   <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                    <Database size={10} className="text-emerald-700" /> Giá từ DB (PlatformHardwareItems)
+                    <Database size={10} className="text-emerald-700" /> Đơn giá tham chiếu
                   </span>
                 ) : (
                   <span className="text-[11px] text-slate-500 font-normal">Tiêu chuẩn VietGAP Đà Lạt</span>
@@ -344,7 +399,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                 <span className="flex items-center gap-2">
                   <Wifi size={13} className="text-sky-600" />
                   <div>
-                    <span className="font-medium text-slate-900">{gwItem.name}</span>
+                    <span className="font-medium text-slate-900">Gateway LoRa đại diện</span>
                     <span className="text-slate-500 text-[11px]"> ({gwItem.model || 'GATEWAY'}) × {calculation.gateways} trạm</span>
                   </div>
                 </span>
@@ -358,7 +413,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                 <span className="flex items-center gap-2">
                   <Radio size={13} className="text-emerald-600" />
                   <div>
-                    <span className="font-medium text-slate-900">{sensorItem.name}</span>
+                    <span className="font-medium text-slate-900">Sensor Node môi trường đại diện</span>
                     <span className="text-slate-500 text-[11px]"> ({sensorItem.model || 'SENSOR_NODE'}) × {calculation.sensors} node</span>
                   </div>
                 </span>
@@ -372,7 +427,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                 <span className="flex items-center gap-2">
                   <Zap size={13} className="text-amber-600" />
                   <div>
-                    <span className="font-medium text-slate-900">{actuatorItem.name}</span>
+                    <span className="font-medium text-slate-900">Node điều khiển tưới đại diện</span>
                     <span className="text-slate-500 text-[11px]"> ({actuatorItem.model || 'ACTUATOR'}) × {calculation.actuators} cụm</span>
                   </div>
                 </span>
@@ -386,8 +441,8 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                 <span className="flex items-center gap-2">
                   <Package size={13} className="text-slate-500" />
                   <div>
-                    <span className="font-medium text-slate-900">{accessoriesItem.name}</span>
-                    <span className="text-slate-500 text-[11px]"> × {calculation.sensors + calculation.actuators} vị trí</span>
+                  <span className="font-medium text-slate-900">Mô-đun LoRa đại diện</span>
+                  <span className="text-slate-500 text-[11px]"> × {calculation.gateways + calculation.sensors} thiết bị</span>
                   </div>
                 </span>
                 <div className="text-right">
@@ -498,6 +553,7 @@ export const HoneycombEstimator: React.FC<HoneycombEstimatorProps> = ({
                 <div>• Khoảng cách giữa 2 Node: <strong>D = √3 × R ≈ 1.732 × R</strong></div>
                 <div>• Số Sensor Nodes: <strong>N = ⌈ 1.12 × (Diện tích Zone / S) ⌉</strong></div>
                 <div>• Hệ số bù biên (1.12): Đảm bảo các cạnh mép không bị thiếu hụt độ phủ.</div>
+                <div>• Bán kính R: lấy theo hồ sơ cây trồng hiện tại, giới hạn an toàn 6–30m; mỗi Zone bố trí 1 Gateway.</div>
               </div>
 
               <p className="text-slate-600">

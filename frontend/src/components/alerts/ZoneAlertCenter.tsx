@@ -178,12 +178,10 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   const [historicAlerts, setHistoricAlerts] = useState<Alert[]>([]);
 
   useEffect(() => {
-    alertService.getAlerts().then(data => {
-      if (Array.isArray(data)) {
-        if (zoneId) setHistoricAlerts(data.filter((a: any) => a.zoneId === zoneId));
-        else setHistoricAlerts(data);
-      }
-    }).catch(err => console.error(err));
+    if (!zoneId) { setHistoricAlerts([]); return; }
+    alertService.getZoneAlerts(zoneId)
+      .then(data => setHistoricAlerts(Array.isArray(data) ? data : []))
+      .catch(err => { console.error('Không tải được cảnh báo của Zone:', err); setHistoricAlerts([]); });
   }, [zoneId]);
 
   const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
@@ -193,6 +191,21 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   const [simRunning, setSimRunning] = useState(true);
   const [simExpanded, setSimExpanded] = useState(false);
   const [showRuleModal, setShowRuleModal] = useState(false);
+  const [liveExpanded, setLiveExpanded] = useState(true);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const previousLiveCountRef = useRef(0);
+  const previousHistoryCountRef = useRef(0);
+
+  useEffect(() => {
+    const count = liveAlerts.filter(a => !a.acked).length;
+    if (count > previousLiveCountRef.current) setLiveExpanded(true);
+    previousLiveCountRef.current = count;
+  }, [liveAlerts]);
+
+  useEffect(() => {
+    if (historicAlerts.length > previousHistoryCountRef.current) setHistoryExpanded(true);
+    previousHistoryCountRef.current = historicAlerts.length;
+  }, [historicAlerts]);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [ruleForm, setRuleForm] = useState<Partial<AlertRule>>({});
   const [ruleSaveError, setRuleSaveError] = useState<string | null>(null);
@@ -250,10 +263,6 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
     setActiveActions(newActions);
   }, [activeMetricKeys]);
 
-  useEffect(() => {
-    checkRules(sensorValues);
-  }, [checkRules, sensorValues]);
-
   // Read the same latest telemetry used by the rest of the farm UI. Never
   // synthesize values here: missing/stale telemetry must remain missing/stale.
   useEffect(() => {
@@ -271,6 +280,24 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
         });
         setTelemetryMetricKeys(new Set(Object.keys(next)));
         setSensorValues(next);
+        const alerts = await alertService.getZoneAlerts(zoneId);
+        // Đồng bộ cả nhật ký lịch sử với cùng nguồn dữ liệu thật; trước đây
+        // lịch sử chỉ tải một lần khi mở popup nên cảnh báo mới không xuất hiện.
+        setHistoricAlerts(Array.isArray(alerts) ? alerts : []);
+        const openAlerts = (Array.isArray(alerts) ? alerts : []).filter((a: any) => String(a.status).toUpperCase() === 'OPEN');
+        setLiveAlerts(openAlerts.map((a: any) => ({
+          id: String(a.alertId),
+          ruleId: String(a.alertId),
+          metric: metricToParameter[a.parameterCode] ? a.parameterCode : (parameterToMetric[a.parameterCode] || String(a.parameterCode).toLowerCase()),
+          value: Number(a.triggeredValue),
+          threshold: `Ngoài ngưỡng an toàn [${a.minThreshold} - ${a.maxThreshold}${a.unit || ''}]`,
+          zone: a.zoneName || targetZone?.name || 'Zone hiện tại',
+          zoneId,
+          severity: a.severity === 'CRITICAL' ? 'CRITICAL' : 'WARNING',
+          action: 'Đã ghi nhận trong hệ thống cảnh báo',
+          time: new Date(a.triggeredAt).toLocaleTimeString('vi-VN'),
+          acked: false,
+        })));
       } catch (err) {
         if (!cancelled) console.error('Không tải được telemetry thật cho cảnh báo:', err);
       }
@@ -334,7 +361,6 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
     try {
       if (!zoneId) throw new Error('Zone chưa được xác định.');
-      if (!rule.actuatorId) throw new Error('Zone chưa có actuator/relay được chọn.');
       // The alert-rule API is intentionally tied to the active Growth Stage.
       // Check it here so the modal reports the real prerequisite instead of
       // showing ASP.NET's generic validation title.
@@ -357,9 +383,13 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       // The alert rule stores the threshold; the existing control-rule engine
       // performs the real relay/LoRa action. Link both threshold directions to
       // the first actuator in this Zone so the action field is operational.
-      const actuators = await controlService.getActuators(zoneId);
-      const actuator = (actuators || []).find((item: any) => item.actuatorId === rule.actuatorId) || (actuators || []).find((item: any) => Number(item.relayChannel ?? 1) === 1) || actuators?.[0];
-      if (actuator && !editingRule) {
+      // An alert threshold is valid even when the Zone has no relay. If a
+      // relay exists, additionally create the optional automation rule; a
+      // failure here must not roll back the persisted alert rule.
+      try {
+        const actuators = await controlService.getActuators(zoneId);
+        const actuator = (actuators || []).find((item: any) => item.actuatorId === rule.actuatorId) || (actuators || []).find((item: any) => Number(item.relayChannel ?? 1) === 1) || actuators?.[0];
+        if (actuator && !editingRule) {
         const parameterCode = metricToParameter[rule.metric] || 'Temperature';
         const base = {
           parameterCode,
@@ -373,18 +403,21 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           rainThresholdPercent: 70,
           isActive: rule.enabled,
         };
-        await controlService.createAutoRule(zoneId, {
+          await controlService.createAutoRule(zoneId, {
           ...base,
           name: `${rule.name} (vượt MAX)`,
           operator: 'GreaterThan',
           threshold: rule.maxThreshold,
         });
-        await controlService.createAutoRule(zoneId, {
+          await controlService.createAutoRule(zoneId, {
           ...base,
           name: `${rule.name} (dưới MIN)`,
           operator: 'LessThan',
           threshold: rule.minThreshold,
-        });
+          });
+        }
+      } catch (automationError) {
+        console.warn('Không tạo được tự động hóa relay; vẫn giữ quy tắc cảnh báo:', automationError);
       }
       const refreshed = await alertService.getAlertRules(zoneId);
       setRules((refreshed || []).map((item: any) => {
@@ -411,7 +444,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
   const totalOpenAlerts = activeLiveCount + activeHistoricCount;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Top Banner Alert Center Summary */}
       <div className="p-5 bg-gradient-to-r from-[#119653] via-[#0f874a] to-[#0b6f3c] rounded-2xl text-white shadow-lg border border-emerald-400/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1.5">
@@ -455,7 +488,7 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
           const violatingRule = rules.find(r => r.enabled && r.metric === m.key && (val < r.minThreshold || val > r.maxThreshold));
 
           return (
-            <div
+                  <div
               key={m.key}
               className={`p-3 rounded-xl border transition-all ${violatingRule
                 ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400 animate-pulse'
@@ -490,15 +523,17 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
       {/* Real-time Alerts Section */}
       {liveAlerts.filter(a => !a.acked).length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-3 order-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-rose-700 flex items-center gap-2">
               <Activity size={16} className="animate-pulse" /> Cảnh báo Vi phạm Real-time ({liveAlerts.filter(a => !a.acked).length})
             </h3>
-            <span className="text-[11px] text-slate-500 font-mono">Tự động quét từ cảm biến LoRa mỗi 5s</span>
+            <button type="button" onClick={() => setLiveExpanded(v => !v)} className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1">
+              {liveExpanded ? 'Thu gọn' : 'Mở rộng'} {liveExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
+          {liveExpanded && <div className="grid grid-cols-1 gap-3">
             {liveAlerts.filter(a => !a.acked).map(a => {
               const md = METRICS.find(m => m.key === a.metric);
               const Icon = md?.icon || Activity;
@@ -506,18 +541,18 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               return (
                 <div
                   key={a.id}
-                  className={`p-4 rounded-2xl border-l-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs transition-all ${a.severity === 'CRITICAL'
+                  className={`p-3 rounded-xl border-l-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs transition-all ${a.severity === 'CRITICAL'
                     ? 'bg-rose-50/80 border-l-rose-600 border-rose-200'
                     : 'bg-amber-50/80 border-l-amber-500 border-amber-200'
                     }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${a.severity === 'CRITICAL' ? 'bg-rose-100 border-rose-200 text-rose-600' : 'bg-amber-100 border-amber-200 text-amber-600'}`}>
-                      <Icon size={20} />
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${a.severity === 'CRITICAL' ? 'bg-rose-100 border-rose-200 text-rose-600' : 'bg-amber-100 border-amber-200 text-amber-600'}`}>
+                      <Icon size={16} />
                     </div>
 
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded font-mono ${a.severity === 'CRITICAL' ? 'bg-rose-200/80 text-rose-800' : 'bg-amber-200/80 text-amber-900'}`}>
                           {a.severity}
                         </span>
@@ -532,10 +567,6 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                         Giá trị thực đo: <strong className={a.severity === 'CRITICAL' ? 'text-rose-700' : 'text-amber-800'}>{fmtVal(a.value, a.metric)} {md?.unit}</strong> — {a.threshold}
                       </p>
 
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-900 bg-emerald-100/70 border border-emerald-300 rounded-lg px-2.5 py-1 font-semibold w-fit">
-                        <Power size={12} className="text-emerald-700" />
-                        Tự động thực thi: {a.action}
-                      </div>
                     </div>
                   </div>
 
@@ -551,7 +582,18 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
 
                     <Button
                       size="sm"
-                      onClick={() => setLiveAlerts(prev => prev.map(x => x.id === a.id ? { ...x, acked: true } : x))}
+                      onClick={async () => {
+                        try {
+                          if (/^[0-9a-f-]{36}$/i.test(a.id)) {
+                            await alertService.acknowledgeAlert(a.id, 'Đã xác nhận từ Trung tâm Cảnh báo Zone');
+                          }
+                          setLiveAlerts(prev => prev.map(x => x.id === a.id ? { ...x, acked: true } : x));
+                          const refreshed = await alertService.getZoneAlerts(zoneId || '');
+                          setHistoricAlerts(Array.isArray(refreshed) ? refreshed : []);
+                        } catch (err) {
+                          console.error('Không thể xác nhận cảnh báo:', err);
+                        }
+                      }}
                       className="bg-slate-800 hover:bg-slate-900 text-white text-xs"
                     >
                       <CheckCircle2 size={14} className="mr-1" /> Xác nhận
@@ -560,12 +602,12 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                 </div>
               );
             })}
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Rules Management Engine */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+      <div className="order-2 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white">
           <div className="flex items-center gap-2 font-bold text-sm">
             <Settings size={16} className="text-white" /> Cấu hình Quy tắc Cảnh báo An toàn Zone ({displayRules.length} luật phù hợp)
@@ -666,7 +708,12 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                         if (zoneId && /^[0-9a-f-]{36}$/i.test(rule.id)) {
                           try { await alertService.deleteAlertRule(zoneId, rule.id); } catch (err) { console.error('Không xóa được luật cảnh báo:', err); return; }
                         }
-                        setRules(prev => prev.filter(r => r.id !== rule.id));
+                        const refreshed = await alertService.getAlertRules(zoneId || '');
+                        setRules((refreshed || []).map((item: any) => {
+                          const metric = parameterToMetric[item.parameterCode] || item.parameterCode;
+                          const md = METRICS.find(x => x.key === metric);
+                          return { id: item.ruleId, name: `${md?.label || metric} - Cảnh báo ngưỡng`, metric, unit: md?.unit || '', minThreshold: Number(item.minThreshold), maxThreshold: Number(item.maxThreshold), zone: targetZone?.name || 'Zone hiện tại', zoneId: zoneId || '', severity: item.severity === 'Critical' ? 'CRITICAL' : 'WARNING', action: 'Gửi cảnh báo an toàn Zone', enabled: item.isActive !== false };
+                        }));
                       }}
                       className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600"
                       title="Xóa luật"
@@ -682,17 +729,19 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
       </div>
 
       {/* Historic Zone Alert Logs */}
-      <div className="space-y-3">
+      <div className="order-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <ShieldAlert size={16} className="text-slate-600" /> Nhật ký Lịch sử Sự cố & Cảnh báo ({historicAlerts.length})
           </h3>
-          <span className="text-xs text-slate-500">Lưu vết tự động theo thời gian thực</span>
+          <button type="button" onClick={() => setHistoryExpanded(v => !v)} className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+            {historyExpanded ? 'Thu gọn' : 'Xem nhật ký'} {historyExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
         </div>
 
-        <div className="space-y-2.5">
+        {historyExpanded && <div className="space-y-1.5">
           {historicAlerts.map(a => (
-            <div key={a.alertId} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div key={a.alertId} className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-slate-600 font-mono">#{a.alertId}</span>
@@ -703,8 +752,8 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                   <span className="text-xs text-slate-500">{new Date(a.triggeredAt).toLocaleString('vi-VN')}</span>
                 </div>
 
-                <h4 className="text-sm font-bold text-slate-900">{a.title}</h4>
-                <p className="text-xs text-slate-600">{a.message}</p>
+                <h4 className="text-xs font-bold text-slate-900">{a.title}</h4>
+                <p className="text-[11px] text-slate-600">{a.message}</p>
 
                 <div className="text-[11px] text-slate-500 pt-0.5 font-mono">
                   Khu vực: <strong className="text-slate-800">{a.zoneName || targetZone?.name}</strong> | Giá trị vi phạm: <strong className="text-rose-600">{a.triggeredValue}</strong> (Ngưỡng mục tiêu: {a.targetRange})
@@ -719,7 +768,15 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
                 {a.status === 'OPEN' && (
                   <Button
                     size="sm"
-                    onClick={() => setHistoricAlerts(prev => prev.map(x => x.alertId === a.alertId ? { ...x, status: 'ACKNOWLEDGED' } : x))}
+                    onClick={async () => {
+                      try {
+                        await alertService.acknowledgeAlert(a.alertId, 'Đã xác nhận từ Nhật ký Cảnh báo Zone');
+                        setHistoricAlerts(prev => prev.map(x => x.alertId === a.alertId ? { ...x, status: 'ACKNOWLEDGED' } : x));
+                        setLiveAlerts(prev => prev.filter(x => x.id !== a.alertId));
+                      } catch (err) {
+                        console.error('Không thể xác nhận cảnh báo:', err);
+                      }
+                    }}
                   >
                     <CheckCircle2 size={14} className="mr-1" /> Xác nhận
                   </Button>
@@ -727,11 +784,11 @@ export const ZoneAlertCenter: React.FC<ZoneAlertCenterProps> = ({
               </div>
             </div>
           ))}
-        </div>
+        </div>}
       </div>
 
       {/* Floating Sensor Simulator Switch */}
-      <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between text-xs">
+      <div className="order-5 p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between text-xs">
         <div className="flex items-center gap-2 font-mono text-[11px]">
           <span className={`w-2 h-2 rounded-full ${simRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
           <Cpu size={14} className="text-emerald-400" />

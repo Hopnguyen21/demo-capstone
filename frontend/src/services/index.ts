@@ -867,8 +867,11 @@ export const deviceService = {
     const res = await apiClient.get(`/api/v1/gateways/${gatewayId}`);
     return res.data;
   },
-  scheduleGatewayFirmware: async (gatewayId: string, firmwareReleaseId: string) =>
-    (await apiClient.put(`/api/v1/gateways/${gatewayId}/firmware`, { firmwareReleaseId, scheduledAtUtc: new Date().toISOString() })).data,
+  scheduleGatewayFirmware: async (gatewayId: string, firmwareReleaseId: string, scheduledAtUtc?: string) => {
+    const payload = { firmwareReleaseId, scheduledAtUtc: scheduledAtUtc || new Date().toISOString() };
+    const res = await apiClient.put(`/api/v1/gateways/${gatewayId}/firmware`, payload);
+    return res.data;
+  },
   getLatestGatewayFirmwareJob: async (gatewayId: string) => {
     const res = await apiClient.get(`/api/v1/gateways/${gatewayId}/firmware-job`);
     return res.status === 204 ? null : res.data;
@@ -898,7 +901,7 @@ export const deviceService = {
     return res.data;
   },
 
-  provisionNodes: async (body: { deploymentRequestId: string; gatewayId: string; farmId: string; nodes: { hardwareAddress: string; deviceType: 'SensorNode' | 'ActuatorNode'; hardwareItemId?: string }[] }) => {
+  provisionNodes: async (body: { deploymentRequestId?: string; gatewayId: string; farmId: string; nodes: { hardwareAddress: string; deviceType: 'SensorNode' | 'ActuatorNode'; hardwareItemId?: string }[] }) => {
     const res = await apiClient.post('/api/v1/devices/provision', body);
     return res.data;
   },
@@ -937,7 +940,7 @@ export const deviceService = {
     });
     return res.status === 204 ? null : res.data;
   },
-  activateGatewayEnrollment: async (enrollmentId: string, body: { farmId: string; deploymentRequestId: string; frequencyBand: string }) => (await apiClient.post(`/api/v1/gateway-enrollment/${enrollmentId}/activate`, body)).data,
+  activateGatewayEnrollment: async (enrollmentId: string, body: { farmId: string; deploymentRequestId?: string; frequencyBand: string }) => (await apiClient.post(`/api/v1/gateway-enrollment/${enrollmentId}/activate`, body)).data,
 
   /** GET /api/v1/zones/{zoneId}/devices or /nodes */
   getNodes: async (zoneId?: string) => {
@@ -1192,10 +1195,11 @@ export const telemetryService = {
     parameterCode: string,
     fromUtc: string,
     toUtc: string,
-    interval = '15m'
+    interval = '15m',
+    deviceId?: string
   ) => {
     const res = await apiClient.get(`/api/v1/zones/${zoneId}/telemetry/history`, {
-      params: { parameterCode, fromUtc, toUtc, interval },
+      params: { parameterCode, fromUtc, toUtc, interval, deviceId },
     });
     return res.data;
   },
@@ -1786,7 +1790,7 @@ export const supportService = {
 
             contractDetails = {
               contractId: q.id,
-              createdAt: q.createdAtUtc || new Date().toISOString(),
+              createdAt: q.createdAtUtc || '',
               items: (q.items || []).map((it: any) => ({
                 id: it.id,
                 code: it.code || it.hardwareItemCode || 'HW-01',
@@ -1808,7 +1812,7 @@ export const supportService = {
               contractSentAt: q.createdAtUtc,
               isSignedByOwner: isSigned,
               signedAtByOwner: isSigned ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
-              ownerSignatureName: 'Lê Văn An (Chủ Trang Trại)',
+              ownerSignatureName: sr.ownerName || sr.createdByOwnerName || '',
               is30PercentPaid: isDepositPaid,
               paid30At: isDepositPaid ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
               payment30Method: 'BANK_TRANSFER',
@@ -1825,10 +1829,10 @@ export const supportService = {
 
             acceptanceDetails = {
               isAcceptanceSigned: isCompleted,
-              signedAt: isCompleted ? (q.updatedAtUtc || new Date().toISOString()) : undefined,
-              ownerSignatureName: 'Lê Văn An (Chủ Trang Trại)',
+              signedAt: isCompleted ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
+              ownerSignatureName: sr.ownerName || sr.createdByOwnerName || '',
               is70PercentPaid: isCompleted,
-              paid70At: isCompleted ? (q.updatedAtUtc || new Date().toISOString()) : undefined,
+              paid70At: isCompleted ? (q.updatedAtUtc || q.createdAtUtc) : undefined,
               payment70Method: 'BANK_TRANSFER',
               payment70Ref: `PAY70-${id.substring(0, 8).toUpperCase()}`,
               notes: 'Đã nghiệm thu thiết bị hoạt động ổn định.',
@@ -1912,7 +1916,7 @@ export const supportService = {
           || sr.zoneName 
           || (zoneObj ? `Zone ${zoneObj.name}` : 'Nhà màng');
 
-        const resolvedFarmName = farmObj?.name || sr.farmName || 'Trang trại Nông nghiệp Công nghệ cao';
+        const resolvedFarmName = farmObj?.name || sr.farmName || 'Chưa xác định trang trại';
 
         return {
           serviceRequestId: id,
@@ -1927,12 +1931,18 @@ export const supportService = {
           deviceName: sr.failureCode || 'Cụm thiết bị IoT',
           title: sr.description?.split('.')[0] || sr.failureCode || 'Yêu cầu Hỗ trợ Kỹ thuật',
           description: sr.description || 'Yêu cầu kiểm tra và bảo dưỡng phần cứng tại nông trang.',
-          priority: sr.priority || 'HIGH',
+          // ServiceRequest hiện chưa có trường priority trong backend; không tự gán HIGH.
+          priority: sr.priority || '',
           status: derivedStatus,
-          requestType: (sr.failureCode === 'NEW_INSTALL' ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
-          requestedBy: 'Lê Văn An (Owner)',
-          assignedTechnicianName: 'Trần Minh Trí (Kỹ thuật viên IoT)',
-          createdAt: sr.createdAtUtc || sr.createdAt || new Date().toISOString(),
+          serviceRequestStatus: String(sr.status || '').toUpperCase(),
+          requestType: (['NEW_INSTALL', 'INSTALLATION'].includes(String(sr.failureCode || '').toUpperCase()) ? 'INSTALLATION' : 'MAINTENANCE') as 'INSTALLATION' | 'MAINTENANCE',
+          requestedBy: sr.createdByOwnerId || '',
+          assignedTechnicianName: sr.assignedTechnicianName || sr.assignedTechnicianId || '',
+          assignedOwnerName: sr.createdByOwnerName || '',
+          assignedTechnician: sr.assignedTechnicianId || undefined,
+          createdByOwnerId: sr.createdByOwnerId || undefined,
+          // Không tự sinh thời gian hiện tại: đây phải là thời điểm tạo thật từ database.
+          createdAt: sr.createdAtUtc || sr.createdAt || '',
           mappedNodesCount,
           isAcceptedByOwner: isAccepted,
           acceptedAtByOwner: isAccepted ? (sr.closedAtUtc || new Date().toISOString()) : undefined,
@@ -2598,22 +2608,6 @@ export const discountService = {
   delete: async (id: string): Promise<any> => (await apiClient.delete(`/api/v1/discount-codes/${id}`)).data?.value,
 };
 
-export const stockOutService = {
-  getList: async (farmId: string, status?: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-outs`, { params: status ? { status } : undefined })).data,
-  getById: async (farmId: string, id: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-outs/${id}`)).data,
-  create: async (farmId: string, data: any) => (await apiClient.post(`/api/v1/farms/${farmId}/stock-outs`, data)).data,
-  update: async (farmId: string, id: string, data: any) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}`, data)).data,
-  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-outs/${id}/status`, { status, notes })).data,
-  delete: async (farmId: string, id: string) => (await apiClient.delete(`/api/v1/farms/${farmId}/stock-outs/${id}`)).data,
-};
-export const stockInService = {
-  getList: async (farmId: string, status?: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-ins`, { params: status ? { status } : undefined })).data,
-  getById: async (farmId: string, id: string) => (await apiClient.get(`/api/v1/farms/${farmId}/stock-ins/${id}`)).data,
-  create: async (farmId: string, data: any) => (await apiClient.post(`/api/v1/farms/${farmId}/stock-ins`, data)).data,
-  update: async (farmId: string, id: string, data: any) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}`, data)).data,
-  updateStatus: async (farmId: string, id: string, status: string | number, notes?: string) => (await apiClient.put(`/api/v1/farms/${farmId}/stock-ins/${id}/status`, { status, notes })).data,
-  delete: async (farmId: string, id: string) => (await apiClient.delete(`/api/v1/farms/${farmId}/stock-ins/${id}`)).data,
-};
 export const billService = {
   getAll: async (params?: any) => (await apiClient.get('/api/v1/bills', { params })).data,
   createFromContract: async (data: any) => (await apiClient.post('/api/v1/bills', data)).data,

@@ -69,6 +69,8 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
         notificationService.getUnreadCount().catch(() => 0),
         role !== 'FARMER' ? zoneContractService.getExpiringContracts(undefined, 30).catch(() => []) : Promise.resolve([]),
       ]);
+      const currentAlerts = await alertService.getAlerts().catch(() => []);
+      setAlerts(Array.isArray(currentAlerts) ? currentAlerts : []);
 
       // Deduplicate contracts by contractNumber and only show actively expiring ones (0 to 30 days)
       const validContracts = Array.from(
@@ -91,7 +93,24 @@ export const Topbar: React.FC<TopbarProps> = ({ onToggleMobileMenu, isMobileMenu
         targetUrl: '/owner/farms',
       }));
 
-      const combined = [...contractNotifs, ...(list || [])];
+      const notificationList = Array.isArray(list) ? list : [];
+      const notificationReferences = new Set(notificationList.map((n: any) => String(n.referenceId || '')));
+      const alertNotifs: NotificationItem[] = (Array.isArray(currentAlerts) ? currentAlerts : [])
+        .filter((a: any) => String(a.status).toUpperCase() === 'OPEN' && !notificationReferences.has(String(a.alertId)))
+        .map((a: any) => ({
+          notificationId: `alert-${a.alertId}`,
+          userId: user?.userId || '',
+          title: a.title || 'Cảnh báo vi khí hậu',
+          message: a.message || 'Zone đang có cảnh báo cần xử lý.',
+          type: 'Alert' as const,
+          severity: a.severity === 'CRITICAL' ? 'Critical' : 'Warning',
+          isRead: false,
+          createdAtUtc: a.triggeredAt || new Date().toISOString(),
+          targetUrl: role === 'FARMER' ? '/farmer/alerts' : '/owner/alerts',
+          referenceId: a.alertId,
+        }));
+
+      const combined = [...contractNotifs, ...alertNotifs, ...notificationList];
       setNotifications(combined);
       setUnreadCount(count + contractNotifs.length);
 

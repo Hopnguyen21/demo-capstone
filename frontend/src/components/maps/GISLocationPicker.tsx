@@ -129,6 +129,8 @@ interface GISLocationPickerProps {
   hideAddressSearch?: boolean;
   /** Called when center drag completes with reverse-geocoded address (Farm only) */
   onAddressChange?: (address: string) => void;
+  /** Hide the center pin until a location is explicitly selected. */
+  showCenterMarker?: boolean;
   /** Reports whether current polygon has validation errors (e.g. outside parent or overlapping other polygons) */
   onValidationChange?: (isValid: boolean, errorMessage: string | null) => void;
 }
@@ -397,6 +399,7 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
   addressSearchQuery = '',
   hideAddressSearch = true,
   onAddressChange,
+  showCenterMarker = true,
   onValidationChange,
 }) => {
   const [mapCenter, setMapCenter] = useState<[number, number]>(center);
@@ -1130,21 +1133,23 @@ export const GISLocationPicker: React.FC<GISLocationPickerProps> = ({
             />
 
             {/* Center Point Marker (Draggable) */}
-            <Marker
-              position={center}
-              icon={createCenterPinIcon()}
-              draggable={!readOnly}
-              eventHandlers={centerEventHandlers}
-            >
-              <Popup>
-                <div className="text-xs font-semibold text-slate-900">
-                  Tâm điểm {level}
-                  {!readOnly && <p className="text-[10px] text-emerald-700 font-normal mt-1">
-                    Kéo ghim để chọn vị trí{level === 'FARM' ? ' — Địa chỉ sẽ tự động cập nhật' : ''}
-                  </p>}
-                </div>
-              </Popup>
-            </Marker>
+            {showCenterMarker && (
+              <Marker
+                position={center}
+                icon={createCenterPinIcon()}
+                draggable={!readOnly}
+                eventHandlers={centerEventHandlers}
+              >
+                <Popup>
+                  <div className="text-xs font-semibold text-slate-900">
+                    Tâm điểm {level}
+                    {!readOnly && <p className="text-[10px] text-emerald-700 font-normal mt-1">
+                      Kéo ghim để chọn vị trí{level === 'FARM' ? ' — Địa chỉ sẽ tự động cập nhật' : ''}
+                    </p>}
+                  </div>
+                </Popup>
+              </Marker>
+            )}
 
 
             {/* Parent Farm Polygon (for FIELD level) */}

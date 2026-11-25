@@ -51,7 +51,6 @@ import { FarmerInvitationsPage } from '../../pages/farmer/FarmerInvitationsPage'
 import { FarmerIrrigationPage } from '../../pages/farmer/FarmerIrrigationPage';
 
 import { ServiceRequestsPage } from '../../pages/admin/ServiceRequestsPage';
-import { StockOutsPage } from '../../pages/owner/StockOutsPage';
 import { DiscountCodesPage } from '../../pages/admin/DiscountCodesPage';
 import { BillsPage } from '../../pages/owner/BillsPage';
 import { ContractPackagesPage } from '../../pages/admin/ContractPackagesPage';
@@ -136,7 +135,6 @@ export const router = createBrowserRouter([
       { path: '/admin/contract-packages', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><ContractPackagesPage /></RequireRole> },
       { path: '/admin/bills', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><BillsPage /></RequireRole> },
       { path: '/admin/discount-codes', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><DiscountCodesPage /></RequireRole> },
-      { path: '/admin/stock-outs', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><StockOutsPage /></RequireRole> },
       { path: '/admin/backup-restore', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><BackupRestorePage /></RequireRole> },
       { path: '/admin/firmware', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><FirmwareRegistryPage /></RequireRole> },
       { path: '/admin/field-surveys', element: <RequireRole allowedRoles={['PLATFORM_ADMIN']}><FieldSurveyReportsPage /></RequireRole> },
@@ -146,13 +144,12 @@ export const router = createBrowserRouter([
       { path: '/technician/deployments', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><TechnicianDashboard /></RequireRole> },
       { path: '/technician/provisioning', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><ProvisioningPage /></RequireRole> },
       { path: '/technician/field-surveys', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><FieldSurveyReportsPage /></RequireRole> },
-      { path: '/technician/gateways', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><GatewaysPage /></RequireRole> },
+      { path: '/technician/gateways', element: <Navigate to="/technician/gateway-enrollment" replace /> },
       { path: '/technician/devices', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><GatewaysPage /></RequireRole> },
       { path: '/technician/maintenance', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><MaintenancePage /></RequireRole> },
       { path: '/technician/inventory', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><TechnicianInventoryPage /></RequireRole> },
       { path: '/technician/contract-packages', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><ContractPackagesPage /></RequireRole> },
       { path: '/technician/bills', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><BillsPage /></RequireRole> },
-      { path: '/technician/stock-outs', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><StockOutsPage /></RequireRole> },
       { path: '/technician/hardware-preparation', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><HardwarePreparationPage /></RequireRole> },
       { path: '/technician/gateway-enrollment', element: <RequireRole allowedRoles={['PLATFORM_TECHNICIAN', 'PLATFORM_ADMIN']}><GatewayEnrollmentPage /></RequireRole> },
 

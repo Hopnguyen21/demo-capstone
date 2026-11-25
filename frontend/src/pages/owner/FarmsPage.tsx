@@ -1,5 +1,5 @@
 import { NO_CROP_LABEL, zoneCropLabel, zoneStageLabel } from '../../utils/zoneCrop';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Farm, Field, Zone, ZoneContract, DeviceDepreciation, Crop, ServiceRequest } from '../../types';
 import {
   farmService, fieldService, zoneService, deviceService, supportService, telemetryService,
@@ -183,6 +183,7 @@ export const FarmsPage: React.FC = () => {
   const [showZoneGatewayConfig, setShowZoneGatewayConfig] = useState(false);
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const selectionRestored = useRef(false);
 
   // Auto drill-down to Zone when navigated from Service Request / Contract / GIS Map
   useEffect(() => {
@@ -216,6 +217,50 @@ export const FarmsPage: React.FC = () => {
       }
     }
   }, [location.state, zones, fields, farms]);
+
+  // Giữ ngữ cảnh Farm/Lô/Zone khi người dùng reload trang.
+  useEffect(() => {
+    if (!farms.length || !fields.length || !zones.length) return;
+    const navigationState = location.state as any;
+    if (navigationState?.farmId || navigationState?.zoneId) {
+      selectionRestored.current = true;
+      return;
+    }
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('smartfarm_owner_farms_context') || 'null');
+      const zone = saved?.zoneId ? zones.find(z => z.zoneId === saved.zoneId || (z as any).id === saved.zoneId) : null;
+      const field = saved?.fieldId
+        ? fields.find(f => f.fieldId === saved.fieldId || (f as any).id === saved.fieldId)
+        : zone ? fields.find(f => f.fieldId === zone.fieldId || (f as any).id === zone.fieldId) : null;
+      const farm = saved?.farmId
+        ? farms.find(f => f.farmId === saved.farmId || (f as any).id === saved.farmId)
+        : field ? farms.find(f => f.farmId === field.farmId || (f as any).id === field.farmId) : null;
+      if (farm) setSelectedFarm(farm);
+      if (field) setSelectedField(field);
+      if (zone) setSelectedZone(zone);
+      if (['OVERVIEW', 'CONTRACTS', 'DEPRECIATION', 'CF3', 'ESTIMATION'].includes(saved?.zoneActiveTab)) {
+        setZoneActiveTab(saved.zoneActiveTab);
+      }
+      selectionRestored.current = true;
+    } catch {
+      localStorage.removeItem('smartfarm_owner_farms_context');
+    }
+  }, [farms, fields, zones, location.state]);
+
+  useEffect(() => {
+    if (!selectionRestored.current) return;
+    if (!selectedFarm && !selectedField && !selectedZone) {
+      localStorage.removeItem('smartfarm_owner_farms_context');
+      return;
+    }
+    localStorage.setItem('smartfarm_owner_farms_context', JSON.stringify({
+      farmId: selectedFarm?.farmId,
+      fieldId: selectedField?.fieldId,
+      zoneId: selectedZone?.zoneId,
+      zoneActiveTab,
+    }));
+  }, [selectedFarm, selectedField, selectedZone, zoneActiveTab]);
 
   // Helper to check if a contract is signed successfully
   const isContractSignedSuccessfully = (c: ZoneContract | null | undefined): boolean => {
@@ -397,8 +442,11 @@ export const FarmsPage: React.FC = () => {
   );
   // Keep the last persisted reading for continuity, but distinguish it from
   // live data whenever all mapped nodes are offline.
+  // Trạng thái live phải dựa trên dữ liệu thực tế của từng Node hoặc metric
+  // mới nhất, không được khóa cứng theo cờ tổng hợp của Zone (cờ này có thể
+  // chậm hơn heartbeat Node).
   const telemetryIsLive = selectedZoneNodes.some(n => n.status === 'ONLINE')
-    && zoneLatest?.hasFreshTelemetry === true;
+    || (Array.isArray(zoneLatest?.metrics) && zoneLatest.metrics.some((metric: any) => metric.isFresh === true));
   const displayedZoneMetrics = visibleZoneMetrics.length > 0
     ? visibleZoneMetrics
     : (zoneLatest?.metrics || []);
@@ -1355,8 +1403,8 @@ export const FarmsPage: React.FC = () => {
       {selectedFarm && !selectedField && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Header Banner for Selected Farm */}
-          <div className="p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/40">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="p-4 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md space-y-2 border border-emerald-400/40">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
                   <Building2 size={16} /> Trang trại Đang chọn
@@ -1454,8 +1502,8 @@ export const FarmsPage: React.FC = () => {
                 <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
                   <Building2 size={14} /> {selectedFarm?.name} ➔ <MapPin size={14} /> Lô đất Đang chọn
                 </div>
-                <h2 className="text-xl font-bold text-white mt-1">{selectedField.name}</h2>
-                <p className="text-xs text-emerald-100 flex items-center gap-1 mt-1">
+                <h2 className="text-lg font-bold text-white mt-0.5">{selectedField.name}</h2>
+                <p className="text-[11px] text-emerald-100 flex items-center gap-1 mt-0.5">
                   {selectedField.description} • {(selectedField.areaM2 / 10000).toFixed(1)} ha
                 </p>
               </div>
@@ -1688,10 +1736,7 @@ export const FarmsPage: React.FC = () => {
           <div className="p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md space-y-3 border border-emerald-400/40">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-emerald-200 text-xs font-semibold">
-                  <Building2 size={13} /> {selectedFarm?.name} ➔ <MapPin size={13} /> {selectedField?.name} ➔ <Sprout size={13} /> Zone Chi tiết
-                </div>
-                <h2 className="text-xl font-bold text-white mt-1">{selectedZone.name}</h2>
+                <h2 className="text-xl font-bold text-white">{selectedZone.name}</h2>
                 <p className="text-xs text-emerald-100">{selectedZone.description} • {selectedZone.areaM2} m²</p>
               </div>
 

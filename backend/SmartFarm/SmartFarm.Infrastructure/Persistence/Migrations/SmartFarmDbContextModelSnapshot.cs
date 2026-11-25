@@ -1964,6 +1964,11 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
+                    b.Property<string>("EstimateSnapshotJson")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)")
+                        .HasColumnName("estimate_snapshot_json");
+
                     b.Property<string>("FailureCode")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
@@ -3756,9 +3761,36 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("artifact_sha256");
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<string>("CommandId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("command_id");
+
+                    b.Property<DateTime?>("CommandSentAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("command_sent_at_utc");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<DateTime?>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at_utc");
 
                     b.Property<Guid>("FirmwareReleaseId")
                         .HasColumnType("uuid")
@@ -3778,6 +3810,10 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_at_utc");
 
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at_utc");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -3795,6 +3831,9 @@ namespace SmartFarm.Infrastructure.Persistence.Migrations
                         .HasColumnName("updated_at_utc");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CommandId")
+                        .IsUnique();
 
                     b.HasIndex("FirmwareReleaseId");
 

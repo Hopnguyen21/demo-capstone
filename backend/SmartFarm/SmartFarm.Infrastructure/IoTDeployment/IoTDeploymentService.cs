@@ -16,7 +16,7 @@ using SmartFarm.Infrastructure.Platform;
 
 namespace SmartFarm.Infrastructure.IoTDeployment;
 
-public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfiguration configuration, HttpClient httpClient) : IIoTDeploymentService
+public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfiguration configuration, HttpClient httpClient, IFirmwareOtaTransport otaTransport) : IIoTDeploymentService
 {
     private static readonly DeploymentRequestStatus[] ActiveStatuses = [DeploymentRequestStatus.Submitted, DeploymentRequestStatus.Accepted, DeploymentRequestStatus.Surveyed, DeploymentRequestStatus.PlanConfirmed, DeploymentRequestStatus.Installing];
 
@@ -239,7 +239,13 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         {
             return await LoadRequestAsync(r.Id, ct);
         }
-        EnsureStatus(r, DeploymentRequestStatus.Installing);
+        // Lần đầu lưu cấu hình Gateway chính là lúc bắt đầu triển khai:
+        // cho phép chuyển trực tiếp Accepted -> Installing thay vì bắt KTV
+        // phải provision Node ở một màn hình khác trước.
+        if (r.Status == DeploymentRequestStatus.Accepted)
+            Transition(r, technicianId, "InstallationStarted", DeploymentRequestStatus.Installing, "Bắt đầu provision Node khi lưu cấu hình Gateway.");
+        else
+            EnsureStatus(r, DeploymentRequestStatus.Installing);
         var devices = await db.Devices
             .Include(x => x.ConnectionTests)
             .Where(x => x.DeploymentRequestId == r.Id && x.ZoneId == r.ZoneId && x.Status != DeviceStatus.Decommissioned)
@@ -322,6 +328,36 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
             }
         }
 
+        // Nghiệm thu là mốc duy nhất xác nhận Gateway đã được lắp đặt thực tế.
+        // Chỉ tại đây mới đồng bộ vị trí vận hành của Gateway và chuyển thiết bị
+        // Gateway khỏi thông tin vị trí kho. Bootstrap/kích hoạt trước đó không
+        // được phép làm Gateway xuất hiện như đã lắp tại Zone.
+        var deploymentGateway = await db.Gateways
+            .Include(x => x.DeploymentRequest)
+            .ThenInclude(x => x.Zone)
+            .ThenInclude(x => x.Field)
+            .ThenInclude(x => x.Farm)
+            .SingleOrDefaultAsync(x => x.DeploymentRequestId == r.Id, ct);
+        if (deploymentGateway is not null)
+        {
+            var zone = deploymentGateway.DeploymentRequest.Zone;
+            var farm = zone.Field.Farm;
+            deploymentGateway.InstallationLocation = $"{farm.Name} · {zone.Field.Name} · Zone {zone.Name}";
+            deploymentGateway.Status = GatewayStatus.Online;
+
+            var gatewayHardware = await db.PlatformHardwareItems
+                .Where(x => x.Category.ToUpper() == "GATEWAY" &&
+                            (x.SerialNumber == deploymentGateway.GatewaySerial || x.MacAddress == deploymentGateway.MacAddress))
+                .ToListAsync(ct);
+            foreach (var item in gatewayHardware)
+            {
+                item.Status = "Deployed";
+                item.AssignedTechnicianId = null;
+                item.LocationRack = $"Đã lắp đặt · {farm.Name} · Zone {zone.Name}";
+                item.UpdatedAtUtc = DateTime.UtcNow;
+            }
+        }
+
         Transition(r, technicianId, "DeploymentCompleted", DeploymentRequestStatus.Completed, acceptanceNotes);
         r.CompletedAtUtc = DateTime.UtcNow;
         // KTV hoàn tất lắp đặt → báo Chủ trang trại ký nghiệm thu (ReferenceId = phiếu dịch vụ liên kết, không có thì mã đợt triển khai).
@@ -339,7 +375,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         await EnsureTechnicianAsync(technicianId, ct); var r = await TechnicianRequestAsync(technicianId, requestId, ct); if (r.Status is DeploymentRequestStatus.Completed or DeploymentRequestStatus.MaintenanceRequired) throw new ResourceConflictException("Deployment is already terminal."); var code = Required(command.FailureCode, "failureCode", 100); var description = Required(command.Description, "description", 2000); if (command.DeviceId.HasValue && !await db.Devices.AnyAsync(x => x.Id == command.DeviceId && x.DeploymentRequestId == requestId, ct)) throw new ResourceNotFoundException("Device was not found in this Deployment Request."); await using var tx = await db.Database.BeginTransactionAsync(ct); r.FailureCode = code; r.FailureDescription = description; Transition(r, technicianId, "DeploymentFailed", DeploymentRequestStatus.MaintenanceRequired, description); var affected = await db.Devices.Where(x => x.DeploymentRequestId == requestId && (!command.DeviceId.HasValue || x.Id == command.DeviceId)).ToListAsync(ct); foreach (var d in affected) d.Status = DeviceStatus.MaintenanceRequired; var service = new ServiceRequest { TenantId = r.TenantId, FarmId = r.FarmId, ZoneId = r.ZoneId, DeploymentRequestId = r.Id, DeviceId = command.DeviceId, Source = "DeploymentFailure", FailureCode = code, Description = description }; db.ServiceRequests.Add(service); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return new(service.Id, r.Id, service.Status);
     }
 
-    public async Task<IReadOnlyList<GatewayView>> ListGatewaysAsync(Guid userId, Guid? tenantId, Guid farmId, CancellationToken ct) { await EnsureFarmReadAsync(userId, tenantId, farmId, ct); return (await db.Gateways.AsNoTracking().Include(x => x.Devices).Where(x => x.FarmId == farmId).ToListAsync(ct)).Select(x => x.ToView()).ToList(); }
+    public async Task<IReadOnlyList<GatewayView>> ListGatewaysAsync(Guid userId, Guid? tenantId, Guid farmId, CancellationToken ct) { await EnsureFarmReadAsync(userId, tenantId, farmId, ct); return (await db.Gateways.AsNoTracking().Include(x => x.Farm).Include(x => x.Devices).Where(x => x.FarmId == farmId).ToListAsync(ct)).Select(x => x.ToView()).ToList(); }
     public async Task<GatewayView> ProvisionGatewayAsync(Guid technicianId, ProvisionGatewayCommand command, CancellationToken ct)
     {
         await EnsureTechnicianAsync(technicianId, ct);
@@ -473,12 +509,14 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
     {
         await EnsureTechnicianAsync(technicianId, ct);
         var g = await TechnicianGatewayAsync(technicianId, gatewayId, ct);
-        if (await db.FirmwareJobs.AnyAsync(x => x.GatewayId == gatewayId && (x.Status == FirmwareJobStatus.Scheduled || x.Status == FirmwareJobStatus.InProgress), ct)) throw new ResourceConflictException("Gateway already has an active firmware job.");
+        if (await db.FirmwareJobs.AnyAsync(x => x.GatewayId == gatewayId && (x.Status == FirmwareJobStatus.Scheduled || x.Status == FirmwareJobStatus.CommandSent || x.Status == FirmwareJobStatus.InProgress), ct)) throw new ResourceConflictException("Gateway already has an active firmware job.");
         var release = await db.FirmwareReleases.SingleOrDefaultAsync(x => x.Id == command.FirmwareReleaseId && x.Status == FirmwareReleaseStatus.Approved, ct) ?? throw new ResourceConflictException("Only an Approved Firmware Registry release can be scheduled.");
         if (!release.HardwareTarget.Contains("ESP32", StringComparison.OrdinalIgnoreCase) || !release.HardwareTarget.Contains("GATEWAY", StringComparison.OrdinalIgnoreCase)) throw new ResourceConflictException("The selected release is not compatible with an ESP32 Gateway.");
-        var job = new FirmwareJob { GatewayId = g.Id, FirmwareReleaseId = release.Id, TargetVersion = release.Version, FirmwareUrl = Required(release.ArtifactUrl, "artifactUrl", 1000), ArtifactSha256 = release.ArtifactSha256, ScheduledAtUtc = command.ScheduledAtUtc.ToUniversalTime() };
+        var scheduledAt = command.ScheduledAtUtc.ToUniversalTime();
+        if (scheduledAt < DateTime.UtcNow) scheduledAt = DateTime.UtcNow;
+        var job = new FirmwareJob { GatewayId = g.Id, FirmwareReleaseId = release.Id, TargetVersion = release.Version, FirmwareUrl = Required(release.ArtifactUrl, "artifactUrl", 1000), ArtifactSha256 = release.ArtifactSha256, ScheduledAtUtc = scheduledAt };
         db.FirmwareJobs.Add(job); await db.SaveChangesAsync(ct);
-        return new(job.Id, g.Id, release.Id, job.TargetVersion, job.FirmwareUrl, job.ArtifactSha256, job.ScheduledAtUtc, job.Status);
+        return JobView(job);
     }
     public async Task<FirmwareJobView?> GetLatestFirmwareJobAsync(Guid userId, Guid gatewayId, CancellationToken ct)
     {
@@ -487,7 +525,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         await EnsureHardwareReadAsync(userId, null, gateway.Farm.TenantId, gateway.DeploymentRequestId, ct);
         var job = await db.FirmwareJobs.AsNoTracking().Where(x => x.GatewayId == gatewayId)
             .OrderByDescending(x => x.ScheduledAtUtc).FirstOrDefaultAsync(ct);
-        return job is null ? null : new(job.Id, job.GatewayId, job.FirmwareReleaseId, job.TargetVersion, job.FirmwareUrl, job.ArtifactSha256, job.ScheduledAtUtc, job.Status);
+        return job is null ? null : JobView(job);
     }
     public async Task<FirmwareJobView> RetryFirmwareAsync(Guid technicianId, Guid gatewayId, CancellationToken ct)
     {
@@ -498,7 +536,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
             .OrderByDescending(x => x.ScheduledAtUtc)
             .FirstOrDefaultAsync(ct)
             ?? throw new ResourceNotFoundException("No OTA job exists for this Gateway.");
-        if (job.Status is FirmwareJobStatus.Scheduled or FirmwareJobStatus.InProgress)
+        if (job.Status is FirmwareJobStatus.Scheduled or FirmwareJobStatus.CommandSent or FirmwareJobStatus.InProgress)
             throw new ResourceConflictException("The OTA job is still active; retry is not allowed yet.");
         if (job.Status == FirmwareJobStatus.Succeeded)
             throw new ResourceConflictException("The latest OTA job already succeeded.");
@@ -506,8 +544,27 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
             throw new ResourceConflictException("The OTA release is no longer approved or has no checksum.");
         job.Status = FirmwareJobStatus.Scheduled;
         job.ScheduledAtUtc = DateTime.UtcNow;
+        job.CommandId = null; job.CommandSentAtUtc = null; job.StartedAtUtc = null; job.FinishedAtUtc = null; job.ErrorCode = null; job.ErrorMessage = null;
         await db.SaveChangesAsync(ct);
-        return new(job.Id, job.GatewayId, job.FirmwareReleaseId, job.TargetVersion, job.FirmwareUrl, job.ArtifactSha256, job.ScheduledAtUtc, job.Status);
+        return JobView(job);
+    }
+
+    public async Task<int> DispatchDueFirmwareJobsAsync(CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var jobs = await db.FirmwareJobs.Include(x => x.Gateway).Include(x => x.FirmwareRelease)
+            .Where(x => x.Status == FirmwareJobStatus.Scheduled && x.ScheduledAtUtc <= now && x.FirmwareRelease.Status == FirmwareReleaseStatus.Approved && x.ArtifactSha256 != null)
+            .OrderBy(x => x.ScheduledAtUtc).Take(20).ToListAsync(ct);
+        var sent = 0;
+        foreach (var job in jobs)
+        {
+            var commandId = $"ota-{job.Id:N}-{job.AttemptCount + 1}";
+            var result = await otaTransport.PublishAsync(job.GatewayId, commandId, job.TargetVersion, job.FirmwareUrl, job.ArtifactSha256!, ct);
+            if (!result.Published) continue;
+            job.CommandId = commandId; job.AttemptCount++; job.CommandSentAtUtc = now; job.Status = FirmwareJobStatus.CommandSent; sent++;
+        }
+        if (sent > 0) await db.SaveChangesAsync(ct);
+        return sent;
     }
     public async Task<IReadOnlyList<FirmwareReleaseView>> ListFirmwareReleasesAsync(Guid adminId, CancellationToken ct)
     {
@@ -620,8 +677,19 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         await EnsureTechnicianAsync(technicianId, ct);
         if (command.Nodes.Count is < 1 or > 50) throw new RequestValidationException("nodes", "Provide between 1 and 50 nodes.");
         if (command.Nodes.Select(x => x.HardwareAddress.Trim().ToUpperInvariant()).Distinct().Count() != command.Nodes.Count) throw new RequestValidationException("nodes", "Hardware addresses must be unique.");
-        var r = await TechnicianRequestAsync(technicianId, command.DeploymentRequestId, ct);
-        EnsureStatus(r, DeploymentRequestStatus.Installing);
+        var r = command.DeploymentRequestId.HasValue
+            ? await TechnicianRequestAsync(technicianId, command.DeploymentRequestId.Value, ct)
+            : await db.DeploymentRequests
+                .Where(x => x.FarmId == command.FarmId && x.TechnicianUserId == technicianId && x.Status != DeploymentRequestStatus.Completed && x.Status != DeploymentRequestStatus.Cancelled)
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new ResourceNotFoundException("Không tìm thấy yêu cầu triển khai đang hoạt động cho Farm này.");
+        // Lưu cấu hình Gateway là điểm bắt đầu triển khai. Cho phép yêu cầu
+        // Accepted chuyển sang Installing ngay trong cùng luồng trước khi provision Node.
+        if (r.Status == DeploymentRequestStatus.Accepted)
+            Transition(r, technicianId, "InstallationStarted", DeploymentRequestStatus.Installing, "Bắt đầu provision Node khi lưu cấu hình Gateway.");
+        else
+            EnsureStatus(r, DeploymentRequestStatus.Installing);
         // Gateway đặt ở trang trại (nhà kho / cột anten) phục vụ mọi Zone: dùng được Gateway ĐÃ CÓ của trang trại, không bắt cấp phát lại mỗi yêu cầu.
         var g = await db.Gateways.SingleOrDefaultAsync(x => x.Id == command.GatewayId && x.FarmId == r.FarmId, ct) ?? throw new ResourceNotFoundException("Gateway was not found in this Farm.");
         if (command.FarmId != r.FarmId) throw new RequestValidationException("farmId", "Farm does not match the Deployment Request.");
@@ -716,7 +784,28 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         if (conflicting.Count > 0) throw new ResourceConflictException($"A hardware address is already provisioned on another Gateway: {string.Join(", ", conflicting.Select(x => x.HardwareAddress))}.");
         var modelIds = command.Nodes.Select(ResolveModelId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList();
         if (await db.DeviceModelDefinitions.CountAsync(x => modelIds.Contains(x.Id) && x.IsActive, ct) != modelIds.Count) throw new RequestValidationException("deviceModelId", "One or more Device Models are invalid.");
-        var newDevices = command.Nodes.Where(x => !owned.Any(d => d.HardwareAddress == x.HardwareAddress.Trim().ToUpperInvariant())).Select(x => new Device { FarmId = r.FarmId, GatewayId = g.Id, DeploymentRequestId = r.Id, HardwareAddress = x.HardwareAddress.Trim().ToUpperInvariant(), DeviceType = x.DeviceType, DeviceModelDefinitionId = ResolveModelId(x), HardwareItemId = x.HardwareItemId, LoRaAddress = x.HardwareItemId.HasValue && assignedLoRaByHardware.TryGetValue(x.HardwareItemId.Value, out var assignedAddress) ? assignedAddress : null }).ToList();
+        var newDevices = command.Nodes
+            .Where(x => !owned.Any(d => d.HardwareAddress == x.HardwareAddress.Trim().ToUpperInvariant()))
+            .Select(x =>
+            {
+                var address = x.HardwareAddress.Trim().ToUpperInvariant();
+                var prepared = preparedByAddress.FirstOrDefault(p => string.Equals(p.NodeId, address, StringComparison.OrdinalIgnoreCase));
+                var hardwareItemId = x.HardwareItemId ?? prepared?.HardwareItemId;
+                var lora = hardwareItemId.HasValue && assignedLoRaByHardware.TryGetValue(hardwareItemId.Value, out var assignedAddress)
+                    ? assignedAddress
+                    : (int?)null;
+                return new Device { FarmId = r.FarmId, GatewayId = g.Id, DeploymentRequestId = r.Id, HardwareAddress = address, DeviceType = x.DeviceType, DeviceModelDefinitionId = ResolveModelId(x), HardwareItemId = hardwareItemId, LoRaAddress = lora };
+            }).ToList();
+        // Every Node saved into a Gateway must have a stable LoRa address,
+        // even when its preparation record did not contain one yet.
+        foreach (var device in owned.Concat(newDevices))
+        {
+            if (device.LoRaAddress.HasValue && device.LoRaAddress.Value > 0) continue;
+            var nextAddress = 101;
+            while (usedLoRaAddresses.Contains(nextAddress)) nextAddress++;
+            device.LoRaAddress = nextAddress;
+            usedLoRaAddresses.Add(nextAddress);
+        }
         await DeductTechnicianStockForNewNodesAsync(technicianId, newDevices.Concat(linkDevices).ToList(), ct);
         db.Devices.AddRange(newDevices);
         AddDecision(r, technicianId, "DevicesProvisioned", r.Status, r.Status, $"Count={owned.Count + newDevices.Count}");
@@ -1009,6 +1098,15 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
             .ToListAsync(ct);
         var item = candidates.SingleOrDefault(x => NormalizeMac(x.MacAddress!) == NormalizeMac(mac))
             ?? throw new ResourceNotFoundException("No allocated Gateway matches this MAC address.");
+        // Bootstrap có thể tự gọi endpoint này sau mỗi reboot. Nếu Gateway
+        // đã active, việc kiểm tra lại trạng thái kho sẽ gây 409 dù dữ liệu
+        // runtime hoàn toàn hợp lệ.
+        var existingActivation = await db.GatewayEnrollments
+            .Where(x => x.HardwareItemId == item.Id && x.Status == "Activated")
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (existingActivation is not null)
+            return new(existingActivation.Id, existingActivation.HardwareItemId, existingActivation.MacAddress, existingActivation.ChipId, existingActivation.GatewaySerial, existingActivation.Status, existingActivation.EnrolledAtUtc, existingActivation.GatewayId, existingActivation.HandshakeVerifiedAtUtc);
         if (!string.Equals(item.Status, "InTechnicianStock", StringComparison.OrdinalIgnoreCase) || item.AssignedTechnicianId is null)
             throw new ResourceConflictException("Gateway MAC matches inventory, but it is not assigned to a Technician yet.");
         var existing = await db.GatewayEnrollments.SingleOrDefaultAsync(x => x.HardwareItemId == item.Id && x.Status == "Enrolled", ct);
@@ -1035,7 +1133,11 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         await EnsureTechnicianAsync(technicianId, ct);
         var enrollment = await db.GatewayEnrollments.SingleOrDefaultAsync(x => x.Id == enrollmentId && x.TechnicianUserId == technicianId && x.Status == "Enrolled", ct) ?? throw new ResourceNotFoundException("Gateway enrollment was not found or is not pending activation.");
         if (enrollment.HandshakeVerifiedAtUtc is null) throw new ResourceConflictException("Gateway bootstrap handshake has not been verified.");
-        var request = await TechnicianRequestAsync(technicianId, command.DeploymentRequestId, ct); if (request.FarmId != command.FarmId) throw new ResourceConflictException("Farm does not match the Deployment Request.");
+        var request = command.DeploymentRequestId.HasValue
+            ? await TechnicianRequestAsync(technicianId, command.DeploymentRequestId.Value, ct)
+            : await db.DeploymentRequests.Where(x => x.FarmId == command.FarmId && x.TechnicianUserId == technicianId && x.Status != DeploymentRequestStatus.Completed && x.Status != DeploymentRequestStatus.Cancelled).OrderByDescending(x => x.CreatedAtUtc).FirstOrDefaultAsync(ct)
+            ?? throw new ResourceNotFoundException("Không tìm thấy yêu cầu triển khai đang hoạt động cho Farm này.");
+        if (request.FarmId != command.FarmId) throw new ResourceConflictException("Farm does not match the Deployment Request.");
         if (await db.Gateways.AnyAsync(x => x.GatewaySerial == enrollment.GatewaySerial || x.MacAddress == enrollment.MacAddress, ct)) throw new ResourceConflictException("Gateway identity is already registered.");
         var gateway = new Gateway { FarmId = command.FarmId, DeploymentRequestId = request.Id, MacAddress = enrollment.MacAddress, GatewaySerial = enrollment.GatewaySerial, FrequencyBand = Required(command.FrequencyBand, "frequencyBand", 30), FirmwareVersion = enrollment.BootstrapFirmwareVersion, MqttClientId = $"smartfarm-gateway-{Guid.NewGuid():N}", ClientCertificateFingerprint = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())), Status = GatewayStatus.Provisioned };
         db.Gateways.Add(gateway); enrollment.Gateway = gateway; enrollment.Status = "Activated"; enrollment.EnrolledAtUtc ??= DateTime.UtcNow;
@@ -1114,13 +1216,17 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
         var gateway = (await db.Gateways.ToListAsync(ct)).SingleOrDefault(x => NormalizeMac(x.MacAddress) == mac)
             ?? throw new ResourceNotFoundException("Gateway was not found for OTA result.");
         var job = await db.FirmwareJobs.Include(x => x.FirmwareRelease)
-            .Where(x => x.GatewayId == gateway.Id && x.Status != FirmwareJobStatus.Succeeded)
+            .Where(x => x.GatewayId == gateway.Id && x.Status != FirmwareJobStatus.Succeeded && x.Status != FirmwareJobStatus.RolledBack)
             .OrderByDescending(x => x.ScheduledAtUtc).FirstOrDefaultAsync(ct);
         if (job is null) return;
+        if (!string.IsNullOrWhiteSpace(command.CommandId) && !string.Equals(job.CommandId, command.CommandId, StringComparison.Ordinal)) return;
         var started = string.Equals(command.Result, "Started", StringComparison.OrdinalIgnoreCase);
         var succeeded = string.Equals(command.Result, "Succeeded", StringComparison.OrdinalIgnoreCase) || string.Equals(command.Result, "Success", StringComparison.OrdinalIgnoreCase);
+        var rolledBack = string.Equals(command.Result, "RolledBack", StringComparison.OrdinalIgnoreCase);
         if ((started || succeeded) && !string.Equals(job.TargetVersion, command.Version, StringComparison.OrdinalIgnoreCase)) return;
-        job.Status = started ? FirmwareJobStatus.InProgress : succeeded ? FirmwareJobStatus.Succeeded : FirmwareJobStatus.Failed;
+        job.Status = started ? FirmwareJobStatus.InProgress : succeeded ? FirmwareJobStatus.Succeeded : rolledBack ? FirmwareJobStatus.RolledBack : FirmwareJobStatus.Failed;
+        if (started) job.StartedAtUtc ??= DateTime.UtcNow;
+        if (!started) { job.FinishedAtUtc = DateTime.UtcNow; job.ErrorCode = command.ErrorCode; job.ErrorMessage = command.ErrorMessage; }
         if (succeeded)
         {
             gateway.FirmwareVersion = Required(command.Version, "version", 50);
@@ -1189,6 +1295,7 @@ public sealed partial class IoTDeploymentService(SmartFarmDbContext db, IConfigu
     private async Task ValidateModelsCoverAsync(IReadOnlyList<PlanItemInput> items, IReadOnlyList<EnvironmentalParameterCode> required, CancellationToken ct) { var ids = items.Select(x => x.DeviceModelId).Distinct().ToList(); var models = await db.DeviceModelDefinitions.Include(x => x.Capabilities).Where(x => ids.Contains(x.Id) && x.IsActive).ToListAsync(ct); if (models.Count != ids.Count) throw new RequestValidationException("items", "One or more Device Models are invalid."); var covered = models.SelectMany(x => x.Capabilities).Select(x => x.ParameterCode).Distinct(); if (required.Except(covered).Any()) throw new RequestValidationException("items", "The plan does not cover every required environmental parameter."); }
     private static void ValidatePlan(IReadOnlyList<PlanItemInput> items) { if (items.Count == 0 || items.Any(x => x.Quantity is < 1 or > 100) || items.Select(x => x.DeviceModelId).Distinct().Count() != items.Count) throw new RequestValidationException("items", "Plan items must be non-empty, unique by model and quantity 1–100."); }
     private static FirmwareReleaseView ToFirmwareReleaseView(FirmwareRelease x) => new(x.Id, x.HardwareTarget, x.Version, x.ProtocolVersion, x.SourceRepository, x.GitTag, x.CommitSha, x.ArtifactUrl, x.ArtifactSha256, x.ReleaseNotes, x.Status, x.PublishedAtUtc, x.ApprovedByUserId);
+    private static FirmwareJobView JobView(FirmwareJob x) => new(x.Id, x.GatewayId, x.FirmwareReleaseId, x.TargetVersion, x.FirmwareUrl, x.ArtifactSha256, x.ScheduledAtUtc, x.Status, x.CommandId, x.AttemptCount, x.CommandSentAtUtc, x.StartedAtUtc, x.FinishedAtUtc, x.ErrorCode, x.ErrorMessage);
     private void ReplacePlan(DeploymentRequest r, IReadOnlyList<PlanItemInput> items) { db.DeploymentPlanItems.RemoveRange(r.PlanItems); foreach (var old in r.PlanItems.ToList()) r.PlanItems.Remove(old); AddPlan(r, items); }
     private void AddPlan(DeploymentRequest r, IEnumerable<PlanItemInput> items) { foreach (var x in items) { var item = new DeploymentPlanItem { DeploymentRequestId = r.Id, DeviceModelDefinitionId = x.DeviceModelId, Quantity = x.Quantity, InstallationNotes = Optional(x.InstallationNotes, 1000) }; r.PlanItems.Add(item); if (db.Entry(r).State != EntityState.Detached && db.Entry(r).State != EntityState.Added) db.DeploymentPlanItems.Add(item); } }
     private void AddDecision(DeploymentRequest r, Guid actor, string type, DeploymentRequestStatus from, DeploymentRequestStatus to, string? notes) { var d = new DeploymentDecisionHistory { DeploymentRequestId = r.Id, ActorUserId = actor, DecisionType = type, FromStatus = from.ToString(), ToStatus = to.ToString(), Notes = Optional(notes, 2000) }; r.Decisions.Add(d); if (db.Entry(r).State != EntityState.Detached && db.Entry(r).State != EntityState.Added) db.DeploymentDecisionHistory.Add(d); }

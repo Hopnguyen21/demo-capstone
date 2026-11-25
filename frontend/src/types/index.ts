@@ -609,7 +609,7 @@ export interface ServiceRequest {
   assignedTechnicianName?: string;
   title: string;
   description: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  priority: '' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'DIAGNOSED' | 'WORK_COMPLETED' | 'VERIFIED' | 'RESOLVED' | 'CLOSED' | 'CONTRACT_SENT' | 'CONTRACT_SIGNED_30PAID' | 'ACCEPTED_BY_OWNER';
   requestType: 'INSTALLATION' | 'MAINTENANCE' | 'REPAIR' | 'REPLACEMENT' | 'INITIAL_SETUP';
   isAcceptedByOwner?: boolean;

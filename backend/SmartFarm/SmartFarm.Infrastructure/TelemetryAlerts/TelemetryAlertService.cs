@@ -21,6 +21,14 @@ public sealed class TelemetryAlertService(
 
     public async Task<TelemetryIngestionResult> IngestAsync(Guid authenticatedGatewayId, TelemetryEnvelope envelope, CancellationToken ct)
     {
+        // Chuẩn hóa các cách ghi đơn vị tương đương từ firmware cũ trước khi
+        // validate/lưu DB. Đơn vị chuẩn trong hệ thống vẫn là "C".
+        envelope = envelope with
+        {
+            Readings = envelope.Readings
+                .Select(x => x with { Unit = NormalizeUnit(x.ParameterCode, x.Unit) })
+                .ToList()
+        };
         ValidateEnvelope(envelope);
         var now = clock.GetUtcNow().UtcDateTime;
         if (envelope.CapturedAtUtc > now.AddMinutes(5) || envelope.CapturedAtUtc < now - MaximumBackfillAge)
@@ -146,18 +154,11 @@ public sealed class TelemetryAlertService(
                 .Where(x => x.ZoneId == envelope.ZoneId && x.GrowthStageId == activeSeason.CurrentGrowthStageId &&
                             x.ParameterCode == input.ParameterCode && x.ArchivedAtUtc == null && x.IsActive)
                 .ToListAsync(ct);
-            if (!rules.Any(x => x.Severity == AlertSeverity.Warning))
-            {
-                var systemRule = new AlertRule
-                {
-                    ZoneId = envelope.ZoneId, GrowthStageId = activeSeason.CurrentGrowthStageId,
-                    ParameterCode = input.ParameterCode, MinThreshold = requirement.MinValue,
-                    MaxThreshold = requirement.MaxValue, Severity = AlertSeverity.Warning,
-                    CooldownMinutes = 30, IsSystemGenerated = true
-                };
-                db.AlertRules.Add(systemRule);
-                rules.Add(systemRule);
-            }
+            // Không tự sinh luật hệ thống khi Owner đã xóa luật. Telemetry vẫn
+            // được lưu bình thường, nhưng chỉ quy tắc còn tồn tại trong DB mới
+            // được dùng để đánh giá và tạo cảnh báo.
+            if (rules.Count == 0)
+                continue;
 
             foreach (var rule in rules)
             {
@@ -335,7 +336,7 @@ public sealed class TelemetryAlertService(
             .SingleOrDefaultAsync(x => x.ZoneId == zoneId && x.Status == PlantingSeasonStatus.InProgress, ct))
             ?.AppliedRequirements.ToDictionary(x => x.ParameterCode) ?? [];
 
-    public async Task<TelemetryHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, EnvironmentalParameterCode parameterCode, DateTime fromUtc, DateTime toUtc, string interval, CancellationToken ct)
+    public async Task<TelemetryHistoryView> HistoryAsync(Guid userId, Guid tenantId, Guid zoneId, EnvironmentalParameterCode parameterCode, DateTime fromUtc, DateTime toUtc, string interval, Guid? deviceId, CancellationToken ct)
     {
         await EnsureZoneAccessAsync(userId, tenantId, zoneId, ct);
         var startUtc = fromUtc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(fromUtc, DateTimeKind.Utc) : fromUtc.ToUniversalTime();
@@ -355,9 +356,14 @@ public sealed class TelemetryAlertService(
             _ => throw new RequestValidationException("interval", "Interval must be 1m, 5m, 15m, 1h, 6h or 1d.")
         };
 
-        var rows = await db.TelemetryReadings.AsNoTracking()
-            .Where(x => x.ZoneId == zoneId && x.ParameterCode == parameterCode && x.CapturedAtUtc >= startUtc && x.CapturedAtUtc <= endUtc)
-            .ToListAsync(ct);
+        if (deviceId.HasValue && !await db.Devices.AsNoTracking().AnyAsync(x => x.Id == deviceId.Value && x.ZoneId == zoneId, ct))
+            throw new ResourceNotFoundException("Device is not assigned to this Zone.");
+
+        var rowsQuery = db.TelemetryReadings.AsNoTracking()
+            .Where(x => x.ZoneId == zoneId && x.ParameterCode == parameterCode && x.CapturedAtUtc >= startUtc && x.CapturedAtUtc <= endUtc);
+        if (deviceId.HasValue)
+            rowsQuery = rowsQuery.Where(x => x.DeviceId == deviceId.Value);
+        var rows = await rowsQuery.ToListAsync(ct);
 
         var data = rows.GroupBy(x => new DateTime(x.CapturedAtUtc.Ticks / bucket.Ticks * bucket.Ticks, DateTimeKind.Utc))
             .OrderBy(x => x.Key)
@@ -503,6 +509,15 @@ public sealed class TelemetryAlertService(
         if (value.DeviceId == Guid.Empty || value.ZoneId == Guid.Empty) throw new RequestValidationException("deviceId", "Device ID and Zone ID are required.");
         if (value.CapturedAtUtc.Kind != DateTimeKind.Utc) throw new RequestValidationException("capturedAtUtc", "Timestamp must include the UTC designator Z.");
         if (value.Readings.Count is < 1 or > 50 || value.Readings.GroupBy(x => x.ParameterCode).Any(x => x.Count() > 1)) throw new RequestValidationException("readings", "Provide 1 to 50 unique parameters per message.");
+    }
+
+    private static string NormalizeUnit(EnvironmentalParameterCode parameterCode, string unit)
+    {
+        var normalized = unit.Trim();
+        if (parameterCode == EnvironmentalParameterCode.Temperature &&
+            normalized is "°C" or "℃" or "degC" or "c" or "C")
+            return "C";
+        return normalized;
     }
     private static void ValidateRange(TelemetryValueInput value)
     {

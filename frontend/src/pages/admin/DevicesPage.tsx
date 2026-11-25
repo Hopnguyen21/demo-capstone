@@ -10,7 +10,7 @@ export interface InventoryDevice {
   id: string;
   code: string;
   name: string;
-  category: 'GATEWAY' | 'NODE_MODULE' | 'SENSOR' | 'PERIPHERAL';
+  category: 'GATEWAY' | 'NODE_MODULE' | 'SENSOR' | 'RELAY' | 'PERIPHERAL';
   serialNumber: string;
   macAddress: string;
   model: string;
@@ -21,28 +21,15 @@ export interface InventoryDevice {
   locationRack: string;
   status: 'InWarehouse' | 'Allocated' | 'InTechnicianStock' | 'Deployed' | 'Maintenance' | 'Faulty' | 'Returned';
   assignedTechnicianId?: string;
-  /** Vai trò Node do Admin gán (SensorNode/ActuatorNode/ValveNode/PumpNode/Gateway/InstallKit); rỗng = chưa gán. */
-  estimateRole?: string;
   addedAt: string;
 }
-
-/** Vai trò Node trong kho: quyết định hàng này dùng làm Node cảm biến hay Node điều khiển khi KTV gắn Node (backend chặn dùng sai loại). */
-const NODE_ROLE_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Chưa gán' },
-  { value: 'SensorNode', label: 'Node cảm biến' },
-  { value: 'ActuatorNode', label: 'Node điều khiển (rơ-le)' },
-  { value: 'ValveNode', label: 'Node điều khiển van' },
-  { value: 'PumpNode', label: 'Node điều khiển bơm' },
-  { value: 'Gateway', label: 'Gateway' },
-  { value: 'InstallKit', label: 'Bộ phụ kiện lắp đặt' },
-];
-const nodeRoleLabel = (value?: string) => NODE_ROLE_OPTIONS.find(o => o.value === (value || ''))?.label || value || 'Chưa gán';
 
 const normalizeCategory = (value: unknown): InventoryDevice['category'] => {
   const v = String(value || '').toUpperCase();
   if (v.includes('GATEWAY')) return 'GATEWAY';
   if (v.includes('NODE') || v === 'R3' || v === 'NANO') return 'NODE_MODULE';
   if (v.includes('SENSOR')) return 'SENSOR';
+  if (v === 'RELAY' || v.includes('RELAY')) return 'RELAY';
   return 'PERIPHERAL';
 };
 
@@ -71,6 +58,7 @@ export const DevicesPage: React.FC = () => {
   const [issueItem, setIssueItem] = useState<InventoryDevice | null>(null);
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [isBulkIssueModalOpen, setIsBulkIssueModalOpen] = useState(false);
+  const [isBulkIssueConfirmOpen, setIsBulkIssueConfirmOpen] = useState(false);
   const [technicianSearch, setTechnicianSearch] = useState('');
   const [selectedTechnicianId, setSelectedTechnicianId] = useState('');
   const [bulkDeviceSearch, setBulkDeviceSearch] = useState('');
@@ -317,7 +305,6 @@ export const DevicesPage: React.FC = () => {
       unit: effectiveUnit,
       locationRack: newItem.locationRack?.trim() || 'Kệ A1 - Kho Trung tâm',
       status: 'InWarehouse',
-      estimateRole: newItem.estimateRole || undefined,
     };
 
     try {
@@ -336,7 +323,6 @@ export const DevicesPage: React.FC = () => {
         unit: result?.unit || payload.unit,
         locationRack: result?.locationRack || payload.locationRack,
         status: normalizeStatus(result?.status || payload.status),
-        estimateRole: result?.estimateRole || payload.estimateRole || '',
         addedAt: new Date().toISOString().split('T')[0],
       };
 
@@ -396,8 +382,6 @@ export const DevicesPage: React.FC = () => {
       unit: effectiveUnit,
       locationRack: editingItem.locationRack?.trim() || '',
       status: editingItem.status,
-      // rỗng = bỏ vai trò (backend: null giữ nguyên, rỗng xóa)
-      estimateRole: editingItem.estimateRole || '',
     };
 
     try {
@@ -417,6 +401,14 @@ export const DevicesPage: React.FC = () => {
 
   const issueDevices = async (ids: string[]) => {
     if (!selectedTechnicianId || ids.length === 0) { alert('⚠️ Vui lòng chọn kỹ thuật viên và ít nhất một thiết bị.'); return; }
+    const notAssignable = ids
+      .map(id => devices.find(device => device.id === id))
+      .filter((device): device is InventoryDevice => Boolean(device))
+      .filter(device => device.status !== 'InWarehouse' || Boolean(device.assignedTechnicianId));
+    if (notAssignable.length > 0) {
+      alert(`⚠️ Thiết bị đã được cấp phát hoặc không còn trong kho: ${notAssignable.map(device => device.code).join(', ')}. Vui lòng làm mới danh sách.`);
+      return;
+    }
     try {
       const assigned = await Promise.all(ids.filter(id => id.length === 36).map(id => adminService.assignHardwareItem(id, selectedTechnicianId, selectedDeviceQuantities[id] || (issueItem?.id === id ? issueQuantity : 1))));
       setDevices(prev => prev.map(item => {
@@ -433,7 +425,22 @@ export const DevicesPage: React.FC = () => {
       }));
       setSuccessNotice(`Đã cấp phát ${ids.length} thiết bị cho kỹ thuật viên (trạng thái: InTechnicianStock).`);
       setIsIssueModalOpen(false); setIsBulkIssueModalOpen(false); setIssueItem(null); setSelectedDeviceIds([]); setSelectedDeviceQuantities({}); setSelectedTechnicianId(''); setIssueQuantity(1);
-    } catch { alert('❌ Không thể cấp phát thiết bị. Vui lòng thử lại.'); }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.title || err?.response?.data?.message || err?.message || 'Lỗi không xác định';
+      alert(`❌ Không thể cấp phát thiết bị: ${detail}`);
+      // Server có thể đã cấp phát một phần trước khi một item khác lỗi.
+      const refreshed = await adminService.getHardwareItems().catch(() => null);
+      if (Array.isArray(refreshed)) {
+        setDevices(refreshed.map((i: any) => ({
+          id: i.id, code: i.code, name: i.name, category: normalizeCategory(i.category),
+          serialNumber: i.serialNumber || '', macAddress: i.macAddress || '', model: i.model || '',
+          manufacturer: i.manufacturer || '', quantityInStock: i.quantityInStock || 0,
+          unitPrice: Number(i.unitPrice || 0), unit: i.unit || 'Cái', locationRack: i.locationRack || '',
+          status: normalizeStatus(i.status), assignedTechnicianId: i.assignedTechnicianId,
+          estimateRole: i.estimateRole || '', addedAt: i.createdAtUtc ? i.createdAtUtc.substring(0, 10) : ''
+        })));
+      }
+    }
   };
 
   const technicianName = (id?: string) => technicians.find(t => (t.id || t.userId) === id)?.fullName || technicians.find(t => (t.id || t.userId) === id)?.name || id || 'Chưa cấp phát';
@@ -467,6 +474,8 @@ export const DevicesPage: React.FC = () => {
         return <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 font-bold text-[10px]">🔌 Node Module (R3, Nano)</span>;
       case 'SENSOR':
         return <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-900 font-bold text-[10px]">🌱 Sensor</span>;
+      case 'RELAY':
+        return <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-900 font-bold text-[10px]">⚡ Relay</span>;
       case 'PERIPHERAL':
         return <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-900 font-bold text-[10px]">⚙️ Module & Peripheral Device</span>;
       default:
@@ -516,25 +525,27 @@ export const DevicesPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-[#119653] via-emerald-600 to-emerald-500 text-white rounded-2xl shadow-md border border-emerald-400/40">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-800/30 text-emerald-100 text-xs font-semibold mb-2 border border-emerald-300/30 backdrop-blur-xs">
-            <Package size={14} /> Quản trị Platform Admin & Kho Vật tư
+            <Package size={14} /> Quản trị kho thiết bị
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
-            Quản lý Kho Vật tư, Thiết bị & Linh kiện IoT (Hardware Inventory Stock)
+            Quản lý kho thiết bị IoT
           </h1>
           <p className="text-xs text-emerald-100 mt-1">
-            Admin nhập linh kiện mới vào kho, xem tồn kho trạm Gateway, Sensor Node, Van solenoid và cấp phát cho các dự án nông nghiệp.
+            Quản lý tồn kho Gateway, Node, cảm biến, Relay và cấp phát cho kỹ thuật viên.
           </p>
         </div>
 
-        <Button
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-white hover:bg-emerald-50 text-[#119653] font-bold shrink-0 flex items-center gap-1.5 shadow-sm"
-        >
-          <Plus size={16} /> Thêm Thiết bị / Linh kiện mới vào Kho
-        </Button>
-        <Button onClick={() => setIsBulkIssueModalOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white font-bold">
-          Cấp phát thiết bị
-        </Button>
+        <div className="flex w-full md:w-auto items-stretch gap-2 shrink-0">
+          <Button
+            onClick={() => setIsAddModalOpen(true)}
+            className="h-11 min-w-[220px] justify-center bg-white hover:bg-emerald-50 text-[#119653] font-bold flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus size={16} /> Thêm thiết bị
+          </Button>
+          <Button onClick={() => setIsBulkIssueModalOpen(true)} className="h-11 min-w-[150px] justify-center bg-amber-500 hover:bg-amber-600 text-white font-bold">
+            Cấp phát
+          </Button>
+        </div>
       </div>
 
       {successNotice && (
@@ -662,6 +673,7 @@ export const DevicesPage: React.FC = () => {
               { id: 'GATEWAY', label: 'Gateway' },
               { id: 'NODE_MODULE', label: 'Mô-đun nút' },
               { id: 'SENSOR', label: 'Cảm biến' },
+              { id: 'RELAY', label: 'Relay' },
               { id: 'PERIPHERAL', label: 'Mô-đun & thiết bị ngoại vi' },
             ].map(tab => (
               <button
@@ -730,7 +742,6 @@ export const DevicesPage: React.FC = () => {
                     </td>
                     <td className="p-3.5">
                       <div>{getCategoryLabel(item.category)}</div>
-                      <div className={`text-[10px] mt-0.5 font-semibold ${item.estimateRole ? 'text-emerald-700' : 'text-amber-600'}`}>Vai trò: {nodeRoleLabel(item.estimateRole)}</div>
                     </td>
                     <td className="p-3.5 font-mono text-[11px] text-slate-600">
                       <div>MAC: <strong className="text-slate-800 font-bold">{item.macAddress}</strong></div>
@@ -849,20 +860,9 @@ export const DevicesPage: React.FC = () => {
                 <option value="GATEWAY">Cổng Gateway (ESP32)</option>
                 <option value="NODE_MODULE">Mô-đun nút (R3, Nano)</option>
                 <option value="SENSOR">Cảm biến độ ẩm, nhiệt độ, đất, v.v.</option>
-                <option value="PERIPHERAL">Mô-đun & thiết bị ngoại vi (rơ-le, bơm, nguồn, mô-đun LoRa, v.v.)</option>
+                <option value="RELAY">Relay</option>
+                <option value="PERIPHERAL">Mô-đun & thiết bị ngoại vi (bơm, nguồn, mô-đun LoRa, v.v.)</option>
               </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-800 mb-1">Vai trò Node</label>
-              <select
-                value={newItem.estimateRole}
-                onChange={e => setNewItem({ ...newItem, estimateRole: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:border-[#119653]"
-              >
-                {NODE_ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <p className="mt-1 text-[10px] text-slate-500">Cảm biến hay điều khiển: kỹ thuật viên chỉ gắn được hàng này vào đúng loại Node. Nên gán cho mọi Node, van, bơm, rơ-le.</p>
             </div>
 
             <div>
@@ -981,19 +981,6 @@ export const DevicesPage: React.FC = () => {
                 onChange={e => setEditingItem({ ...editingItem, name: e.target.value })}
                 required
               />
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">Vai trò Node</label>
-              <select
-                value={editingItem.estimateRole || ''}
-                onChange={e => setEditingItem({ ...editingItem, estimateRole: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800"
-              >
-                {NODE_ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <p className="mt-1 text-[10px] text-slate-500">Quyết định hàng dùng làm Node cảm biến hay điều khiển khi kỹ thuật viên gắn Node.</p>
-              {newItem.category !== 'GATEWAY' && newItem.category !== 'NODE_MODULE' && <p className="mt-1 text-[10px] text-slate-500">Số lượng tồn kho theo lô nhập.</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1125,25 +1112,25 @@ export const DevicesPage: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={isBulkIssueModalOpen} onClose={() => setIsBulkIssueModalOpen(false)} title="Cấp phát nhiều thiết bị">
-        <div className="space-y-4 text-xs">
-          <div className="border border-slate-200 rounded-lg p-3 space-y-2">
-            <label className="block font-bold text-slate-800">Chọn kỹ thuật viên</label>
+      <Modal isOpen={isBulkIssueModalOpen} onClose={() => setIsBulkIssueModalOpen(false)} title="Cấp phát thiết bị">
+        <div className="space-y-3 text-xs">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+            <label className="block font-bold text-slate-800">Kỹ thuật viên nhận</label>
             <Input value={technicianSearch} onChange={e => setTechnicianSearch(e.target.value)} placeholder="Tìm trong danh sách kỹ thuật viên" />
-            <div className="max-h-36 overflow-y-auto border rounded-lg divide-y">
-              {technicians.filter(t => `${t.fullName || t.name || ''} ${t.email || ''}`.toLowerCase().includes(technicianSearch.toLowerCase())).map(t => <button type="button" key={t.id || t.userId} onClick={() => setSelectedTechnicianId(t.id || t.userId)} className={`block w-full text-left p-2 hover:bg-emerald-50 ${selectedTechnicianId === (t.id || t.userId) ? 'bg-emerald-100 font-bold' : ''}`}>{t.fullName || t.name || t.email}</button>)}
+            <div className="max-h-28 overflow-y-auto rounded-lg border border-emerald-200 bg-white divide-y divide-slate-100">
+              {technicians.filter(t => `${t.fullName || t.name || ''} ${t.email || ''}`.toLowerCase().includes(technicianSearch.toLowerCase())).map(t => <button type="button" key={t.id || t.userId} onClick={() => setSelectedTechnicianId(t.id || t.userId)} className={`flex min-h-10 w-full items-center px-3 text-left hover:bg-emerald-50 ${selectedTechnicianId === (t.id || t.userId) ? 'bg-emerald-100 font-bold text-emerald-900' : 'text-slate-700'}`}><span className="truncate">{t.fullName || t.name || t.email}</span></button>)}
             </div>
-            <div className="text-[11px] text-emerald-700">Đã chọn: {technicianName(selectedTechnicianId)}</div>
+            <div className="text-[11px] font-semibold text-emerald-700">{selectedTechnicianId ? `Đã chọn: ${technicianName(selectedTechnicianId)}` : 'Chưa chọn kỹ thuật viên'}</div>
           </div>
 
-          <div className="border border-slate-200 rounded-lg p-3 space-y-2">
-            <label className="block font-bold text-slate-800">Chọn thiết bị</label>
+          <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+            <label className="block font-bold text-slate-800">Thiết bị cấp phát</label>
             <Input value={bulkDeviceSearch} onChange={e => setBulkDeviceSearch(e.target.value)} placeholder="Tìm trong danh sách theo mã hoặc tên" />
-            <div className="grid grid-cols-2 gap-2">
-              <select value={bulkDeviceCategory} onChange={e => setBulkDeviceCategory(e.target.value)} className="border rounded-lg p-2">
-                <option value="ALL">Tất cả danh mục</option><option value="GATEWAY">Gateway</option><option value="NODE_MODULE">Mô-đun nút</option><option value="SENSOR">Cảm biến</option><option value="PERIPHERAL">Thiết bị ngoại vi</option>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <select value={bulkDeviceCategory} onChange={e => setBulkDeviceCategory(e.target.value)} className="h-10 border border-slate-300 rounded-lg px-3 bg-white">
+                <option value="ALL">Tất cả danh mục</option><option value="GATEWAY">Gateway</option><option value="NODE_MODULE">Mô-đun nút</option><option value="SENSOR">Cảm biến</option><option value="RELAY">Relay</option><option value="PERIPHERAL">Thiết bị ngoại vi</option>
               </select>
-              <select value={bulkDeviceStatus} onChange={e => setBulkDeviceStatus(e.target.value)} className="border rounded-lg p-2">
+              <select value={bulkDeviceStatus} onChange={e => setBulkDeviceStatus(e.target.value)} className="h-10 border border-slate-300 rounded-lg px-3 bg-white">
                 <option value="ALL">Tất cả trạng thái</option>
                 <option value="InWarehouse">InWarehouse (Đang ở kho)</option>
                 <option value="Allocated">Allocated (Đã cấp phát)</option>
@@ -1154,11 +1141,34 @@ export const DevicesPage: React.FC = () => {
                 <option value="Returned">Returned (Đã trả về kho)</option>
               </select>
             </div>
-          <div className="max-h-64 overflow-y-auto border rounded-lg divide-y">
-            {devices.filter(d => (bulkDeviceCategory === 'ALL' || d.category === bulkDeviceCategory) && (bulkDeviceStatus === 'ALL' || d.status === bulkDeviceStatus) && `${d.code} ${d.name}`.toLowerCase().includes(bulkDeviceSearch.toLowerCase())).map(device => <label key={device.id} className="flex items-center gap-2 p-2 hover:bg-slate-50"><input type="checkbox" checked={selectedDeviceIds.includes(device.id)} onChange={e => setSelectedDeviceIds(prev => e.target.checked ? [...prev, device.id] : prev.filter(id => id !== device.id))} /><span className="flex-1"><strong>{device.code}</strong> - {device.name}</span>{device.category !== 'GATEWAY' && device.category !== 'NODE_MODULE' && selectedDeviceIds.includes(device.id) && <Input type="number" min={1} max={device.quantityInStock} value={selectedDeviceQuantities[device.id] || 1} onChange={e => setSelectedDeviceQuantities(prev => ({ ...prev, [device.id]: Math.min(device.quantityInStock, Math.max(1, Number(e.target.value) || 1)) }))} className="w-16" />}</label>)}
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+            {devices.filter(d => d.status === 'InWarehouse' && !d.assignedTechnicianId && (bulkDeviceCategory === 'ALL' || d.category === bulkDeviceCategory) && (bulkDeviceStatus === 'ALL' || d.status === bulkDeviceStatus) && `${d.code} ${d.name}`.toLowerCase().includes(bulkDeviceSearch.toLowerCase())).map(device => <label key={device.id} className="flex min-h-12 items-center gap-3 px-3 hover:bg-slate-50"><input className="h-4 w-4 accent-emerald-600" type="checkbox" checked={selectedDeviceIds.includes(device.id)} onChange={e => setSelectedDeviceIds(prev => e.target.checked ? [...prev, device.id] : prev.filter(id => id !== device.id))} /><span className="min-w-0 flex-1 truncate"><strong>{device.code}</strong><span className="text-slate-500"> · {device.name}</span></span>{device.category !== 'GATEWAY' && device.category !== 'NODE_MODULE' && selectedDeviceIds.includes(device.id) && <Input type="number" min={1} max={device.quantityInStock} value={selectedDeviceQuantities[device.id] || 1} onChange={e => setSelectedDeviceQuantities(prev => ({ ...prev, [device.id]: Math.min(device.quantityInStock, Math.max(1, Number(e.target.value) || 1)) }))} className="w-16 text-center" />}</label>)}
           </div>
           </div>
-          <Button type="button" className="w-full bg-emerald-600 text-white" onClick={() => issueDevices(selectedDeviceIds)}>Cấp phát thiết bị đã chọn</Button>
+          <Button
+            type="button"
+            disabled={!selectedTechnicianId || selectedDeviceIds.length === 0}
+            className="h-11 w-full bg-emerald-600 text-white disabled:opacity-50"
+            onClick={() => setIsBulkIssueConfirmOpen(true)}
+          >
+            Cấp phát
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isBulkIssueConfirmOpen} onClose={() => setIsBulkIssueConfirmOpen(false)} title="Xác nhận cấp phát">
+        <div className="space-y-4 text-sm">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+            <p className="font-bold">Cấp phát {selectedDeviceIds.length} thiết bị?</p>
+            <p className="mt-1 text-xs">Thiết bị sẽ được chuyển khỏi kho tổng và giao cho kỹ thuật viên đã chọn.</p>
+          </div>
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            Người nhận: <strong>{technicianName(selectedTechnicianId)}</strong>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setIsBulkIssueConfirmOpen(false)}>Quay lại</Button>
+            <Button type="button" className="bg-emerald-600 text-white" onClick={() => { setIsBulkIssueConfirmOpen(false); setIsBulkIssueModalOpen(false); issueDevices(selectedDeviceIds); }}>Xác nhận cấp phát</Button>
+          </div>
         </div>
       </Modal>
     </div>

@@ -35,6 +35,7 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<MqttBrokerHost>();
 builder.Services.AddSingleton<IActuatorCommandTransport>(sp => sp.GetRequiredService<MqttBrokerHost>());
+builder.Services.AddSingleton<IFirmwareOtaTransport>(sp => sp.GetRequiredService<MqttBrokerHost>());
 builder.Services.AddSmartFarmAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddRateLimiter(options =>
 {
@@ -94,6 +95,7 @@ builder.Services.AddHostedService<SimulatedIotTelemetryWorker>();
 builder.Services.AddHostedService<KnowledgeEmbeddingWorker>();
 builder.Services.AddHostedService<FirmwareReleaseReconciliationWorker>();
 builder.Services.AddHostedService<FirmwareJobTimeoutWorker>();
+builder.Services.AddHostedService<FirmwareDispatchWorker>();
 builder.Services.AddHostedService<ContractExpiryWorker>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];

@@ -167,7 +167,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
             Điều khiển Trực tiếp Thiết bị Chấp hành (Actuators Control Grid)
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Bật/tắt rơ-le chấp hành thủ công qua chuẩn giao tiếp LoRa Gateway kèm bảo vệ Interlock & Hardware Failsafe Timer.
+            Bật/tắt rơ-le chấp hành thủ công kèm bảo vệ Interlock & Hardware Failsafe Timer.
           </p>
         </div>
         
@@ -281,7 +281,7 @@ export const ActuatorControlGrid: React.FC<ActuatorControlGridProps> = ({
                       disabled={isProcessing}
                     >
                       <Power size={15} />
-                      KÍCH HOẠT BẬT (LORA)
+                      KÍCH HOẠT BẬT
                     </Button>
                   )}
                 </div>

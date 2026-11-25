@@ -604,6 +604,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
     UnassignedDevice[]
   >([]);
   const [technicianSensorStock, setTechnicianSensorStock] = useState<any[]>([]);
+  const [technicianRelayStock, setTechnicianRelayStock] = useState<any[]>([]);
   const [technicianComponentStock, setTechnicianComponentStock] = useState<
     any[]
   >([]);
@@ -856,6 +857,20 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
               });
           });
         setTechnicianSensorStock(Array.from(sensorStockByCode.values()));
+        const relayStockByCode = new Map<string, any>();
+        (spareParts || [])
+          .filter((part: any) => {
+            const text = `${part.category || ""} ${part.type || ""} ${part.code || ""} ${part.name || ""}`.toUpperCase();
+            return /RELAY|RƠ-?LE|ACTUATOR|VAN|BƠM/.test(text);
+          })
+          .forEach((part: any) => {
+            const code = String(part.code || part.serialNumber || part.name || "").trim().toUpperCase();
+            if (!code) return;
+            const previous = relayStockByCode.get(code);
+            if (previous) previous.quantityInStock += Number(part.quantityInStock ?? part.quantity ?? 0);
+            else relayStockByCode.set(code, { ...part, code, quantityInStock: Number(part.quantityInStock ?? part.quantity ?? 0) });
+          });
+        setTechnicianRelayStock(Array.from(relayStockByCode.values()));
         const componentStockByCode = new Map<string, any>();
         (spareParts || [])
           .filter((part: any) => {
@@ -1503,24 +1518,11 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
   ]);
 
   useEffect(() => {
-    if (!isOpen || !selectedGatewayId) return;
-    const gateway = gateways.find(
-      (item) => String(item.gatewayId || item.id) === String(selectedGatewayId),
-    );
-    if (!gateway || gateway.inventorySource) return;
-    let cancelled = false;
-    deviceService
-      .getGatewayMqttStatus(selectedGatewayId)
-      .then((status) => {
-        if (!cancelled) setGatewayConnected(status?.mqttConnected === true);
-      })
-      .catch(() => {
-        if (!cancelled) setGatewayConnected(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, selectedGatewayId, gateways]);
+    // Không tự động bật trạng thái MQTT khi mở modal hoặc khi đã có Gateway
+    // được giữ lại từ lần trước. Chỉ verifyGatewayConnection mới xác nhận
+    // kết nối thật sau khi người dùng chọn Gateway và bấm kiểm tra.
+    if (!isOpen) setGatewayConnected(false);
+  }, [isOpen]);
 
   const verifyGatewayConnection = async () => {
     if (!selectedGatewayId) {
@@ -1814,9 +1816,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       );
       const deploymentId = request.deploymentRequestId || deploymentRequestId;
       let provisionedResult: any = null;
-      if (selectedReadyNodes.length > 0 && deploymentId && request.farmId) {
+      if (selectedReadyNodes.length > 0 && request.farmId) {
         provisionedResult = await deviceService.provisionNodes({
-          deploymentRequestId: deploymentId,
+          ...(deploymentId ? { deploymentRequestId: deploymentId } : {}),
           gatewayId: selectedGatewayId,
           farmId: request.farmId,
           nodes: selectedReadyNodes.map((node) => ({
@@ -1851,6 +1853,21 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           "Không xác định được deviceId của Node đã chọn. Cấu hình chưa được gửi để tránh lưu nodes=0.",
         );
       }
+      // Hiển thị ngay địa chỉ LoRa vừa được backend cấp, không chờ reload GIS.
+      if (Array.isArray(provisionedResult?.devices)) {
+        const assignedByAddress = new Map<string, any>(
+          provisionedResult.devices.map((device: any) => [
+            String(device.hardwareAddress || "").toUpperCase(),
+            device,
+          ]),
+        );
+        setGatewayConfigNodes((previous) =>
+          previous.map((node: any) => {
+            const assigned = assignedByAddress.get(String(node.hardwareAddress || "").toUpperCase());
+            return assigned ? { ...node, deviceId: assigned.deviceId || assigned.id || node.deviceId, loraAddress: assigned.loRaAddress ?? assigned.loraAddress } : node;
+          }),
+        );
+      }
       const updated = await deviceService.configureGateway(selectedGatewayId, {
         nodeIds,
         telemetryIntervalSec: gatewayInterval,
@@ -1871,6 +1888,14 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
         : "";
       // Reload from the backend after provisioning/configuration. Do not leave
       // the GIS list backed by the pre-save React state.
+      if (request.farmId) {
+        const refreshedDevices = await deviceService.getFarmDevices(request.farmId).catch(() => []);
+        const byAddress = new Map((refreshedDevices || []).map((device: any) => [String(device.hardwareAddress || "").toUpperCase(), device]));
+        setNodes((previous) => previous.map((node: any) => {
+          const device = byAddress.get(String(node.hardwareAddress || node.serialNumber || "").toUpperCase());
+          return device ? { ...node, provisionedDeviceId: device.deviceId, loraAddress: device.loRaAddress ?? device.loraAddress } : node;
+        }));
+      }
       setIsGatewayModalOpen(false);
       setGisReloadToken((previous) => previous + 1);
       setSuccessToast(
@@ -2144,6 +2169,40 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (error: any) {
       alert(error?.response?.data?.detail || "Không thể lưu cấu hình relay/actuator.");
+    }
+  };
+
+  const saveAllNodeConfiguration = async () => {
+    if (!sensorConfigNode?.nodeId) return;
+    if (selectedSensorCodes.length === 0) {
+      alert("Vui lòng chọn ít nhất một cảm biến đã gán cho Node.");
+      return;
+    }
+    const node = sensorConfigNode;
+    const parameters = selectedSensorCodes.map((code) => {
+      const requirement = contractSensorRequirements.find((sensor) => sensor.code === code);
+      const stockItem = technicianSensorStock.find((sensor: any) => String(sensor.code || sensor.serialNumber || sensor.name).toUpperCase() === String(code).toUpperCase());
+      return { code, name: stockItem?.name || requirement?.name || code, value: "Chưa có dữ liệu" };
+    });
+    const components = Object.entries(selectedComponentQuantities).filter(([, quantity]) => quantity > 0).map(([hardwareItemId, quantity]) => {
+      const item = technicianComponentStock.find((stock) => String(stock.id || stock.hardwareItemId) === hardwareItemId);
+      return { hardwareItemId, componentType: String(item?.category || item?.type || "SUPPORT_COMPONENT").toUpperCase(), quantity, unit: item?.unit || "Cái" };
+    });
+    try {
+      await deviceService.configureSensors(node.nodeId, parameters.map((sensor: any) => {
+        const stock = technicianSensorStock.find((item: any) => String(item.code || item.serialNumber || item.name) === String(sensor.code));
+        const requirement = contractSensorRequirements.find((item) => item.code === sensor.code);
+        return { sensorType: sensor.code, unit: stock?.unit || requirement?.unit || "Giá trị", model: stock?.model, interface: stock?.interface, samplingIntervalSec: 60 };
+      }));
+      await deviceService.configureActuators(node.nodeId, selectedActuators.map((a: any) => ({ actuatorType: String(a.actuatorType || "RELAY"), relayChannel: Number(a.relayChannel), ratedPowerWatt: Number(a.ratedPowerWatt), flowRateLitersPerMinute: Number(a.flowRateLitersPerMinute), maxDurationMinutes: Number(a.maxDurationMinutes) })));
+      await deviceService.configureComponents(node.nodeId, components);
+      setNodes((previous) => previous.map((item) => item.nodeId === node.nodeId ? { ...item, sensorParameters: parameters, sensorsCount: parameters.length, actuators: selectedActuators } : item));
+      setSensorConfigNode(null);
+      setSuccessToast(`Đã lưu toàn bộ cấu hình cho Node [${node.nodeCode}].`);
+      setTimeout(() => setSuccessToast(null), 3000);
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail || error?.response?.data?.title || error?.message;
+      alert(detail ? `Không thể lưu toàn bộ cấu hình Node: ${detail}` : "Không thể lưu toàn bộ cấu hình Node.");
     }
   };
 
@@ -2968,12 +3027,11 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold font-mono">
-                          {typeof n.batteryLevel === "number" &&
-                          n.batteryLevel > 0
-                            ? `${n.batteryLevel}%`
-                            : "Pin: —"}
-                        </span>
+                        {typeof n.batteryLevel === "number" && n.batteryLevel > 0 && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold font-mono">
+                            {n.batteryLevel}%
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] font-bold flex items-center gap-0.5 ${n.status === "ONLINE" ? "text-emerald-700" : "text-red-700"}`}
                         >
@@ -3129,26 +3187,28 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                 <Button
                   type="button"
                   className="bg-emerald-600 text-white"
-                  onClick={saveSensorConfiguration}
+                  onClick={saveAllNodeConfiguration}
                 >
-                  Lưu cấu hình cảm biến
+                  Lưu toàn bộ cấu hình Node
                 </Button>
               </div>
             </>
           ) : componentConfigTab === "ACTUATORS" ? (
             <>
-              <p className="text-slate-600">Khai báo relay thật gắn trên Node. Kênh này phải trùng với firmware Node.</p>
+              <p className="text-slate-600">Chọn relay trong kho và khai báo kênh điều khiển trên Node.</p>
               <div className="border rounded-lg divide-y">
                 {selectedActuators.map((actuator, index) => (
                   <div key={index} className="grid grid-cols-2 gap-2 p-3">
-                    <input className="border rounded p-2" placeholder="Tên relay" value={actuator.actuatorType} onChange={e => setSelectedActuators(rows => rows.map((r, i) => i === index ? { ...r, actuatorType: e.target.value } : r))} />
+                    <select className="border rounded p-2" value={actuator.actuatorType} onChange={e => setSelectedActuators(rows => rows.map((r, i) => i === index ? { ...r, actuatorType: e.target.value } : r))}>
+                      {technicianRelayStock.length === 0 ? <option value="RELAY">RELAY</option> : technicianRelayStock.map((relay: any) => <option key={relay.code} value={relay.code}>{relay.name || relay.code} · Tồn: {Number(relay.quantityInStock ?? 0)}</option>)}
+                    </select>
                     <input className="border rounded p-2" type="number" min={1} max={8} placeholder="Kênh" value={actuator.relayChannel} onChange={e => setSelectedActuators(rows => rows.map((r, i) => i === index ? { ...r, relayChannel: Number(e.target.value) } : r))} />
                   </div>
                 ))}
               </div>
               <div className="flex justify-end gap-2 border-t pt-3">
                 <Button type="button" variant="outline" onClick={closeSensorConfiguration}>Hủy</Button>
-                <Button type="button" className="bg-emerald-600 text-white" onClick={saveActuatorConfiguration}>Lưu cấu hình actuator</Button>
+                <Button type="button" className="bg-emerald-600 text-white" onClick={saveAllNodeConfiguration}>Lưu toàn bộ cấu hình Node</Button>
               </div>
             </>
           ) : (
@@ -3224,9 +3284,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                 <Button
                   type="button"
                   className="bg-emerald-600 text-white"
-                  onClick={saveComponentConfiguration}
+                  onClick={saveAllNodeConfiguration}
                 >
-                  Lưu vật tư phụ
+                  Lưu toàn bộ cấu hình Node
                 </Button>
               </div>
             </>
@@ -3253,7 +3313,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
             }}
             className="w-full border border-slate-300 bg-white rounded-lg p-2.5"
           >
-            <option value="">-- Chọn Gateway đã provision của Farm --</option>
+            <option value="">-- Chọn Gateway đã hoàn tất OTA của Farm --</option>
             {gateways.map((gateway) => (
               <option
                 key={gateway.gatewayId || gateway.id}
@@ -3328,15 +3388,9 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                 ? "Đang kiểm tra MQTT..."
                 : gatewayConnected
                   ? "MQTT đã kết nối"
-                  : "Kiểm tra kết nối thật"}
+                  : "Kiểm tra kết nối"}
             </Button>
           </div>
-          {selectedGatewayId && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
-              Gateway phải được enrollment và hoàn tất Hardware Preparation
-              trước khi xuất hiện trên GIS.
-            </div>
-          )}
           {!gatewayConnected && (
             <div className="rounded-lg bg-slate-100 p-3 text-slate-600">
               Chưa xác nhận MQTT online. Bạn vẫn có thể lưu cấu hình trước;
@@ -3347,7 +3401,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
           <>
             <div>
               <label className="block font-bold text-slate-800 mb-1">
-                Các Node sẵn sàng triển khai vào Gateway
+                Các Node đã hoàn tất OTA, sẵn sàng cấu hình
               </label>
               <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y">
                 {gatewayConfigNodes.length === 0 ? (
@@ -3392,10 +3446,7 @@ export const ZoneNodeMapperModal: React.FC<ZoneNodeMapperModalProps> = ({
                 )}
               </div>
               <div className="mt-1 text-[10px] text-slate-500">
-                Đã chọn tạm {selectedGatewayNodeIds.length}/
-                {gatewayConfigNodes.length} Node Ready for Deployment. LoRa
-                Address được cấp khi Node được provision vào Gateway; KTV dùng
-                địa chỉ đó để cấu hình Node bằng USB/Serial.
+                Đã chọn {selectedGatewayNodeIds.length}/{gatewayConfigNodes.length} Node. Chỉ thiết bị đã hoàn tất OTA mới được đưa vào cấu hình.
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

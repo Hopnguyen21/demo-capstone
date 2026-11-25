@@ -23,12 +23,16 @@ public sealed class MqttTelemetryAdapter(
     public async Task<TelemetryIngestionResult> ReceiveAsync(MqttInboundMessage message, CancellationToken cancellationToken)
     {
         var segments = message.Topic.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (segments.Length != 4 || segments[0] != "smartfarm" || segments[1] != "gateways" || segments[3] != "telemetry" || !Guid.TryParse(segments[2], out var gatewayId))
-            throw new RequestValidationException("topic", "Topic must match smartfarm/gateways/{gatewayId}/telemetry.");
+        if (segments.Length != 4 || segments[0] != "smartfarm" || segments[1] != "gateways" || segments[3] != "telemetry")
+            throw new RequestValidationException("topic", "Topic must match smartfarm/gateways/{gatewayId|serial}/telemetry.");
 
         var clientId = message.Identity.ClientId.Trim();
         var fingerprint = NormalizeFingerprint(message.Identity.CertificateFingerprint);
-        var authenticated = await db.Gateways.AsNoTracking().AnyAsync(
+        var gatewayId = Guid.TryParse(segments[2], out var parsedGatewayId)
+            ? parsedGatewayId
+            : await db.Gateways.AsNoTracking().Where(x => x.GatewaySerial == segments[2])
+                .Select(x => x.Id).SingleOrDefaultAsync(cancellationToken);
+        var authenticated = gatewayId != Guid.Empty && await db.Gateways.AsNoTracking().AnyAsync(
             x => x.Id == gatewayId && x.MqttClientId == clientId && x.ClientCertificateFingerprint == fingerprint,
             cancellationToken);
         if (!authenticated)
@@ -47,11 +51,16 @@ public sealed class MqttTelemetryAdapter(
         if (payload is null)
             throw new RequestValidationException("payload", "Telemetry payload is required.");
 
+        var device = payload.DeviceId != Guid.Empty
+            ? await db.Devices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == payload.DeviceId && x.GatewayId == gatewayId, cancellationToken)
+            : await db.Devices.AsNoTracking().SingleOrDefaultAsync(x => x.GatewayId == gatewayId && x.HardwareAddress == (payload.NodeHardwareAddress ?? string.Empty), cancellationToken);
+        if (device is null || !device.ZoneId.HasValue)
+            throw new ResourceNotFoundException("Telemetry Node is not assigned to a Zone.");
         var envelope = new TelemetryEnvelope(
-            payload.MessageId ?? string.Empty,
-            payload.DeviceId,
-            payload.ZoneId,
-            payload.CapturedAtUtc,
+            payload.MessageId ?? $"mqtt-{gatewayId:N}-{device.Id:N}-{DateTime.UtcNow.Ticks}",
+            device.Id,
+            payload.ZoneId == Guid.Empty ? device.ZoneId.Value : payload.ZoneId,
+            payload.CapturedAtUtc == default ? DateTime.UtcNow : payload.CapturedAtUtc,
             (payload.Readings ?? []).Select(x => new TelemetryValueInput(x.ParameterCode, x.Value, x.Unit ?? string.Empty)).ToList(),
             payload.SequenceNumber);
         return await ingestionService.IngestAsync(gatewayId, envelope, cancellationToken);
@@ -68,10 +77,13 @@ public sealed class MqttTelemetryAdapter(
     private sealed class TelemetryPayload
     {
         public string? MessageId { get; init; }
+        public string? GatewaySerial { get; init; }
+        public string? MacAddress { get; init; }
         public long? SequenceNumber { get; init; }
         public Guid DeviceId { get; init; }
         public Guid ZoneId { get; init; }
         public DateTime CapturedAtUtc { get; init; }
+        public string? NodeHardwareAddress { get; init; }
         public List<TelemetryValuePayload>? Readings { get; init; }
     }
 

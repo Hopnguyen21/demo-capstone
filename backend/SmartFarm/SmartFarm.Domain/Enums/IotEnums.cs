@@ -7,7 +7,7 @@ public enum HardwarePreparationStatus { HardwarePreparation, FirmwarePrepared, I
 public enum FirmwareUploadMethod { Ota, UsbManual }
 public enum FirmwareInstallationResult { Started, Succeeded, Failed }
 public enum GatewayStatus { Provisioned, Online, Offline }
-public enum FirmwareJobStatus { Scheduled, InProgress, Succeeded, Failed }
+public enum FirmwareJobStatus { Scheduled, CommandSent, InProgress, Succeeded, Failed, RolledBack, TimedOut }
 public enum FirmwareReleaseStatus { Imported, PendingReview, Approved, Denied, Deprecated, Revoked }
 public enum DiagnosticJobStatus { Pending, Sent, Acknowledged, Failed, TimedOut, Cancelled }
 public enum ServiceRequestStatus { Open, Assigned, InProgress, Diagnosed, WorkCompleted, Verified, Resolved, Closed, Cancelled }

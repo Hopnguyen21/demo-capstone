@@ -19,11 +19,13 @@ import {
   ShieldCheck,
   Check,
   ChevronDown,
-  ArrowUp
+  ArrowUp,
+  Calculator
 } from 'lucide-react';
 import type { FieldSurveyReport, CreateFieldSurveyReportPayload, UpdateFieldSurveyReportPayload, Farm } from '../../types';
 import { fieldSurveyReportService, farmService } from '../../services';
 import { useAuth } from '@/app/providers/AuthContext';
+import { EstimateSnapshotModal } from '../estimation/EstimateSnapshotModal';
 
 interface FieldSurveyReportModalProps {
   isOpen: boolean;
@@ -38,6 +40,7 @@ interface FieldSurveyReportModalProps {
     zoneName?: string;
     title?: string;
     status?: string;
+    estimateSnapshotJson?: string | null;
   } | null;
   initialFarmId?: string;
   initialFarmName?: string;
@@ -73,6 +76,7 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showEstimateSnapshot, setShowEstimateSnapshot] = useState(false);
 
   // Farms list for dropdown if creating new without preselected farm
   const [availableFarms, setAvailableFarms] = useState<Farm[]>([]);
@@ -327,6 +331,14 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 print:hidden">
+            <button
+              onClick={() => setShowEstimateSnapshot(true)}
+              type="button"
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+            >
+              <Calculator className="w-4 h-4" />
+              <span>Xem dự toán Tổ ong</span>
+            </button>
             <button
               onClick={handlePrint}
               type="button"
@@ -861,6 +873,7 @@ export const FieldSurveyReportModal: React.FC<FieldSurveyReportModalProps> = ({
         </div>
 
       </div>
+      <EstimateSnapshotModal isOpen={showEstimateSnapshot} onClose={() => setShowEstimateSnapshot(false)} snapshot={serviceRequest?.estimateSnapshotJson} />
     </div>
   );
 };

@@ -20,7 +20,7 @@ public sealed class TelemetryController(ITelemetryAlertService service) : Contro
 
     // API catalog #70
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/history")]
-    public async Task<ActionResult<TelemetryHistoryView>> History(Guid zoneId, [FromQuery] EnvironmentalParameterCode parameterCode, [FromQuery] DateTime fromUtc, [FromQuery] DateTime toUtc, [FromQuery] string interval = "15m", CancellationToken ct = default) => Ok(await service.HistoryAsync(User.GetUserId(), User.GetTenantId(), zoneId, parameterCode, fromUtc, toUtc, interval, ct));
+    public async Task<ActionResult<TelemetryHistoryView>> History(Guid zoneId, [FromQuery] EnvironmentalParameterCode parameterCode, [FromQuery] DateTime fromUtc, [FromQuery] DateTime toUtc, [FromQuery] string interval = "15m", [FromQuery] Guid? deviceId = null, CancellationToken ct = default) => Ok(await service.HistoryAsync(User.GetUserId(), User.GetTenantId(), zoneId, parameterCode, fromUtc, toUtc, interval, deviceId, ct));
 
     // API catalog #71
     [HttpGet("api/v1/zones/{zoneId:guid}/telemetry/stats"), Authorize(Roles = "FarmOwner")]
