@@ -64,7 +64,7 @@ public sealed class PlatformAdminService(
         if (string.IsNullOrEmpty(x.Value)) return x.Key == PlatformSettingKeys.GeminiApiKeys ? "[]" : string.Empty;
         if (x.Key == PlatformSettingKeys.GeminiApiKeys)
             return JsonSerializer.Serialize(GeminiRuntimeSettings.ReadKeyList(x.Value, SigningKey).Select(SecretProtector.Mask));
-        var plain = SecretProtector.IsProtected(x.Value) ? SecretProtector.TryUnprotect(x.Value, SigningKey) : x.Value;
+        var plain = SecretProtector.IsProtected(x.Value) ? GeminiRuntimeSettings.UnprotectWithFallback(x.Value, SigningKey, out _) : x.Value;
         return plain is null ? string.Empty : SecretProtector.Mask(plain);
     }
 

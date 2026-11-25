@@ -24,13 +24,13 @@ public sealed class GeminiOptions
     public bool LogSanitizedPrompt { get; set; }
     /// <summary>Danh sách nhiều API key (mỗi key thuộc project khác nhau để cộng dồn quota). Dùng chung với ApiKey.</summary>
     public List<string> ApiKeys { get; set; } = [];
-    public string Model { get; set; } = "gemini-3.5-flash-lite";
+    public string Model { get; set; } = "gemini-2.5-flash";
 
     /// <summary>
     /// Model thử tiếp khi model chính lỗi (Google ngừng cấp model cũ cho tài khoản mới trả HTTP 404).
     /// Dùng chung cho tư vấn, OCR, kiểm tra tài liệu, trích xuất và soạn nháp; cấu hình được qua Gemini:FallbackModels.
     /// </summary>
-    public List<string> FallbackModels { get; set; } = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"];
+    public List<string> FallbackModels { get; set; } = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"];
 
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int TimeoutSeconds { get; set; } = 30;
@@ -41,9 +41,20 @@ public sealed class GeminiOptions
     public int? ThinkingBudget { get; set; } = 0;
     public int MaxQuestionLength { get; set; } = 1000;
 
+    public static string NormalizeModelName(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return "gemini-2.5-flash";
+        var trimmed = model.Trim();
+        return trimmed.ToLowerInvariant() switch
+        {
+            "gemini-3.5-flash-lite" or "gemini-3.5-flash" or "gemini-3.8-flash" or "gemini-1.5-flash" or "gemini-1.5-pro" => "gemini-2.5-flash",
+            _ => trimmed
+        };
+    }
+
     /// <summary>Model chính rồi tới các model dự phòng, không trùng lặp.</summary>
     public List<string> CandidateModels() =>
-        new[] { Model }.Concat(FallbackModels ?? [])
+        new[] { NormalizeModelName(Model) }.Concat((FallbackModels ?? []).Select(NormalizeModelName))
             .Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 }
@@ -109,6 +120,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
         var attemptsPerRound = attempts.Count;
         attempts = [.. attempts, .. attempts];
         var sawTimeout = false;
+        var notFoundModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var budget = System.Diagnostics.Stopwatch.StartNew();
 
         for (var attemptNo = 0; attemptNo < attempts.Count; attemptNo++)
@@ -119,11 +131,16 @@ public sealed partial class GeminiAiAdvisoryProvider(
                 logger.LogInformation("[Gemini] All models/keys failed in round 1; retrying once after a short pause.");
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             }
+            var (model, apiKey, keyIndex) = attempts[attemptNo];
+            var isLastAttempt = attemptNo == attempts.Count - 1;
+            if (notFoundModels.Contains(model))
+            {
+                if (!isLastAttempt) continue;
+                throw new HttpRequestException($"Gemini model '{model}' returned HTTP 404.", null, System.Net.HttpStatusCode.NotFound);
+            }
             var remainingSeconds = settings.TotalBudgetSeconds - budget.Elapsed.TotalSeconds;
             if (attemptNo > 0 && remainingSeconds < 5)
                 throw new TimeoutException($"Gemini did not answer within the {settings.TotalBudgetSeconds}s budget.");
-            var (model, apiKey, keyIndex) = attempts[attemptNo];
-            var isLastAttempt = attemptNo == attempts.Count - 1;
             activeModel = model;
             // thinkingBudget chỉ áp dụng cho dòng gemini-2.5; model mới hơn có thể từ chối tham số này (HTTP 400).
             if (settings.ThinkingBudget is >= 0 && model.StartsWith("gemini-2.5", StringComparison.OrdinalIgnoreCase))
@@ -152,6 +169,7 @@ public sealed partial class GeminiAiAdvisoryProvider(
                 }
 
                 var statusCode = (int)response.StatusCode;
+                if (statusCode == 404) notFoundModels.Add(model);
                 GeminiKeyPool.ReportStatus(apiKey, statusCode);
                 var safeError = ExtractSafeErrorMessage(currentBody);
                 logger.LogWarning("[Gemini] Model {Model} (key #{KeyIndex}) returned HTTP {StatusCode}. Error: {Error}", model, keyIndex + 1, statusCode, safeError);

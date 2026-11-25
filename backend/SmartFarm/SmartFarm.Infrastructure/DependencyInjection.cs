@@ -116,20 +116,35 @@ public static class DependencyInjection
         services.AddMemoryCache();
         // Gemini có thể mất vài chục giây đến hơn 1 phút cho tài liệu dài; mặc định 100 giây của HttpClient cắt sớm hơn
         // thời gian chờ của từng lần gọi (mỗi lệnh gọi vẫn tự đặt giới hạn riêng bằng CancellationToken).
-        services.AddSingleton(new HttpClient { Timeout = TimeSpan.FromSeconds(180) });
+        // Trên VPS Docker (Linux), kết nối IPv6 ra Google APIs hay bị treo/blackhole trên bridge network, nên ưu tiên IPv4.
+        services.AddSingleton(CreateDockerSafeHttpClient());
         services.AddScoped<IAiAdvisoryService, AiAdvisoryService>();
         services.AddScoped<GeminiAiAdvisoryProvider>();
         services.AddScoped<UnavailableAiAdvisoryProvider>();
         services.AddScoped<IAiAdvisoryProvider>(provider =>
-            string.IsNullOrWhiteSpace(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.ApiKey)
+        {
+            var gemOpts = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value;
+            if (string.IsNullOrWhiteSpace(gemOpts.ApiKey))
+            {
+                TryReloadGeminiFromDb(provider, gemOpts);
+            }
+            return string.IsNullOrWhiteSpace(gemOpts.ApiKey)
                 ? provider.GetRequiredService<UnavailableAiAdvisoryProvider>()
-                : provider.GetRequiredService<GeminiAiAdvisoryProvider>());
+                : provider.GetRequiredService<GeminiAiAdvisoryProvider>();
+        });
         services.AddScoped<GeminiQuestionIntentClassifier>();
         services.AddScoped<UnavailableQuestionIntentClassifier>();
         services.AddScoped<IQuestionIntentClassifier>(provider =>
-            string.IsNullOrWhiteSpace(provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.ApiKey)
+        {
+            var gemOpts = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value;
+            if (string.IsNullOrWhiteSpace(gemOpts.ApiKey))
+            {
+                TryReloadGeminiFromDb(provider, gemOpts);
+            }
+            return string.IsNullOrWhiteSpace(gemOpts.ApiKey)
                 ? provider.GetRequiredService<UnavailableQuestionIntentClassifier>()
-                : provider.GetRequiredService<GeminiQuestionIntentClassifier>());
+                : provider.GetRequiredService<GeminiQuestionIntentClassifier>();
+        });
         services.AddScoped<GeminiEmbeddingProvider>();
         services.AddScoped<IDocumentSufficiencyValidator, VietGapDocumentAiValidator>();
         services.AddScoped<VietGapDocumentVerifier>();
@@ -163,5 +178,64 @@ public static class DependencyInjection
         services.AddScoped<ICloudinaryService, CloudinaryService>();
 
         return services;
+    }
+
+    private static void TryReloadGeminiFromDb(IServiceProvider provider, GeminiOptions gemOpts)
+    {
+        try
+        {
+            var db = provider.GetService<SmartFarmDbContext>();
+            var jwt = provider.GetService<IOptions<JwtOptions>>()?.Value;
+            var emb = provider.GetService<IOptions<GeminiEmbeddingOptions>>()?.Value;
+            if (db is not null && jwt is not null)
+            {
+                GeminiRuntimeSettings.ApplyAsync(db, jwt.SigningKey, gemOpts, emb, null, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+            }
+        }
+        catch
+        {
+            // Ignore transient reload error and fall back gracefully
+        }
+    }
+
+    private static HttpClient CreateDockerSafeHttpClient()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            ConnectCallback = async (context, cancellationToken) =>
+            {
+                var addresses = await System.Net.Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken);
+                // Ưu tiên IPv4 trước IPv6 để tránh lỗi treo kết nối IPv6 trên mạng bridge của VPS Docker Linux
+                var ordered = addresses
+                    .OrderBy(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 0 : 1)
+                    .ToArray();
+
+                Exception? lastEx = null;
+                foreach (var addr in ordered)
+                {
+                    var socket = new System.Net.Sockets.Socket(addr.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp)
+                    {
+                        NoDelay = true
+                    };
+                    try
+                    {
+                        await socket.ConnectAsync(new System.Net.IPEndPoint(addr, context.DnsEndPoint.Port), cancellationToken);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        socket.Dispose();
+                        lastEx = ex;
+                    }
+                }
+                throw lastEx ?? new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.HostUnreachable);
+            }
+        };
+        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(180) };
     }
 }

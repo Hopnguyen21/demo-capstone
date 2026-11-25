@@ -182,13 +182,50 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     try
     {
+        var signingKey = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Identity.JwtOptions>>().Value.SigningKey;
+        var gemOpts = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Ai.GeminiOptions>>().Value;
+        var embOpts = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Ai.Knowledge.GeminiEmbeddingOptions>>().Value;
+
         // Khoá/model Gemini Admin đã nhập ở Cài đặt nền tảng được ưu tiên hơn cấu hình môi trường.
         await SmartFarm.Infrastructure.Platform.GeminiRuntimeSettings.ApplyAsync(
-            db,
-            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Identity.JwtOptions>>().Value.SigningKey,
-            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Ai.GeminiOptions>>().Value,
-            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<SmartFarm.Infrastructure.Ai.Knowledge.GeminiEmbeddingOptions>>().Value,
-            logger, CancellationToken.None);
+            db, signingKey, gemOpts, embOpts, logger, CancellationToken.None);
+
+        // Nếu trên VPS Docker chưa có khoá hợp lệ trong DB nhưng có truyền biến môi trường GEMINI_API_KEY / GOOGLE_API_KEY / Gemini__ApiKey,
+        // tự động mã hoá và nạp vào platform_settings để container hoạt động ngay khi deploy.
+        if (string.IsNullOrWhiteSpace(gemOpts.ApiKey))
+        {
+            var envGeminiKey = app.Configuration["Gemini:ApiKey"]
+                ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+                ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+            if (!string.IsNullOrWhiteSpace(envGeminiKey) && envGeminiKey.Trim().Length >= 20 && signingKey.Length >= 32)
+            {
+                var cleanKey = envGeminiKey.Trim();
+                var encrypted = SmartFarm.Infrastructure.Platform.SecretProtector.Protect(cleanKey, signingKey);
+                var existingKeyRow = await db.PlatformSettings.SingleOrDefaultAsync(x => x.Key == SmartFarm.Infrastructure.Platform.PlatformSettingKeys.GeminiApiKey);
+                if (existingKeyRow is null)
+                {
+                    db.PlatformSettings.Add(new SmartFarm.Domain.Entities.PlatformSetting
+                    {
+                        Key = SmartFarm.Infrastructure.Platform.PlatformSettingKeys.GeminiApiKey,
+                        Value = encrypted,
+                        Group = "Ai",
+                        DataType = "String",
+                        IsSecret = true,
+                        UpdatedAtUtc = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    existingKeyRow.Value = encrypted;
+                    existingKeyRow.IsSecret = true;
+                    existingKeyRow.UpdatedAtUtc = DateTime.UtcNow;
+                }
+                await db.SaveChangesAsync();
+                await SmartFarm.Infrastructure.Platform.GeminiRuntimeSettings.ApplyAsync(
+                    db, signingKey, gemOpts, embOpts, logger, CancellationToken.None);
+                logger.LogInformation("✅ [Gemini] Đã tự động đồng bộ và mã hoá Gemini API Key từ biến môi trường Docker vào Cài đặt nền tảng.");
+            }
+        }
     }
     catch (Exception ex)
     {
